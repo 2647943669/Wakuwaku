@@ -69,6 +69,8 @@
     releaseHer: offset => send('island_release', { offset: offset || {} }),
     dropHer: () => send('island_drop'),
     holding: isHolding => send('island_holding', { isHolding: isHolding === true }),
+    // Her seat on the taskbar, where the page has laid her island out (logical px from its left).
+    seat: x => send('island_seat', { x: Number(x) || 0 }),
     onReach: on('island:reach'),
     onAbsorb: on('island:absorb'),
     onLanded: on('island:landed'),
@@ -118,6 +120,8 @@
     // Windows' look ({ mode: dark | light, accent: { base, light, dark } }),
     // for the taskbar to be as Windows' own is.
     onLook: on('taskbar:look'),
+    // The taskbar's layout to be edited by dragging (its menu).
+    onTaskbarEdit: on('taskbar:edit'),
     // Windows' Start menu opened or closed ({ open }), for the Start button.
     onStart: on('taskbar:start'),
     settings: {

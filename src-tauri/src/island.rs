@@ -84,6 +84,10 @@ pub struct Island {
     pub settings_open: bool,
     // Settings asked for before its page was up: the page they open on.
     pending: Option<String>,
+    // On the taskbar, her seat from the strip's left (logical), where the
+    // page has laid her island out (taskbarLayout: it may be anywhere along
+    // the strip); none told yet: at its left end.
+    seat_x: Option<f64>,
 }
 
 impl Island {
@@ -516,6 +520,14 @@ pub fn hover(sh: &Shared, is_over: bool) {
     }
 }
 
+// Her seat on the taskbar as the page has laid her island out (logical px
+// from the strip's left): what she is reached for from, and flies back to.
+pub fn set_seat(sh: &Shared, x: f64) {
+    if x.is_finite() && x >= 0.0 {
+        sh.island.lock().unwrap().seat_x = Some(x);
+    }
+}
+
 // The room a shape needs, as the page measured it.
 pub fn set_room(sh: &Shared, measured: &Value) {
     let room = match (measured["width"].as_f64(), measured["height"].as_f64()) {
@@ -543,12 +555,15 @@ pub fn set_holding(sh: &Shared, is_holding: bool) {
 pub fn seat(sh: &Shared) -> Option<(i32, i32)> {
     let home = sh.home();
     let area = area(sh)?;
-    let bar = sh.island.lock().unwrap().bar;
+    let (bar, seat_x) = {
+        let isl = sh.island.lock().unwrap();
+        (isl.bar, isl.seat_x)
+    };
     let px = |v: f64| (v * area.sf).round() as i32;
     Some(match home {
         "taskbar" => {
             let (x, y, _, _) = bar.unwrap_or((area.mon.0, area.mon.1 + area.mon.3 - px(TASKBAR_H), area.mon.2, px(TASKBAR_H)));
-            (x + px(TASKBAR_SEAT_X), y)
+            (x + px(seat_x.unwrap_or(TASKBAR_SEAT_X)), y)
         }
         _ => (area.x + area.w / 2, area.y + px(TOP + COMPACT_H)),
     })

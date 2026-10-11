@@ -897,10 +897,85 @@
   // Show the desktop: a sliver at the screen's right edge, as Windows' own (Win+D).
   const deskEdge = el('span', 'tdesk')
   deskEdge.dataset.bar = 'desktop'
-  // The room between the programs' buttons and what comes after them: what
-  // centring them moves them into (alignApps).
+  // The room between the middle run and the right one: what centring the
+  // middle moves it into (alignApps).
   const growNode = el('span', 'grow')
   let taskbarBuilt = false
+
+  // --- The taskbar's layout (taskbarLayout) -------------------------------------------
+  // Its parts in three runs, as a KDE panel has them: from the left end, in
+  // the middle of the screen (moved left when crowded, alignApps), and up to
+  // the right end; show-the-desktop's sliver last of all, always (Windows'
+  // corner). Her island is one of the parts ('her'): a slot in its run with
+  // the island laid over it (placeHer), growing from it the way there is
+  // room (body.isl-right: from its right edge, leftwards). Edited by
+  // dragging the parts about on the strip itself (editTaskbar).
+  const TB_PARTS = ['her', 'start', 'apps', 'tags', 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
+  const TB_RIGHT = ['monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
+  const TB_PRESETS = {
+    win11: { left: ['her'], center: ['start', 'apps', 'tags'], right: TB_RIGHT },
+    left: { left: ['her', 'start', 'apps', 'tags'], center: [], right: TB_RIGHT },
+    herRight: { left: ['start', 'apps', 'tags'], center: [], right: [...TB_RIGHT, 'her'] },
+  }
+  const herSlot = el('span', 'tslot')
+  // The tray's icons and the marks of what uses the microphone, camera or
+  // location: one part.
+  const trayPart = el('span', 'tpair')
+  trayPart.append(trayBox, privBox)
+  const PART_NODES = { her: herSlot, start: startButton, apps: windowsBox, tags: tagsBox, monitor: facesBox, tray: trayPart, keys: keysBox, quick: quickBox, clock: clockBox, gear: taskGear }
+  for (const [part, node] of Object.entries(PART_NODES)) node.dataset.part = part
+  const zones = { left: el('span', 'tzone tz-left'), center: el('span', 'tzone tz-center'), right: el('span', 'tzone tz-right') }
+  // While the layout is being edited: the one being made, not yet kept.
+  let editLayout = null
+  let arranged = ''
+  let seatSent = null
+
+  // The layout: the one being edited, or as kept, or before any as
+  // taskbarAlign had it; each part once, one it lacks (new since) where the
+  // default has it.
+  function tbLayout(saved = editLayout || config.taskbarLayout) {
+    const base = saved && typeof saved === 'object' ? saved : config.taskbarAlign === 'left' ? TB_PRESETS.left : TB_PRESETS.win11
+    const seen = new Set()
+    const run = k => (Array.isArray(base[k]) ? base[k] : []).filter(p => TB_PARTS.includes(p) && !seen.has(p) && seen.add(p))
+    const out = { left: run('left'), center: run('center'), right: run('right') }
+    for (const [k, parts] of Object.entries(TB_PRESETS.win11)) for (const p of parts) if (!seen.has(p)) out[k].push(p)
+    return out
+  }
+  // Which preset a layout is ('custom': none).
+  const presetOf = layout => Object.keys(TB_PRESETS).find(k => JSON.stringify(tbLayout(TB_PRESETS[k])) === JSON.stringify(tbLayout(layout))) || 'custom'
+
+  // The parts into their runs, as the layout has them.
+  function arrangeTaskbar() {
+    const layout = tbLayout()
+    const key = JSON.stringify(layout)
+    if (key === arranged) return
+    arranged = key
+    for (const k of Object.keys(zones)) zones[k].replaceChildren(...layout[k].map(p => PART_NODES[p]))
+    // First at the strip's left end: her island at its very edge, as ever.
+    herSlot.classList.toggle('first', layout.left[0] === 'her')
+  }
+
+  // Her island over its slot, as wide as it is: from the strip's left, or,
+  // its slot past the middle, from the right (what it grows into goes the
+  // way there is room). Where it lies without OLED's shift, which moves
+  // them both after. Her seat (where she is reached for, and flies back
+  // to) told to main once it moves.
+  function placeHer() {
+    const pad = isCapsule() ? CAPSULE_X : 0
+    herSlot.style.width = `${onPixels(sizeOf('compact').width + 2 * pad)}px`
+    herSlot.style.marginRight = `${pad ? 2 : 4}px`
+    const shifted = (oledOn && parseFloat(document.documentElement.style.getPropertyValue('--oled-x'))) || 0
+    const r = herSlot.getBoundingClientRect()
+    const left = r.left - shifted + pad
+    const atRight = (r.left + r.right) / 2 - shifted > innerWidth / 2
+    body.classList.toggle('isl-right', atRight)
+    document.documentElement.style.setProperty('--isl-x', `${onPixels(atRight ? innerWidth - (r.right - shifted - pad) : left)}px`)
+    const seat = Math.round(left + taskCompactH() / 2)
+    if (seat !== seatSent) {
+      seatSent = seat
+      window.pet.seat(seat)
+    }
+  }
   // The tray's icons as last sent ({ key, png, tip, exe }), and as drawn.
   let trayIcons = []
   let trayDrawn = ''
@@ -915,13 +990,15 @@
   const flashSince = new Map()
 
   function fillTaskbar() {
-    barRest.style.left = `${onPixels(sizeOf('compact').width + (isCapsule() ? CAPSULE_X + 4 : 0))}px`
     if (!taskbarBuilt) {
-      barRest.replaceChildren(glide, startButton, windowsBox, tagsBox, growNode, facesBox, trayBox, privBox, keysBox, quickBox, clockBox, taskGear, deskEdge, pop)
+      // As wide as the strip: her island lies over its slot in it (placeHer).
+      barRest.style.left = '0px'
+      barRest.replaceChildren(glide, zones.left, zones.center, growNode, zones.right, deskEdge, pop)
       taskbarBuilt = true
       trayDrawn = ''
       windowsDrawn = ''
     }
+    arrangeTaskbar()
     // The programs' buttons as icons alone (taskbarButtons), or with their titles.
     barRest.classList.toggle('icons', config.taskbarButtons !== 'labels')
     startButton.title = t(lang, 'taskbar.start')
@@ -934,24 +1011,26 @@
     drawTray()
     tickClock()
     alignApps()
+    placeHer()
     snapStart()
   }
 
-  // Start and the programs' buttons in the middle of the screen, as Windows
-  // 11 has them (taskbarAlign: center; left, after her end): moved along by
-  // the Start button's margin, never back past where they start nor into
-  // what comes after them (the room before the monitor and the tray is all
-  // they may take). Moved, they slide; what hangs over a button (its
-  // windows' list) is placed again once they are there.
+  // The middle run in the middle of the screen, as Windows 11 has Start and
+  // the programs' buttons (the default layout): moved along by its margin,
+  // never back past where it starts nor into the right run (the room before
+  // it is all it may take). Moved, it slides; what hangs over a button (its
+  // windows' list) is placed again once it is there, and her island too.
   function alignApps() {
     if (!taskbarBuilt) return
+    const middle = zones.center
     // Measured by the margin as it is now (it may be sliding), set to the one wanted.
-    const target = parseFloat(startButton.style.marginLeft) || 0
+    const target = parseFloat(middle.style.marginLeft) || 0
     let want = 0
-    if (config.taskbarAlign !== 'left') {
-      const now = parseFloat(getComputedStyle(startButton).marginLeft) || 0
-      const start = startButton.getBoundingClientRect()
-      const width = windowsBox.getBoundingClientRect().right - start.left
+    // Empty, it is still a place to drop a part while the layout is edited.
+    if (middle.childElementCount || editLayout) {
+      const now = parseFloat(getComputedStyle(middle).marginLeft) || 0
+      const start = middle.getBoundingClientRect()
+      const width = start.width
       const room = growNode.getBoundingClientRect().width + now
       // Where it lies without OLED's shift (which moves the bar after): the
       // margin taken from where it is drawn undid the shift, and the middle
@@ -959,12 +1038,13 @@
       const shifted = (oledOn && parseFloat(document.documentElement.style.getPropertyValue('--oled-x'))) || 0
       want = Math.round(Math.max(0, Math.min((innerWidth - width) / 2 - (start.left - shifted - now), room)))
     }
-    if (want !== Math.round(target)) startButton.style.marginLeft = `${want}px`
+    if (want !== Math.round(target)) middle.style.marginLeft = `${want}px`
   }
-  startButton.addEventListener('transitionend', e => {
-    if (e.propertyName !== 'margin-left') return
+  zones.center.addEventListener('transitionend', e => {
+    if (e.target !== zones.center || e.propertyName !== 'margin-left') return
     if (popFor) drawPop()
     if (glideOn?.isConnected) glideTo(glideOn, true)
+    placeHer()
     snapStart()
     requestAnimationFrame(sendTrayRects)
   })
@@ -1041,7 +1121,11 @@
     if (e.button === 0 && glideOn && e.target.closest(GLIDE_ON) === glideOn) glide.classList.add('down')
   })
   window.addEventListener('pointerup', () => glide.classList.remove('down'))
-  window.addEventListener('resize', () => isOn() && home() === 'taskbar' && alignApps())
+  window.addEventListener('resize', () => {
+    if (!isOn() || home() !== 'taskbar') return
+    alignApps()
+    placeHer()
+  })
 
   // A button for each program (taskbar.rs): those kept on the taskbar
   // first, then the others as their windows came. Its icon; the title of its
@@ -1875,6 +1959,155 @@
   barRest.addEventListener('mouseenter', () => window.pet.hover(true))
   barRest.addEventListener('mouseleave', () => window.pet.hover(false))
 
+  // --- Editing the layout: the parts dragged about on the strip itself -------------------
+  // As KDE edits a panel: each part outlined, the three runs shown (an empty
+  // one a place to drop into), a part dragged to where a line shows it goes
+  // and laid out there at once; a bar above the strip to reset, cancel or
+  // keep it (taskbarLayout). The parts' own presses are held back meanwhile;
+  // her island lets the pointer through to its slot, to be dragged by it.
+  const editBar = el('div', 'tbedit')
+  const editMark = el('span', 'tbmark')
+  let drag = null
+
+  function editTaskbar() {
+    if (home() !== 'taskbar' || editLayout) return
+    if (isSetting()) window.Settings?.close?.('edit')
+    editLayout = JSON.parse(JSON.stringify(tbLayout()))
+    // Each part's name: shown on one with nothing in it now, and dragged by.
+    for (const [part, node] of Object.entries(PART_NODES)) node.dataset.label = t(lang, `taskbar.part.${part}`)
+    // Closed, should it have been open under the pointer (its menu came
+    // from it): it lets the pointer through now, and would hear no leaving.
+    clearTimeout(hoverTimer)
+    isHover = false
+    body.classList.add('tb-editing')
+    const button = what => {
+      const b = el('button', `tbe tbe-${what}`, t(lang, `taskbar.edit.${what}`))
+      b.dataset.edit = what
+      return b
+    }
+    editBar.replaceChildren(el('span', 'hint', t(lang, 'taskbar.edit.hint')), button('reset'), button('cancel'), button('done'))
+    document.body.append(editBar)
+    arranged = ''
+    update()
+  }
+
+  function endEdit(keep) {
+    if (!editLayout) return
+    const layout = editLayout
+    editLayout = null
+    body.classList.remove('tb-editing')
+    editBar.remove()
+    if (keep) {
+      config.taskbarLayout = layout
+      window.pet.settings.set({ taskbarLayout: layout })
+    }
+    arranged = ''
+    update()
+  }
+
+  editBar.addEventListener('click', e => {
+    const what = e.target.closest('[data-edit]')?.dataset.edit
+    if (what === 'done') endEdit(true)
+    else if (what === 'cancel') endEdit(false)
+    else if (what === 'reset') {
+      editLayout = JSON.parse(JSON.stringify(TB_PRESETS.win11))
+      arranged = ''
+      update()
+    }
+  })
+  editBar.addEventListener('mouseenter', () => window.pet.hover(true))
+  editBar.addEventListener('mouseleave', () => window.pet.hover(false))
+
+  // Where a part let go at x goes: the run under it (or the nearest), and
+  // before the first part of it whose middle is past x; the line's place.
+  function dropAt(x) {
+    let near = null
+    for (const [zone, node] of Object.entries(zones)) {
+      const r = node.getBoundingClientRect()
+      const d = x < r.left ? r.left - x : x > r.right ? x - r.right : 0
+      if (!near || d < near.d) near = { zone, d, r }
+    }
+    const parts = [...zones[near.zone].children].filter(n => n !== drag.node)
+    let index = parts.findIndex(n => {
+      const r = n.getBoundingClientRect()
+      return x < r.left + r.width / 2
+    })
+    if (index < 0) index = parts.length
+    const line = index < parts.length ? parts[index].getBoundingClientRect().left : parts.length ? parts[parts.length - 1].getBoundingClientRect().right : near.r.left + near.r.width / 2
+    return { zone: near.zone, index, line }
+  }
+
+  function movePart(part, zone, index) {
+    const layout = tbLayout()
+    for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== part)
+    layout[zone].splice(index, 0, part)
+    editLayout = layout
+    arranged = ''
+    update()
+  }
+
+  function endDrag() {
+    if (!drag) return
+    drag.ghost?.remove()
+    drag.node.classList.remove('tb-dragging')
+    editMark.remove()
+    drag = null
+  }
+
+  // While editing, the parts' own presses (Start, the buttons, the tray, the
+  // menu) are held back: they are being moved, not used.
+  for (const type of ['click', 'dblclick', 'contextmenu', 'pointerup']) {
+    barRest.addEventListener(
+      type,
+      e => {
+        if (!editLayout) return
+        if (type !== 'pointerup') e.preventDefault()
+        if (type === 'pointerup' && drag) {
+          const d = drag
+          endDrag()
+          if (d.moved && d.at) movePart(d.part, d.at.zone, d.at.index)
+        }
+        e.stopPropagation()
+      },
+      true,
+    )
+  }
+  barRest.addEventListener(
+    'pointerdown',
+    e => {
+      if (!editLayout) return
+      e.preventDefault()
+      e.stopPropagation()
+      const node = e.target.closest('[data-part]')
+      if (!node || e.button !== 0) return
+      drag = { part: node.dataset.part, node, x: e.clientX, y: e.clientY, moved: false }
+      try {
+        barRest.setPointerCapture(e.pointerId)
+      } catch {}
+    },
+    true,
+  )
+  barRest.addEventListener(
+    'pointermove',
+    e => {
+      if (!drag) return
+      e.stopPropagation()
+      if (!drag.moved) {
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5) return
+        drag.moved = true
+        drag.ghost = el('span', 'tbghost', t(lang, `taskbar.part.${drag.part}`))
+        document.body.append(drag.ghost, editMark)
+        drag.node.classList.add('tb-dragging')
+      }
+      drag.ghost.style.left = `${e.clientX}px`
+      drag.ghost.style.top = `${e.clientY}px`
+      drag.at = dropAt(e.clientX)
+      editMark.style.left = `${Math.round(drag.at.line) - 1}px`
+    },
+    true,
+  )
+  barRest.addEventListener('pointercancel', endDrag, true)
+
   function update() {
     clearInterval(clockTimer)
     // While she is being pulled out, the pull has the island.
@@ -2412,5 +2645,7 @@
   // window never moves for them); elsewhere, none said (the screen's).
   const settingsMax = () => (home() === 'taskbar' ? TASKBAR_ROOM - TASKBAR_GAP - TASKBAR_SHADE : null)
 
-  window.Island = { isOn, changed: update, reach, absorb, settingsMax }
+  // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
+  window.pet.onTaskbarEdit(() => editTaskbar())
+  window.Island = { isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), editTaskbar }
 })()

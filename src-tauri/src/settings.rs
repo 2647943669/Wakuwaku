@@ -89,6 +89,28 @@ fn is_island_look(v: &Value) -> bool {
         })
 }
 
+// The taskbar's layout: { left, center, right }, each a list of its parts
+// (island.js TB_PARTS), none twice and nothing else; one left out goes where
+// the default has it.
+const TASKBAR_PARTS: [&str; 10] = ["her", "start", "apps", "tags", "monitor", "tray", "keys", "quick", "clock", "gear"];
+
+fn is_taskbar_layout(v: &Value) -> bool {
+    let Some(runs) = v.as_object() else { return false };
+    let mut seen: Vec<&str> = Vec::new();
+    runs.iter().all(|(run, parts)| {
+        matches!(run.as_str(), "left" | "center" | "right")
+            && parts.as_array().is_some_and(|parts| {
+                parts.iter().all(|p| match p.as_str() {
+                    Some(p) if TASKBAR_PARTS.contains(&p) && !seen.contains(&p) => {
+                        seen.push(p);
+                        true
+                    }
+                    _ => false,
+                })
+            })
+    })
+}
+
 // What a settings patch may hold, checked: anything else is dropped.
 fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
     let is_bool = v.is_boolean();
@@ -107,6 +129,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "taskbarClearWhen" => matches!(v.as_str(), Some("mica" | "solid" | "always")),
         "taskbarButtons" => matches!(v.as_str(), Some("icons" | "labels")),
         "taskbarAlign" => matches!(v.as_str(), Some("center" | "left")),
+        // The taskbar's parts in three runs (island.js tbLayout), each once.
+        "taskbarLayout" => v.is_null() || is_taskbar_layout(v),
         // The programs' buttons in the order dragged: their keys (paths).
         "taskbarOrder" => v.as_array().is_some_and(|keys| keys.len() <= 200 && keys.iter().all(|k| k.as_str().is_some_and(|s| s.len() <= 1024))),
         "hold" => v.as_str() == Some("seen") || matches!(v.as_u64(), Some(8 | 30 | 120)),
@@ -430,5 +454,22 @@ mod tests {
         assert!(!super::is_island_look(&json!({ "edge": "glow" })));
         assert!(!super::is_island_look(&json!({ "bare": 1 })));
         assert!(!super::is_island_look(&json!({ "ink": "light" })));
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use serde_json::json;
+
+    #[test]
+    fn taskbar_layouts() {
+        assert!(super::is_taskbar_layout(&json!({ "left": ["her"], "center": ["start", "apps", "tags"], "right": ["monitor", "tray", "keys", "quick", "clock", "gear"] })));
+        assert!(super::is_taskbar_layout(&json!({ "left": ["start", "apps"], "right": ["clock", "her"] })));
+        assert!(!super::is_taskbar_layout(&json!({ "left": ["her", "her"] })));
+        assert!(!super::is_taskbar_layout(&json!({ "left": ["her"], "right": ["her"] })));
+        assert!(!super::is_taskbar_layout(&json!({ "top": ["her"] })));
+        assert!(!super::is_taskbar_layout(&json!({ "left": ["desk"] })));
+        assert!(!super::is_taskbar_layout(&json!({ "left": "her" })));
+        assert!(!super::is_taskbar_layout(&json!(["her"])));
     }
 }

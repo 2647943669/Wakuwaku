@@ -473,6 +473,15 @@
     ilookSave(mode, { ...ilookOf(mode), [key]: value }, keep)
   }
 
+  // The taskbar's layout (island.js tbLayout): a preset, or one dragged
+  // into shape on the strip itself (the button: the settings close for it).
+  function layoutRow() {
+    const preset = window.Island?.tbPreset?.() || 'win11'
+    const presets = ['win11', 'left', 'herRight'].map(p => [p, T(`s.layout.${p}`)])
+    const note = T(preset === 'custom' ? 's.layoutCustom' : 's.layoutNote')
+    return row(esc(T('s.taskbarLayout')), esc(note), `<span class="btns">${seg('taskbarLayout', presets, preset)}<button class="pbtn sm" data-tb-edit>${esc(T('s.layoutEdit'))}</button></span>`)
+  }
+
   // The fold's own row: how the island looks in Windows' mode now.
   function ilookRow() {
     const mode = winMode()
@@ -486,7 +495,7 @@
         <div class="mode${s.display === 'taskbar' ? '' : ' on'}" data-mode="island"><div class="pv"><i></i></div><div class="l"><span class="rd"></span>${esc(T('s.displayIsland'))}</div></div>
         <div class="mode${s.display === 'taskbar' ? ' on' : ''}" data-mode="taskbar"><div class="pv"><s></s></div><div class="l"><span class="rd"></span>${esc(T('s.displayTaskbar'))}</div></div>
       </div>
-      ${s.display === 'taskbar' ? `<div class="grp"><div class="note">${esc(T('s.taskbarNote'))}</div></div><div class="grp">${row(esc(T('s.taskbarMaterial')), esc(T('s.taskbarMaterialNote')), seg('taskbarMaterial', ['mica', 'black', 'clear'].map(m => [m, T(`s.material.${m}`)]), s.taskbarMaterial || 'mica'))}${s.taskbarMaterial === 'clear' ? row(esc(T('s.clearWhen')), esc(T('s.clearWhenNote')), seg('taskbarClearWhen', ['mica', 'solid', 'always'].map(w => [w, T(`s.clearWhen.${w}`)]), ['solid', 'always'].includes(s.taskbarClearWhen) ? s.taskbarClearWhen : 'mica')) : ''}${row(esc(T('s.taskbarButtons')), esc(T('s.taskbarButtonsNote')), seg('taskbarButtons', ['icons', 'labels'].map(b => [b, T(`s.buttons.${b}`)]), s.taskbarButtons || 'icons'))}${row(esc(T('s.taskbarAlign')), '', seg('taskbarAlign', ['center', 'left'].map(a => [a, T(`s.align.${a}`)]), s.taskbarAlign || 'center'))}${ilookRow()}</div>` : ''}
+      ${s.display === 'taskbar' ? `<div class="grp"><div class="note">${esc(T('s.taskbarNote'))}</div></div><div class="grp">${row(esc(T('s.taskbarMaterial')), esc(T('s.taskbarMaterialNote')), seg('taskbarMaterial', ['mica', 'black', 'clear'].map(m => [m, T(`s.material.${m}`)]), s.taskbarMaterial || 'mica'))}${s.taskbarMaterial === 'clear' ? row(esc(T('s.clearWhen')), esc(T('s.clearWhenNote')), seg('taskbarClearWhen', ['mica', 'solid', 'always'].map(w => [w, T(`s.clearWhen.${w}`)]), ['solid', 'always'].includes(s.taskbarClearWhen) ? s.taskbarClearWhen : 'mica')) : ''}${row(esc(T('s.taskbarButtons')), esc(T('s.taskbarButtonsNote')), seg('taskbarButtons', ['icons', 'labels'].map(b => [b, T(`s.buttons.${b}`)]), s.taskbarButtons || 'icons'))}${layoutRow()}${ilookRow()}</div>` : ''}
       <div class="grp">${row(esc(T('s.islandWidth')), esc(T('s.islandWidthNote')), seg('islandWidth', ['narrow', 'normal', 'wide'].map(w => [w, T(`s.width.${w}`)]), s.islandWidth || 'normal'))}${row(esc(T('s.oledShift')), esc(T('s.oledShiftNote')), sw('oledShift', s.oledShift))}</div>
       ${pageWindows()}
       ${sec(T('s.her'))}<div class="grp">
@@ -2042,6 +2051,10 @@
     if (option) {
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
+      if (key === 'taskbarLayout') {
+        const layout = window.Island?.tbPresets?.[raw]
+        return layout && patch({ taskbarLayout: layout })
+      }
       if (key === 'ilookMode') {
         ilookMode = raw === winMode() ? '' : raw
         return draw()
@@ -2075,6 +2088,11 @@
     }
     const mode = at('[data-mode]')
     if (mode) return mode.dataset.mode !== s.display && patch({ display: mode.dataset.mode })
+    // The taskbar's layout dragged into shape on the strip: the settings make way.
+    if (at('[data-tb-edit]')) {
+      close('edit')
+      return window.Island?.editTaskbar?.()
+    }
     // Her island's look: folded out or in, a preset, a ground, back to Windows' grey.
     if (at('[data-ilook-fold]')) {
       ilookOpen = !ilookOpen

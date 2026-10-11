@@ -7,7 +7,7 @@ use serde_json::json;
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Wry;
+use tauri::{Emitter, Wry};
 
 use crate::{data, i18n, now_ms, pet, Shared};
 
@@ -49,6 +49,7 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     if over == Over::Home && home == "taskbar" {
         menu.append(&CheckMenuItem::with_id(app, "dnd", t("menu.dnd"), true, flag("dnd"), None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "settings", t("menu.settings"), true, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(app, "editTaskbar", t("menu.editTaskbar"), true, None::<&str>)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
         menu.append(&MenuItem::with_id(app, "taskManager", t("menu.taskManager"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "winSettings", t("menu.winSettings"), true, None::<&str>)?)?;
@@ -101,6 +102,7 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     menu.append(&MenuItem::with_id(app, "settings", t("menu.settings"), true, None::<&str>)?)?;
     // In place of Windows' taskbar, the way to Windows' own settings too.
     if home == "taskbar" {
+        menu.append(&MenuItem::with_id(app, "editTaskbar", t("menu.editTaskbar"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "taskManager", t("menu.taskManager"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "winSettings", t("menu.winSettings"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "controlPanel", t("menu.controlPanel"), true, None::<&str>)?)?;
@@ -118,6 +120,10 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
         "out" => crate::set_out(sh, !sh.flag("out")),
         "corner" => crate::come_home(sh),
         "settings" => crate::island::open_settings(sh, None),
+        // The taskbar's parts dragged about, on the strip itself (island.js).
+        "editTaskbar" => {
+            let _ = sh.app.emit_to("island", "taskbar:edit", ());
+        }
         "winSettings" => {
             crate::tasks::launch("ms-settings:");
         }

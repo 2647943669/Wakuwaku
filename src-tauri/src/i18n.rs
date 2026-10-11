@@ -37,6 +37,7 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.winSettings" => if zh { "Windows 设置" } else { "Windows Settings" },
         "menu.controlPanel" => if zh { "控制面板" } else { "Control Panel" },
         "menu.taskManager" => if zh { "任务管理器" } else { "Task Manager" },
+        "menu.editTaskbar" => if zh { "编辑任务栏布局" } else { "Edit the taskbar layout" },
         "menu.deviceManager" => if zh { "设备管理器" } else { "Device Manager" },
         "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
         "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },

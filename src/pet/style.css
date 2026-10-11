@@ -1160,7 +1160,7 @@ body {
    from her end covers it. */
 .home-taskbar #island {
   position: absolute;
-  left: 0;
+  left: var(--isl-x, 0px);
   bottom: 0;
   z-index: 2;
   box-shadow: none;
@@ -1169,6 +1169,7 @@ body {
     height 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
     border-radius 0.4s ease,
     left 0.3s ease,
+    right 0.3s ease,
     bottom 0.3s ease;
 }
 
@@ -1233,7 +1234,7 @@ body {
    CAPSULE_X, CAPSULE_Y), and what it grows into rises from there,
    rounded all round, with the settings' shadow and edge. */
 .home-taskbar.tb-capsule #island:not([data-view='settings']) {
-  left: 6px;
+  left: var(--isl-x, 6px);
   bottom: 5px;
 }
 
@@ -1849,8 +1850,8 @@ body {
   box-shadow: 0 0 0 1.5px #000;
 }
 
-/* Centred (island.js alignApps), they slide to the middle as programs come and go. */
-#bar-rest .start {
+/* Centred (island.js alignApps), the middle run slides to the middle as programs come and go. */
+#bar-rest .tz-center {
   transition: margin-left 0.25s ease;
 }
 
@@ -2610,4 +2611,182 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
 /* On the light grey: what is quoted white, as Windows' own fields are. */
 .isl-light.island.home-taskbar.tb-capsule #panel .code {
   background: #ffffff;
+}
+
+/* --- The taskbar's layout (island.js tbLayout) --------------------------------------
+   Its parts in three runs: from the left end, in the middle (alignApps
+   moves it there by its margin), and up to the right end. Her island lies
+   over its slot (placeHer, --isl-x): first at the left end, at the strip's
+   very edge; past the middle, held by its right edge (isl-right), so what
+   it grows into (the open island, a prompt, the settings) goes leftwards. */
+#bar-rest .tzone {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 100%;
+}
+
+#bar-rest .tpair {
+  display: flex;
+  align-items: center;
+}
+
+#bar-rest .tslot {
+  flex: none;
+  align-self: stretch;
+}
+
+#bar-rest .tslot.first {
+  margin-left: -4px;
+}
+
+body.isl-right.home-taskbar #island:not([data-view='settings']) {
+  left: auto;
+  right: var(--isl-x, 0px);
+}
+
+body.isl-right.home-taskbar #island[data-view='settings'] {
+  left: auto;
+  right: 8px;
+}
+
+/* Editing it (island.js editTaskbar): each part outlined, to be dragged;
+   each run a soft box (an empty one a place to drop into); her island lets
+   the pointer through to its slot. */
+.tb-editing #island {
+  pointer-events: none;
+  outline: 1.5px solid rgba(94, 155, 255, 0.85);
+  outline-offset: -2px;
+}
+
+/* A part with nothing in it now (no sessions' tags, the monitor not
+   pinned): its name, to be seen and dragged all the same. */
+.tb-editing #bar-rest [data-part]:empty:not(.tslot)::before {
+  content: attr(data-label);
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 10px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+}
+
+.tb-light.tb-editing #bar-rest [data-part]:empty:not(.tslot)::before {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.tb-editing #bar-rest .tzone {
+  min-width: 72px;
+  height: 42px;
+  margin: 0 4px;
+  border-radius: 10px;
+  background: rgba(94, 155, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(94, 155, 255, 0.35);
+}
+
+.tb-editing #bar-rest [data-part] {
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1.5px rgba(94, 155, 255, 0.8);
+  cursor: grab;
+}
+
+.tb-editing #bar-rest .tb-dragging {
+  opacity: 0.35;
+}
+
+/* Where the part goes, and the part, by its name, under the pointer. */
+.tbmark {
+  position: fixed;
+  bottom: 6px;
+  z-index: 30;
+  width: 3px;
+  height: 36px;
+  border-radius: 2px;
+  background: #5e9bff;
+  pointer-events: none;
+}
+
+.tbghost {
+  position: fixed;
+  z-index: 31;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: #2c2c2c;
+  color: #f5f5f7;
+  font-size: 12px;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+/* Above the strip: what to do, and reset, cancel, done. */
+.tbedit {
+  position: fixed;
+  left: 50%;
+  bottom: 62px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 14px;
+  background: #2c2c2c;
+  color: #f5f5f7;
+  font-size: 13px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.tbedit .hint {
+  margin-right: 6px;
+  color: #c7c7cc;
+}
+
+.tbedit .tbe {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tbedit .tbe:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.tbedit .tbe-done {
+  border-color: #0a84ff;
+  background: #0a84ff;
+  color: #fff;
+}
+
+.tb-light .tbedit,
+.tb-light .tbghost {
+  background: #f3f3f3;
+  color: #1b1b1b;
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.tb-light .tbedit .hint {
+  color: #5d5d5d;
+}
+
+.tb-light .tbedit .tbe {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+
+.tb-light .tbedit .tbe-done {
+  border-color: #005fb8;
+  background: #005fb8;
+  color: #fff;
 }

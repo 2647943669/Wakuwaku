@@ -736,6 +736,12 @@ async fn island_holding(app: AppHandle, is_holding: bool) {
     island::set_holding(&shared(&app), is_holding);
 }
 
+// Where the page laid her island out on the taskbar: her seat.
+#[tauri::command]
+async fn island_seat(app: AppHandle, x: f64) {
+    island::set_seat(&shared(&app), x);
+}
+
 // The drop pinched off: she is out, under the cursor, her middle this far
 // from it. The button is still held on the island; island_drop says when it
 // is let go.
@@ -1028,6 +1034,7 @@ fn main() {
             pet_walk,
             pet_walk_stop,
             island_holding,
+            island_seat,
             island_release,
             island_drop,
             debug_result,
