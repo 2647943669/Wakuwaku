@@ -830,20 +830,23 @@ body {
 
 /* A monitor reading (widgets.js cellHTML): Windows' own glyph and the
    number in one small cell, its ground filled from the left as far as the
-   reading goes (--p), in the words' own colour, black and white as the
-   taskbar's own icons are (--cell-ink: dark where the ground is light);
-   filled orange when it wants a look. Every cell as wide as the widest
-   reading ("100%", "337K"), so they stay in columns as the numbers change. */
+   reading goes (--p), white or black as the taskbar's own icons are
+   (--cell-ink: dark where the ground is light); filled orange when it
+   wants a look. The glyph at a size the icon font draws cleanly (--g: 12px;
+   on the taskbar 16px, as its tray's icons are: smaller, its details run
+   together). Every cell as wide as the widest reading ("100%", "337K"),
+   so they stay in columns as the numbers change. */
 .wcell {
+  --g: 12px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  width: calc(10px + 2px + 4.4ch + 6px);
-  height: 15px;
+  width: calc(var(--g) + 2px + 4.4ch + 6px);
+  height: calc(var(--g) + 4px);
   box-sizing: border-box;
   padding: 0 3px;
   border-radius: 3px;
-  color: var(--cell-ink, #e5e5ea);
+  color: var(--cell-ink, #fff);
   font-size: 11px;
   line-height: 1;
   vertical-align: middle;
@@ -860,9 +863,14 @@ body {
 
 .wcell .wg {
   flex: none;
-  width: 10px;
-  font: normal 10px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  width: var(--g);
+  font: normal var(--g) / 1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
   text-align: center;
+}
+
+#bar-rest .mon.rows .wcell {
+  --g: 16px;
+  height: 18px;
 }
 
 .wcell b {
