@@ -868,6 +868,12 @@ body {
   text-align: center;
 }
 
+/* The network's triangles three quarters the size, in the same room: as
+   large they would outweigh the chip's and the memory's outlines. */
+.wcell .wg.tri {
+  font-size: calc(var(--g) * 0.75);
+}
+
 #bar-rest .mon.rows .wcell {
   --g: 16px;
   height: 18px;

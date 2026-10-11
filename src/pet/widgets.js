@@ -44,9 +44,10 @@
   // Manager's performance page has it.
   const GLYPHS = { gauge: 'E9D9' }
   // The monitor's readings' glyphs, as Windows' own: the processor, memory,
-  // down, up; the battery by its level (Battery0 to Battery10), charging
-  // too (BatteryCharging0 to BatteryCharging10).
-  const PART_GLYPH = { cpu: 'E950', memory: 'E964', down: 'E74B', up: 'E74A' }
+  // the network's down and up as small solid triangles (drawn smaller,
+  // style.css .wg.tri); the battery by its level (Battery0 to Battery10),
+  // charging too (BatteryCharging0 to BatteryCharging10).
+  const PART_GLYPH = { cpu: 'E950', memory: 'E964', down: 'EDDC', up: 'EDDB' }
   const BATTERY = ['E850', 'E851', 'E852', 'E853', 'E854', 'E855', 'E856', 'E857', 'E858', 'E859', 'E83F']
   const CHARGING = ['E85A', 'E85B', 'E85C', 'E85D', 'E85E', 'E85F', 'E860', 'E861', 'E862', 'E863', 'E83E']
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
@@ -89,7 +90,8 @@
   // A reading as markup: Windows' glyph and the number in one small cell,
   // its ground filled from the left as far as the reading goes (style.css
   // .wcell), one that wants a look marked high.
-  const cellHTML = p => `<span class="wcell${isHigh(p) ? ' high' : ''}" style="--p:${shareOf(p)}%"><span class="wg" aria-hidden="true">&#x${glyphOf(p)};</span><b>${esc(p.text)}</b></span>`
+  const cellHTML = p =>
+    `<span class="wcell${isHigh(p) ? ' high' : ''}" style="--p:${shareOf(p)}%"><span class="wg${p.icon === 'down' || p.icon === 'up' ? ' tri' : ''}" aria-hidden="true">&#x${glyphOf(p)};</span><b>${esc(p.text)}</b></span>`
 
   // The monitor's readings as markup, in a line.
   const partsHTML = w => (partsOf(w) || []).map(cellHTML).join('')
