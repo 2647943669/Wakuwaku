@@ -140,7 +140,7 @@ cargo run                 # debug
 cargo build --release     # target/release/wakuwaku.exe, one file
 ```
 
-No Node and no Tauri CLI needed. The first run downloads the default pet; connect Claude Code from the Connect page of the settings. Run from source, her settings, downloaded pets and log live in the project's `data/` folder (not in git); the first run copies over whatever settings and pets the old version had in `%APPDATA%\wakuwaku`.
+No Node and no Tauri CLI needed. The first run downloads the default pet; connect Claude Code from the Connect page of the settings. Run from source, her settings, downloaded pets and log live in the project's `data/` folder (not in git).
 
 ## Use
 

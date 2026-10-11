@@ -906,7 +906,7 @@ fn main() {
     updates::wait_after_update(&args);
 
     let dir = data::folder();
-    data::adopt(&dir);
+    let _ = std::fs::create_dir_all(&dir);
 
     // One pet at a time: whoever holds the port is the pet. Started again
     // while she runs: she comes back into sight, and this copy leaves.

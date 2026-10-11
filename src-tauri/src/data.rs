@@ -2,9 +2,7 @@
 // found.
 //
 // Her folder: WAKUWAKU_USER_DATA (tests), else data/ in the project when run
-// from this source tree, else wakuwaku-data beside the .exe (portable). The
-// first time, settings and pets come over from %APPDATA%\wakuwaku (the old
-// Electron build), without her spot: that one kept it in logical pixels.
+// from this source tree, else wakuwaku-data beside the .exe (portable).
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -37,40 +35,6 @@ pub fn folder() -> PathBuf {
 // downloaded exe: its data stays in the tree, and it updates by a build.
 pub fn from_source() -> bool {
     std::env::current_exe().unwrap_or_default().starts_with(Path::new(SOURCE_TREE).join("target"))
-}
-
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(to)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir(&entry.path(), &target)?;
-        } else {
-            fs::copy(entry.path(), target)?;
-        }
-    }
-    Ok(())
-}
-
-// A folder of her own for the first time: start from the old build's.
-pub fn adopt(dir: &Path) {
-    if dir.exists() {
-        return;
-    }
-    let _ = fs::create_dir_all(dir);
-    let Ok(appdata) = std::env::var("APPDATA") else { return };
-    let source = Path::new(&appdata).join("wakuwaku");
-    if let Ok(text) = fs::read_to_string(source.join("config.json")) {
-        if let Ok(Value::Object(mut saved)) = serde_json::from_str(&text) {
-            saved.remove("x");
-            saved.remove("y");
-            let _ = fs::write(dir.join("config.json"), serde_json::to_string_pretty(&saved).unwrap_or_default());
-        }
-    }
-    if source.join("pets").exists() {
-        let _ = copy_dir(&source.join("pets"), &dir.join("pets"));
-    }
 }
 
 // --- Settings ----------------------------------------------------------------------
