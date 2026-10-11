@@ -50,6 +50,7 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
         menu.append(&CheckMenuItem::with_id(app, "dnd", t("menu.dnd"), true, flag("dnd"), None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "settings", t("menu.settings"), true, None::<&str>)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&MenuItem::with_id(app, "taskManager", t("menu.taskManager"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "winSettings", t("menu.winSettings"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "controlPanel", t("menu.controlPanel"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "deviceManager", t("menu.deviceManager"), true, None::<&str>)?)?;
@@ -100,6 +101,7 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     menu.append(&MenuItem::with_id(app, "settings", t("menu.settings"), true, None::<&str>)?)?;
     // In place of Windows' taskbar, the way to Windows' own settings too.
     if home == "taskbar" {
+        menu.append(&MenuItem::with_id(app, "taskManager", t("menu.taskManager"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "winSettings", t("menu.winSettings"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "controlPanel", t("menu.controlPanel"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "deviceManager", t("menu.deviceManager"), true, None::<&str>)?)?;
@@ -118,6 +120,10 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
         "settings" => crate::island::open_settings(sh, None),
         "winSettings" => {
             crate::tasks::launch("ms-settings:");
+        }
+        // Windows' Task Manager, as its own taskbar's menu has it first.
+        "taskManager" => {
+            crate::tasks::launch("taskmgr.exe");
         }
         "controlPanel" => {
             crate::tasks::launch("control.exe");
