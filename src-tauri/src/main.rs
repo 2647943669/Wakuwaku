@@ -61,6 +61,7 @@ mod tasks;
 mod theme;
 mod tokens;
 mod tray;
+mod updates;
 mod wallpaper;
 mod widgets;
 
@@ -900,6 +901,10 @@ fn main() {
         return codex_hook(port);
     }
 
+    // Started by an update: the one it replaces waited for, so this one
+    // gets the port (and the taskbar), not just wakes that one.
+    updates::wait_after_update(&args);
+
     let dir = data::folder();
     data::adopt(&dir);
 
@@ -947,6 +952,7 @@ fn main() {
             settings::settings_fetch,
             settings::settings_gallery,
             settings::settings_open_site,
+            settings::settings_update,
             mail::mail_discover,
             mail::mail_probe,
             mail::mail_save,
@@ -1037,6 +1043,8 @@ fn main() {
             server::serve(sh.clone(), listener);
             // The mail accounts that are on, watched from the start.
             mail::sync(&sh);
+            // Her updates looked for (a downloaded exe only).
+            updates::start(&sh);
 
             // The mouse: click-through, her eyes, drags; for both windows.
             let pointer = sh.clone();

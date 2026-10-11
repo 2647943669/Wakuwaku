@@ -29,6 +29,8 @@ nom = { version = "7", default-features = false, features = ["alloc"] }
 # already in the tree, under Tauri.
 png = "0.17"
 base64 = "0.22"
+# The SHA-256 of an update downloaded (updates.rs); already in the tree, under Tauri.
+sha2 = "0.10"
 
 [features]
 default = ["custom-protocol"]

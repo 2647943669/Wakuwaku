@@ -37,6 +37,8 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.winSettings" => if zh { "Windows 设置" } else { "Windows Settings" },
         "menu.controlPanel" => if zh { "控制面板" } else { "Control Panel" },
         "menu.deviceManager" => if zh { "设备管理器" } else { "Device Manager" },
+        "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
+        "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },
         "wallpaper.pickPicture" => if zh { "选择壁纸图片" } else { "Pick a picture for the desktop" },
         "wallpaper.pickFolder" => if zh { "选择一个文件夹，里面的图片轮流做壁纸" } else { "Pick a folder whose pictures take turns on the desktop" },
         "wallpaper.pictures" => if zh { "图片" } else { "Pictures" },

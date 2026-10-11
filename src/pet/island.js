@@ -2224,7 +2224,8 @@
     if (!isOn()) return
     const at = widgets.findIndex(w => w.id === n.id)
     if (at >= 0) widgetAt = at
-    nudgeFor('waving', null, NUDGE_READ_MS, { ...n, icon: widgets[at]?.icon, color: widgets[at]?.color })
+    // Not a widget's (a new version): its own icon.
+    nudgeFor('waving', null, NUDGE_READ_MS, { ...n, icon: widgets[at]?.icon || n.icon, color: widgets[at]?.color })
   })
 
   // --- The pointer ----------------------------------------------------------------
@@ -2272,6 +2273,8 @@
         window.Settings?.openLetter?.({ account: open.account, uid: open.uid, folder: open.folder || 'inbox' })
         return window.pet.openSettings('mail')
       }
+      // A page, or a part of one (a new version: the updates).
+      if (open?.tab) return window.pet.openSettings(open.tab)
       window.pet.openSettings()
     })
     // The wheel turns to the next widget, while the widgets have the island.

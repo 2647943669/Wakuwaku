@@ -29,6 +29,8 @@ src-tauri/
     shell.rs              把 Windows 自己的任务栏藏起来、还回去；状态文件、守护进程、下次启动时补还
     systray.rs            接管托盘：自己的 Shell_TrayWnd 排在 Explorer 前面，图标、点击、图标位置的查询，原样转给 Explorer
     tasks.rs              任务栏上该有按钮的窗口、程序名和图标、启动程序；输入法和大写锁定
+    pins.rs               第一次启动时读 Windows 自己任务栏的固定项（只读一次，不写回）
+    updates.rs            软件更新：看 GitHub 的最新发布、在岛上提示、下载校验替换并重启
     wallpaper.rs          每块显示器的桌面壁纸：文件、摆法、底色（IDesktopWallpaper），给任务栏的云母用
     settings.rs           设置看到的快照、校验后的设置补丁、设置的各个命令
     pointer.rs            两个窗口共用的点击穿透
@@ -348,6 +350,16 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
 **把她拉出来**：在 `#island-her` 上按下并移动超过 5px，岛的窗口扩到 760×440。`#goo` 层里岛的替身、一段脖子、一滴水三块黑色形状套 SVG 滤镜，就像液体一样连在一起。拉过 110px 断开：页面发 `island_release`（她的中心相对光标的偏移），Rust 把她的窗口放到光标下、设 `out: true`，然后跟随光标"携带"她（这时她的窗口完全穿透，按键还在岛的窗口上）。松手由岛的页面发 `island_drop`，或者由 Rust 读到按键已松开。没拉断就松手，她弹回座位。拉完那一下浏览器会在岛上补发一次 click，岛会忽略它（`pulledAt`），不当成"单击打开设置"。
 
 **放回去**：她的窗口被拖动时，Rust 每帧算她的中心离岛下沿多远（280px 内靠近，140px 内够近），通过 `island:reach` 告诉岛的页面（坐标用逻辑像素，和页面的 `window.screenX` 一致），页面伸出一滴去够她。够近时松手：Rust 立刻藏起她的窗口，岛的页面播一段吸回去的动画（`island:absorb`），380ms 后设 `out: false`。在桌面上双击她，她会飞回岛里（`pet.rs` 的 `fly_home`）。
+
+## 软件更新（updates.rs）
+
+只对下载的 exe：从源码树的 `target` 下运行（`data::from_source`，和数据放在项目 `data/` 的判断是同一个）时不检查也不更新，设置里写着「从源码运行」。
+
+- **检查**：`GET https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`（带 User-Agent，不带 token），启动 20 秒后一次，之后每天一次（线程每 10 分钟看一眼是否到期；失败的话一小时后再试，只记日志）。草稿、预发布不算；`tag_name` 去掉 `v` 后和 `CARGO_PKG_VERSION` 按数字逐段比（0.10.0 > 0.9.0，带 `-` 后缀的预发布排在同号正式版前面）。设置 `autoUpdateCheck`（默认开）关掉就不再自己检查；「现在检查」随时可点。
+- **提示**：每个新版本在岛上提示一次（`updateTold` 记着提示过的版本；她不在视线里或有会话在等你时，等下一次 10 分钟的检查再提示），点一下打开设置「通用」页的「软件更新」那一节。
+- **更新**（只在用户点「更新」后）：下载附件 `wakuwaku-v<版本>-windows-x64.exe`（下载地址必须在 `https://github.com/zhoupengjie/Wakuwaku/` 下）到数据文件夹的 `update-v<版本>.exe.part`，边下边算 SHA-256，和 API 里附件的 `digest`（`sha256:…`）比；没有 digest 或对不上就删掉临时文件、中止，界面上说明。有确认请求在等用户时先等它处理完。然后把正在运行的 exe 改名为 `<原名>.old.exe`（运行中的 exe 可以改名不能删），新 exe 放到原路径（保留用户的文件名），用 `--after-update <旧 pid>` 启动新 exe（脱离她的进程树和作业，和任务栏守护进程一样），旧的走 `Shared::quit` 正常退出、交还任务栏。新 exe 在绑定端口之前先等旧进程退出（最多一分钟），否则端口被占时它只会唤醒旧的然后自己退出。新版运行一分钟后删掉 `.old.exe`（旧版的任务栏守护进程可能还开着它，删不掉就隔 10 秒再试几次）。新版启动失败时，旧 exe 被换回原名。
+- **手动换回旧版**：新版起不来、`.old.exe` 还在时：结束 wakuwaku 进程，删掉新的 exe，把 `<原名>.old.exe` 改回 `<原名>.exe`。
+- **测试**：环境变量 `WAKUWAKU_UPDATE_URL` 把它当作 latest release 的 JSON 地址（这时下载地址不限于 GitHub），`WAKUWAKU_UPDATE_FORCE=1` 让源码树里的调试版也检查、更新。日志都以 `update:` 开头。
 
 ## 设置（长在岛里）
 

@@ -135,6 +135,16 @@ Paste its URL (like `https://codex-pets.net/#/pets/deepseek-chan`) on the Pets p
 
 While she's closed, Claude Code works as usual: the events sent to her are refused at once (about 1 ms) and nothing waits.
 
+### Updates
+
+The downloaded exe looks at GitHub's latest release as it starts (`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`, with no account of yours), then once a day. Drafts and prereleases don't count. A new version is told on the island once; click it for Updates on the General page of the settings, where you can read its notes. Nothing is downloaded until you click Update.
+
+- What's downloaded is the release's `wakuwaku-v<version>-windows-x64.exe`, checked against the SHA-256 GitHub gives for it; if it doesn't match, or none is given, it isn't installed and no file is touched.
+- Once it checks out, your exe is renamed `<its name>.old.exe` and the new one put in its place (your file name kept); the new one starts and the old one quits, after any prompt waiting for you is answered. Once the new one has run a minute, `.old.exe` is deleted.
+- If the new one won't start, `.old.exe` is still there: quit her, delete the new exe and rename `.old.exe` back to the name it had.
+- To stop the checks: turn off Check for updates there, and click Check now when you want to.
+- Run from source, she never checks or updates: building it again is the update.
+
 ### Uninstall
 
 1. If you turned on **Start at login**, turn it off on the Connect page.

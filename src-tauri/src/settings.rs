@@ -49,6 +49,8 @@ pub fn snapshot(sh: &Shared) -> Value {
         // The desktop's picture as it is (paper.rs).
         "winPaper": crate::paper::now(),
         "version": sh.app.package_info().version.to_string(),
+        // Her updates: this version, the latest, an update under way (updates.rs).
+        "update": crate::updates::view(),
         "fullscreenAvailable": fullscreen::AVAILABLE,
         "widgets": sh.widgets_view(),
         // The plugins she runs, and where waku is for the terminal.
@@ -92,7 +94,7 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "lang" => matches!(v.as_str(), Some("auto" | "zh" | "en")),
         "pet" => v.as_str().is_some_and(|id| data::pets(&sh.dir).iter().any(|p| p.id == id)),
         "scale" => v.as_f64().is_some_and(|s| data::SCALES.iter().any(|(_, x)| (x - s).abs() < 1e-9)),
-        "details" | "walk" | "look" | "sound" | "dnd" | "hideInFullscreen" | "onboarded" | "out" | "settingsPin" | "settingsTop" | "oledShift" => is_bool,
+        "details" | "walk" | "look" | "sound" | "dnd" | "hideInFullscreen" | "onboarded" | "out" | "settingsPin" | "settingsTop" | "oledShift" | "autoUpdateCheck" => is_bool,
         "display" => matches!(v.as_str(), Some("island" | "taskbar")),
         "islandWidth" => matches!(v.as_str(), Some("narrow" | "normal" | "wide")),
         "taskbarMaterial" => matches!(v.as_str(), Some("mica" | "black" | "clear")),
@@ -330,6 +332,26 @@ pub async fn settings_gallery(app: AppHandle, page: Option<u64>, sort: Option<St
         Ok(Err(e)) => json!({ "ok": false, "error": fetch::describe(sh.lang(), &e) }),
         Err(e) => json!({ "ok": false, "error": e.to_string() }),
     }
+}
+
+// Her updates, from the General page: look now, the latest release's page,
+// install it (updates.rs). The snapshot as it is then (a look or an
+// install goes on on its own thread, pushed as it goes).
+#[tauri::command]
+pub async fn settings_update(app: AppHandle, what: String) -> Value {
+    let sh = shared(&app);
+    match what.as_str() {
+        "check" => {
+            let sh = sh.clone();
+            std::thread::spawn(move || crate::updates::check_now(&sh));
+            // Its "looking" shown at once.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        "page" => crate::updates::open_page(&sh),
+        "update" => crate::updates::update_now(&sh),
+        _ => {}
+    }
+    snapshot(&sh)
 }
 
 // Only these places, whatever the page asks: the project, codex-pets.net,

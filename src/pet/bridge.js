@@ -123,6 +123,8 @@
       fetch: reference => invoke('settings_fetch', { reference: String(reference || '') }),
       gallery: (page, sort, query) => invoke('settings_gallery', { page, sort, query }),
       openSite: place => invoke('settings_open_site', { place }),
+      // Her updates: 'check', 'page' (the release's), 'update' (updates.rs).
+      update: what => invoke('settings_update', { what }),
     },
     // Mail accounts (mail.rs): the server for an address, an account kept
     // once it signs in, one removed, one on or off, a server tried without

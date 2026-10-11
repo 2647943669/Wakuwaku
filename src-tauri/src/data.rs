@@ -26,11 +26,17 @@ pub fn folder() -> PathBuf {
     if let Ok(dir) = std::env::var("WAKUWAKU_USER_DATA") {
         return dir.into();
     }
-    let exe = std::env::current_exe().unwrap_or_default();
-    if exe.starts_with(Path::new(SOURCE_TREE).join("target")) {
+    if from_source() {
         return in_tree(1, "data");
     }
+    let exe = std::env::current_exe().unwrap_or_default();
     exe.parent().map(|p| p.join("wakuwaku-data")).unwrap_or_else(|| "wakuwaku-data".into())
+}
+
+// Run from the source tree it was built in (its target folder), not a
+// downloaded exe: its data stays in the tree, and it updates by a build.
+pub fn from_source() -> bool {
+    std::env::current_exe().unwrap_or_default().starts_with(Path::new(SOURCE_TREE).join("target"))
 }
 
 fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -93,6 +99,9 @@ fn defaults() -> Map<String, Value> {
         // OLED's guard, on unless turned off: the island's and the taskbar's
         // icons and words a screen pixel off by turns (island.js oledShift).
         "oledShift": true,
+        // Her updates looked for as she starts and once a day (updates.rs;
+        // a downloaded exe only).
+        "autoUpdateCheck": true,
         "details": true,
         // Widgets (plugins in the island): which are off, their order, how
         // often the island turns to the next, whether they may open it.

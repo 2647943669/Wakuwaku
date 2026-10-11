@@ -37,7 +37,7 @@
   // page they are part of opens, scrolled to them (PART_OF, showPart).
   const TABS = ['now', 'look', 'widgets', 'mail']
   const TAB_KEY = { now: 's.tabGeneral', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
-  const PART_OF = { pets: 'look', alerts: 'now', connect: 'now' }
+  const PART_OF = { pets: 'look', alerts: 'now', connect: 'now', update: 'now' }
   const HEAD_KEY = { working: 's.headWorking', waiting: 's.headWaiting', done: 's.headDone', review: 's.headReview', error: 's.headError' }
   const SIZES = [['small', 0.4], ['medium', 0.55], ['large', 0.75]]
   const HOMES = ['island', 'taskbar']
@@ -1631,8 +1631,43 @@
       </div>`
   }
 
+  // Her updates (updates.rs): this version and the latest, its notes and
+  // Update, or a look now; how an update goes (downloaded, checked, waiting
+  // for a prompt's answer, restarting) or went wrong; looked for by itself
+  // or not. A build run from the source tree is never looked for.
+  function pageUpdate() {
+    const u = snap.update || {}
+    const version = T('s.updateVersion', { version: u.current || snap.version })
+    if (!u.may) return `${sec(T('s.update'))}<div class="grp">${row(esc(version), esc(T('s.updateSource')), '')}</div>`
+    const latest = u.latest
+    const newer = !!latest?.newer
+    const mb = n => (n / 1048576).toFixed(1)
+    let state = ''
+    if (u.stage === 'download') state = T('s.updateDownloading', { pct: u.total ? Math.min(100, Math.floor((100 * u.got) / u.total)) : 0, got: mb(u.got || 0), total: mb(u.total || 0) })
+    else if (u.stage) state = T(`s.updateStage.${u.stage}`)
+    else if (u.checking) state = T('s.updateChecking')
+    else if (u.error) state = T(`s.updateError.${u.error.code}`, { detail: u.error.detail || '' })
+    else if (newer && !latest.canInstall) state = T('s.updateError.noDigest')
+    else if (newer) state = T('s.updateNewer', { version: latest.version })
+    else if (latest) state = T('s.updateLatest')
+    else if (u.checkedAt) state = T('s.updateNone')
+    const busy = !!u.stage || !!u.checking
+    const buttons = newer
+      ? `<span class="btns"><button class="pbtn sm" data-update="page">${esc(T('s.updateNotes'))}</button><button class="pbtn sm al" data-update="update" ${busy || !latest.canInstall ? 'disabled' : ''}>${esc(T('s.updateInstall'))}</button></span>`
+      : `<button class="pbtn sm" data-update="check" ${busy ? 'disabled' : ''}>${esc(T('s.updateCheck'))}</button>`
+    const title = newer ? `${version}${T('s.updateLatestIs', { version: latest.version })}` : version
+    const when = u.checkedAt
+      ? T('s.updateCheckedAt', { time: new Date(u.checkedAt).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })
+      : ''
+    return `${sec(T('s.update'))}<div class="grp">
+        ${row(esc(title), esc(state), buttons)}
+        ${row(esc(T('s.updateAuto')), esc([T('s.updateAutoNote'), when].filter(Boolean).join(' · ')), sw('autoUpdateCheck', snap.settings.autoUpdateCheck !== false))}
+      </div>`
+  }
+
   // General: the sessions and the quick switches, the alerts, startup and
-  // the language, connecting (the plugin, the hooks) and what this is.
+  // the language, her updates, connecting (the plugin, the hooks) and what
+  // this is.
   function pageGeneral() {
     return `${pageNow()}
       ${part('alerts', pageAlerts())}
@@ -1640,6 +1675,7 @@
         ${row(esc(T('settings.startAtLogin')), esc(T('home.pluginStart')), sw('login', snap.loginAtStart))}
         ${row(esc(T('home.language')), '', seg('lang', [['auto', T('settings.languageAuto')], ['zh', '中文'], ['en', 'EN']], snap.settings.lang))}
       </div>
+      ${part('update', pageUpdate())}
       ${part('connect', pageConnect())}`
   }
 
@@ -2020,6 +2056,9 @@
     if (at('[data-ilook-reset]')) return ilookSave(ilookFor(), ILOOK_DEFAULT[ilookFor()])
     // Windows' colour dialog takes the focus: not a click outside.
     if (e.target.matches('input[type="color"]')) picking = true
+    // Her updates: look now, the release's notes, Update.
+    const updateButton = at('[data-update]')
+    if (updateButton && !updateButton.disabled) return window.pet.settings.update(updateButton.dataset.update).then(got => ((snap = got), draw()))
     const paperButton = at('[data-paper]')
     if (paperButton && !paperButton.disabled) return paperDo(paperButton.dataset.paper)
     const accent = at('[data-accent]')
