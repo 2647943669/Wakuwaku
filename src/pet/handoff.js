@@ -41,9 +41,10 @@
   let step = 0
   const wait = ms => new Promise(r => setTimeout(r, ms))
 
-  // Windows' strip, as its picture shows it, laid over where it is; resolves
-  // once it is on the screen (two frames drawn, or a moment: no frames come
-  // while the window is hidden).
+  // Windows' strip, as its picture shows it (the display's whole width in its
+  // pixels, as tall as Windows' strip is: not always hers), laid over where
+  // it is, at the window's foot; resolves once it is on the screen (two
+  // frames drawn, or a moment: no frames come while the window is hidden).
   async function cover(url) {
     const mine = ++step
     drop()
@@ -51,12 +52,22 @@
     img.src = url
     await img.decode()
     if (mine !== step) return
-    picture = canvasLayer(`left:0;bottom:0;width:100%;height:${STRIP_H}px;z-index:2147483000`)
+    const tall = (img.naturalHeight * innerWidth) / img.naturalWidth
+    picture = canvasLayer(`left:0;bottom:0;width:100%;height:${tall}px;z-index:2147483000`)
+    picture.tall = tall
     picture.width = img.naturalWidth
     picture.height = img.naturalHeight
     picture.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0)
     await Promise.race([new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), wait(120)])
   }
+
+  // Hers kept out of sight from the start until the picture is over Windows'
+  // (her window shows a moment before it comes): it would show over Windows'
+  // strip for a frame or two. Never longer than a few seconds (no handover
+  // at all: something full screen, the taskbar not to be taken).
+  document.documentElement.classList.add('handoff-wait')
+  const unhide = () => document.documentElement.classList.remove('handoff-wait')
+  setTimeout(unhide, 3000)
 
   function drop() {
     picture?.remove()
@@ -70,14 +81,14 @@
     const c = picture.getContext('2d', { willReadFrequently: true })
     const { width: w, height: h } = picture
     const sx = w / innerWidth
-    const sy = h / STRIP_H
+    const sy = h / picture.tall
     const img = c.getImageData(0, 0, w, h)
     const d = img.data
     const groundRow = Math.min(h - 1, Math.round(4 * sy))
     const ground = new Uint8ClampedArray(w * 3)
     for (let x = 0; x < w; x++) for (let k = 0; k < 3; k++) ground[x * 3 + k] = d[(groundRow * w + x) * 4 + k]
     const stride = Math.max(1, Math.round(1.5 * sy))
-    const top = innerHeight - STRIP_H
+    const top = innerHeight - picture.tall
     const grains = []
     for (let y = Math.round(2 * sy); y < h; y += stride)
       for (let x = 0; x < w; x += stride) {
@@ -259,7 +270,8 @@
   // out: quitting: hers crumbles, Windows' to be shown under it (bare).
   pet.onHandoff(async ({ step: next, picture: url } = {}) => {
     if (next === 'in') {
-      if (url && !quiet()) {
+      if (quiet()) unhide()
+      else if (url) {
         try {
           await cover(url)
         } catch {
@@ -270,6 +282,8 @@
     }
     if (next === 'go') {
       step++
+      // Hers shows now, its parts each waiting for their dust (arrive).
+      unhide()
       if (quiet()) {
         drop()
         return pet.taskbar.handoff('done')
@@ -282,6 +296,7 @@
     }
     if (next === 'out') {
       step++
+      unhide()
       drop()
       if (quiet()) {
         pet.taskbar.handoff('bare')
