@@ -827,7 +827,9 @@ pub fn webview_failed(sh: &Arc<Shared>, label: &str, kind: i32, reason: i32, cod
             sh.push_settings();
         });
     }
-    if kind == 0 && STARTED.get().is_some_and(|s| now > s + 60_000) {
+    // Once: each of her windows hears the browser go.
+    static RESTARTING: AtomicBool = AtomicBool::new(false);
+    if kind == 0 && STARTED.get().is_some_and(|s| now > s + 60_000) && !RESTARTING.swap(true, Ordering::SeqCst) {
         let sh = sh.clone();
         std::thread::spawn(move || match crate::updates::start_again() {
             Ok(()) => {
