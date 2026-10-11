@@ -107,13 +107,17 @@ curl.exe https://wakuwaku-crash.<你的子域名>.workers.dev/
 
 ## B. Gitee + 阿里云函数计算（国内）
 
+已部署（2026-10-11）：华东 1（杭州）的 Web 函数 `wakuwaku-crash`，Node.js 22，0.05 vCPU / 128 MB，最小实例数 0（没有报告时不运行、不计费，第一份报告多等一两秒冷启动），HTTP 触发器"无需认证"，地址 `https://wakuwaku-crash-cpprabvetg.cn-hangzhou.fcapp.run`。环境变量 `FORGE=gitee`、`REPO`、`SALT`、`GITEE_TOKEN`（仓主自己账号的仓库级令牌，只限 Wakuwaku、只有 issues 权限）。改了 `relay.js` 以后要重新打包上传：函数详情 → 代码 → 上传代码。
+
+注意：阿里云说默认域名（`*.fcapp.run`）"禁止在生产环境下使用"，建议绑定自定义域名；在杭州等内地地域绑定的域名要先备案。量很小时默认域名照样能用，万一被限制，宠物会改走 GitHub 那条，报告不会丢。
+
 ### 1. Gitee 的 token
 
-Gitee 的私人令牌不能只限一个仓库：拿到它的人能以这个账号身份操作所有仓库的 issue。所以推荐**另建一个 Gitee 小号**（比如 `wakuwaku-bot`），用小号的令牌。这样 issue 的作者是小号，你的账号会收到通知；令牌万一泄露，也碰不到你自己的仓库。小号不需要是 Wakuwaku 的成员（公开仓库谁都能开 issue）。
+Gitee 现在有**仓库级私人令牌**：只对指定仓库生效。用它的话，用自己的账号也可以，令牌泄露了别人也只能在 Wakuwaku 开、改 issue。缺点是 issue 的作者是你自己，Gitee 不会因为你自己的操作通知你；想收到通知就另建一个小号，用小号的令牌（小号不需要是 Wakuwaku 的成员，公开仓库谁都能开 issue）。
 
 1. 确认 <https://gitee.com/zhoupengjie/Wakuwaku> 开着 Issue：仓库 → 管理 → 功能设置 → Issue。
-2. 登录小号（没有小号就用自己的账号）→ 右上角头像 → **设置** → **私人令牌** → **生成新令牌**。
-3. 描述写 `wakuwaku crash relay`，权限**只勾 `issues`**（`user_info` 默认勾着也行），提交后复制令牌。令牌只显示这一次。
+2. 右上角头像 → **设置** → **私人令牌** → **生成新令牌**。
+3. 描述写 `wakuwaku crash relay`，令牌类型选**仓库级私人令牌**、仓库选 Wakuwaku，权限**只勾 `issues`**，提交后复制令牌。令牌只显示这一次，直接粘进阿里云的环境变量里，不要发到聊天、截图或者任何文件里。
 
 ### 2. 阿里云函数计算
 
@@ -127,11 +131,13 @@ Gitee 的私人令牌不能只限一个仓库：拿到它的人能以这个账�
 
 2. 打开 <https://fcnext.console.aliyun.com/>，选一个离用户近的地域（比如华东 1 杭州），**函数** → **创建函数** → **Web 函数**：
    - **函数名称**：`wakuwaku-crash`
-   - **运行环境**：Node.js 20
+   - **运行环境**：自定义运行时 → Node.js → Node.js 22（Debian 11）
    - **代码上传方式**：通过 ZIP 包上传，选刚才的 `relay.zip`
    - **启动命令**：`node server.js`
    - **监听端口**：`9000`
    - **规格**：最小的就行（0.05 vCPU、128 MB）
+   - **最小实例数**：改成 **0**（默认是 1，那样空闲时也一直计费）
+   - **标签**：控制台要求填的话，随便填一个，比如键 `app`、值 `wakuwaku`
    - **环境变量**（高级配置里）：
 
      | 变量 | 值 |
