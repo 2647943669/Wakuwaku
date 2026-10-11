@@ -40,7 +40,37 @@ test('a reading wants a look when the machine is nearly full or the battery low'
   assert.equal(Widgets.isHigh({ icon: 'battery', text: '20%' }), true)
   assert.equal(Widgets.isHigh({ icon: 'bolt', text: '5%' }), false)
   assert.equal(Widgets.isHigh({ icon: 'down', text: '999K' }), false)
-  assert.match(Widgets.rowsHTML({ value: { parts: [{ icon: 'cpu', text: '95%' }, { icon: 'down', text: '1.2M' }] } }), /^<span class="wrow"><span class="wpart high">.*95%.*<\/span><span class="wrow"><span class="wpart">.*1\.2M/)
+  assert.match(Widgets.rowsHTML({ value: { parts: [{ icon: 'cpu', text: '95%' }, { icon: 'down', text: '1.2M' }] } }), /^<span class="wrow"><span class="wcell high" style="--p:95%">.*95%.*<\/span><span class="wrow"><span class="wcell" style="--p:62%">.*1\.2M/)
+})
+
+test("the taskbar's monitor leaves the battery to the tray", () => {
+  const html = Widgets.rowsHTML({ value: { parts: [{ icon: 'cpu', text: '5%' }, { icon: 'battery', text: '72%' }, { icon: 'bolt', text: '40%' }, { icon: 'down', text: '1K' }] } })
+  assert.doesNotMatch(html, /72%|40%/)
+  assert.match(html, /5%.*1K/)
+})
+
+test('a reading as full as it goes: a share as it is, a rate by its order of magnitude', () => {
+  const share = (icon, text) => Widgets.shareOf({ icon, text })
+  assert.equal(share('cpu', '23%'), 23)
+  assert.equal(share('memory', '100%'), 100)
+  assert.equal(share('battery', '72%'), 72)
+  // 1 KB/s empty, 100 MB/s full, each tenfold a fifth.
+  assert.equal(share('down', '1.0K'), 0)
+  assert.equal(share('down', '0B'), 0)
+  assert.equal(share('up', '10K'), 20)
+  assert.equal(share('down', '337K'), 51)
+  assert.equal(share('down', '100M'), 100)
+  assert.equal(share('down', '1.2G'), 100)
+  assert.equal(share('cpu', '—'), 0)
+})
+
+test("a reading's glyph is Windows' own, the battery's by its level", () => {
+  const glyph = (icon, text) => Widgets.glyphOf({ icon, text })
+  assert.equal(glyph('cpu', '5%'), 'E950')
+  assert.equal(glyph('memory', '5%'), 'E964')
+  assert.equal(glyph('battery', '72%'), 'E857')
+  assert.equal(glyph('battery', '100%'), 'E83F')
+  assert.equal(glyph('bolt', '0%'), 'E85A')
 })
 
 test('a colour deepened until it reads on the light island, its hue kept', () => {

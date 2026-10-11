@@ -39,15 +39,27 @@
     bolt: '<path d="M13 2L5 14h6l-1 8 8-12h-6z"/>',
   }
 
-  // Each monitor part in a colour of its own.
-  const PART_COLOR = { cpu: '#5e9bff', memory: '#b18cff', down: '#64d2ff', up: '#64d2ff', battery: '#34d27b', bolt: '#34d27b' }
+  // Icons Windows has itself, from its icon font (Segoe Fluent Icons; Segoe
+  // MDL2 Assets on Windows 10) rather than drawn: the monitor's, as Task
+  // Manager's performance page has it.
+  const GLYPHS = { gauge: 'E9D9' }
+  // The monitor's readings' glyphs, as Windows' own: the processor, memory,
+  // down, up; the battery by its level (Battery0 to Battery10), charging
+  // too (BatteryCharging0 to BatteryCharging10).
+  const PART_GLYPH = { cpu: 'E950', memory: 'E964', down: 'E74B', up: 'E74A' }
+  const BATTERY = ['E850', 'E851', 'E852', 'E853', 'E854', 'E855', 'E856', 'E857', 'E858', 'E859', 'E83F']
+  const CHARGING = ['E85A', 'E85B', 'E85C', 'E85D', 'E85E', 'E85F', 'E860', 'E861', 'E862', 'E863', 'E83E']
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
   // The monitor's readings, or null for a widget that has none.
   const partsOf = w => (Array.isArray(w?.value?.parts) ? w.value.parts : null)
 
-  // The icon as markup: its own strokes, in the colour of what surrounds it.
-  const icon = name => `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.dot}</svg>`
+  // The icon as markup in the colour of what surrounds it: Windows' own
+  // glyph where it has one, else its strokes.
+  const icon = name =>
+    GLYPHS[name]
+      ? `<span class="wicon wglyph" aria-hidden="true">&#x${GLYPHS[name]};</span>`
+      : `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.dot}</svg>`
 
   // What a widget says: its label and its value, in her language; a private
   // one's label not, unless the specifics may show.
@@ -56,10 +68,31 @@
     value: partsOf(w) ? partsOf(w).map(p => p.text).join(' ') : render(lang, w.value),
   })
 
-  // The monitor's readings as markup: each icon and number in its colour,
-  // as the page paints it (on the light island, deeper: island.js ink).
-  const partsHTML = (w, paint = c => c) =>
-    (partsOf(w) || []).map(p => `<span class="wpart" style="color:${paint(PART_COLOR[p.icon]) || 'inherit'}">${icon(p.icon)}<b>${esc(p.text)}</b></span>`).join('')
+  // How full a reading is, 0 to 100. The processor, memory and the battery
+  // are shares already ("23%"). The network's rate ("5.1K", "337K", "48M",
+  // widgets.rs rate) has no 100%: by its order of magnitude, 1 KB/s empty
+  // and 100 MB/s full, each tenfold a fifth, so a rate is always as full.
+  function shareOf(p) {
+    const n = parseFloat(p.text)
+    if (!Number.isFinite(n)) return 0
+    if (p.icon !== 'down' && p.icon !== 'up') return Math.max(0, Math.min(100, Math.round(n)))
+    const bytes = n * ({ K: 1e3, M: 1e6, G: 1e9 }[String(p.text).trim().slice(-1)] || 1)
+    return Math.max(0, Math.min(100, Math.round(((Math.log10(Math.max(bytes, 1e3)) - 3) / 5) * 100)))
+  }
+
+  // A reading's glyph: Windows' own, the battery's by its level.
+  function glyphOf(p) {
+    if (p.icon === 'battery' || p.icon === 'bolt') return (p.icon === 'bolt' ? CHARGING : BATTERY)[Math.round(Math.max(0, Math.min(100, parseFloat(p.text) || 0)) / 10)]
+    return PART_GLYPH[p.icon] || PART_GLYPH.cpu
+  }
+
+  // A reading as markup: Windows' glyph and the number in one small cell,
+  // its ground filled from the left as far as the reading goes (style.css
+  // .wcell), one that wants a look marked high.
+  const cellHTML = p => `<span class="wcell${isHigh(p) ? ' high' : ''}" style="--p:${shareOf(p)}%"><span class="wg" aria-hidden="true">&#x${glyphOf(p)};</span><b>${esc(p.text)}</b></span>`
+
+  // The monitor's readings as markup, in a line.
+  const partsHTML = w => (partsOf(w) || []).map(cellHTML).join('')
 
   // A colour (#rgb or #rrggbb) darkened, its hue kept, until it reads on
   // the ground at the ratio WCAG asks of text (4.5:1); one that already
@@ -105,15 +138,15 @@
     return p.icon === 'battery' && n <= 20
   }
 
-  // The rows as markup, uncoloured: the page colours them (the taskbar: its
-  // icons in Windows' accent colour, its numbers plain), one that wants a
-  // look marked high.
+  // The rows as markup (the taskbar's): each reading its cell, in the
+  // text's own colour. The battery not: the tray has Windows' own, beside
+  // the network's and the sound's.
   const rowsHTML = w =>
-    rowsOf(partsOf(w) || [])
-      .map(row => `<span class="wrow">${row.map(p => `<span class="wpart${isHigh(p) ? ' high' : ''}">${icon(p.icon)}<b>${esc(p.text)}</b></span>`).join('')}</span>`)
+    rowsOf((partsOf(w) || []).filter(p => p.icon !== 'battery' && p.icon !== 'bolt'))
+      .map(row => `<span class="wrow">${row.map(cellHTML).join('')}</span>`)
       .join('')
 
-  const api = { ICONS, icon, words, partsOf, partsHTML, rowsOf, isHigh, rowsHTML, deepen }
+  const api = { ICONS, icon, words, partsOf, partsHTML, rowsOf, isHigh, rowsHTML, shareOf, glyphOf, deepen }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

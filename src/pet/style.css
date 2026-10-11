@@ -556,14 +556,6 @@ body {
   font-size: 12.5px;
 }
 
-/* Each reading as wide as its widest (100%, 999K): the island, and the
-   bar's end, keep their size as the numbers change. */
-#island-compact .wpart b,
-#bar-rest .mon .wpart b {
-  display: inline-block;
-  min-width: 4.8ch;
-}
-
 #island-compact.bare {
   padding-right: 7px;
 }
@@ -829,25 +821,61 @@ body {
   gap: 7px;
 }
 
-/* The monitor: each reading its icon and number. */
-.wpart {
+/* An icon Windows has itself (widgets.js GLYPHS): from its icon font. */
+.wicon.wglyph {
+  display: inline-grid;
+  place-items: center;
+  font: normal 13px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+}
+
+/* A monitor reading (widgets.js cellHTML): Windows' own glyph and the
+   number in one small cell, its ground filled from the left as far as the
+   reading goes (--p), in the words' own colour, black and white as the
+   taskbar's own icons are (--cell-ink: dark where the ground is light);
+   filled orange when it wants a look. Every cell as wide as the widest
+   reading ("100%", "337K"), so they stay in columns as the numbers change. */
+.wcell {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  width: calc(10px + 2px + 4.4ch + 6px);
+  height: 15px;
+  box-sizing: border-box;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--cell-ink, #e5e5ea);
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: middle;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--cell-fill, currentColor) 36%, transparent) var(--p), color-mix(in srgb, currentColor 9%, transparent) var(--p));
+}
+
+.wcell.high {
+  --cell-fill: var(--cell-high, #ffb340);
+}
+
+.wcell + .wcell {
+  margin-left: 4px;
+}
+
+.wcell .wg {
+  flex: none;
+  width: 10px;
+  font: normal 10px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  text-align: center;
+}
+
+.wcell b {
+  flex: 1;
+  text-align: right;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-.wpart + .wpart {
-  margin-left: 9px;
-}
-
-.wpart .wicon {
-  width: 12px;
-  height: 12px;
-}
-
-.wpart b {
-  font-weight: 600;
+.tb-light #bar-rest,
+.isl-light #island {
+  --cell-ink: #1b1b1b;
+  --cell-high: #c25400;
 }
 
 #island-compact .wparts {
@@ -1309,38 +1337,30 @@ body {
 }
 
 /* The monitor on the taskbar: two rows, as the clock has the time over the
-   date (widgets.js rowsHTML). The icons in Windows' accent colour (island.js
-   --win-accent), the numbers plain, amber when one wants a look; each reading
-   as wide as its widest, so the columns stay put as the numbers change. */
+   date (widgets.js rowsHTML), each reading a cell (.wcell), in columns. */
 #bar-rest .mon.rows {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   line-height: 1.25;
   color: #e5e5ea;
 }
 
+/* On the taskbar a box as its buttons have (the clock's), for the
+   pointer's highlight to light it as it lights them (island.js GLIDE_ON). */
+.home-taskbar #bar-rest .mon.rows {
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+
+.home-taskbar #bar-rest .faces:has(.mon.rows) {
+  margin-right: 2px;
+}
+
 #bar-rest .mon.rows .wrow {
   display: flex;
-}
-
-#bar-rest .mon.rows .wpart + .wpart {
-  margin-left: 8px;
-}
-
-#bar-rest .mon.rows .wicon {
-  width: 11px;
-  height: 11px;
-  color: var(--win-accent, #5e9bff);
-}
-
-#bar-rest .mon.rows .wpart b {
-  font-weight: 500;
-}
-
-#bar-rest .mon.rows .wpart.high b {
-  color: #ffb340;
 }
 
 /* Start, as Windows' button: four squares. */
@@ -2039,10 +2059,6 @@ body {
   box-shadow: 0 0 0 1.5px #f3f3f3;
 }
 
-.tb-light #bar-rest .mon.rows .wpart.high b {
-  color: #c25400;
-}
-
 .tb-light #bar-rest .tag {
   background: rgba(255, 255, 255, 0.6);
 }
@@ -2424,8 +2440,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
     0 1px 4px rgba(255, 255, 255, 0.65);
 }
 
-.tb-clear:not(.tb-filled) #bar-rest .ticon img,
-.tb-clear:not(.tb-filled) #bar-rest .mon.rows .wicon {
+.tb-clear:not(.tb-filled) #bar-rest .ticon img {
   filter: var(--halo);
 }
 

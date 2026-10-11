@@ -378,7 +378,7 @@
     let words, value, key
     if (widget && Widgets.partsOf(widget)) {
       words = el('span', 'label wparts')
-      words.innerHTML = Widgets.partsHTML(widget, ink)
+      words.innerHTML = Widgets.partsHTML(widget)
       value = el('span', 'clock')
       key = `w:${widget.id}`
     } else if (widget) {
@@ -406,7 +406,7 @@
     turning.append(words, ...(more ? [more] : []), value)
     const isBare = !words.textContent && !value.textContent && !more
     const pinned = isPinned() && home() === 'island' ? el('span', 'pinned') : null
-    if (pinned) pinned.innerHTML = Widgets.partsHTML(monitor, ink)
+    if (pinned) pinned.innerHTML = Widgets.partsHTML(monitor)
     compact.replaceChildren(...(isHome() ? [] : [stillHer(24)]), ...(isBare && pinned ? [] : [turning]), ...(pinned ? [pinned] : []))
     compact.classList.toggle('bare', isBare)
     // As wide as set, and the readings' width more when pinned (their own,
@@ -440,7 +440,7 @@
     row.firstChild.style.color = ink(widget.color) || hue().idle
     const valueText = el('span', 'wv', value)
     valueText.style.color = ink(widget.color) || hue().idle
-    if (Widgets.partsOf(widget)) valueText.innerHTML = Widgets.partsHTML(widget, ink)
+    if (Widgets.partsOf(widget)) valueText.innerHTML = Widgets.partsHTML(widget)
     row.append(el('span', 'wl', label), valueText)
     return row
   }
@@ -743,14 +743,14 @@
       face.firstChild.style.color = stripInk(w.color) || stripHue().idle
       const v = el('span', 'v', value)
       v.style.color = stripInk(w.color) || stripHue().idle
-      if (Widgets.partsOf(w)) v.innerHTML = Widgets.partsHTML(w, stripInk)
+      if (Widgets.partsOf(w)) v.innerHTML = Widgets.partsHTML(w)
       face.append(Widgets.partsOf(w) ? '' : label, v)
       faces.push(face)
     }
     if (isPinned()) {
       const inRows = home() === 'taskbar'
       const readings = el('span', inRows ? 'face mon rows' : 'face mon')
-      readings.innerHTML = inRows ? Widgets.rowsHTML(monitor) : Widgets.partsHTML(monitor, stripInk)
+      readings.innerHTML = inRows ? Widgets.rowsHTML(monitor) : Widgets.partsHTML(monitor)
       faces.push(readings)
     }
     return faces
@@ -978,7 +978,7 @@
   // place, jumps rather than slides a long way, and gives a little under a
   // press. Not over what opens above the buttons, nor while a tray icon or
   // a program's button is being dragged.
-  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .tclock, .gear, .tag[data-jump]'
+  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tclock, .gear, .tag[data-jump]'
   const GLIDE_FAR = 360
   const glide = el('span', 'hdrop')
   let glideOn = null

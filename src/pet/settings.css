@@ -659,9 +659,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-#island-settings .grow .wpart .wicon {
-  width: 12px;
-  height: 12px;
+#island-settings .grow .wcell {
+  margin-left: 4px;
 }
 
 /* A plugin's settings, folded out under its row. */
