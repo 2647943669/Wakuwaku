@@ -1,18 +1,54 @@
-# Wakuwaku
+<h1 align="center">Wakuwaku</h1>
 
-[English](README.en.md) · 中文
+<p align="center"><strong>一个认识你所有 AI 会话的 Windows 任务栏。顺便，她是只宠物。</strong></p>
 
-> 名字来自《间谍过家家》里阿尼亚的口头禅"わくわく"（哇酷哇酷，好期待）：Claude 在干活，她在旁边满心期待地盯着。
+<p align="center">
+  <a href="https://github.com/zhoupengjie/Wakuwaku/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/zhoupengjie/Wakuwaku?style=flat-square&amp;label=%E7%89%88%E6%9C%AC&amp;color=ff7eb3"></a>
+  <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-0078d4?style=flat-square">
+  <img alt="约 7 MB" src="https://img.shields.io/badge/%E5%8D%95%E4%B8%AA%20exe-%E7%BA%A6%207%20MB-8b5cf6?style=flat-square">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-34d27b?style=flat-square"></a>
+</p>
 
-一只浮在桌面上的小宠物，实时显示 Claude Code 在干什么：干活、等你批准、改完了等你看、做完了，还是出错了。需要你确认的时候，可以直接在她头顶的面板上点。也能连上 [Codex](#3-连上-codex可选)。
+<p align="center"><a href="README.en.md">English</a> | <strong>简体中文</strong></p>
 
-形象用的是 [Codex Pets](https://codex-pets.net) 社区的 v2 精灵图格式，网站上任意一只 v2 宠物都能换上。默认是 [Claude 小姐](https://codex-pets.net/#/pets/claude-chan)，第一次打开时自动从网站下载。
+<p align="center">
+  <a href="#安装">安装</a> ·
+  <a href="#使用">使用</a> ·
+  <a href="#工作原理">工作原理</a> ·
+  <a href="https://codex-pets.net">换一只宠物</a>
+</p>
 
-## 她会做什么
+https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
-网站上每只 v2 宠物有 11 组动作，这里每一组都有用处：
+> 名字来自《间谍过家家》里阿尼亚的口头禅"わくわく"（哇酷哇酷，好期待）：AI 在干活，她在旁边满心期待地盯着。
 
-支持网站上的 v2 宠物（11 组动作）和旧的 v1 宠物（9 组，没有注视动作，这时她空闲时只看前方）。
+## 她能做什么
+
+- **认识你所有 AI 会话。** Claude Code 和 Codex 在干什么、跑了多久，任务栏最左边的胶囊里一眼看到。同时开好几个也分得清。
+- **要批准？任务栏上点一下。** 允许、以后都允许、拒绝，回答 Claude 的问题，批准计划。终端那边照常弹，谁先答算谁的。
+- **做完了自己弹出来。** 改了几个文件、Claude 回了什么，都写在上面。点一下会话，直接跳到它的窗口：终端、VS Code，或者 Claude 桌面版。
+- **和 Windows 11 一样顺手。** 开始按钮、固定的程序、窗口缩略图、托盘、输入法、快速设置、时钟，用的都是 Windows 自己的图标和面板。
+- **邮件交给 AI 读。** 新邮件先在胶囊里冒出来；一封信交给 Claude Code 或 Codex，它替你总结、起草回信。发不发，你说了算。
+- **插件。** 没有会话时，胶囊里轮流放今天的用量、token、天气、番茄钟、倒计时；系统监控常驻。一行 PowerShell 就能写自己的插件，`waku <命令>` 跑完叫你。
+- **外观随你调。** 云母、透明、纯色，深色、浅色，换壁纸；胶囊的颜色、透明度、模糊、边框都能改。
+- **宠物随便换。** [codex-pets.net](https://codex-pets.net) 上的宠物，搜一下就能下载。按住往上拉，她就跳到桌面上；双击，她飞回来。
+- **不想换掉任务栏也行。** 切成屏幕顶上的一颗灵动岛，系统监控固定在岛的右边。
+
+约 7 MB，单个 exe，不用安装，免费开源。下一步（规划中）：让 AI 帮你操作桌面，宠物养成。
+
+| 做完了，自己弹出来 | 要批准，任务栏上点 |
+| --- | --- |
+| [![做完的会话在胶囊里展开：改了什么、Claude 的回复，下面是另外两个会话](docs/screenshots/done.jpg)](docs/screenshots/done.jpg) | [![任务栏上的确认面板：允许、以后都允许、拒绝](docs/screenshots/approve.jpg)](docs/screenshots/approve.jpg) |
+| **一封信交给 Claude** | **插件：开关、设置、自己写** |
+| [![邮件页：左边收件箱，右边是信和 Claude 写好的回信](docs/screenshots/mail.jpg)](docs/screenshots/mail.jpg) | [![插件页：监控、今天、token、天气、番茄钟、倒计时](docs/screenshots/plugins.jpg)](docs/screenshots/plugins.jpg) |
+| **胶囊的样子，随你调** | **或者，只要一颗灵动岛** |
+| [![外观页：胶囊的预设、底色、不透明度](docs/screenshots/look.jpg)](docs/screenshots/look.jpg) | [![屏幕顶上的灵动岛，右边固定着 CPU、内存、网速](docs/screenshots/island.jpg)](docs/screenshots/island.jpg) |
+
+<sub>截图里的邮件、项目和网页都是虚构的演示内容。宠物来自 codex-pets.net，版权归各自作者：Claude小姐（原角色设计 ZipZipPipe，像素二创 zhoupengjie）、大肥鱼（Dullsaw）、GPT娘（David）。</sub>
+
+## 宠物的动作
+
+每只宠物有 11 组动作，这里每一组都有用处：
 
 | 动作 | 什么时候 | 来自哪个 hook |
 | --- | --- | --- |
@@ -53,7 +89,7 @@
 
 ### 1. 装上宠物
 
-- **单个 exe（Windows）**：`wakuwaku.exe` 只有约 5 MB，放进哪个文件夹都能直接运行，设置和宠物都存在它旁边的 `wakuwaku-data` 文件夹里；不要了直接删掉这两样。用的是 Windows 11 自带的 WebView2，不用另装运行库。
+- **单个 exe（Windows）**：`wakuwaku.exe` 约 7 MB，放进哪个文件夹都能直接运行，设置和宠物都存在它旁边的 `wakuwaku-data` 文件夹里；不要了直接删掉这两样。用的是 Windows 11 自带的 WebView2，不用另装运行库。
 
 在 [Releases](https://github.com/zhoupengjie/Wakuwaku/releases) 下载 `wakuwaku-<版本>-windows-x64.exe`，不需要安装。exe 没有代码签名，第一次运行时 Windows SmartScreen 可能会拦下，点「更多信息 → 仍要运行」即可。也可以自己构建，见下面"从源码运行"。
 - **从源码运行**：见下文。

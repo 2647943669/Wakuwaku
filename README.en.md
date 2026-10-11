@@ -1,18 +1,56 @@
-# Wakuwaku
+<h1 align="center">Wakuwaku</h1>
 
-English · [中文](README.md)
+<p align="center"><strong>A Windows taskbar that knows all your AI sessions. She also happens to be a pet.</strong></p>
 
-> The name is Anya's "waku waku" from SPY×FAMILY: excited, can't wait. Claude works, and she watches, all eager.
+<p align="center">
+  <a href="https://github.com/zhoupengjie/Wakuwaku/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/zhoupengjie/Wakuwaku?style=flat-square&amp;label=release&amp;color=ff7eb3"></a>
+  <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-0078d4?style=flat-square">
+  <img alt="About 7 MB" src="https://img.shields.io/badge/one%20exe-about%207%20MB-8b5cf6?style=flat-square">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-34d27b?style=flat-square"></a>
+</p>
 
-A little pet that floats on your desktop and shows what Claude Code is doing: working, waiting for your approval, done with changes for you to review, done, or stuck on an error. When Claude needs your OK, you can answer right on the panel above her head. She can watch [Codex](#3-connect-codex-optional) too.
+<p align="center"><strong>English</strong> | <a href="README.md">简体中文</a></p>
 
-She uses the v2 sprite format from the [Codex Pets](https://codex-pets.net) community, so any v2 pet on that site works. The default is [Claude小姐](https://codex-pets.net/#/pets/claude-chan), downloaded from the site on first run.
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#use">Use</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="https://codex-pets.net">Another pet</a>
+</p>
 
-## What she does
+https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
-Each v2 pet has 11 animations, and every one of them has a job:
+<p align="center"><sub>The video's captions are in Chinese.</sub></p>
 
-Both v2 pets (11 animations) and older v1 pets (9, without looking around; she just looks ahead when idle) work.
+> The name is Anya's "waku waku" from SPY×FAMILY: excited, can't wait. AI works, and she watches, all eager.
+
+## What she can do
+
+- **She knows all your AI sessions.** What Claude Code and Codex are doing, and for how long, right in the capsule at the taskbar's left end. Several at once, each kept apart.
+- **Needs your OK? Click it on the taskbar.** Allow, always allow, deny; answer Claude's questions; approve a plan. The terminal asks too, and whichever answers first counts.
+- **Done, and she tells you.** How many files changed and what Claude said. Click a session to go straight to its window: a terminal, VS Code, or the Claude desktop app.
+- **As easy as Windows 11's own.** Start, pinned programs, window thumbnails, the tray, the input method, quick settings, the clock, all with Windows' own icons and flyouts.
+- **Hand your mail to an AI.** New mail shows up in the capsule first; hand a letter to Claude Code or Codex and it sums it up and drafts a reply. Whether it goes out is up to you.
+- **Plugins.** With no session at work, the capsule takes turns with today's usage, tokens, the weather, a pomodoro, a countdown; a system monitor stays put. One line of PowerShell makes a plugin of your own, and `waku <command>` tells you when a command is done.
+- **Make it look your way.** Mica, clear or solid, dark or light, a new wallpaper; the capsule's colour, opacity, blur and edge.
+- **Any pet you like.** Search [codex-pets.net](https://codex-pets.net) and download one. Pull her up out of the taskbar and she hops onto your desktop; double-click her and she flies home.
+- **Keep your own taskbar if you'd rather.** Make her an island at the top of the screen instead, with the system monitor pinned at its right end.
+
+About 7 MB, one exe, nothing to install, free and open source. Next (planned): letting AI work your desktop, and raising your pet.
+
+| Done, and she tells you | Needs your OK: click it on the taskbar |
+| --- | --- |
+| [![A finished session open in the capsule: what changed, Claude's reply, and the two other sessions below](docs/screenshots/done.jpg)](docs/screenshots/done.jpg) | [![The approval panel on the taskbar: allow, always allow, deny](docs/screenshots/approve.jpg)](docs/screenshots/approve.jpg) |
+| **A letter handed to Claude** | **Plugins: on, off, set up, your own** |
+| [![The Mail page: the inbox at the left, the letter and the reply Claude drafted at the right](docs/screenshots/mail.jpg)](docs/screenshots/mail.jpg) | [![The Plugins page: monitor, today, tokens, weather, pomodoro, countdown](docs/screenshots/plugins.jpg)](docs/screenshots/plugins.jpg) |
+| **The capsule, the way you like it** | **Or just an island** |
+| [![The Look page: the capsule's presets, colour and opacity](docs/screenshots/look.jpg)](docs/screenshots/look.jpg) | [![The island at the top of the screen, CPU, memory and network pinned at its right](docs/screenshots/island.jpg)](docs/screenshots/island.jpg) |
+
+<sub>The mail, projects and web pages in these pictures are made up for the demo. The pets come from codex-pets.net and belong to their authors: Claude小姐 (original character by ZipZipPipe, pixel fan art by zhoupengjie), 大肥鱼 (Dullsaw), GPT娘 (David).</sub>
+
+## Her animations
+
+Each pet has 11 animations, and every one of them has a job:
 
 | Animation | When | From which hook |
 | --- | --- | --- |
@@ -53,7 +91,7 @@ Both v2 pets (11 animations) and older v1 pets (9, without looking around; she j
 
 ### 1. Get the pet
 
-- **One exe (Windows)**: `wakuwaku.exe` is about 5 MB, runs from any folder and keeps her settings and pets in a `wakuwaku-data` folder beside it; to remove her, delete the two. It uses the WebView2 that comes with Windows 11, nothing else to install.
+- **One exe (Windows)**: `wakuwaku.exe` is about 7 MB, runs from any folder and keeps her settings and pets in a `wakuwaku-data` folder beside it; to remove her, delete the two. It uses the WebView2 that comes with Windows 11, nothing else to install.
 
 Download `wakuwaku-<version>-windows-x64.exe` from [Releases](https://github.com/zhoupengjie/Wakuwaku/releases); there is nothing to install. The exe is not code-signed, so on first run Windows SmartScreen may stop it: click More info → Run anyway. Or build it yourself, see below.
 - **From source**: see below.
