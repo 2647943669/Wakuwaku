@@ -19,7 +19,7 @@ COMMENTS = "10"
 # and its id put here.
 [[kv_namespaces]]
 binding = "CRASH"
-id = "<the id wrangler printed>"
+id = "5bf3f46e0b6445769b9af1e5e248de85"
 
 # Five reports a minute from one address (per Cloudflare location).
 [[ratelimits]]
