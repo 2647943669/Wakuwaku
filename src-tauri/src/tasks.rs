@@ -708,6 +708,18 @@ mod imp {
         Keys { lang, native: None, caps }
     }
 
+    // A window's title now (taskbar.rs on_shell: a title said to have
+    // changed, against the one shown).
+    pub fn title(hwnd: isize) -> String {
+        title_of(hwnd as Hwnd)
+    }
+
+    // Whether a window would have a button (taskbar.rs on_shell: one just
+    // titled, about to have one).
+    pub fn is_task_window(hwnd: isize) -> bool {
+        is_task(hwnd as Hwnd, std::process::id())
+    }
+
     // Shift held now (taskbar.rs keys_loop: let go, the IME's mark is read again).
     pub fn shift_down() -> bool {
         // SAFETY: a plain query; the high bit is the key's state now.
@@ -812,6 +824,12 @@ mod imp {
     pub fn shift_down() -> bool {
         false
     }
+    pub fn title(_hwnd: isize) -> String {
+        String::new()
+    }
+    pub fn is_task_window(_hwnd: isize) -> bool {
+        false
+    }
     pub fn toggle_native() -> bool {
         false
     }
@@ -878,7 +896,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_shell_flyout, is_start, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, shift_down, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
 
 #[cfg(test)]
 mod tests {

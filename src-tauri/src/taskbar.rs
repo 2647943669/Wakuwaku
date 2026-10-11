@@ -333,6 +333,20 @@ mod imp {
     static FLASHING: Mutex<Vec<isize>> = Mutex::new(Vec::new());
     static WIN_PNGS: Mutex<Option<HashMap<isize, (isize, String)>>> = Mutex::new(None);
     static MARKS: Mutex<Option<HashMap<isize, Vec<Value>>>> = Mutex::new(None);
+    // Each session's window as found (mark_sessions): its handle and
+    // process, and when; looked for again only when gone or after a while.
+    // Sessions without one, when they were last looked for.
+    static SESSION_WINDOWS: Mutex<Option<HashMap<String, (isize, u32, Instant)>>> = Mutex::new(None);
+    static SESSION_LOOKED: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+    // Per window, kept while it has a button (send_windows): the app it
+    // says it is (never changes), its icon's handle and when it was asked
+    // (asked again when the shell says the window was redrawn, else every
+    // ten seconds), and its title as shown (on_shell: a redraw with the
+    // same title wakes nothing).
+    static APP_IDS: Mutex<Option<HashMap<isize, Option<String>>>> = Mutex::new(None);
+    static ICONS: Mutex<Option<HashMap<isize, (isize, Instant)>>> = Mutex::new(None);
+    static TITLES: Mutex<Option<HashMap<isize, String>>> = Mutex::new(None);
+    static REDRAWN: Mutex<Vec<isize>> = Mutex::new(Vec::new());
     static SENT_WINDOWS: Mutex<Value> = Mutex::new(Value::Null);
     // Each program's name (tasks::app_name), and its file's icon drawn, by its path.
     static APP_NAMES: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
@@ -668,8 +682,10 @@ mod imp {
             {
                 let (dirty, cv) = &WAKE;
                 let guard = dirty.lock().unwrap();
-                // Quiet (nobody at the keyboard), every ten seconds; woken as it ends.
-                let every = Duration::from_secs(if sh.is_quiet() { 10 } else { 2 });
+                // Looked at anyway every five seconds (what the hooks miss:
+                // an icon changed alone); quiet (nobody at the keyboard),
+                // every twenty, woken as it ends.
+                let every = Duration::from_secs(if sh.is_quiet() { 20 } else { 5 });
                 let (mut guard, _) = cv.wait_timeout_while(guard, every, |d| !*d && !stopping()).unwrap();
                 *guard = false;
             }
@@ -709,14 +725,62 @@ mod imp {
                 })
                 .unwrap_or_default()
         };
+        // Found before and still there: kept, looked for anew after a
+        // minute (a session may move to another window); not found before:
+        // looked for again after a while (many have no window of their own).
+        let mut found = SESSION_WINDOWS.lock().unwrap();
+        let found = found.get_or_insert_with(HashMap::new);
+        let mut looked = SESSION_LOOKED.lock().unwrap();
+        let looked = looked.get_or_insert_with(HashMap::new);
+        found.retain(|id, _| targets.iter().any(|t| t.0 == *id));
+        looked.retain(|id, _| targets.iter().any(|t| t.0 == *id));
+        let retry = Duration::from_secs(if sh.is_quiet() { 60 } else { 15 });
         let mut marks: HashMap<isize, Vec<Value>> = HashMap::new();
+        let mut asks: Vec<(jump::Chain, Vec<String>)> = Vec::new();
+        let mut asked: Vec<(String, String)> = Vec::new();
         for (id, mood, chain, hints) in targets {
-            let hints: Vec<&str> = hints.iter().map(String::as_str).collect();
-            if let Some(hwnd) = jump::window_for(&chain, &hints) {
+            if let Some(&(hwnd, pid, at)) = found.get(&id) {
+                if at.elapsed() < Duration::from_secs(60) && jump::still_there(hwnd, pid) {
+                    marks.entry(hwnd).or_default().push(json!({ "id": id, "mood": mood }));
+                    continue;
+                }
+                found.remove(&id);
+            }
+            if looked.get(&id).is_some_and(|t| t.elapsed() < retry) {
+                continue;
+            }
+            asks.push((chain, hints));
+            asked.push((id, mood));
+        }
+        for ((id, mood), got) in asked.into_iter().zip(jump::windows_for(&asks)) {
+            looked.insert(id.clone(), Instant::now());
+            if let Some((hwnd, pid)) = got {
+                found.insert(id.clone(), (hwnd, pid, Instant::now()));
                 marks.entry(hwnd).or_default().push(json!({ "id": id, "mood": mood }));
             }
         }
         *MARKS.lock().unwrap() = Some(marks);
+    }
+
+    // A window's app id, asked once (tasks::app_id goes through COM).
+    fn app_id_of(hwnd: isize) -> Option<String> {
+        let mut ids = APP_IDS.lock().unwrap();
+        ids.get_or_insert_with(HashMap::new).entry(hwnd).or_insert_with(|| tasks::app_id(hwnd)).clone()
+    }
+
+    // A window's icon handle, asked of the window (three messages to its
+    // process) only when the shell said it was redrawn, or every ten seconds.
+    fn icon_of(hwnd: isize, redrawn: &[isize]) -> isize {
+        let mut icons = ICONS.lock().unwrap();
+        let icons = icons.get_or_insert_with(HashMap::new);
+        match icons.get(&hwnd) {
+            Some(&(icon, at)) if !redrawn.contains(&hwnd) && at.elapsed() < Duration::from_secs(10) => icon,
+            _ => {
+                let icon = tasks::icon_of(hwnd);
+                icons.insert(hwnd, (icon, Instant::now()));
+                icon
+            }
+        }
     }
 
     // On the strip's display (a window maximized elsewhere leaves it clear).
@@ -796,6 +860,12 @@ mod imp {
             }
             order.clone()
         };
+        // What is kept per window goes with the window; the titles as shown
+        // now; which windows the shell said were redrawn since the last look.
+        APP_IDS.lock().unwrap().get_or_insert_with(HashMap::new).retain(|h, _| order.contains(h));
+        ICONS.lock().unwrap().get_or_insert_with(HashMap::new).retain(|h, _| order.contains(h));
+        *TITLES.lock().unwrap() = Some(found.iter().map(|t| (t.hwnd, t.title.clone())).collect());
+        let redrawn: Vec<isize> = std::mem::take(&mut *REDRAWN.lock().unwrap());
         let flashing = {
             let mut flashing = FLASHING.lock().unwrap();
             flashing.retain(|h| *h != front && tasks::alive(*h));
@@ -820,7 +890,7 @@ mod imp {
         let mut apps: Vec<(String, String, Option<String>, bool, Vec<&tasks::Task>)> =
             pinned.iter().map(|(p, id)| (id.clone().unwrap_or_else(|| p.to_lowercase()), p.clone(), id.clone(), true, Vec::new())).collect();
         for t in order.iter().filter_map(|h| found.iter().find(|t| t.hwnd == *h)) {
-            let id = hosts(&t.path).then(|| tasks::app_id(t.hwnd)).flatten();
+            let id = hosts(&t.path).then(|| app_id_of(t.hwnd)).flatten();
             let key = id.clone().unwrap_or_else(|| t.path.to_lowercase());
             match apps.iter_mut().find(|a| a.0.eq_ignore_ascii_case(&key)) {
                 Some(app) => app.4.push(t),
@@ -841,13 +911,13 @@ mod imp {
                     // Windows' taskbar shows it (app_png): the button's, and a
                     // hosted window's own (a store app's frame shows a plain
                     // icon until its app is in it).
-                    let app_pngs: Vec<Option<String>> = windows.iter().map(|t| tasks::app_id(t.hwnd).and_then(|id| app_png(&id, size))).collect();
+                    let app_pngs: Vec<Option<String>> = windows.iter().map(|t| app_id_of(t.hwnd).and_then(|id| app_png(&id, size))).collect();
                     let hosted = hosts(path);
                     let windows: Vec<Value> = windows
                         .iter()
                         .zip(&app_pngs)
                         .map(|(t, app)| {
-                            let icon = tasks::icon_of(t.hwnd);
+                            let icon = icon_of(t.hwnd, &redrawn);
                             let png = match pngs.get(&t.hwnd) {
                                 Some((at, png)) if *at == icon => png.clone(),
                                 _ => {
@@ -1574,7 +1644,21 @@ mod imp {
                 }
             }
             HSHELL_WINDOWACTIVATED | HSHELL_RUDEAPPACTIVATED => FLASHING.lock().unwrap().retain(|h| *h != hwnd),
-            HSHELL_WINDOWCREATED | HSHELL_WINDOWDESTROYED | HSHELL_REDRAW => {}
+            // A title or an icon changed. The buttons are made again now
+            // only for a window with a button whose title is another, or
+            // for one just titled that is about to have one; the rest (a
+            // title the same, an icon alone, a window with no button) wait
+            // for the next look, which asks that window's icon again.
+            HSHELL_REDRAW => {
+                REDRAWN.lock().unwrap().push(hwnd);
+                let shown = TITLES.lock().unwrap().as_ref().and_then(|t| t.get(&hwnd).cloned());
+                match shown {
+                    Some(title) if title == tasks::title(hwnd) => return,
+                    None if !tasks::is_task_window(hwnd) => return,
+                    _ => {}
+                }
+            }
+            HSHELL_WINDOWCREATED | HSHELL_WINDOWDESTROYED => {}
             _ => return,
         }
         wake_tasks();

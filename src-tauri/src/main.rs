@@ -1150,7 +1150,8 @@ fn main() {
                 power::thread_eco();
                 let mut tokens = tokens::Tokens::default();
                 let (claude_dir, codex_dir) = (tokens::claude_dir(), tokens::codex_dir());
-                for n in 0u64.. {
+                let mut tokens_at: Option<std::time::Instant> = None;
+                loop {
                     let now = now_ms();
                     let mut changed = watcher.widgets.lock().unwrap().expire(now);
                     // A built-in widget: its words while it is on, gone when off.
@@ -1163,7 +1164,8 @@ fn main() {
                     };
                     // Just turned on: read now, not at its next turn.
                     let unread = |id: &str| watcher.is_widget_on(id) && watcher.widgets.lock().unwrap().label_of(id).is_none();
-                    if n % (tokens::EVERY.as_secs() / 3) == 0 || unread("tokens") {
+                    if tokens_at.is_none_or(|t| t.elapsed() >= tokens::EVERY) || unread("tokens") {
+                        tokens_at = Some(std::time::Instant::now());
                         let count = watcher.is_widget_on("tokens").then(|| {
                             tokens.update(&claude_dir, &codex_dir, widgets::local_midnight());
                             tokens::words(tokens.count())
@@ -1179,7 +1181,8 @@ fn main() {
                     if changed {
                         watcher.redraw_widgets();
                     }
-                    std::thread::sleep(Duration::from_secs(3));
+                    // Quiet (nobody at the keyboard): every ten seconds.
+                    std::thread::sleep(Duration::from_secs(if watcher.is_quiet() { 10 } else { 3 }));
                 }
             });
 

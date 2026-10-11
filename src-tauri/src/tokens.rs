@@ -59,21 +59,23 @@ pub fn parse_time(s: &str) -> Option<u64> {
     u64::try_from(((days * 24 + hh) * 60 + mm) * 60_000 + ss * 1000 + ms).ok()
 }
 
-fn modified_ms(path: &Path) -> u64 {
-    path.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64)
-}
-
 // The .jsonl files under a folder written to since a moment.
 fn written_since(dir: &Path, since: u64, depth: u32, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
+        // What the listing itself says of each entry (on Windows its kind
+        // and times come with it): no further look at every file.
+        let Ok(kind) = entry.file_type() else { continue };
         let path = entry.path();
-        if path.is_dir() {
+        if kind.is_dir() {
             if depth > 0 {
                 written_since(&path, since, depth - 1, out);
             }
-        } else if path.extension().is_some_and(|e| e == "jsonl") && modified_ms(&path) >= since {
-            out.push(path);
+        } else if path.extension().is_some_and(|e| e == "jsonl") {
+            let modified = entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64);
+            if modified >= since {
+                out.push(path);
+            }
         }
     }
 }

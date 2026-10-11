@@ -271,13 +271,48 @@ mod imp {
     // The window a session runs in: the first process up its chain (still the
     // same one) with a window, or a console window kept for it.
     pub fn window_of(chain: &Chain, hints: &[&str], needs_own: bool) -> Option<isize> {
+        window_in(chain, hints, needs_own, &processes(), &windows())
+    }
+
+    // The windows of several sessions at once: the processes and the
+    // windows listed once for all of them (listed again for each session,
+    // every three seconds, they were most of the taskbar's idle work). Each
+    // found window comes with its process, to see later that it is still
+    // the same (still_there).
+    pub fn windows_for(asks: &[(Chain, Vec<String>)]) -> Vec<Option<(isize, u32)>> {
+        if asks.is_empty() {
+            return Vec::new();
+        }
+        let all = processes();
+        let windows = windows();
+        asks.iter()
+            .map(|(chain, hints)| {
+                let hints: Vec<&str> = hints.iter().map(String::as_str).collect();
+                window_in(chain, &hints, true, &all, &windows).map(|hwnd| (hwnd, pid_of_window(hwnd)))
+            })
+            .collect()
+    }
+
+    fn pid_of_window(hwnd: isize) -> u32 {
+        let mut pid = 0u32;
+        // SAFETY: our own out-parameter.
+        unsafe { GetWindowThreadProcessId(hwnd as Hwnd, &mut pid) };
+        pid
+    }
+
+    // A window found before is still the one: there, shown, of the same process.
+    pub fn still_there(hwnd: isize, pid: u32) -> bool {
+        // SAFETY: plain queries.
+        let shown = unsafe { IsWindowVisible(hwnd as Hwnd) != 0 };
+        shown && pid_of_window(hwnd) == pid
+    }
+
+    fn window_in(chain: &Chain, hints: &[&str], needs_own: bool, all: &HashMap<u32, (u32, String)>, windows: &[Window]) -> Option<isize> {
         // Its own process gone, the session is over: no window is its.
         let &(first, at) = chain.first()?;
         if needs_own && started(first) != Some(at) {
             return None;
         }
-        let all = processes();
-        let windows = windows();
         for &(pid, at) in chain {
             if started(pid) != Some(at) {
                 continue;
@@ -441,6 +476,12 @@ mod imp {
     pub fn window_of(_chain: &Chain, _hints: &[&str], _needs_own: bool) -> Option<isize> {
         None
     }
+    pub fn windows_for(asks: &[(Chain, Vec<String>)]) -> Vec<Option<(isize, u32)>> {
+        asks.iter().map(|_| None).collect()
+    }
+    pub fn still_there(_hwnd: isize, _pid: u32) -> bool {
+        false
+    }
     pub fn bring(_hwnd: isize) -> bool {
         false
     }
@@ -452,7 +493,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, hook_chain};
+pub use imp::{chain_of, client_of, hook_chain, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {
@@ -463,12 +504,6 @@ pub fn bring_window(hwnd: isize) -> bool {
 // (ShellExecute; no console of ours in between).
 pub fn open_url(url: &str) -> bool {
     imp::open_url(url)
-}
-
-// The window a session runs in, while its own process still does (the
-// taskbar marks that window's button with the session).
-pub fn window_for(chain: &Chain, hints: &[&str]) -> Option<isize> {
-    imp::window_of(chain, hints, true)
 }
 
 // A chain as the hooks' messages carry it: [[pid, started], ...].
