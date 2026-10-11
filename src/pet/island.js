@@ -1011,13 +1011,16 @@
       const w = from.length ? from[turn % from.length] : null
       const said = w ? Widgets.words(lang, w, detailed) : null
       const colour = (w && stripInk(w.color)) || stripHue().idle
-      const drawn = JSON.stringify([e.size, name, said, w?.icon || e.icon, colour])
+      // A plugin with nothing to say: maybe it wants its settings first.
+      if (!w && e.type === 'plugin') askPlugins()
+      const needs = !w && needsSettings(e)
+      const drawn = JSON.stringify([e.size, name, said, w?.icon || e.icon, colour, needs])
       if (node._drawn === drawn) continue
       node._drawn = drawn
       const icon = el('span', 'twi')
       icon.innerHTML = Widgets.icon(w?.icon || e.icon || 'dot')
       icon.style.color = colour
-      const none = t(lang, 'taskbar.w.none')
+      const none = t(lang, needs ? 'taskbar.w.needs' : 'taskbar.w.none')
       node.classList.toggle('empty', !w)
       node.title = w ? [said.label, said.value].filter(Boolean).join(' · ') : `${name} · ${none}`
       if (node.dataset.size === 'S') node.replaceChildren(icon, el('b', 'twv', said?.value || '—'))
@@ -1029,6 +1032,24 @@
     }
     if (wgFor) drawWidgetPop()
   }
+
+  // The plugins she runs as settings_get says, for which want their
+  // settings filled in first (missing: a parameter they need): asked for
+  // while a plugin on the strip has nothing to say, twice a minute at most,
+  // and once the layout is kept.
+  const pluginsSaid = { at: 0, list: [] }
+  function askPlugins(now = false) {
+    if (!now && Date.now() - pluginsSaid.at < 30000) return
+    pluginsSaid.at = Date.now()
+    window.pet.settings.get().then(got => tellPlugins(got?.plugins))
+  }
+  function tellPlugins(list) {
+    if (!Array.isArray(list)) return
+    pluginsSaid.list = list
+    for (const node of entryNodes.values()) node._drawn = ''
+    if (taskbarBuilt && home() === 'taskbar') drawEntries()
+  }
+  const needsSettings = e => e.type === 'plugin' && !!pluginsSaid.list.find(p => p.id === e.of)?.missing
   setInterval(() => {
     if (taskbarBuilt && home() === 'taskbar' && entryNodes.size) drawEntries()
   }, ENTRY_TURN_MS)
@@ -1368,7 +1389,7 @@
       row.append(...(from.length > 1 && said.label ? [el('span', '', said.label)] : []), value)
       return row
     })
-    if (!rows.length) rows.push(el('div', 'wgnone', t(lang, 'taskbar.w.none')))
+    if (!rows.length) rows.push(el('div', 'wgnone', t(lang, needsSettings(e) ? 'taskbar.lib.needs' : 'taskbar.w.none')))
     const acts = el('div', 'wgacts')
     const button = (what, label) => {
       const b = el('button', 'wgbtn', label)
@@ -2237,7 +2258,8 @@
       const plugins = config.plugins && typeof config.plugins === 'object' ? config.plugins : {}
       const off = [...new Set(Object.values(layout).flatMap(run => run.filter(p => p.type === 'plugin').map(p => p.of)))].filter(id => plugins[id]?.on !== true)
       if (off.length) patch.plugins = { ...plugins, ...Object.fromEntries(off.map(id => [id, { ...(plugins[id] || {}), on: true }])) }
-      window.pet.settings.set(patch)
+      // Then which of the plugins put there want their settings first.
+      Promise.resolve(window.pet.settings.set(patch)).then(() => askPlugins(true))
     }
     arranged = ''
     update()
@@ -2265,6 +2287,7 @@
     document.body.append(library)
     window.pet.settings.get().then(got => {
       libSnap = got
+      tellPlugins(got?.plugins)
       if (libOpen) drawLibrary()
     })
   }
@@ -2308,7 +2331,7 @@
       const said = c.w ? Widgets.words(lang, c.w, detailed).value : ''
       const note = isOn
         ? t(lang, 'taskbar.lib.placed')
-        : c.plugin?.state === 'needs'
+        : c.plugin?.missing
           ? t(lang, 'taskbar.lib.needs')
           : c.plugin && !c.plugin.on
             ? t(lang, 'taskbar.lib.starts')
