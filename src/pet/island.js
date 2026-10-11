@@ -908,6 +908,11 @@
   // The windows' buttons as last sent (taskbar.rs), and as drawn.
   let taskWindows = []
   let windowsDrawn = ''
+  // When each window (by its handle) began flashing for attention: its
+  // button is made anew with every change to the list, and the flashes
+  // carry on from where they were (style.css .flash, --flash-delay)
+  // instead of starting over.
+  const flashSince = new Map()
 
   function fillTaskbar() {
     barRest.style.left = `${onPixels(sizeOf('compact').width + (isCapsule() ? CAPSULE_X + 4 : 0))}px`
@@ -1063,6 +1068,10 @@
     const drawn = JSON.stringify([apps, lang])
     if (drawn === windowsDrawn) return
     windowsDrawn = drawn
+    const now = Date.now()
+    const flashing = new Set(apps.flatMap(a => (a.windows || []).filter(w => w.flash).map(w => w.id)))
+    for (const id of [...flashSince.keys()]) if (!flashing.has(id)) flashSince.delete(id)
+    for (const id of flashing) if (!flashSince.has(id)) flashSince.set(id, now)
     windowsBox.replaceChildren(
       ...apps.map(app => {
         const windows = app.windows || []
@@ -1070,7 +1079,11 @@
         button.dataset.app = app.app
         button.classList.toggle('front', windows.some(w => w.front))
         button.classList.toggle('min', windows.length > 0 && windows.every(w => w.min))
-        button.classList.toggle('flash', windows.some(w => w.flash))
+        const flashes = windows.filter(w => w.flash)
+        button.classList.toggle('flash', flashes.length > 0)
+        // From the longest-flashing window's start: a negative delay puts
+        // the animation that far along (past its end: the last frame).
+        if (flashes.length) button.style.setProperty('--flash-delay', `${-Math.max(...flashes.map(w => now - flashSince.get(w.id)))}ms`)
         button.classList.toggle('idle', !windows.length)
         if (!windows.length) button.title = app.name || ''
         if (app.png) {

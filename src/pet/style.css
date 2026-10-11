@@ -1563,13 +1563,21 @@ body {
    icon, which the compositor animates alone; animating the background
    repainted the button every frame, without end (35 to 40% of a core while
    anything flashed, 2026-10-11). */
+#bar-rest .win.flash {
+  /* Its own stacking context, so the orange layer can lie under the icon. */
+  isolation: isolate;
+}
+
 #bar-rest .win.flash::before {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: -1;
   background: rgba(255, 179, 64, 0.38);
   will-change: opacity;
   animation: win-flash 1.8s ease-in-out var(--flashes, 7) both;
+  /* How far along the flashes already are (island.js drawWindows). */
+  animation-delay: var(--flash-delay, 0ms);
   pointer-events: none;
 }
 

@@ -570,11 +570,13 @@ mod imp {
                 *SENT_KEYS.lock().unwrap() = now.clone();
                 sent = now;
             }
-            // Quiet (nobody at the keyboard): every two seconds; asked to
-            // stop meanwhile (give_back), it stops within a tenth.
-            let nap = if sh.is_quiet() { 2000 } else { 250 };
+            // Quiet (nobody at the keyboard): every two seconds; woken
+            // within a twentieth when asked to stop (give_back), when the
+            // IME button is pressed (KEYS_NOW), or when the quiet ends.
+            let quiet = sh.is_quiet();
+            let nap = if quiet { 2000 } else { 250 };
             let mut slept = 0;
-            while slept < nap && !TASKS_STOP.load(Ordering::SeqCst) {
+            while slept < nap && !TASKS_STOP.load(Ordering::SeqCst) && !KEYS_NOW.load(Ordering::SeqCst) && (!quiet || sh.is_quiet()) {
                 std::thread::sleep(Duration::from_millis(50));
                 slept += 50;
             }
