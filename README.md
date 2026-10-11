@@ -173,7 +173,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 
 ### 更新
 
-下载的 exe 启动时会同时看一次 GitHub 和 Gitee 上的最新发布（`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest` 和 `https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases`，都不带任何账号信息），之后每天看一次。草稿和预发布不算。有新版本时灵动岛提示一次，点一下打开设置「通用」页的「软件更新」，那里能看说明，点「更新」才会下载。
+下载的 exe 启动时会同时看一次 GitHub 和 Gitee 上的最新发布（GitHub 的 `https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`，Gitee 上仓库的 tag 列表和发行版里的 `.sha256` 文件，都不带任何账号信息），之后每天看一次。草稿和预发布不算。有新版本时灵动岛提示一次，点一下打开设置「通用」页的「软件更新」，那里能看说明，点「更新」才会下载。
 
 - 下载的是发布页上的 `wakuwaku-v<版本>-windows-x64.exe`：在中国先从 Gitee 下载，其他地方先从 GitHub，一边下载失败就换另一边（「软件更新」里的「从哪里下载」可以指定）。
 - 下载后先校验 SHA-256：用 GitHub 给出的校验值，GitHub 没给时用 Gitee 发布里的 `.sha256` 文件。对不上、没有校验值、或者两边给的不一样，就不装，也不改动任何文件。

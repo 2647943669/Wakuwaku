@@ -3,7 +3,11 @@
 // latest release looked at as she starts, then once a day (settings:
 // autoUpdateCheck, on unless turned off; "check now" any time), on GitHub
 // and on Gitee, its copy for China (the same release there: the exe, and
-// <exe>.sha256 beside it), both at once; the newer goes. A newer one is
+// <exe>.sha256 beside it), both at once; the newer goes. Gitee's API is
+// not used: without an account it allows an address some sixty calls, and
+// then refuses it for over an hour (many in China share one address); its
+// tags are read instead as git reads them, and the newest one's
+// <exe>.sha256 fetched from where its release keeps it. A newer one is
 // told on the island once (updateTold). On the person's word (Update, on
 // the General page): its exe downloaded into her data folder, from Gitee
 // first in China and GitHub first elsewhere (updateFrom: auto, or one of
@@ -18,9 +22,10 @@
 // back (DEVELOPMENT.md).
 //
 // For tests: WAKUWAKU_UPDATE_URL, GitHub's release JSON from elsewhere, and
-// WAKUWAKU_UPDATE_GITEE_URL, Gitee's list of releases (only those given are
-// asked then, their exes taken from anywhere); WAKUWAKU_UPDATE_FORCE=1, a
-// build from the source tree looks and updates too.
+// WAKUWAKU_UPDATE_GITEE_URL, a Gitee repo elsewhere (its <url>.git/info/refs
+// and <url>releases/download/…; only those given are asked then, their exes
+// taken from anywhere); WAKUWAKU_UPDATE_FORCE=1, a build from the source
+// tree looks and updates too.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -33,9 +38,6 @@ use sha2::{Digest, Sha256};
 use crate::Shared;
 
 const GITHUB_LATEST: &str = "https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest";
-// Gitee's "latest" is the one last edited: its newest ten instead, the
-// highest version of them.
-const GITEE_RELEASES: &str = "https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases?per_page=10&direction=desc";
 const GITHUB_REPO: &str = "https://github.com/zhoupengjie/Wakuwaku/";
 const GITEE_REPO: &str = "https://gitee.com/zhoupengjie/Wakuwaku/";
 const GITHUB_TEST: &str = "WAKUWAKU_UPDATE_URL";
@@ -236,24 +238,30 @@ pub fn github_release(v: &Value) -> Option<Found> {
     })
 }
 
-// Gitee's releases (a list, or one; no draft, page, size or SHA-256 in its
-// JSON): the highest version of those that count, its exe by name, and
-// where its <exe>.sha256 is, to be read.
-pub fn gitee_release(v: &Value) -> Option<(Found, Option<String>)> {
-    let list: Vec<&Value> = match v {
-        Value::Array(all) => all.iter().collect(),
-        one => vec![one],
-    };
-    let (version, r) = list.into_iter().filter_map(|r| Some((version_of(r)?, r))).reduce(|a, b| if newer(&b.0, &a.0) { b } else { a })?;
-    let name = exe_name(&version);
-    let url = |name: &str| {
-        let asset = r["assets"].as_array().and_then(|all| all.iter().find(|a| a["name"].as_str() == Some(name)));
-        asset.and_then(|a| a["browser_download_url"].as_str()).map(str::to_string)
-    };
-    let tag = r["tag_name"].as_str().unwrap_or("").trim();
-    let found = Found { source: Source::Gitee, page: format!("{GITEE_REPO}releases/tag/{tag}"), exe: url(&name), digest: None, size: 0, version };
-    let sums = url(&format!("{name}.sha256"));
-    Some((found, sums))
+// The newest of a repo's tags as git lists them (info/refs: pkt-lines of
+// "<sha> refs/tags/<tag>", a peeled one again with ^{}, the first with
+// "\0<capabilities>"): of those that are versions (v and a number), none
+// with a "-" in it: a prerelease, which tags alone cannot tell otherwise.
+pub fn newest_tag(refs: &str) -> Option<String> {
+    refs.lines()
+        .filter_map(|line| line.split_once(" refs/tags/").and_then(|(_, tag)| tag.split(['\0', ' ']).next()))
+        .map(str::trim)
+        .filter(|tag| !tag.ends_with("^{}") && !tag.contains('-') && tag.trim_start_matches(['v', 'V']).starts_with(|c: char| c.is_ascii_digit()))
+        .map(str::to_string)
+        .reduce(|a, b| if newer(&b, &a) { b } else { a })
+}
+
+// Gitee: its newest tag, and that tag's release by where Gitee keeps its
+// files (<repo>releases/download/<tag>/<file>): its <exe>.sha256 there,
+// put up after the exe, so the release is whole; or none of it yet (404).
+fn gitee_found(repo: &str) -> Result<Option<Found>, String> {
+    let repo = format!("{}/", repo.trim_end_matches('/'));
+    let refs = get_text(&format!("{}.git/info/refs?service=git-upload-pack", repo.trim_end_matches('/')), 1 << 20)?.unwrap_or_default();
+    let Some(tag) = newest_tag(&refs) else { return Ok(None) };
+    let version = tag.trim_start_matches(['v', 'V']).to_string();
+    let exe = format!("{repo}releases/download/{tag}/{}", exe_name(&version));
+    let Some(sums) = get_text(&format!("{exe}.sha256"), 4096)? else { return Ok(None) };
+    Ok(Some(Found { source: Source::Gitee, page: format!("{repo}releases/tag/{tag}"), exe: Some(exe), digest: sums_of(&sums), size: 0, version }))
 }
 
 // The newest either place has: the places that have it, and its SHA-256.
@@ -288,29 +296,29 @@ fn get_json(url: &str, accept: &str) -> Result<Option<Value>, String> {
     }
 }
 
-fn get_text(url: &str) -> Result<String, String> {
-    let mut res = agent(20).get(url).header("user-agent", &format!("wakuwaku/{}", current())).call().map_err(|e| e.to_string())?;
-    res.body_mut().with_config().limit(4096).read_to_string().map_err(|e| e.to_string())
+// A text from there (at most `limit` bytes); none if it is not there (404).
+fn get_text(url: &str, limit: u64) -> Result<Option<String>, String> {
+    match agent(20).get(url).header("user-agent", &format!("wakuwaku/{}", current())).call() {
+        Err(ureq::Error::StatusCode(404)) => Ok(None),
+        Err(e) => Err(e.to_string()),
+        Ok(mut res) => res.body_mut().with_config().limit(limit).read_to_string().map(Some).map_err(|e| e.to_string()),
+    }
 }
 
-// Where each place's release is looked at: both, or those a test gives.
+// Where each place's release is looked at (GitHub's API, Gitee's repo):
+// both, or those a test gives.
 fn endpoints() -> Vec<(Source, String)> {
     if !testing() {
-        return vec![(Source::GitHub, GITHUB_LATEST.to_string()), (Source::Gitee, GITEE_RELEASES.to_string())];
+        return vec![(Source::GitHub, GITHUB_LATEST.to_string()), (Source::Gitee, GITEE_REPO.to_string())];
     }
     [(Source::GitHub, test_url(GITHUB_TEST)), (Source::Gitee, test_url(GITEE_TEST))].into_iter().filter_map(|(source, url)| Some((source, url?))).collect()
 }
 
-// What one place says; Gitee's <exe>.sha256 read with it (none if it
-// cannot be).
+// What one place says.
 fn fetch(source: Source, url: &str) -> Result<Option<Found>, String> {
     match source {
         Source::GitHub => Ok(get_json(url, "application/vnd.github+json")?.as_ref().and_then(github_release)),
-        Source::Gitee => {
-            let Some((mut found, sums)) = get_json(url, "application/json")?.as_ref().and_then(gitee_release) else { return Ok(None) };
-            found.digest = sums.filter(|u| allowed(u)).and_then(|u| get_text(&u).ok()).as_deref().and_then(sums_of);
-            Ok(Some(found))
-        }
+        Source::Gitee => gitee_found(url),
     }
 }
 
@@ -715,7 +723,7 @@ pub fn wait_after_update(args: &[String]) {
 mod tests {
     use serde_json::json;
 
-    use super::{allowed, gitee_release, github_release, merge, newer, sums_of, Found, Source};
+    use super::{allowed, github_release, merge, newer, newest_tag, sums_of, Found, Source};
 
     // Her version said the same everywhere it is said: what updates go by
     // (Cargo.toml), the exe's own and the settings' (tauri.conf.json), and
@@ -771,34 +779,25 @@ mod tests {
         assert_eq!(github_release(&other).unwrap().exe, None);
     }
 
-    // Gitee's list as its API gives it (the source archives among the
-    // assets, no size or digest): the highest version that counts, not the
-    // first or the last edited.
+    // A repo's tags as git's info/refs gives them (as Gitee's does): the
+    // highest version, by number; not a prerelease ("-"), a peeled line
+    // (^{}) or a tag that is no version.
     #[test]
-    fn gitee_read() {
-        let release = |tag: &str, pre: bool, files: &[&str]| {
-            let mut assets: Vec<_> = files.iter().map(|f| json!({ "name": f, "browser_download_url": format!("https://gitee.com/zhoupengjie/Wakuwaku/releases/download/{tag}/{f}") })).collect();
-            assets.push(json!({ "name": format!("{tag}.zip"), "browser_download_url": format!("https://gitee.com/zhoupengjie/Wakuwaku/archive/refs/tags/{tag}.zip") }));
-            json!({ "id": 1, "tag_name": tag, "target_commitish": "abc", "prerelease": pre, "name": tag, "body": "", "assets": assets })
-        };
-        let list = json!([
-            release("v0.2.1", false, &["wakuwaku-v0.2.1-windows-x64.exe"]),
-            release("v0.3.0-beta", true, &["wakuwaku-v0.3.0-beta-windows-x64.exe"]),
-            release("v0.2.2", false, &["wakuwaku-v0.2.2-windows-x64.exe", "wakuwaku-v0.2.2-windows-x64.exe.sha256"]),
-        ]);
-        let (found, sums) = gitee_release(&list).unwrap();
-        assert_eq!(found.source, Source::Gitee);
-        assert_eq!(found.version, "0.2.2");
-        assert_eq!(found.page, "https://gitee.com/zhoupengjie/Wakuwaku/releases/tag/v0.2.2");
-        assert_eq!(found.exe.as_deref(), Some("https://gitee.com/zhoupengjie/Wakuwaku/releases/download/v0.2.2/wakuwaku-v0.2.2-windows-x64.exe"));
-        assert_eq!(found.digest, None);
-        assert!(sums.unwrap().ends_with("wakuwaku-v0.2.2-windows-x64.exe.sha256"));
-        // One release alone (its own endpoint) reads the same; none at all, nothing.
-        let (one, sums) = gitee_release(&release("v0.2.1", false, &["wakuwaku-v0.2.1-windows-x64.exe"])).unwrap();
-        assert_eq!(one.version, "0.2.1");
-        assert_eq!(sums, None);
-        assert!(gitee_release(&json!([])).is_none());
-        assert!(gitee_release(&json!({ "message": "404 Not Found" })).is_none());
+    fn tags_read() {
+        let sha = "a".repeat(40);
+        let pkt = |line: String| format!("{:04x}{line}", line.len() + 4);
+        let mut refs = pkt("# service=git-upload-pack\n".into()) + "0000";
+        refs += &pkt(format!("{sha} HEAD\0multi_ack thin-pack side-band symref=HEAD:refs/heads/main agent=git/2\n"));
+        refs += &pkt(format!("{sha} refs/heads/main\n"));
+        for tag in ["v0.2.1", "v0.2.1^{}", "v0.9.0", "v0.10.0", "v0.10.0^{}", "v0.11.0-beta", "nightly"] {
+            refs += &pkt(format!("{sha} refs/tags/{tag}\n"));
+        }
+        refs += "0000";
+        assert_eq!(newest_tag(&refs).as_deref(), Some("v0.10.0"));
+        // The first line's capabilities after \0, when it is a tag.
+        assert_eq!(newest_tag(&pkt(format!("{sha} refs/tags/v0.2.1\0multi_ack\n"))).as_deref(), Some("v0.2.1"));
+        assert_eq!(newest_tag(&(pkt("# service=git-upload-pack\n".into()) + "0000" + &pkt(format!("{sha} refs/heads/main\n")) + "0000")), None);
+        assert_eq!(newest_tag(""), None);
     }
 
     #[test]
@@ -851,14 +850,15 @@ mod tests {
     #[ignore]
     fn live_places() {
         let github = super::fetch(Source::GitHub, super::GITHUB_LATEST).unwrap();
-        let gitee = super::fetch(Source::Gitee, super::GITEE_RELEASES).unwrap();
+        let gitee = super::fetch(Source::Gitee, super::GITEE_REPO).unwrap();
         println!("GitHub: {github:?}\nGitee: {gitee:?}");
-        assert!(github.is_some_and(|f| f.digest.is_some() && f.exe.is_some()));
-        // Another repo's releases on Gitee: its versions read, though no exe of hers.
-        let other = super::fetch(Source::Gitee, "https://gitee.com/api/v5/repos/cxasm/notepad--/releases?per_page=10&direction=desc").unwrap().unwrap();
-        println!("notepad--: {other:?}");
-        assert!(other.exe.is_none() && other.digest.is_none());
-        println!("{:?}", merge(gitee.into_iter().chain([other]).collect()));
+        assert!(github.as_ref().is_some_and(|f| f.digest.is_some() && f.exe.is_some()));
+        assert!(gitee.as_ref().is_some_and(|f| f.digest.is_some() && f.exe.is_some()));
+        let r = merge(github.into_iter().chain(gitee).collect()).unwrap();
+        println!("{r:?}");
+        assert!(!r.conflict);
+        // Another repo on Gitee: its newest tag read, no .sha256 of hers there (404), nothing.
+        assert_eq!(super::fetch(Source::Gitee, "https://gitee.com/cxasm/notepad--").unwrap(), None);
     }
 
     // Against test/fake-release.js (started with --version 0.2.2), the test
@@ -878,14 +878,19 @@ mod tests {
         assert!(look().conflict);
         set("badSums=0&noDigest=1");
         assert!(look().digest.is_some(), "Gitee's .sha256 when GitHub gives none");
+        // No .sha256 on Gitee: its release not there (yet); GitHub's alone, without a digest.
         set("noSums=1");
-        assert!(!look().can_install());
+        let r = look();
+        assert_eq!((r.from.len(), r.can_install()), (1, false));
         set("noDigest=0&noSums=0&githubOld=1");
         let r = look();
         assert_eq!((r.version.as_str(), r.from.len(), r.from[0].source), ("0.2.2", 1, Source::Gitee));
+        // Gitee without tags, or its newest tag without a release: GitHub's alone.
         set("githubOld=0&giteeEmpty=1");
         assert_eq!(look().from.len(), 1);
-        set("giteeEmpty=0");
+        set("giteeEmpty=0&giteeOld=1");
+        assert_eq!(look().from.len(), 1);
+        set("giteeOld=0");
     }
 
     #[test]

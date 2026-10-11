@@ -1,26 +1,28 @@
 // A GitHub and a Gitee on 127.0.0.1 for trying the pet's updates without
 // publishing anything (src-tauri/src/updates.rs): GitHub's latest release
-// as its API gives it, Gitee's list of releases as its API gives it (no
-// size, no digest; the exe and <exe>.sha256 as attachments), and the files,
-// Gitee's through a redirect as gitee.com sends them on to its storage.
+// as its API gives it; Gitee as the pet reads it without its API, its tags
+// as git lists them (/gitee.git/info/refs) and its release's files where
+// Gitee keeps them (/gitee/releases/download/<tag>/<file>), sent on to its
+// storage by a redirect as gitee.com does.
 //
 //   node test/fake-release.js --exe <a release exe> [--version 0.2.2] [--port 47390]
 //
 // Start an older exe (outside the source tree) with
 //   WAKUWAKU_UPDATE_URL=http://127.0.0.1:47390/github/latest
-//   WAKUWAKU_UPDATE_GITEE_URL=http://127.0.0.1:47390/gitee/releases
+//   WAKUWAKU_UPDATE_GITEE_URL=http://127.0.0.1:47390/gitee/
 // (or only one of them: then only that place is asked).
 //
 // What goes wrong is set while it runs, GET /mode?<name>=1 (0 to undo; /mode
 // alone says them all), so a pet already running needs no restart:
-//   githubDown, giteeDown    the API answers 503
-//   githubEmpty, giteeEmpty  no release yet (GitHub 404, Gitee [])
-//   githubOld, giteeOld      that place's newest is 0.0.1 (lagging behind)
+//   githubDown, giteeDown    GitHub's API, Gitee's tags answer 503
+//   githubEmpty, giteeEmpty  no release yet (GitHub 404, Gitee no tags)
+//   githubOld, giteeOld      that place's newest is 0.0.1 (lagging behind;
+//                            on Gitee, a tag with no release)
 //   githubFail, giteeFail    the exe's download answers 500
 //   githubSlow, giteeSlow    the exe comes at 64 KB a second
 //   giteeBad                 Gitee's exe is another (one byte changed)
 //   noDigest                 GitHub gives no digest
-//   noSums                   Gitee has no .sha256
+//   noSums                   Gitee has no .sha256 (its release not made yet)
 //   badSums                  Gitee's .sha256 says another SHA-256
 // Every request is logged.
 
@@ -61,19 +63,17 @@ function github() {
   }
 }
 
-function gitee() {
-  if (mode.giteeEmpty) return []
-  const release = v => {
-    const file = `wakuwaku-v${v}-windows-x64.exe`
-    const assets = [{ name: file, browser_download_url: `${base}/gitee/dl/${file}` }]
-    if (!mode.noSums) assets.push({ name: `${file}.sha256`, browser_download_url: `${base}/gitee/dl/${file}.sha256` })
-    assets.push({ name: `v${v}.zip`, browser_download_url: `${base}/gitee/archive/v${v}.zip` })
-    return { id: 1, tag_name: `v${v}`, target_commitish: 'abc', prerelease: false, name: `Wakuwaku v${v}`, body: 'Fake release notes.', author: {}, created_at: new Date().toISOString(), assets }
-  }
-  // Newest first, as direction=desc gives them; an old one and a prerelease among them.
-  const list = mode.giteeOld ? [release('0.0.1')] : [release(version), release('0.0.1')]
-  list.splice(1, 0, { ...release(`${version}-beta`), prerelease: true })
-  return list
+// Gitee's tags as git's smart HTTP lists them: pkt-lines, a peeled line
+// after each annotated tag, a prerelease and a tag that is no version among them.
+function giteeRefs() {
+  const sha = 'a'.repeat(40)
+  const pkt = line => (line.length + 4).toString(16).padStart(4, '0') + line
+  const tags = mode.giteeEmpty ? [] : mode.giteeOld ? ['v0.0.1'] : ['v0.0.1', `v${version}`, `v${version}-beta`, 'nightly']
+  let out = pkt('# service=git-upload-pack\n') + '0000'
+  out += pkt(`${sha} HEAD\0multi_ack thin-pack side-band side-band-64k ofs-delta symref=HEAD:refs/heads/main agent=git/2\n`)
+  out += pkt(`${sha} refs/heads/main\n`)
+  for (const tag of tags) out += pkt(`${sha} refs/tags/${tag}\n`) + pkt(`${sha} refs/tags/${tag}^{}\n`)
+  return out + '0000'
 }
 
 function send(res, status, body, type = 'application/json') {
@@ -109,18 +109,23 @@ http
       if (mode.githubEmpty) return send(res, 404, { message: 'Not Found' })
       return send(res, 200, github())
     }
-    if (path === '/gitee/releases') {
-      if (mode.giteeDown) return send(res, 503, { message: 'down' })
-      return send(res, 200, gitee())
+    if (path === '/gitee.git/info/refs') {
+      if (mode.giteeDown) return send(res, 503, 'down', 'text/plain')
+      return send(res, 200, giteeRefs(), 'application/x-git-upload-pack-advertisement')
     }
-    if (path.startsWith('/github/page/') || path.startsWith('/gitee/page/')) return send(res, 200, `<h1>${path}</h1>`, 'text/html')
+    if (path.startsWith('/github/page/') || path.startsWith('/gitee/releases/tag/')) return send(res, 200, `<h1>${path}</h1>`, 'text/html')
     if (path === `/github/dl/${name}`) {
       if (mode.githubFail) return send(res, 500, 'failed', 'text/plain')
       return file(res, exe, mode.githubSlow)
     }
-    // Gitee: on to its storage, as gitee.com does.
-    if (path.startsWith('/gitee/dl/')) {
-      res.writeHead(302, { location: `${base}/gitee/store/${encodeURIComponent(path.slice('/gitee/dl/'.length))}?token=x` })
+    // Gitee: a release's file sent on to its storage, as gitee.com does;
+    // one that is not there, 404 at once.
+    const dl = path.match(/^\/gitee\/releases\/download\/([^/]+)\/([^/]+)$/)
+    if (dl) {
+      const [, tag, leaf] = dl
+      const there = tag === `v${version}` && (leaf === name || (leaf === `${name}.sha256` && !mode.noSums))
+      if (!there) return send(res, 404, '<h1>404</h1>', 'text/html')
+      res.writeHead(302, { location: `${base}/gitee/store/${encodeURIComponent(leaf)}?token=x` })
       return res.end()
     }
     if (path === `/gitee/store/${name}`) {
@@ -133,5 +138,5 @@ http
   .listen(port, '127.0.0.1', () => {
     console.log(`fake GitHub and Gitee on ${base}: v${version}, ${name}, SHA-256 ${digest}`)
     console.log(`  WAKUWAKU_UPDATE_URL=${base}/github/latest`)
-    console.log(`  WAKUWAKU_UPDATE_GITEE_URL=${base}/gitee/releases`)
+    console.log(`  WAKUWAKU_UPDATE_GITEE_URL=${base}/gitee/`)
   })

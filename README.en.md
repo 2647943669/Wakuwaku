@@ -175,7 +175,7 @@ While she's closed, Claude Code works as usual: the events sent to her are refus
 
 ### Updates
 
-The downloaded exe looks at the latest release on GitHub and on Gitee as it starts (`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest` and `https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases`, with no account of yours), then once a day. Drafts and prereleases don't count. A new version is told on the island once; click it for Updates on the General page of the settings, where you can read its notes. Nothing is downloaded until you click Update.
+The downloaded exe looks at the latest release on GitHub and on Gitee as it starts (GitHub's `https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`; on Gitee, the repo's tags and the `.sha256` file in a release; with no account of yours), then once a day. Drafts and prereleases don't count. A new version is told on the island once; click it for Updates on the General page of the settings, where you can read its notes. Nothing is downloaded until you click Update.
 
 - What's downloaded is the release's `wakuwaku-v<version>-windows-x64.exe`: from Gitee first in China, from GitHub first elsewhere, and from the other if that fails (Download from, under Updates, picks one).
 - It's checked against the SHA-256 GitHub gives for it, or, when GitHub gives none, the `.sha256` file in the Gitee release. If it doesn't match, none is given, or the two differ, it isn't installed and no file is touched.
