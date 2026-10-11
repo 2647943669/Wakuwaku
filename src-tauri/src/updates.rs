@@ -464,6 +464,18 @@ mod tests {
 
     use super::{newer, release_of};
 
+    // Her version said the same everywhere it is said: what updates go by
+    // (Cargo.toml), the exe's own and the settings' (tauri.conf.json), and
+    // the Claude Code plugin's; a test build once had only one of them changed.
+    #[test]
+    fn one_version_everywhere() {
+        let ours = env!("CARGO_PKG_VERSION");
+        for (file, text) in [("tauri.conf.json", include_str!("../tauri.conf.json")), ("plugin.json", include_str!("../../integrations/claude-code/.claude-plugin/plugin.json"))] {
+            let v: serde_json::Value = serde_json::from_str(text).unwrap();
+            assert_eq!(v["version"].as_str(), Some(ours), "{file} says another version than Cargo.toml");
+        }
+    }
+
     #[test]
     fn versions_compared() {
         assert!(newer("v0.2.1", "0.2.0"));

@@ -546,7 +546,7 @@ mod imp {
     // (the main thread, quitting) one that does not stop must not hold her,
     // and Windows' taskbar, up; it is left, and goes with her. Each step in
     // the log: a quit once hung here, none of it said where (2026-10-11).
-    fn stop_within(name: &str, thread: JoinHandle<()>) {
+    fn stop_within(name: &str, thread: JoinHandle<()>) -> bool {
         log(&format!("giving back: {name} asked to stop"));
         let asked = Instant::now();
         while !thread.is_finished() && asked.elapsed() < Duration::from_secs(2) {
@@ -554,9 +554,10 @@ mod imp {
         }
         if thread.is_finished() {
             let _ = thread.join();
-        } else {
-            log(&format!("giving back: {name} did not stop in 2 s: left"));
+            return true;
         }
+        log(&format!("giving back: {name} did not stop in 2 s: left"));
+        false
     }
 
     // The tray handed back to Explorer and its taskbar shown again.
@@ -564,7 +565,9 @@ mod imp {
         TASKS_STOP.store(true, Ordering::SeqCst);
         if let Some(thread) = TASKS.lock().unwrap().take() {
             wake_tasks();
-            stop_within("the buttons' thread", thread);
+            if !stop_within("the buttons' thread", thread) {
+                log(&format!("giving back: the buttons' thread was {}", *TASKS_DOING.lock().unwrap()));
+            }
         }
         if let Some(thread) = KEYS.lock().unwrap().take() {
             stop_within("the keys' thread", thread);
@@ -603,24 +606,38 @@ mod imp {
     // after, so a burst of changes makes it once) and every two seconds;
     // the sessions' windows looked for every three (it looks through the
     // processes).
+    // Asked to stop, it stops at once, whatever it was at: woken by a
+    // change while making the buttons, its wake was cleared after, and it
+    // waited two seconds more before it looked (a quit for an update,
+    // 2026-10-11). What it is doing, for the log should it not stop.
+    static TASKS_DOING: Mutex<&'static str> = Mutex::new("");
+
     fn tasks_loop(sh: Arc<Shared>) {
+        let doing = |what: &'static str| *TASKS_DOING.lock().unwrap() = what;
+        let stopping = || TASKS_STOP.load(Ordering::SeqCst);
         let mut marked_at = Instant::now() - Duration::from_secs(10);
         loop {
+            doing("waiting");
             {
                 let (dirty, cv) = &WAKE;
                 let guard = dirty.lock().unwrap();
-                let (mut guard, _) = cv.wait_timeout_while(guard, Duration::from_secs(2), |d| !*d).unwrap();
+                let (mut guard, _) = cv.wait_timeout_while(guard, Duration::from_secs(2), |d| !*d && !stopping()).unwrap();
                 *guard = false;
             }
-            if TASKS_STOP.load(Ordering::SeqCst) {
+            if stopping() {
                 return;
             }
             std::thread::sleep(Duration::from_millis(120));
             *WAKE.0.lock().unwrap() = false;
+            if stopping() {
+                return;
+            }
             if marked_at.elapsed() >= Duration::from_secs(3) {
                 marked_at = Instant::now();
+                doing("marking the sessions' windows");
                 mark_sessions(&sh);
             }
+            doing("making the buttons");
             send_windows(&sh);
         }
     }
