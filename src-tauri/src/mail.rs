@@ -390,7 +390,10 @@ pub fn sync(sh: &Arc<Shared>) -> bool {
             let watch = Arc::new(Watch::default());
             watch.set(json!({ "state": "connecting" }));
             let (sh, a, w) = (sh.clone(), account.clone(), watch.clone());
-            std::thread::spawn(move || sync::run(&sh, &a, &w));
+            crate::spawn_named("mail", move || {
+                crate::power::thread_eco();
+                sync::run(&sh, &a, &w)
+            });
             r.watches.insert(account.id.clone(), (account, watch));
         }
     }

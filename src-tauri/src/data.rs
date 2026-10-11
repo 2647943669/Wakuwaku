@@ -156,6 +156,7 @@ pub fn save(dir: &Path, settings: &Map<String, Value>) {
 
 // --- Pets ----------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct PetInfo {
     pub id: String,
     pub name: String,
@@ -177,7 +178,25 @@ pub fn pet_dirs(dir: &Path) -> Vec<PathBuf> {
     vec![dir.join("pets"), in_tree(1, "pets"), codex_pets()]
 }
 
+// The pets, as last found, until one of their folders changes (a pet added
+// or taken away changes its folder's time). Asked for on every redraw: the
+// folders were read through each time.
+static PETS: std::sync::Mutex<Option<(Vec<Option<std::time::SystemTime>>, Vec<PetInfo>)>> = std::sync::Mutex::new(None);
+
 pub fn pets(dir: &Path) -> Vec<PetInfo> {
+    let stamps: Vec<Option<std::time::SystemTime>> = pet_dirs(dir).iter().map(|root| fs::metadata(root).and_then(|m| m.modified()).ok()).collect();
+    let mut kept = PETS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, found)) = kept.as_ref() {
+        if *at == stamps {
+            return found.clone();
+        }
+    }
+    let found = scan_pets(dir);
+    *kept = Some((stamps, found.clone()));
+    found
+}
+
+fn scan_pets(dir: &Path) -> Vec<PetInfo> {
     let mut found: Vec<PetInfo> = Vec::new();
     let codex = codex_pets();
     for root in pet_dirs(dir) {

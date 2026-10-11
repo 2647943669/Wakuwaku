@@ -179,7 +179,14 @@ pub fn refresh(sh: &Shared) {
     } else {
         format!("{} · {project}", i18n::t(lang, &format!("mood.{mood}")))
     };
-    let _ = tray.set_tooltip(Some(format!("Wakuwaku{}{status}", if lang == "zh" { "：" } else { ": " })));
+    // Set only as it changes: setting it is a message to the tray (ours, and
+    // on to Explorer's) on every redraw.
+    static TIP: Mutex<String> = Mutex::new(String::new());
+    let tip = format!("Wakuwaku{}{status}", if lang == "zh" { "：" } else { ": " });
+    if *TIP.lock().unwrap() != tip {
+        let _ = tray.set_tooltip(Some(tip.clone()));
+        *TIP.lock().unwrap() = tip;
+    }
     let mut shown = SHOWN_MOOD.lock().unwrap();
     if *shown != mood {
         if let Ok(image) = Image::from_bytes(face(&mood)) {

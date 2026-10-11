@@ -49,6 +49,7 @@ mod paper;
 mod pet;
 mod pins;
 mod pointer;
+mod power;
 mod screen;
 mod scripts;
 mod server;
@@ -106,6 +107,8 @@ pub struct Shared {
     // Out of sight: hidden from the tray, or another app is full screen.
     pub hidden: AtomicBool,
     by_fullscreen: AtomicBool,
+    // Nobody at the keyboard or mouse for a while (check_quiet).
+    quiet: AtomicBool,
     greeted: AtomicBool,
     // When the last Codex event came (ms), 0 never: Codex runs its hooks
     // only once the person trusts them.
@@ -153,6 +156,28 @@ impl Shared {
             && !(self.flag("hideInFullscreen") && self.by_fullscreen.load(Ordering::SeqCst))
     }
 
+    // Nobody at the keyboard or mouse for a while: she holds still, the
+    // loops look less often, and Windows may run her on its efficient cores
+    // at lower clocks (power.rs). Over the moment anything is touched.
+    pub fn is_quiet(&self) -> bool {
+        self.quiet.load(Ordering::SeqCst)
+    }
+
+    // Looked at by the clock (every second) and by the mouse's own loop.
+    pub fn check_quiet(&self) -> bool {
+        let after = quiet_after_ms();
+        let quiet = after > 0 && power::idle_ms() >= after;
+        if self.quiet.swap(quiet, Ordering::SeqCst) != quiet {
+            let eco = power::process_eco(quiet);
+            self.log(&format!("quiet: {quiet} (efficiency mode set: {eco})"));
+            self.to_pages("pet:quiet", json!({ "on": quiet }));
+            if !quiet {
+                taskbar::wake();
+            }
+        }
+        quiet
+    }
+
     // Another app is full screen (watched while the setting asks, or the taskbar is her home).
     pub fn is_fullscreen(&self) -> bool {
         self.by_fullscreen.load(Ordering::SeqCst)
@@ -179,12 +204,18 @@ impl Shared {
         }
         // A whole line in one write, one at a time: written in its parts
         // (writeln!), two threads' lines in the same moment came out woven
-        // into each other (2026-10-11, the quit's steps).
-        static WRITING: Mutex<()> = Mutex::new(());
+        // into each other (2026-10-11, the quit's steps). The file is kept
+        // open (it was opened and closed for every line); opened again
+        // should a write fail (the file taken away).
+        static LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
         let whole = format!("{} [tauri] {line}\n", now_ms());
-        let _one = WRITING.lock().unwrap_or_else(|e| e.into_inner());
-        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(self.dir.join("debug.log")) {
-            let _ = f.write_all(whole.as_bytes());
+        let mut log = LOG.lock().unwrap_or_else(|e| e.into_inner());
+        let written = log.as_mut().is_some_and(|f| f.write_all(whole.as_bytes()).is_ok());
+        if !written {
+            *log = OpenOptions::new().create(true).append(true).open(self.dir.join("debug.log")).ok();
+            if let Some(f) = log.as_mut() {
+                let _ = f.write_all(whole.as_bytes());
+            }
         }
     }
 
@@ -214,14 +245,26 @@ impl Shared {
         // then the island holds any prompt.
         now["islandTemp"] = json!(temp);
         now["settingsOpen"] = json!(settings_open);
+        now["quiet"] = json!(self.is_quiet());
         // The widgets that are on and have something to say, for the island
         // while nothing needs you.
         now["widgets"] = Value::Array(self.widgets_view().as_array().into_iter().flatten().filter(|w| w["on"] == true && !w["value"].is_null()).cloned().collect());
         now
     }
 
+    // Everything the pages draw from, for her window as it shows.
+    pub fn send_to_pet(&self) {
+        let _ = self.app.emit_to("pet", "pet:update", self.payload());
+    }
+
     fn to_pages(&self, event: &str, payload: Value) {
+        // Her window hidden (she is home) hears no updates: it gets the
+        // whole state as it shows (pet.rs apply_visibility).
+        let pet_hears = event != "pet:update" || pet::is_up(self);
         for label in ["pet", "island"] {
+            if label == "pet" && !pet_hears {
+                continue;
+            }
             let _ = self.app.emit_to(label, event, payload.clone());
         }
     }
@@ -230,6 +273,15 @@ impl Shared {
     pub fn redraw(&self) {
         self.to_pages("pet:update", self.payload());
         tray::refresh(self);
+        self.push_settings();
+    }
+
+    // Only a widget's words changed (the monitor's readings every couple of
+    // seconds): the island's widgets alone, not the whole state to both
+    // pages, the tray and the settings.
+    pub fn redraw_widgets(&self) {
+        let widgets = Value::Array(self.widgets_view().as_array().into_iter().flatten().filter(|w| w["on"] == true && !w["value"].is_null()).cloned().collect());
+        let _ = self.app.emit_to("island", "pet:widgets", json!({ "widgets": widgets }));
         self.push_settings();
     }
 
@@ -727,6 +779,34 @@ pub fn jump_to(sh: &Shared, id: &str) -> bool {
     went
 }
 
+// Nobody at the keyboard or mouse this long: quiet (Shared::check_quiet).
+// WAKUWAKU_QUIET_AFTER_MS, for a test that cannot wait; 0 never.
+pub const QUIET_AFTER_MS: u64 = 90_000;
+
+fn quiet_after_ms() -> u64 {
+    static AFTER: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *AFTER.get_or_init(|| std::env::var("WAKUWAKU_QUIET_AFTER_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(QUIET_AFTER_MS))
+}
+
+// What WebView2 is started with: wry's own (its Office and PDF parts and
+// SmartScreen off), and her two pages in one renderer process, not one
+// each (same origin, same show; the second was 90 MB and its own idle).
+pub const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --renderer-process-limit=1";
+
+// Where WebView2 keeps its own files for her pages: in her data folder
+// (portable, as the rest), not Windows' shared place for the app id. Two
+// copies of her sharing that place with different browser arguments cannot
+// both start (WebView2 refuses the second, 0x8007139F): an older build
+// beside this one, as in a seamless swap, or a test copy.
+pub fn webview_dir(sh: &Shared) -> PathBuf {
+    sh.dir.join("webview")
+}
+
+// A thread with a name, for whoever looks at her threads' CPU.
+pub fn spawn_named<F: FnOnce() + Send + 'static>(name: &str, f: F) -> std::thread::JoinHandle<()> {
+    std::thread::Builder::new().name(name.to_string()).spawn(f).expect("a thread")
+}
+
 #[tauri::command]
 async fn pet_log(app: AppHandle, window: WebviewWindow, line: String) {
     shared(&app).log(&format!("{} page: {line}", window.label()));
@@ -1013,6 +1093,7 @@ fn main() {
                 screens: Mutex::new(screen::read(app.handle())),
                 hidden: AtomicBool::new(false),
                 by_fullscreen: AtomicBool::new(false),
+                quiet: AtomicBool::new(false),
                 greeted: AtomicBool::new(false),
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
@@ -1047,8 +1128,9 @@ fn main() {
             updates::start(&sh);
 
             // The mouse: click-through, her eyes, drags; for both windows.
+            // Quiet (nobody touching it), looked at once a second.
             let pointer = sh.clone();
-            std::thread::spawn(move || loop {
+            spawn_named("pointer", move || loop {
                 let wait = match pointer.app.cursor_position() {
                     Ok(c) => {
                         let cursor = (c.x.round() as i32, c.y.round() as i32);
@@ -1056,6 +1138,7 @@ fn main() {
                     }
                     Err(_) => 200,
                 };
+                let wait = if pointer.check_quiet() { wait.max(1000) } else { wait };
                 std::thread::sleep(Duration::from_millis(wait));
             });
 
@@ -1063,7 +1146,8 @@ fn main() {
             // while they are on; a script's gone once it stops sending.
             sh.count_today(|_| {});
             let watcher = sh.clone();
-            std::thread::spawn(move || {
+            spawn_named("widgets", move || {
+                power::thread_eco();
                 let mut tokens = tokens::Tokens::default();
                 let (claude_dir, codex_dir) = (tokens::claude_dir(), tokens::codex_dir());
                 for n in 0u64.. {
@@ -1093,7 +1177,7 @@ fn main() {
                     // The plugins she runs: started, stopped, started again.
                     changed |= scripts::sync(&watcher);
                     if changed {
-                        watcher.redraw();
+                        watcher.redraw_widgets();
                     }
                     std::thread::sleep(Duration::from_secs(3));
                 }
@@ -1103,7 +1187,8 @@ fn main() {
             // setting, 1 to 10), while it is on; looked at again within a
             // quarter second when it is turned on or its pace changes.
             let monitored = sh.clone();
-            std::thread::spawn(move || {
+            spawn_named("monitor", move || {
+                power::thread_eco();
                 let mut monitor = widgets::Monitor::new();
                 let mut next = std::time::Instant::now();
                 let mut was = (false, 0);
@@ -1112,7 +1197,9 @@ fn main() {
                     let on = monitored.is_widget_on("monitor");
                     if std::time::Instant::now() >= next || (on, watching.every) != was {
                         was = (on, watching.every);
-                        next = std::time::Instant::now() + Duration::from_secs(watching.every);
+                        // Quiet (nobody looking), every ten seconds at least.
+                        let every = if monitored.is_quiet() { watching.every.max(10) } else { watching.every };
+                        next = std::time::Instant::now() + Duration::from_secs(every);
                         let words = if on { monitor.read(&watching) } else { None };
                         let changed = {
                             let mut widgets = monitored.widgets.lock().unwrap();
@@ -1122,7 +1209,7 @@ fn main() {
                             }
                         };
                         if changed {
-                            monitored.redraw();
+                            monitored.redraw_widgets();
                         }
                     }
                     std::thread::sleep(Duration::from_millis(250));
@@ -1132,7 +1219,7 @@ fn main() {
             // Another app full screen, looked at on this thread alone
             // (Shared::look_fullscreen).
             let watcher = sh.clone();
-            std::thread::spawn(move || loop {
+            spawn_named("fullscreen", move || loop {
                 let asked = fullscreen::wait(Duration::from_millis(1500));
                 watcher.look_fullscreen(asked);
             });
@@ -1140,12 +1227,13 @@ fn main() {
             // Endings held for a while; prompts out of time; sessions gone
             // quiet; the windows on screen.
             let ticker = sh.clone();
-            std::thread::spawn(move || {
+            spawn_named("ticker", move || {
                 for n in 1u64.. {
                     std::thread::sleep(Duration::from_millis(500));
                     let now = now_ms();
                     let hold = ticker.hold();
                     if n % 2 == 0 {
+                        ticker.check_quiet();
                         let mut changed = ticker.pet.lock().unwrap().tick(now, hold);
                         if n % 120 == 0 {
                             changed |= ticker.pet.lock().unwrap().check_stale(now, hold);

@@ -192,6 +192,8 @@ pub fn create(sh: &Shared) -> tauri::Result<()> {
     let win = WebviewWindowBuilder::new(&sh.app, "pet", WebviewUrl::App("pet/index.html?role=pet".into()))
         .title("wakuwaku")
         .inner_size(size.0 as f64 / sf, size.1 as f64 / sf)
+        .additional_browser_args(crate::BROWSER_ARGS)
+        .data_directory(crate::webview_dir(sh))
         .transparent(true)
         .decorations(false)
         .resizable(false)
@@ -240,10 +242,18 @@ pub fn apply_visibility(sh: &Shared) {
     if let Some(win) = window(sh) {
         if want {
             sh.show_window(&win);
+            // Hidden, her page heard no updates (main.rs to_pages).
+            sh.send_to_pet();
         } else {
             let _ = win.hide();
         }
     }
+}
+
+// Her window on the screen now. Asked from anywhere (main.rs to_pages),
+// perhaps while the window's state is held: then taken as up.
+pub fn is_up(sh: &Shared) -> bool {
+    sh.win.try_lock().map(|w| w.shown).unwrap_or(true)
 }
 
 // A new size keeps her spot: her bottom centre.
@@ -446,6 +456,9 @@ pub fn poll(sh: &Arc<Shared>, cursor: (i32, i32)) -> u64 {
         } else {
             let (pos, size) = (w.pos, w.size);
             let seen = w.ct.look(cursor, pos, size, sf, false, false);
+            if w.ct.calmed() {
+                sh.log(&format!("pet: mouse mode bouncing, calmed: cursor {cursor:?}, window {pos:?} {size:?}, scale {sf}"));
+            }
             ignore = seen.ignore;
             if let Some(at) = seen.pointer {
                 events.push(("pet:pointer", at));

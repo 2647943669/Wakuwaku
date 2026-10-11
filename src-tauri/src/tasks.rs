@@ -697,16 +697,25 @@ mod imp {
         }
     }
 
-    pub fn keys() -> Keys {
-        let (lang, ime) = front_ime();
-        let native = (!ime.is_null()).then(|| {
-            let open = ime_ask(ime, IMC_GETOPENSTATUS, 0)?;
-            let mode = ime_ask(ime, IMC_GETCONVERSIONMODE, 0)?;
-            Some(open != 0 && mode & IME_CMODE_NATIVE != 0)
-        });
+    // The language and Caps Lock alone: answered within this process, so
+    // asked many times a second (taskbar.rs keys_loop).
+    pub fn keys_cheap() -> Keys {
+        let (lang, _) = front_ime();
         // SAFETY: a plain query; the low bit is the toggle's.
         let caps = unsafe { GetKeyState(VK_CAPITAL) } & 1 != 0;
-        Keys { lang, native: native.flatten(), caps }
+        Keys { lang, native: None, caps }
+    }
+
+    // Whether the IME in front writes the language's own script: asked of
+    // its window, in another process, so less often.
+    pub fn ime_native() -> Option<bool> {
+        let (_, ime) = front_ime();
+        if ime.is_null() {
+            return None;
+        }
+        let open = ime_ask(ime, IMC_GETOPENSTATUS, 0)?;
+        let mode = ime_ask(ime, IMC_GETCONVERSIONMODE, 0)?;
+        Some(open != 0 && mode & IME_CMODE_NATIVE != 0)
     }
 
     // The network's way out, as Windows' taskbar shows it: "wired", "wifi",
@@ -786,8 +795,11 @@ mod imp {
 mod imp {
     use super::{Keys, Task};
 
-    pub fn keys() -> Keys {
+    pub fn keys_cheap() -> Keys {
         Keys::default()
+    }
+    pub fn ime_native() -> Option<bool> {
+        None
     }
     pub fn toggle_native() -> bool {
         false
@@ -855,7 +867,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, is_shell_flyout, is_start, keys, launch, list, net, plain_program_icon, press, press_all, raise_top, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_shell_flyout, is_start, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, toggle_native, with_com};
 
 #[cfg(test)]
 mod tests {

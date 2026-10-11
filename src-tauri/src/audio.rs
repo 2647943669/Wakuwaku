@@ -90,43 +90,88 @@ mod imp {
         }
     }
 
-    // The volume (0 to 100) and whether muted; None with no speakers.
-    pub fn read() -> Option<(u8, bool)> {
-        // SAFETY: COM on this thread for the call and left as found; each
-        // object released once used; each out-parameter ours.
-        unsafe {
-            let init = CoInitializeEx(std::ptr::null_mut(), COINIT_MULTITHREADED);
-            let got = (|| {
-                let mut list: *mut Obj = std::ptr::null_mut();
-                if CoCreateInstance(&CLSID_MM_DEVICE_ENUMERATOR, std::ptr::null_mut(), CLSCTX_ALL, &IID_IMM_DEVICE_ENUMERATOR, &mut list as *mut *mut Obj as *mut *mut c_void) < 0 || list.is_null() {
-                    return None;
+    // The volume asked for again and again on one thread (taskbar.rs
+    // keys_loop): the enumerator and the default speakers' volume object are
+    // kept between asks (made anew for each one, every ask was a trip to
+    // Windows' audio service), the speakers looked up again every so often
+    // (the default ones may change) and whenever an ask fails. Lives on the
+    // thread that made it, which holds COM up (Com).
+    pub struct Reader {
+        list: *mut Obj,
+        volume: *mut Obj,
+        since: Option<std::time::Instant>,
+    }
+
+    const RELOOK: std::time::Duration = std::time::Duration::from_secs(10);
+
+    impl Reader {
+        pub fn new() -> Self {
+            Reader { list: std::ptr::null_mut(), volume: std::ptr::null_mut(), since: None }
+        }
+
+        fn let_go(&mut self) {
+            if !self.volume.is_null() {
+                // SAFETY: ours, released once.
+                unsafe { ((*((*self.volume).vtbl as *const VolumeVtbl)).release)(self.volume) };
+                self.volume = std::ptr::null_mut();
+            }
+        }
+
+        // The default speakers' volume object, anew. False with no speakers.
+        fn find(&mut self) -> bool {
+            self.let_go();
+            // SAFETY: as read() below: each object released once used, each
+            // out-parameter ours.
+            unsafe {
+                if self.list.is_null() && (CoCreateInstance(&CLSID_MM_DEVICE_ENUMERATOR, std::ptr::null_mut(), CLSCTX_ALL, &IID_IMM_DEVICE_ENUMERATOR, &mut self.list as *mut *mut Obj as *mut *mut c_void) < 0 || self.list.is_null()) {
+                    self.list = std::ptr::null_mut();
+                    return false;
                 }
-                let lv = &*((*list).vtbl as *const EnumeratorVtbl);
+                let lv = &*((*self.list).vtbl as *const EnumeratorVtbl);
                 let mut device: *mut Obj = std::ptr::null_mut();
-                let found = (lv.get_default_audio_endpoint)(list, E_RENDER, E_CONSOLE, &mut device);
-                (lv.release)(list);
-                if found < 0 || device.is_null() {
-                    return None;
+                if (lv.get_default_audio_endpoint)(self.list, E_RENDER, E_CONSOLE, &mut device) < 0 || device.is_null() {
+                    return false;
                 }
                 let dv = &*((*device).vtbl as *const DeviceVtbl);
-                let mut volume: *mut Obj = std::ptr::null_mut();
-                let made = (dv.activate)(device, &IID_IAUDIO_ENDPOINT_VOLUME, CLSCTX_ALL, std::ptr::null(), &mut volume);
+                let made = (dv.activate)(device, &IID_IAUDIO_ENDPOINT_VOLUME, CLSCTX_ALL, std::ptr::null(), &mut self.volume);
                 (dv.release)(device);
-                if made < 0 || volume.is_null() {
-                    return None;
+                if made < 0 || self.volume.is_null() {
+                    self.volume = std::ptr::null_mut();
+                    return false;
                 }
-                let vv = &*((*volume).vtbl as *const VolumeVtbl);
+            }
+            self.since = Some(std::time::Instant::now());
+            true
+        }
+
+        pub fn read(&mut self) -> Option<(u8, bool)> {
+            if (self.volume.is_null() || self.since.is_some_and(|t| t.elapsed() >= RELOOK)) && !self.find() {
+                return None;
+            }
+            // SAFETY: the volume object is ours and alive; the values are written into our own variables.
+            let got = unsafe {
+                let vv = &*((*self.volume).vtbl as *const VolumeVtbl);
                 let (mut level, mut muted) = (0f32, 0i32);
-                let ok = (vv.get_master_volume_level_scalar)(volume, &mut level) >= 0 && (vv.get_mute)(volume, &mut muted) >= 0;
-                (vv.release)(volume);
+                let ok = (vv.get_master_volume_level_scalar)(self.volume, &mut level) >= 0 && (vv.get_mute)(self.volume, &mut muted) >= 0;
                 ok.then(|| ((level * 100.0).round().clamp(0.0, 100.0) as u8, muted != 0))
-            })();
-            if init >= 0 {
-                CoUninitialize();
+            };
+            if got.is_none() {
+                self.let_go();
             }
             got
         }
     }
+
+    impl Drop for Reader {
+        fn drop(&mut self) {
+            self.let_go();
+            if !self.list.is_null() {
+                // SAFETY: ours, released once.
+                unsafe { ((*((*self.list).vtbl as *const EnumeratorVtbl)).release)(self.list) };
+            }
+        }
+    }
+
 }
 
 #[cfg(not(windows))]
@@ -139,12 +184,19 @@ mod imp {
         }
     }
 
-    pub fn read() -> Option<(u8, bool)> {
-        None
+    pub struct Reader;
+
+    impl Reader {
+        pub fn new() -> Self {
+            Reader
+        }
+        pub fn read(&mut self) -> Option<(u8, bool)> {
+            None
+        }
     }
 }
 
-pub use imp::{read, Com};
+pub use imp::{Com, Reader};
 
 #[cfg(test)]
 mod tests {
@@ -153,7 +205,7 @@ mod tests {
     #[ignore]
     fn reads_the_speakers() {
         let _com = super::Com::new();
-        let got = super::read();
+        let got = super::Reader::new().read();
         println!("volume: {got:?}");
         assert!(got.is_some_and(|(level, _)| level <= 100));
     }

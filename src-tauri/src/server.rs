@@ -33,7 +33,7 @@ fn is_from_codex(url: &str) -> bool {
 
 pub fn serve(sh: Arc<Shared>, server: Server) {
     let is_debug = std::env::var("WAKUWAKU_DEBUG").as_deref() == Ok("1");
-    std::thread::spawn(move || {
+    crate::spawn_named("server", move || {
         for req in server.incoming_requests() {
             handle(&sh, req, is_debug);
         }

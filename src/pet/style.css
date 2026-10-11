@@ -71,16 +71,31 @@ body {
   -webkit-line-clamp: 2;
 }
 
-/* One 192x208 cell of the 1536x2288 sheet, scaled. */
+/* One 192x208 cell of the 1536x2288 sheet, scaled: the whole sheet (the
+   film) behind a cell-sized window, moved to the cell by a transform on its
+   own compositor layer, so a frame costs no repaint (it was the cell's
+   background-position, painted anew every frame). */
 #pet {
   flex: none;
+  position: relative;
+  overflow: hidden;
   transform: translateX(var(--shift, 0px));
   width: calc(192px * var(--scale));
   height: calc(208px * var(--scale));
+  cursor: grab;
+}
+
+#pet-film {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(1536px * var(--scale));
+  height: calc(var(--sheet-h, 2288px) * var(--scale));
   background-image: var(--sprite);
   background-repeat: no-repeat;
-  background-size: calc(1536px * var(--scale)) calc(var(--sheet-h, 2288px) * var(--scale));
-  cursor: grab;
+  background-size: 100% 100%;
+  will-change: transform;
+  pointer-events: none;
 }
 
 /* No sprite yet: a box to right-click or double-click. */
@@ -349,10 +364,24 @@ body {
 
 #island-her .sheet,
 #drop-her .sheet {
+  position: relative;
   width: 192px;
   height: 208px;
-  background-repeat: no-repeat;
+  overflow: hidden;
   transform-origin: 0 0;
+}
+
+/* The sheet itself, behind a cell-sized window (island.js showFrame): moved
+   to the frame's cell by a transform on its own layer, no repaint per frame. */
+.sheet .film {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1536px;
+  height: 2288px;
+  background-repeat: no-repeat;
+  will-change: transform;
+  pointer-events: none;
 }
 
 #island-her .sheet {
@@ -988,7 +1017,7 @@ body {
   top: 0;
   width: 192px;
   height: 208px;
-  background-repeat: no-repeat;
+  overflow: hidden;
   transform-origin: 0 0;
 }
 

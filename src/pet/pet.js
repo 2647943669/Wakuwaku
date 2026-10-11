@@ -25,6 +25,9 @@ const LOOK_NEAR = 40
 const LOOK_FAR = 900
 
 const sprite = document.getElementById('pet')
+// The whole sheet behind her cell-sized box (style.css #pet-film); made
+// here should the page lack it (a harness with an older index.html).
+const film = document.getElementById('pet-film') || sprite.appendChild(Object.assign(document.createElement('div'), { id: 'pet-film' }))
 const bubble = document.getElementById('bubble')
 
 let lang = 'en'
@@ -40,6 +43,9 @@ const ROLE = new URLSearchParams(location.search).get('role') === 'island' ? 'is
 const isIsland = () => ROLE === 'island'
 // Out on the desktop she only acts: her home does the talking. Her bubble
 // speaks only while there is no pet at all, to say how to get one.
+
+// Nobody at the keyboard or mouse for a while (pet:quiet): she stands still.
+let quiet = false
 
 let reaction = null // { clip, times, say, start }
 let dragged = null // { dir, at }
@@ -57,7 +63,8 @@ function drawCell(row, frame) {
   if (key === drawn) return
   drawn = key
   const s = config.scale
-  sprite.style.backgroundPosition = `${-frame * CELL_W * s}px ${-row * CELL_H * s}px`
+  // The sheet moved behind the cell: a transform on its own layer, no repaint.
+  film.style.transform = `translate3d(${-frame * CELL_W * s}px, ${-row * CELL_H * s}px, 0)`
 }
 
 // At rest she blinks through the idle row once, then holds still this long.
@@ -93,6 +100,14 @@ function frame() {
 
   // In the island she is not drawn at all.
   if (isIsland()) return 60 * 60 * 1000
+
+  // Nobody at the keyboard or mouse for a while: she stands still on her
+  // mood's first frame (a reaction still plays; a drag still carries her).
+  if (quiet && !reaction && !dragged && !walking) {
+    loop = { clip: '', start: 0 }
+    drawCell(CLIPS[MOOD_CLIP[now.mood]].row, 0)
+    return 60 * 60 * 1000
+  }
 
   if (dragged && at - dragged.at < 160) {
     drawLoop(dragged.dir > 0 ? 'running-right' : 'running-left', at)
@@ -206,7 +221,7 @@ function scheduleIdle() {
 }
 
 function isFree() {
-  return now.mood === 'idle' && !reaction && !walking && !dragged && !(looking && performance.now() < looking.until)
+  return now.mood === 'idle' && !quiet && !reaction && !walking && !dragged && !(looking && performance.now() < looking.until)
 }
 
 async function idleAct() {
@@ -282,6 +297,7 @@ window.pet.onUpdate(data => {
   config = data.config || config
   spriteUrl = data.sprite
   spriteVersion = data.spriteVersion === 1 ? 1 : 2
+  quiet = data.quiet === true
 
   if (now.mood !== 'idle') {
     stopIdle()
@@ -289,6 +305,11 @@ window.pet.onUpdate(data => {
     scheduleIdle()
   }
   render()
+  kick()
+})
+
+window.pet.onQuiet(({ on }) => {
+  quiet = on === true
   kick()
 })
 

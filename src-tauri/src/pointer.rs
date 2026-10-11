@@ -7,9 +7,18 @@
 // the mouseenter / mouseleave the page waits for. The page then says when the
 // pointer is over something of its own (set_over), and the window takes the click.
 use serde_json::{json, Value};
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 // The pointer this close to the window (logical px) counts as near.
 const NEAR_PX: f64 = 24.0;
+// The mode changing this many times within this long is bouncing (the page
+// says the pointer is on her, the next look says it is not, and so on 30
+// times a second, 2026-10-11): then the window stays caught for CALM_FOR.
+// Each change sets the window's style and logs a line.
+const BOUNCES: usize = 4;
+const BOUNCE_WITHIN: Duration = Duration::from_millis(400);
+const CALM_FOR: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub enum Mode {
@@ -29,6 +38,11 @@ pub struct ClickThrough {
     pub over: bool,
     pointing: bool,
     last: (i32, i32),
+    // When the mode changed, lately; until when it is kept caught (bouncing).
+    changes: VecDeque<Instant>,
+    calm_until: Option<Instant>,
+    // A bounce just calmed, for one line in the log.
+    calmed: bool,
 }
 
 pub struct Look {
@@ -53,7 +67,27 @@ impl ClickThrough {
             return None;
         }
         self.mode = mode;
+        let now = Instant::now();
+        self.changes.push_back(now);
+        while self.changes.front().is_some_and(|t| now.duration_since(*t) > BOUNCE_WITHIN) {
+            self.changes.pop_front();
+        }
+        if mode == Mode::Catch && self.changes.len() >= BOUNCES && !self.calm() {
+            self.calm_until = Some(now + CALM_FOR);
+            self.calmed = true;
+            self.changes.clear();
+        }
         Some(mode != Mode::Catch)
+    }
+
+    // Kept caught for a while after bouncing.
+    fn calm(&self) -> bool {
+        self.calm_until.is_some_and(|t| Instant::now() < t)
+    }
+
+    // True once, as a bounce is calmed: for the log.
+    pub fn calmed(&mut self) -> bool {
+        std::mem::take(&mut self.calmed)
     }
 
     // One look at the cursor (physical px) against the window's rect. held:
@@ -68,7 +102,8 @@ impl ClickThrough {
         let near = within(cursor, pos, size, (NEAR_PX * sf) as i32);
         // Over something of ours, yet outside the window: the page missed the
         // pointer leaving (it was held elsewhere). Stop taking clicks there.
-        if self.over && !held && !within(cursor, pos, size, 0) {
+        // Not while calming a bounce: it stays caught.
+        if self.over && !held && !within(cursor, pos, size, 0) && !self.calm() {
             self.over = false;
         }
         let mode = if held || self.over { Mode::Catch } else if near { Mode::Forward } else { Mode::Pass };
@@ -88,8 +123,12 @@ impl ClickThrough {
         std::mem::take(&mut self.pointing).then_some(Value::Null)
     }
 
-    // The page says the pointer is on something of its own, or not.
+    // The page says the pointer is on something of its own, or not. Said
+    // not while a bounce is calmed, it stays caught.
     pub fn set_over(&mut self, over: bool, held: bool, passive: bool) -> Option<bool> {
+        if !over && self.calm() && !passive && !held {
+            return None;
+        }
         self.over = over;
         if passive || held {
             return None;
@@ -102,5 +141,48 @@ impl ClickThrough {
         self.over = false;
         self.mode = Mode::Unset;
         self.force(if passive { Mode::Pass } else { Mode::Forward })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The page says on her, the next look says not, over and over: after a
+    // few of those the window stays caught instead of changing its style
+    // thirty times a second.
+    #[test]
+    fn a_bounce_is_calmed() {
+        let mut ct = ClickThrough::default();
+        let (pos, size) = ((0, 0), (100, 100));
+        let inside = (50, 50);
+        let mut changes = 0;
+        for _ in 0..2 {
+            changes += ct.set_over(true, false, false).is_some() as usize;
+            changes += ct.set_over(false, false, false).is_some() as usize;
+        }
+        assert_eq!(changes, 4);
+        assert!(!ct.calmed(), "four changes are not yet a bounce");
+        assert!(ct.set_over(true, false, false).is_some());
+        assert!(ct.calmed(), "the third catch within the moment calms it");
+        assert!(!ct.calmed(), "said once");
+        // Calmed: the page saying not on her changes nothing, and a look
+        // outside the window keeps her over.
+        assert_eq!(ct.set_over(false, false, false), None);
+        assert!(ct.over);
+        let seen = ct.look((500, 500), pos, size, 1.0, false, false);
+        assert_eq!(seen.ignore, None);
+        assert!(ct.over);
+        let seen = ct.look(inside, pos, size, 1.0, false, false);
+        assert_eq!(seen.ignore, None);
+    }
+
+    #[test]
+    fn two_changes_are_no_bounce() {
+        let mut ct = ClickThrough::default();
+        assert_eq!(ct.set_over(true, false, false), Some(false));
+        assert_eq!(ct.set_over(false, false, false), Some(true));
+        assert!(!ct.calmed());
+        assert!(!ct.over);
     }
 }

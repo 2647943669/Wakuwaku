@@ -267,16 +267,23 @@ mod imp {
     const EVENT_OBJECT_SHOW: u32 = 0x8002;
     const EVENT_SYSTEM_FOREGROUND: u32 = 0x0003;
     // What changes the buttons: a window made, shown, hidden, gone (0x8001
-    // to 0x8003), renamed, cloaked or not (another desktop), brought to the
-    // front, minimized or restored; moved or sized, for one over the strip's
+    // to 0x8003), cloaked or not (another desktop), brought to the front,
+    // minimized or restored; moved or sized, for one over the strip's
     // display or no longer (fills_strip; on_event lets only those through).
-    const WINDOW_EVENTS: [(u32, u32); 6] = [(0x8001, 0x8003), (0x800C, 0x800C), (0x8017, 0x8018), (0x0003, 0x0003), (0x0016, 0x0017), (0x800B, 0x800B)];
+    // Not renamed (0x800C): that event comes for every object of every
+    // program (a hundred a second, nearly all thrown away here, 2026-10-11);
+    // a window's title changing comes by the shell hook (HSHELL_REDRAW).
+    const WINDOW_EVENTS: [(u32, u32); 5] = [(0x8001, 0x8003), (0x8017, 0x8018), (0x0003, 0x0003), (0x0016, 0x0017), (0x800B, 0x800B)];
     const EVENT_OBJECT_LOCATIONCHANGE: u32 = 0x800B;
     const OBJID_WINDOW: i32 = 0;
-    // The shell hook's: a window flashing for attention, one activated.
+    // The shell hook's: a window flashing for attention, one activated; one
+    // made, gone, or its title changed.
     const HSHELL_FLASH: usize = 0x8006;
     const HSHELL_WINDOWACTIVATED: usize = 4;
     const HSHELL_RUDEAPPACTIVATED: usize = 0x8004;
+    const HSHELL_WINDOWCREATED: usize = 1;
+    const HSHELL_WINDOWDESTROYED: usize = 2;
+    const HSHELL_REDRAW: usize = 6;
     const KEYEVENTF_EXTENDEDKEY: u32 = 0x1;
     const KEYEVENTF_KEYUP: u32 = 0x2;
     const VK_LWIN: u16 = 0x5B;
@@ -313,6 +320,9 @@ mod imp {
     // Each icon drawn: (key, its handle) to its PNG; the list sent last.
     static PNGS: Mutex<Option<HashMap<u64, (isize, String)>>> = Mutex::new(None);
     static SENT: Mutex<Value> = Mutex::new(Value::Null);
+    // Which picture (its handle) the page has for each icon: sent again
+    // only when it is another one (send_icons).
+    static PNG_SENT: Mutex<Option<HashMap<u64, isize>>> = Mutex::new(None);
     // The buttons: their thread, woken when windows change; their order (as
     // they came); the windows flashing; each window's icon drawn (its
     // handle, its PNG); the sessions in each window; the list sent last.
@@ -501,7 +511,7 @@ mod imp {
         }
         sh.log(&format!("taskbar: Windows' put away; guard started: {}", shell::spawn_guard(&file)));
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-        let thread = std::thread::spawn(move || run(strip, ready_tx));
+        let thread = crate::spawn_named("taskbar host", move || run(strip, ready_tx));
         match ready_rx.recv_timeout(Duration::from_secs(3)) {
             Ok(hwnd) => *HOST.lock().unwrap() = Some(Host { hwnd, thread }),
             Err(_) => sh.log("taskbar: its thread did not start"),
@@ -509,8 +519,8 @@ mod imp {
         TASKS_STOP.store(false, Ordering::SeqCst);
         let sh = crate::shared(&sh.app);
         let keys_sh = sh.clone();
-        *TASKS.lock().unwrap() = Some(std::thread::spawn(move || tasks_loop(sh)));
-        *KEYS.lock().unwrap() = Some(std::thread::spawn(move || keys_loop(keys_sh)));
+        *TASKS.lock().unwrap() = Some(crate::spawn_named("taskbar buttons", move || tasks_loop(sh)));
+        *KEYS.lock().unwrap() = Some(crate::spawn_named("taskbar keys", move || keys_loop(keys_sh)));
         true
     }
 
@@ -518,11 +528,20 @@ mod imp {
     // times a second; the network's way out (the quick settings' button) and
     // what is using the microphone, camera or location (tasks::in_use) every
     // two; sent when any of it changes.
+    // The language and Caps Lock (answered in this process) four times a
+    // second; the IME's mode (asked of its window) and the volume (asked of
+    // Windows' audio service) once a second, and at once when another
+    // window comes to the front; the network's way out and what is using
+    // the microphone, camera or location every two seconds. All of it was
+    // asked four times a second (2026-10-11).
     fn keys_loop(sh: Arc<Shared>) {
+        crate::power::thread_eco();
         let _com = crate::audio::Com::new();
+        let mut speakers = crate::audio::Reader::new();
         let mut sent = Value::Null;
         let using = || Value::Object(tasks::in_use().into_iter().map(|(what, names)| (what.to_string(), json!(names))).collect());
         let (mut net, mut used) = (tasks::net(), using());
+        let (mut native, mut volume, mut front) = (None, None, 0isize);
         let mut looks = 0u32;
         while !TASKS_STOP.load(Ordering::SeqCst) {
             looks += 1;
@@ -530,15 +549,21 @@ mod imp {
                 net = tasks::net();
                 used = using();
             }
-            let keys = tasks::keys();
-            let volume = crate::audio::read().map(|(level, muted)| json!([level, muted]));
-            let now = json!({ "lang": keys.lang, "native": keys.native, "caps": keys.caps, "net": net, "use": used, "volume": volume });
+            let keys = tasks::keys_cheap();
+            let now_front = tasks::front();
+            if looks % 4 == 1 || now_front != front {
+                front = now_front;
+                native = tasks::ime_native();
+                volume = speakers.read().map(|(level, muted)| json!([level, muted]));
+            }
+            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "net": net, "use": used, "volume": volume });
             if now != sent {
                 let _ = sh.app.emit_to("island", "taskbar:keys", now.clone());
                 *SENT_KEYS.lock().unwrap() = now.clone();
                 sent = now;
             }
-            std::thread::sleep(Duration::from_millis(250));
+            // Quiet (nobody at the keyboard): every two seconds.
+            std::thread::sleep(Duration::from_millis(if sh.is_quiet() { 2000 } else { 250 }));
         }
     }
 
@@ -602,6 +627,11 @@ mod imp {
         cv.notify_one();
     }
 
+    // From outside: the quiet over (main.rs check_quiet), the buttons looked at now.
+    pub fn wake() {
+        wake_tasks();
+    }
+
     // The buttons' list kept: made again when windows change (a moment
     // after, so a burst of changes makes it once) and every two seconds;
     // the sessions' windows looked for every three (it looks through the
@@ -613,6 +643,7 @@ mod imp {
     static TASKS_DOING: Mutex<&'static str> = Mutex::new("");
 
     fn tasks_loop(sh: Arc<Shared>) {
+        crate::power::thread_eco();
         let doing = |what: &'static str| *TASKS_DOING.lock().unwrap() = what;
         let stopping = || TASKS_STOP.load(Ordering::SeqCst);
         let mut marked_at = Instant::now() - Duration::from_secs(10);
@@ -621,7 +652,9 @@ mod imp {
             {
                 let (dirty, cv) = &WAKE;
                 let guard = dirty.lock().unwrap();
-                let (mut guard, _) = cv.wait_timeout_while(guard, Duration::from_secs(2), |d| !*d && !stopping()).unwrap();
+                // Quiet (nobody at the keyboard), every ten seconds; woken as it ends.
+                let every = Duration::from_secs(if sh.is_quiet() { 10 } else { 2 });
+                let (mut guard, _) = cv.wait_timeout_while(guard, every, |d| !*d && !stopping()).unwrap();
                 *guard = false;
             }
             if stopping() {
@@ -1214,6 +1247,8 @@ mod imp {
     pub fn resend(sh: &Shared) {
         let sent = SENT.lock().unwrap().clone();
         if !sent.is_null() {
+            // The whole list, pictures and all: the page is new and keeps none.
+            *PNG_SENT.lock().unwrap() = None;
             let _ = sh.app.emit_to("island", "taskbar:tray", sent);
         }
         let windows = SENT_WINDOWS.lock().unwrap().clone();
@@ -1501,6 +1536,7 @@ mod imp {
                 }
             }
             HSHELL_WINDOWACTIVATED | HSHELL_RUDEAPPACTIVATED => FLASHING.lock().unwrap().retain(|h| *h != hwnd),
+            HSHELL_WINDOWCREATED | HSHELL_WINDOWDESTROYED | HSHELL_REDRAW => {}
             _ => return,
         }
         wake_tasks();
@@ -1576,7 +1612,10 @@ mod imp {
             systray::ask_again();
             log("tray: programs asked for their icons");
         }
-        if ticks % 10 == 0 {
+        // Windows' mode, accent and wallpaper: told when they change
+        // (WM_SETTINGCHANGE and the rest below); looked at anyway every
+        // half minute, should a change come unannounced.
+        if ticks % 60 == 0 {
             send_look();
         }
     }
@@ -1633,7 +1672,10 @@ mod imp {
         its.iter().find(|k| k.1 == Some(uid)).or(its.first()).is_some_and(|k| k.2)
     }
 
-    // The icons as the page draws them: each drawn once per handle.
+    // The icons as the page draws them: each drawn once per handle, and sent
+    // to the page once per handle too (the page keeps them, island.js
+    // onTray): a tip changing (Task Manager's every second) sends the tips,
+    // not every picture again.
     fn send_icons() {
         let Some(sh) = sh() else { return };
         for line in systray::notes() {
@@ -1642,10 +1684,13 @@ mod imp {
         let size = (16.0 * sh.screens().primary.map_or(1.0, |a| a.sf)).round() as i32;
         let shown = systray::shown();
         let kept = windows_kept();
-        let list: Vec<Value> = {
+        let (whole, light): (Vec<Value>, Vec<Value>) = {
             let mut pngs = PNGS.lock().unwrap();
             let pngs = pngs.get_or_insert_with(HashMap::new);
             pngs.retain(|k, _| shown.iter().any(|s| s.key == *k));
+            let mut sent = PNG_SENT.lock().unwrap();
+            let sent = sent.get_or_insert_with(HashMap::new);
+            sent.retain(|k, _| shown.iter().any(|s| s.key == *k));
             shown
                 .iter()
                 .map(|s| {
@@ -1661,13 +1706,20 @@ mod imp {
                             }
                         }
                     };
-                    json!({ "key": s.key, "png": png, "tip": s.tip, "exe": s.exe, "name": s.name, "windowsOut": kept_out(&kept, &s.exe, s.uid) })
+                    let item = json!({ "key": s.key, "png": png, "tip": s.tip, "exe": s.exe, "name": s.name, "windowsOut": kept_out(&kept, &s.exe, s.uid) });
+                    let mut lite = item.clone();
+                    if sent.get(&s.key) == Some(&s.icon) {
+                        if let Some(o) = lite.as_object_mut() {
+                            o.remove("png");
+                        }
+                    }
+                    sent.insert(s.key, s.icon);
+                    (item, lite)
                 })
-                .collect()
+                .unzip()
         };
-        let list = Value::Array(list);
-        *SENT.lock().unwrap() = list.clone();
-        let _ = sh.app.emit_to("island", "taskbar:tray", list);
+        *SENT.lock().unwrap() = Value::Array(whole);
+        let _ = sh.app.emit_to("island", "taskbar:tray", Value::Array(light));
     }
 
     // An icon drawn as a PNG (a data: URL), size px across. Drawn twice, on
@@ -2000,6 +2052,7 @@ mod imp {
     pub fn give_back(_sh: &Shared) {}
     pub fn strip_moved(_strip: (i32, i32, i32, i32)) {}
     pub fn resend(_sh: &Shared) {}
+    pub fn wake() {}
     pub fn press(_sh: &Shared, _key: u64, _press: &str, _home_hwnd: isize) -> bool {
         false
     }
@@ -2023,7 +2076,7 @@ mod imp {
     }
 }
 
-pub use imp::{explorer_room, give_back, look_for_other, note, resend, strip_moved, take, waiting, work_area_bottom};
+pub use imp::{explorer_room, give_back, look_for_other, note, resend, strip_moved, take, waiting, wake, work_area_bottom};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser

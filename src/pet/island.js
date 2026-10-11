@@ -216,6 +216,8 @@
   let clockTimer
   let blinkTimer
   let herClip = null
+  // Nobody at the keyboard or mouse for a while (pet:quiet): she stands still.
+  let quiet = false
   let herTimer
   let room = null
   let roomTimer
@@ -325,7 +327,8 @@
     const sheet = el('span', 'sheet')
     const clip = MOOD_CLIP[now.mood]
     sheet.dataset.clip = clip
-    sheet.style.cssText = `background-image:url("${spriteUrl}");transform:translate(${-(CELL_W * scale - px) / 2}px, -2px) scale(${scale})`
+    sheet.style.cssText = `transform:translate(${-(CELL_W * scale - px) / 2}px, -2px) scale(${scale})`
+    sheetImage(sheet, spriteUrl)
     showFrame(sheet, CLIPS[clip].row, frameNow(CLIPS[clip]))
     node.append(sheet)
     return node
@@ -335,17 +338,33 @@
   // island redraws every second) carries on where the last one was.
   const frameNow = clip => Math.floor(Date.now() / clip.ms) % clip.frames
 
-  // Her portraits while she is out play her mood's clip.
+  // Her portraits while she is out play her mood's clip (not while quiet).
   setInterval(() => {
-    if (!isOn() || document.hidden) return
+    if (!isOn() || document.hidden || quiet) return
     for (const sheet of document.querySelectorAll('.still-her .sheet[data-clip]')) {
       const clip = CLIPS[sheet.dataset.clip]
       if (clip) showFrame(sheet, clip.row, frameNow(clip))
     }
   }, 60)
 
+  // The sheet (the film) behind a cell-sized box, moved to the frame's cell
+  // by a transform on its own layer (style.css .film): a frame costs no
+  // repaint (it was the box's background-position, painted anew each frame).
+  function filmOf(sheet) {
+    let film = sheet.querySelector('.film')
+    if (!film) {
+      film = el('span', 'film')
+      sheet.append(film)
+    }
+    return film
+  }
+
   function showFrame(sheet, row, frame) {
-    sheet.style.backgroundPosition = `${-frame * CELL_W}px ${-row * CELL_H}px`
+    filmOf(sheet).style.transform = `translate3d(${-frame * CELL_W}px, ${-row * CELL_H}px, 0)`
+  }
+
+  function sheetImage(sheet, url) {
+    filmOf(sheet).style.backgroundImage = url ? `url("${url}")` : ''
   }
 
   // --- The shapes ---------------------------------------------------------------
@@ -374,6 +393,8 @@
     } else {
       words = el('span', 'label', Status.brief(lang, now, { detailed: isDetailed() }))
       value = el('span', 'clock', time())
+      // Kept up each second in place (tickTimes).
+      value.dataset.live = 'time'
       value.style.color = hue()[now.mood]
       key = `s:${now.id || ''}:${now.mood}`
     }
@@ -571,9 +592,15 @@
 
   // Her mood's clip, in the portrait as standing; waiting by a prompt, a
   // reaction's while the island says something.
+  // At rest she plays the idle row once, then holds its first frame this
+  // long (as she does out on the desktop, pet.js): each frame is a frame of
+  // the whole strip.
+  const IDLE_HOLD_MS = 4000
+
   function animateHer() {
     if (!isHome()) return
-    const name = view === 'ask' ? 'waiting' : isNudging() ? nudge.clip : MOOD_CLIP[now.mood]
+    // Quiet (nobody at the keyboard or mouse): still, on her mood's first frame.
+    const name = quiet ? '' : view === 'ask' ? 'waiting' : isNudging() ? nudge.clip : MOOD_CLIP[now.mood]
     if (name && name === herClip) return
     clearTimeout(herTimer)
     herClip = name
@@ -583,7 +610,15 @@
     const step = () => {
       showFrame(herSheet, row, frame)
       frame = (frame + 1) % frames
-      herTimer = setTimeout(step, ms)
+      if (name === 'idle' && frame === 0) {
+        // The row played through: back to its first frame, held.
+        herTimer = setTimeout(() => {
+          showFrame(herSheet, row, 0)
+          herTimer = setTimeout(step, IDLE_HOLD_MS)
+        }, ms)
+      } else {
+        herTimer = setTimeout(step, ms)
+      }
     }
     step()
   }
@@ -679,6 +714,8 @@
       .filter(x => !onButtons.has(x.id))
       .map(x => {
         const tag = el('span', 'tag')
+        // Its session, for its time kept up each second (tickTimes).
+        tag._session = x
         if (x.jump && x.id) {
           tag.dataset.jump = x.id
           tag.title = t(lang, 'jump.hint')
@@ -1659,8 +1696,17 @@
     requestAnimationFrame(sendTrayRects)
   })
 
+  // The icons' pictures kept here: taskbar.rs (send_icons) sends each once,
+  // and again only when it is another; a list without one's png means the
+  // one kept.
+  const trayPngs = new Map()
   window.pet.onTray(list => {
-    trayIcons = Array.isArray(list) ? list : []
+    trayIcons = (Array.isArray(list) ? list : []).map(i => {
+      if (i.png === undefined) i.png = trayPngs.get(i.key) ?? ''
+      trayPngs.set(i.key, i.png)
+      return i
+    })
+    for (const key of [...trayPngs.keys()]) if (!trayIcons.some(i => i.key === key)) trayPngs.delete(key)
     if (isOn() && home() === 'taskbar') drawTray()
   })
 
@@ -1828,7 +1874,7 @@
     seatPanel()
     body.classList.toggle('has-her', isHome())
     body.classList.toggle('compact-her', view === 'compact' || view === 'settings')
-    if (spriteUrl) herSheet.style.backgroundImage = `url("${spriteUrl}")`
+    if (spriteUrl) sheetImage(herSheet, spriteUrl)
     fillCompact()
     fillExpanded()
     fillBar()
@@ -1855,8 +1901,28 @@
     // The clocks run: the turn's, the step's, the other sessions'. Their words
     // may grow (a step timed once it has run a while), so the shape follows.
     const isTimed = time() || now.stepSince || Status.othersOf(now.list, now).some(x => Status.time(x))
-    if (isTimed && (view === 'compact' || view === 'expanded')) clockTimer = setInterval(update, 1000)
+    if (isTimed && (view === 'compact' || view === 'expanded')) clockTimer = setInterval(tickTimes, 1000)
     spin()
+  }
+
+  // Each second while something is timed: the times' words alone, put in
+  // place (the compact island's clock, the strip's tags); the island drawn
+  // anew (update) only when a word grew or shrank, as the shape follows the
+  // words, or while the island is open, whose lines carry the step's time
+  // too. It was drawn anew every second (2026-10-11).
+  function tickTimes() {
+    if (view !== 'compact') return update()
+    let resized = false
+    const put = (node, text) => {
+      if (!node || node.textContent === text) return
+      if (node.textContent.length !== text.length) resized = true
+      node.textContent = text
+    }
+    put(compact.querySelector('[data-live="time"]'), time())
+    for (const tag of tagsBox.children) {
+      if (tag._session) put(tag.querySelector('.when'), Status.time(tag._session))
+    }
+    if (resized) update()
   }
 
   function nudgeFor(clip, text, ms = NUDGE_MS, widget = null) {
@@ -1927,7 +1993,7 @@
 
   function startDropHer() {
     clearTimeout(dropTimer)
-    dropSheet.style.backgroundImage = `url("${spriteUrl}")`
+    sheetImage(dropSheet, spriteUrl)
     const { row, frames, ms } = CLIPS.jumping
     let frame = 0
     const step = () => {
@@ -2199,6 +2265,7 @@
     if (config.out !== true) isComingHome = false
     spriteUrl = data.sprite
     second = data.second || null
+    quiet = data.quiet === true
     // The same widget stays shown as the list changes around it.
     const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
     const all = Array.isArray(data.widgets) ? data.widgets : []
@@ -2212,6 +2279,31 @@
     const isReading = isDetailed() && Status.isEnding(now) && !!now.reply
     if (isOn() && before !== now.mood && NUDGE_CLIP[now.mood]) nudgeFor(NUDGE_CLIP[now.mood], null, isReading ? NUDGE_READ_MS : NUDGE_MS)
     else update()
+  })
+
+  // Only the widgets' words changed (the monitor's readings every couple
+  // of seconds, main.rs redraw_widgets): on the strip, the readings' node
+  // alone; the island drawn anew where it shows them in its lines, or when
+  // another widget's words changed (the capsule shows them in turn).
+  window.pet.onWidgets(({ widgets: all }) => {
+    const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
+    const others = JSON.stringify(widgets)
+    const list = Array.isArray(all) ? all : []
+    monitor = list.find(w => w.id === 'monitor') || null
+    widgets = list.filter(w => !(w === monitor && isPinned()))
+    const still = widgets.findIndex(w => w.id === was)
+    if (still >= 0) widgetAt = still
+    if (!isOn()) return
+    if (home() === 'taskbar' && view === 'compact' && JSON.stringify(widgets) === others) facesBox.replaceChildren(...widgetFaces())
+    else update()
+  })
+
+  // Nobody at the keyboard or mouse for a while, or someone again: she
+  // stands still, or plays on.
+  window.pet.onQuiet(({ on }) => {
+    quiet = on === true
+    herClip = null
+    animateHer()
   })
 
   // A hello, or something to fix: the island opens to say it, and she waves.

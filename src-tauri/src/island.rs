@@ -341,6 +341,8 @@ fn create(sh: &Arc<Shared>) {
         let built = WebviewWindowBuilder::new(&sh.app, "island", WebviewUrl::App("pet/index.html?role=island".into()))
             .title("wakuwaku island")
             .inner_size(size.0 as f64 / sf, size.1 as f64 / sf)
+            .additional_browser_args(crate::BROWSER_ARGS)
+            .data_directory(crate::webview_dir(&sh))
             .transparent(true)
             .decorations(false)
             .resizable(false)
@@ -484,6 +486,9 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
         } else {
             let (pos, size, sf, held) = (isl.pos, isl.size, isl.sf(), isl.holding);
             let seen = isl.ct.look(cursor, pos, size, sf, held, passive && !held);
+            if isl.ct.calmed() {
+                sh.log(&format!("island: mouse mode bouncing, calmed: cursor {cursor:?}, window {pos:?} {size:?}, scale {sf}"));
+            }
             let wait = if held || isl.ct.over { 50 } else if seen.forward { 30 } else if seen.near { 80 } else { 200 };
             (seen.ignore, seen.pointer, wait)
         }

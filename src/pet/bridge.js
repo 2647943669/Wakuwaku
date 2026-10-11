@@ -28,6 +28,10 @@
 
   window.pet = {
     onUpdate: on('pet:update'),
+    // Only the widgets' words changed (the monitor's readings): { widgets }.
+    onWidgets: on('pet:widgets'),
+    // Nobody at the keyboard or mouse for a while, or someone again: { on }.
+    onQuiet: on('pet:quiet'),
     onReact: on('pet:react'),
     // A widget asks to open the island for itself (widgets.rs).
     onNudge: on('pet:nudge'),
