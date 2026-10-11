@@ -78,7 +78,7 @@ cd .. && node --test "test/*.test.js"   # 页面的单元测试
 
 页面是打进 exe 的：改了 `src/` 要重新编译（cargo 会发现）。不需要 Node 和 Tauri CLI；`Cargo.toml` 默认开着 `custom-protocol`，所以 `cargo run` 也直接用打进去的页面，不找开发服务器。
 
-**数据放在哪**（`data.rs` 的 `folder()`）：`WAKUWAKU_USER_DATA`（测试用）；从源码树里运行时是项目的 `data/`；否则是 exe 旁边的 `wakuwaku-data/`。第一次运行时从 `%APPDATA%\wakuwaku`（旧的 Electron 安装版）复制设置和宠物，但不复制位置：旧版记的是逻辑像素，这一版记物理像素。数据目录里放一个 `debug.on` 文件，就会写 `debug.log`（两个页面的 console.log 也在里面）。
+**数据放在哪**（`data.rs` 的 `folder()`）：`WAKUWAKU_USER_DATA`（测试用）；从源码树里运行时是项目的 `data/`；否则是 exe 旁边的 `wakuwaku-data/`，启动时没有就新建一个。旧的 Electron 安装版的 `%APPDATA%\wakuwaku` 不再读取。数据目录里放一个 `debug.on` 文件，就会写 `debug.log`（两个页面的 console.log 也在里面）。
 
 | 环境变量 | 作用 |
 | --- | --- |

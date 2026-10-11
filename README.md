@@ -102,7 +102,7 @@ cargo run                 # 调试版
 cargo build --release     # target/release/wakuwaku.exe，单个文件
 ```
 
-不需要 Node，也不需要 Tauri CLI。第一次运行会自动下载默认宠物；连接 Claude Code 在设置的「连接」页里点就行。从源码运行时，她的设置、下载的宠物和日志都放在项目里的 `data/` 文件夹（不进仓库）；第一次运行时会把 `%APPDATA%\wakuwaku` 里旧版的设置和宠物复制过来。
+不需要 Node，也不需要 Tauri CLI。第一次运行会自动下载默认宠物；连接 Claude Code 在设置的「连接」页里点就行。从源码运行时，她的设置、下载的宠物和日志都放在项目里的 `data/` 文件夹（不进仓库）。
 
 ## 使用
 
