@@ -12,10 +12,17 @@
   const { listen } = window.__TAURI__.event
 
   // Listeners register over IPC; the Rust side starts talking only once they
-  // all have (pet_ready).
+  // all have (pet_ready). Each listens for this window alone: listen() by
+  // itself hears what is sent to any window (Tauri 2), so her page heard the
+  // island's pet:pointer and played it as the pointer over her, at the
+  // island's coordinates, and the island heard hers; the windows' mouse
+  // modes bounced caught/through 30 times a second (2026-10-11), and every
+  // event was handled twice.
+  const LABEL = window.__TAURI_INTERNALS__?.metadata?.currentWebview?.label || window.__TAURI__.webviewWindow?.getCurrentWebviewWindow?.()?.label || new URLSearchParams(location.search).get('role') || 'pet'
+  const target = { kind: 'WebviewWindow', label: LABEL }
   const pending = []
   const on = channel => fn => {
-    pending.push(listen(channel, e => fn(e.payload)))
+    pending.push(listen(channel, e => fn(e.payload), { target }))
   }
   const noop = () => {}
 
@@ -173,13 +180,17 @@
   }
 
   pending.push(
-    listen('pet:pointer', ({ payload: at }) => {
-      const next = at ? chainAt(at.x, at.y) : []
-      const was = inside
-      inside = next
-      for (const el of was) if (!next.includes(el)) play('mouseleave', el, at?.x ?? -1, at?.y ?? -1)
-      for (const el of next) if (!was.includes(el)) play('mouseenter', el, at.x, at.y)
-    }),
+    listen(
+      'pet:pointer',
+      ({ payload: at }) => {
+        const next = at ? chainAt(at.x, at.y) : []
+        const was = inside
+        inside = next
+        for (const el of was) if (!next.includes(el)) play('mouseleave', el, at?.x ?? -1, at?.y ?? -1)
+        for (const el of next) if (!was.includes(el)) play('mouseenter', el, at.x, at.y)
+      },
+      { target },
+    ),
   )
 
   // The page's console.log into debug.log (when it is on).

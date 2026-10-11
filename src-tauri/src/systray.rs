@@ -349,6 +349,22 @@ mod imp {
     }
 
     // A NIM_ message: whether ours took it.
+    // A program's tip noted in the log at most every ten seconds: Task
+    // Manager's changes every second.
+    fn tip_note_due(exe: &str) -> bool {
+        static NOTED: Mutex<Option<std::collections::HashMap<String, std::time::Instant>>> = Mutex::new(None);
+        let mut noted = NOTED.lock().unwrap();
+        let noted = noted.get_or_insert_with(std::collections::HashMap::new);
+        let now = std::time::Instant::now();
+        match noted.get(exe) {
+            Some(at) if now.duration_since(*at) < std::time::Duration::from_secs(10) => false,
+            _ => {
+                noted.insert(exe.to_string(), now);
+                true
+            }
+        }
+    }
+
     fn on_icon(message: u32, nid: &IconData) -> bool {
         let mut icons = ICONS.lock().unwrap();
         let at = icons.iter().position(|i| same(i, nid));
@@ -357,7 +373,7 @@ mod imp {
                 let tip = icons[i].tip.clone();
                 update(&mut icons[i], nid);
                 icons[i].modified += 1;
-                if icons[i].tip != tip {
+                if icons[i].tip != tip && tip_note_due(&icons[i].exe) {
                     note(format!("tray: {} tip \"{}\"", icons[i].exe, icons[i].tip));
                 }
                 true

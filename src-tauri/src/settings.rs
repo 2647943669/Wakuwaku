@@ -262,6 +262,16 @@ pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<Stri
     }
     if let Some((ok, value)) = done {
         sh.log(&format!("settings: wallpaper {what_done} {value}: {ok}"));
+        // The taskbar's Mica follows the new picture: Windows says nothing
+        // of a change made through IDesktopWallpaper, and the taskbar would
+        // look on its own only every half minute. A moment after, for the
+        // picture to be in place.
+        if ok {
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(600));
+                crate::taskbar::look_now();
+            });
+        }
     }
     snapshot(&sh)
 }

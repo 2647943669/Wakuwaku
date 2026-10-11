@@ -343,6 +343,9 @@ mod imp {
     static SHELL_MSG: AtomicU32 = AtomicU32::new(0);
     // The keyboard's thread, and what it sent last.
     static KEYS: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+    // The IME's mark and the volume read at the next look, not the next
+    // second: the input method was just switched from our button.
+    static KEYS_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     static SENT_KEYS: Mutex<Value> = Mutex::new(Value::Null);
     // Windows' own record of the tray icons it keeps out (windows_kept), read once.
     static KEPT: Mutex<Option<Vec<(String, Option<u32>, bool)>>> = Mutex::new(None);
@@ -541,7 +544,7 @@ mod imp {
         let mut sent = Value::Null;
         let using = || Value::Object(tasks::in_use().into_iter().map(|(what, names)| (what.to_string(), json!(names))).collect());
         let (mut net, mut used) = (tasks::net(), using());
-        let (mut native, mut volume, mut front) = (None, None, 0isize);
+        let (mut native, mut volume, mut front, mut shift_was) = (None, None, 0isize, false);
         let mut looks = 0u32;
         while !TASKS_STOP.load(Ordering::SeqCst) {
             looks += 1;
@@ -551,7 +554,12 @@ mod imp {
             }
             let keys = tasks::keys_cheap();
             let now_front = tasks::front();
-            if looks % 4 == 1 || now_front != front {
+            // Shift let go (it switches many IMEs between scripts), or our
+            // own IME button pressed: the mark read now.
+            let shift = tasks::shift_down();
+            let asked = KEYS_NOW.swap(false, Ordering::SeqCst) || (shift_was && !shift);
+            shift_was = shift;
+            if looks % 4 == 1 || now_front != front || asked {
                 front = now_front;
                 native = tasks::ime_native();
                 volume = speakers.read().map(|(level, muted)| json!([level, muted]));
@@ -562,8 +570,14 @@ mod imp {
                 *SENT_KEYS.lock().unwrap() = now.clone();
                 sent = now;
             }
-            // Quiet (nobody at the keyboard): every two seconds.
-            std::thread::sleep(Duration::from_millis(if sh.is_quiet() { 2000 } else { 250 }));
+            // Quiet (nobody at the keyboard): every two seconds; asked to
+            // stop meanwhile (give_back), it stops within a tenth.
+            let nap = if sh.is_quiet() { 2000 } else { 250 };
+            let mut slept = 0;
+            while slept < nap && !TASKS_STOP.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(50));
+                slept += 50;
+            }
         }
     }
 
@@ -1166,6 +1180,24 @@ mod imp {
     // colours changed, and every five seconds (a slideshow, Spotlight); on
     // a thread of its own, one at a time: Windows' answer goes through
     // Explorer, which may be busy, and the tray's messages come to this one.
+    // How many times Windows flashes a taskbar button for a window asking
+    // for attention (Control Panel\Desktop\ForegroundFlashCount, a string;
+    // 7 unless set; 0: until the window comes to the front).
+    fn flash_count() -> u32 {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Control Panel\Desktop");
+        let text = key.as_ref().ok().and_then(|k| k.get_value::<String, _>("ForegroundFlashCount").ok()).and_then(|s| s.trim().parse::<u32>().ok());
+        let number = || key.as_ref().ok().and_then(|k| k.get_value::<u32, _>("ForegroundFlashCount").ok());
+        text.or_else(number).unwrap_or(7)
+    }
+
+    // From outside (settings.rs, the wallpaper changed by her own settings:
+    // Windows says nothing of that): the desktop looked at now.
+    pub fn look_now() {
+        send_look();
+    }
+
     fn send_look() {
         if LOOK_BUSY.swap(true, Ordering::SeqCst) {
             return;
@@ -1183,6 +1215,7 @@ mod imp {
         let look = json!({
             "mode": if light { "light" } else { "dark" },
             "accent": accent.map(|a| json!({ "base": a.base, "light": a.light, "dark": a.dark })),
+            "flashes": flash_count(),
         });
         let mut sent = LOOK.lock().unwrap();
         if *sent != look {
@@ -1332,9 +1365,12 @@ mod imp {
 
     // What the taskbar's own buttons open, by the keys that open them.
     pub fn open(what: &str) -> bool {
-        // The input method of the window in front: its own script or plain letters.
+        // The input method of the window in front: its own script or plain
+        // letters; its mark read again at once (keys_loop).
         if what == "ime" {
-            return tasks::toggle_native();
+            let done = tasks::toggle_native();
+            KEYS_NOW.store(true, Ordering::SeqCst);
+            return done;
         }
         // A press on what shows the microphone, camera or location in use:
         // its page in Windows' privacy settings.
@@ -2053,6 +2089,7 @@ mod imp {
     pub fn strip_moved(_strip: (i32, i32, i32, i32)) {}
     pub fn resend(_sh: &Shared) {}
     pub fn wake() {}
+    pub fn look_now() {}
     pub fn press(_sh: &Shared, _key: u64, _press: &str, _home_hwnd: isize) -> bool {
         false
     }
@@ -2076,7 +2113,7 @@ mod imp {
     }
 }
 
-pub use imp::{explorer_room, give_back, look_for_other, note, resend, strip_moved, take, waiting, wake, work_area_bottom};
+pub use imp::{explorer_room, give_back, look_for_other, look_now, note, resend, strip_moved, take, waiting, wake, work_area_bottom};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser

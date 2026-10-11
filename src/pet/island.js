@@ -1535,6 +1535,8 @@
   // that is her mood's colour (pet.js).
   window.pet.onLook(l => {
     look = { mode: l?.mode === 'light' ? 'light' : 'dark', accent: l?.accent || null }
+    // How many times a button flashes for attention (style.css .flash).
+    if (l?.flashes !== undefined) barRest.style.setProperty('--flashes', l.flashes === 0 ? 'infinite' : String(l.flashes))
     const colour = look.accent && (look.mode === 'light' ? look.accent.dark : look.accent.light)
     if (colour) document.documentElement.style.setProperty('--win-accent', colour)
     else document.documentElement.style.removeProperty('--win-accent')

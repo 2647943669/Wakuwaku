@@ -1556,16 +1556,30 @@ body {
   color: #8e8e93;
 }
 
-#bar-rest .win.flash {
-  animation: win-flash 0.9s ease-in-out infinite alternate;
+/* A window asking for attention: its button pulses orange as many times
+   as Windows flashes its own (ForegroundFlashCount, --flashes from
+   taskbar:look; 7 by default), then stays orange until the window is
+   brought to the front. The pulse is the opacity of a layer under the
+   icon, which the compositor animates alone; animating the background
+   repainted the button every frame, without end (35 to 40% of a core while
+   anything flashed, 2026-10-11). */
+#bar-rest .win.flash::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 179, 64, 0.38);
+  will-change: opacity;
+  animation: win-flash 1.8s ease-in-out var(--flashes, 7) both;
+  pointer-events: none;
 }
 
 @keyframes win-flash {
-  from {
-    background: rgba(255, 179, 64, 0.38);
+  0%,
+  100% {
+    opacity: 1;
   }
-  to {
-    background: rgba(255, 179, 64, 0.12);
+  50% {
+    opacity: 0.3;
   }
 }
 

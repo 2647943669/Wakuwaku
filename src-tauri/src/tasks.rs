@@ -198,6 +198,7 @@ mod imp {
         fn FindWindowExW(parent: Hwnd, after: Hwnd, class: *const u16, title: *const u16) -> Hwnd;
         fn GetKeyboardLayout(thread: u32) -> isize;
         fn GetKeyState(vk: i32) -> i16;
+        fn GetAsyncKeyState(vk: i32) -> i16;
         fn DestroyIcon(icon: isize) -> i32;
     }
 
@@ -677,6 +678,7 @@ mod imp {
     const IMC_GETOPENSTATUS: usize = 0x5;
     const IME_CMODE_NATIVE: usize = 0x1;
     const VK_CAPITAL: i32 = 0x14;
+    const VK_SHIFT: i32 = 0x10;
 
     // An input method's answer about the window in front (its default IME
     // window, as input-method indicators ask): None if it gives none.
@@ -704,6 +706,12 @@ mod imp {
         // SAFETY: a plain query; the low bit is the toggle's.
         let caps = unsafe { GetKeyState(VK_CAPITAL) } & 1 != 0;
         Keys { lang, native: None, caps }
+    }
+
+    // Shift held now (taskbar.rs keys_loop: let go, the IME's mark is read again).
+    pub fn shift_down() -> bool {
+        // SAFETY: a plain query; the high bit is the key's state now.
+        unsafe { GetAsyncKeyState(VK_SHIFT) as u16 & 0x8000 != 0 }
     }
 
     // Whether the IME in front writes the language's own script: asked of
@@ -801,6 +809,9 @@ mod imp {
     pub fn ime_native() -> Option<bool> {
         None
     }
+    pub fn shift_down() -> bool {
+        false
+    }
     pub fn toggle_native() -> bool {
         false
     }
@@ -867,7 +878,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_shell_flyout, is_start, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_shell_flyout, is_start, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, shift_down, toggle_native, with_com};
 
 #[cfg(test)]
 mod tests {
