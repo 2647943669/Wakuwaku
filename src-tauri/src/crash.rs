@@ -54,9 +54,11 @@ use serde_json::{json, Map, Value};
 use crate::Shared;
 pub use redact::Redactor;
 
-// The relays: in front of GitHub's issues (Cloudflare) and Gitee's (in
-// China). Empty until deployed (relay/README.md): nothing is sent then.
-const GITHUB_RELAY: &str = "";
+// The relays: in front of GitHub's issues (Cloudflare, the Worker
+// wakuwaku-crash, issues from the GitHub App wakuwaku-crash-reports) and
+// Gitee's (in China). One empty is not deployed (relay/README.md): not asked;
+// both empty, nothing is sent.
+const GITHUB_RELAY: &str = "https://wakuwaku-crash.wakuwaku-crash-relay.workers.dev/report";
 const GITEE_RELAY: &str = "";
 const TEST_URL: &str = "WAKUWAKU_CRASH_URL";
 const TEST_CRASH: &str = "WAKUWAKU_CRASH_TEST";

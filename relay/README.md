@@ -26,6 +26,8 @@
 
 ## A. GitHub + Cloudflare Workers
 
+已部署（2026-10-11）：Worker `wakuwaku-crash`，地址 `https://wakuwaku-crash.wakuwaku-crash-relay.workers.dev`，issue 由 GitHub App `wakuwaku-crash-reports`（App ID 5274431）开。KV 的 id 写在 `wrangler.toml` 里；密钥 `GITHUB_APP_ID`、`GITHUB_APP_KEY`、`SALT` 只在 Cloudflare 里。改了 `relay.js` 以后在这个文件夹里 `npx wrangler deploy` 就行，密钥不受影响。
+
 ### 1. 让中转能在 Wakuwaku 开 issue
 
 推荐用 **GitHub App**：issue 由 App 的机器人账号开，你会像收到别人开的 issue 一样收到通知。用你自己的 token 的话，issue 的作者是你自己，GitHub 不会因为你自己的操作通知你。
