@@ -93,7 +93,7 @@ Each pet has 11 animations, and every one of them has a job:
 
 - **One exe (Windows)**: `wakuwaku.exe` is about 7 MB, runs from any folder and keeps her settings and pets in a `wakuwaku-data` folder beside it; to remove her, delete the two. It uses the WebView2 that comes with Windows 11, nothing else to install.
 
-Download `wakuwaku-<version>-windows-x64.exe` from [Releases](https://github.com/zhoupengjie/Wakuwaku/releases); there is nothing to install. The exe is not code-signed, so on first run Windows SmartScreen may stop it: click More info → Run anyway. Or build it yourself, see below.
+Download `wakuwaku-<version>-windows-x64.exe` from [Releases](https://github.com/zhoupengjie/Wakuwaku/releases) (in China, the same file is on [Gitee](https://gitee.com/zhoupengjie/Wakuwaku/releases)); there is nothing to install. The exe is not code-signed, so on first run Windows SmartScreen may stop it: click More info → Run anyway. Or build it yourself, see below.
 - **From source**: see below.
 
 On first launch she downloads the default pet, Claude小姐 (online; offline, the settings open by themselves so you can pick one later). For another, click the island to open the settings and pick one on the Pets page (the gallery comes straight from codex-pets.net; click Download), or paste a pet page URL.
@@ -175,9 +175,10 @@ While she's closed, Claude Code works as usual: the events sent to her are refus
 
 ### Updates
 
-The downloaded exe looks at GitHub's latest release as it starts (`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`, with no account of yours), then once a day. Drafts and prereleases don't count. A new version is told on the island once; click it for Updates on the General page of the settings, where you can read its notes. Nothing is downloaded until you click Update.
+The downloaded exe looks at the latest release on GitHub and on Gitee as it starts (`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest` and `https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases`, with no account of yours), then once a day. Drafts and prereleases don't count. A new version is told on the island once; click it for Updates on the General page of the settings, where you can read its notes. Nothing is downloaded until you click Update.
 
-- What's downloaded is the release's `wakuwaku-v<version>-windows-x64.exe`, checked against the SHA-256 GitHub gives for it; if it doesn't match, or none is given, it isn't installed and no file is touched.
+- What's downloaded is the release's `wakuwaku-v<version>-windows-x64.exe`: from Gitee first in China, from GitHub first elsewhere, and from the other if that fails (Download from, under Updates, picks one).
+- It's checked against the SHA-256 GitHub gives for it, or, when GitHub gives none, the `.sha256` file in the Gitee release. If it doesn't match, none is given, or the two differ, it isn't installed and no file is touched.
 - Once it checks out, your exe is renamed `<its name>.old.exe` and the new one put in its place (your file name kept); the new one starts and the old one quits, after any prompt waiting for you is answered. Once the new one has run a minute, `.old.exe` is deleted.
 - If the new one won't start, `.old.exe` is still there: quit her, delete the new exe and rename `.old.exe` back to the name it had.
 - To stop the checks: turn off Check for updates there, and click Check now when you want to.

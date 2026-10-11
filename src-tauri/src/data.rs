@@ -64,8 +64,10 @@ fn defaults() -> Map<String, Value> {
         // icons and words a screen pixel off by turns (island.js oledShift).
         "oledShift": true,
         // Her updates looked for as she starts and once a day (updates.rs;
-        // a downloaded exe only).
+        // a downloaded exe only); downloaded from Gitee first in China and
+        // GitHub first elsewhere, or as set.
         "autoUpdateCheck": true,
+        "updateFrom": "auto",
         "details": true,
         // Widgets (plugins in the island): which are off, their order, how
         // often the island turns to the next, whether they may open it.

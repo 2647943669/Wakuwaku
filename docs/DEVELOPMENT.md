@@ -30,7 +30,7 @@ src-tauri/
     systray.rs            接管托盘：自己的 Shell_TrayWnd 排在 Explorer 前面，图标、点击、图标位置的查询，原样转给 Explorer
     tasks.rs              任务栏上该有按钮的窗口、程序名和图标、启动程序；输入法和大写锁定
     pins.rs               第一次启动时读 Windows 自己任务栏的固定项（只读一次，不写回）
-    updates.rs            软件更新：看 GitHub 的最新发布、在岛上提示、下载校验替换并重启
+    updates.rs            软件更新：看 GitHub 和 Gitee 的最新发布、在岛上提示、下载校验替换并重启
     wallpaper.rs          每块显示器的桌面壁纸：文件、摆法、底色（IDesktopWallpaper），给任务栏的云母用
     settings.rs           设置看到的快照、校验后的设置补丁、设置的各个命令
     pointer.rs            两个窗口共用的点击穿透
@@ -355,11 +355,14 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
 
 只对下载的 exe：从源码树的 `target` 下运行（`data::from_source`，和数据放在项目 `data/` 的判断是同一个）时不检查也不更新，设置里写着「从源码运行」。
 
-- **检查**：`GET https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`（带 User-Agent，不带 token），启动 20 秒后一次，之后每天一次（线程每 10 分钟看一眼是否到期；失败的话一小时后再试，只记日志）。草稿、预发布不算；`tag_name` 去掉 `v` 后和 `CARGO_PKG_VERSION` 按数字逐段比（0.10.0 > 0.9.0，带 `-` 后缀的预发布排在同号正式版前面）。设置 `autoUpdateCheck`（默认开）关掉就不再自己检查；「现在检查」随时可点。
+- **两个地方**：GitHub 和 Gitee（[gitee.com/zhoupengjie/Wakuwaku](https://gitee.com/zhoupengjie/Wakuwaku)，给国内用户的副本；代码和 tag 同步过去，发布要在 Gitee 上另建，见下面「发布到 Gitee」）。
+- **检查**：同时问两边，都带 User-Agent、不带 token：GitHub 是 `GET https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`；Gitee 的 `releases/latest` 是"最后编辑的那个"，不可靠，所以取 `GET https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases?per_page=10&direction=desc` 里版本最高的。Gitee 的 JSON 没有 `draft`、`html_url`、`size`、`digest`，所以发布页地址自己拼（`…/releases/tag/<tag>`），校验值读同一个发布里的附件 `<exe>.sha256`（`sha256sum` 的格式，也接受只有十六进制）。404（还没有发布）当作没有。两边取版本高的；两边版本一样时，校验值优先用 GitHub 的 `digest`，两边都给了却不一样就不装（`mismatch`）。只有一边答不上来时只记日志；两边都答不上来才算检查失败。启动 20 秒后一次，之后每天一次（线程每 10 分钟看一眼是否到期；失败的话一小时后再试，只记日志）。草稿、预发布不算；`tag_name` 去掉 `v` 后和 `CARGO_PKG_VERSION` 按数字逐段比（0.10.0 > 0.9.0，带 `-` 后缀的预发布排在同号正式版前面）。设置 `autoUpdateCheck`（默认开）关掉就不再自己检查；「现在检查」随时可点。
+- **先从哪边下载**：设置 `updateFrom`：`auto`（默认）在中国先 Gitee、其他地方先 GitHub；也可以设成 `gitee` / `github`。"在中国"是 Windows 的时区为 `China Standard Time`，或系统语言是 `zh-CN` / `zh-Hans…`（只算一次）。先下的那边失败（下载出错或校验不对）就换另一边，界面上写着正在从哪边下载。发布页（「查看说明」）也打开先下载那一边的。
 - **提示**：每个新版本在岛上提示一次（`updateTold` 记着提示过的版本；她不在视线里或有会话在等你时，等下一次 10 分钟的检查再提示），点一下打开设置「通用」页的「软件更新」那一节。
-- **更新**（只在用户点「更新」后）：下载附件 `wakuwaku-v<版本>-windows-x64.exe`（下载地址必须在 `https://github.com/zhoupengjie/Wakuwaku/` 下）到数据文件夹的 `update-v<版本>.exe.part`，边下边算 SHA-256，和 API 里附件的 `digest`（`sha256:…`）比；没有 digest 或对不上就删掉临时文件、中止，界面上说明。有确认请求在等用户时先等它处理完。然后把正在运行的 exe 改名为 `<原名>.old.exe`（运行中的 exe 可以改名不能删），新 exe 放到原路径（保留用户的文件名），用 `--after-update <旧 pid>` 启动新 exe（脱离她的进程树和作业，和任务栏守护进程一样），旧的走 `Shared::quit` 正常退出、交还任务栏。新 exe 在绑定端口之前先等旧进程退出（最多一分钟），否则端口被占时它只会唤醒旧的然后自己退出。新版运行一分钟后删掉 `.old.exe`（旧版的任务栏守护进程可能还开着它，删不掉就隔 10 秒再试几次）。新版启动失败时，旧 exe 被换回原名。
+- **更新**（只在用户点「更新」后）：下载附件 `wakuwaku-v<版本>-windows-x64.exe`（下载地址必须在 `https://github.com/zhoupengjie/Wakuwaku/` 或 `https://gitee.com/zhoupengjie/Wakuwaku/` 下；Gitee 的会跳转到 `foruda.gitee.com`）到数据文件夹的 `update-v<版本>.exe.part`，边下边算 SHA-256，和上面定下的校验值比；没有校验值就中止，对不上就删掉临时文件、换另一边，都不行就中止，界面上说明。有确认请求在等用户时先等它处理完。然后把正在运行的 exe 改名为 `<原名>.old.exe`（运行中的 exe 可以改名不能删），新 exe 放到原路径（保留用户的文件名），用 `--after-update <旧 pid>` 启动新 exe（脱离她的进程树和作业，和任务栏守护进程一样），旧的走 `Shared::quit` 正常退出、交还任务栏。新 exe 在绑定端口之前先等旧进程退出（最多一分钟），否则端口被占时它只会唤醒旧的然后自己退出。新版运行一分钟后删掉 `.old.exe`（旧版的任务栏守护进程可能还开着它，删不掉就隔 10 秒再试几次）。新版启动失败时，旧 exe 被换回原名。
 - **手动换回旧版**：新版起不来、`.old.exe` 还在时：结束 wakuwaku 进程，删掉新的 exe，把 `<原名>.old.exe` 改回 `<原名>.exe`。
-- **测试**：环境变量 `WAKUWAKU_UPDATE_URL` 把它当作 latest release 的 JSON 地址（这时下载地址不限于 GitHub），`WAKUWAKU_UPDATE_FORCE=1` 让源码树里的调试版也检查、更新。日志都以 `update:` 开头。
+- **测试**：环境变量 `WAKUWAKU_UPDATE_URL` 当作 GitHub latest release 的 JSON 地址，`WAKUWAKU_UPDATE_GITEE_URL` 当作 Gitee 发布列表的 JSON 地址（给了其中一个时只问给了的那边，下载地址也不限于 GitHub 和 Gitee），`WAKUWAKU_UPDATE_FORCE=1` 让源码树里的调试版也检查、更新。日志都以 `update:` 开头。
+- **发布到 Gitee**：先在 GitHub 照常发布，再把 tag 推到 Gitee，然后运行 `scripts/gitee-release.ps1 -Version <版本>`（私人令牌放在环境变量 `GITEE_TOKEN`，需要 `projects` 权限）。脚本从 GitHub 发布下载 exe，按 GitHub 的 `digest` 校验后，在 Gitee 建同名发布（说明照抄 GitHub 的），上传 exe 和 `<exe>.sha256`，最后不登录从 Gitee 下载回来再校验一遍。Gitee 每个附件不超过 100 MB，每个仓库的附件总共不超过 1 GB，满了就删掉旧版本的附件。
 
 ## 设置（长在岛里）
 

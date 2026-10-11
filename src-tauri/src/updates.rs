@@ -1,24 +1,30 @@
-// Her updates, for the exe downloaded from GitHub (a build run from the
+// Her updates, for the exe downloaded from a release (a build run from the
 // source tree updates by a build, and is never looked for): Wakuwaku's
 // latest release looked at as she starts, then once a day (settings:
-// autoUpdateCheck, on unless turned off; "check now" any time). A newer one
-// is told on the island once (updateTold). On the person's word (Update, on
-// the General page): its exe downloaded into her data folder, checked
-// against the SHA-256 GitHub gives for it (none given, or another: not
-// installed), put where hers is, hers kept beside it as <name>.old.exe, and
-// started with --after-update <her pid>: it waits for her to be gone (the
-// port, the taskbar), and she quits as the menu does. A prompt waiting for
-// an answer is answered first. The old exe goes once the new one has run a
-// minute; should the new one not start, the old one is still there to be
-// renamed back (DEVELOPMENT.md).
+// autoUpdateCheck, on unless turned off; "check now" any time), on GitHub
+// and on Gitee, its copy for China (the same release there: the exe, and
+// <exe>.sha256 beside it), both at once; the newer goes. A newer one is
+// told on the island once (updateTold). On the person's word (Update, on
+// the General page): its exe downloaded into her data folder, from Gitee
+// first in China and GitHub first elsewhere (updateFrom: auto, or one of
+// them), from the other should that fail; checked against the SHA-256
+// GitHub gives for it, or Gitee's <exe>.sha256 when GitHub gives none (none
+// at all, the two differing, or the download another: not installed), put
+// where hers is, hers kept beside it as <name>.old.exe, and started with
+// --after-update <her pid>: it waits for her to be gone (the port, the
+// taskbar), and she quits as the menu does. A prompt waiting for an answer
+// is answered first. The old exe goes once the new one has run a minute;
+// should the new one not start, the old one is still there to be renamed
+// back (DEVELOPMENT.md).
 //
-// For tests: WAKUWAKU_UPDATE_URL, the release's JSON from elsewhere (its
-// exe from anywhere then); WAKUWAKU_UPDATE_FORCE=1, a build from the source
-// tree looks and updates too.
+// For tests: WAKUWAKU_UPDATE_URL, GitHub's release JSON from elsewhere, and
+// WAKUWAKU_UPDATE_GITEE_URL, Gitee's list of releases (only those given are
+// asked then, their exes taken from anywhere); WAKUWAKU_UPDATE_FORCE=1, a
+// build from the source tree looks and updates too.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -26,18 +32,71 @@ use sha2::{Digest, Sha256};
 
 use crate::Shared;
 
-const LATEST: &str = "https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest";
+const GITHUB_LATEST: &str = "https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest";
+// Gitee's "latest" is the one last edited: its newest ten instead, the
+// highest version of them.
+const GITEE_RELEASES: &str = "https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases?per_page=10&direction=desc";
+const GITHUB_REPO: &str = "https://github.com/zhoupengjie/Wakuwaku/";
+const GITEE_REPO: &str = "https://gitee.com/zhoupengjie/Wakuwaku/";
+const GITHUB_TEST: &str = "WAKUWAKU_UPDATE_URL";
+const GITEE_TEST: &str = "WAKUWAKU_UPDATE_GITEE_URL";
 pub const AFTER_UPDATE: &str = "--after-update";
 const DAY_MS: u64 = 86_400_000;
 const HOUR_MS: u64 = 3_600_000;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Source {
+    GitHub,
+    Gitee,
+}
+
+impl Source {
+    pub fn name(self) -> &'static str {
+        match self {
+            Source::GitHub => "GitHub",
+            Source::Gitee => "Gitee",
+        }
+    }
+}
+
+// What one place says of its latest release: the version, its page, its
+// exe by name and the SHA-256 given for it.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Release {
+pub struct Found {
+    pub source: Source,
     pub version: String,
     pub page: String,
     pub exe: Option<String>,
     pub digest: Option<String>,
     pub size: u64,
+}
+
+// The release to go by: the newest version either place has, what each
+// that has it says of it (GitHub first), and the SHA-256 to check by: the
+// one given; none if none is, or if the two differ (`conflict`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Release {
+    pub version: String,
+    pub from: Vec<Found>,
+    pub digest: Option<String>,
+    pub conflict: bool,
+}
+
+impl Release {
+    // Its places, the one preferred first.
+    fn ordered(&self, gitee_first: bool) -> Vec<&Found> {
+        let mut all: Vec<&Found> = self.from.iter().collect();
+        all.sort_by_key(|f| (f.source == Source::Gitee) != gitee_first);
+        all
+    }
+
+    fn page(&self, gitee_first: bool) -> String {
+        self.ordered(gitee_first).iter().map(|f| f.page.clone()).find(|p| !p.is_empty()).unwrap_or_default()
+    }
+
+    fn can_install(&self) -> bool {
+        self.digest.is_some() && self.from.iter().any(|f| f.exe.is_some())
+    }
 }
 
 struct State {
@@ -48,13 +107,15 @@ struct State {
     latest: Option<Release>,
     // What went wrong last: { code, detail }.
     error: Option<Value>,
-    // An update under way: download, verify, waiting (a prompt open), restart.
+    // An update under way: download, verify, waiting (a prompt open), restart;
+    // where it is downloaded from.
     stage: Option<&'static str>,
+    from: Option<Source>,
     got: u64,
     total: u64,
 }
 
-static STATE: Mutex<State> = Mutex::new(State { checked_at: 0, next_at: 0, checking: false, latest: None, error: None, stage: None, got: 0, total: 0 });
+static STATE: Mutex<State> = Mutex::new(State { checked_at: 0, next_at: 0, checking: false, latest: None, error: None, stage: None, from: None, got: 0, total: 0 });
 // Started by an update, after this pid: said in the log once she is up.
 static AFTER: Mutex<Option<u32>> = Mutex::new(None);
 
@@ -67,8 +128,46 @@ pub fn may_update() -> bool {
     std::env::var("WAKUWAKU_UPDATE_FORCE").as_deref() == Ok("1") || !crate::data::from_source()
 }
 
-fn test_url() -> Option<String> {
-    std::env::var("WAKUWAKU_UPDATE_URL").ok().filter(|u| !u.trim().is_empty())
+fn test_url(var: &str) -> Option<String> {
+    std::env::var(var).ok().filter(|u| !u.trim().is_empty())
+}
+
+fn testing() -> bool {
+    test_url(GITHUB_TEST).is_some() || test_url(GITEE_TEST).is_some()
+}
+
+// In China, as far as Windows says: its time zone China's, or its language
+// Chinese as written there. Asked once.
+fn in_china() -> bool {
+    static CHINA: OnceLock<bool> = OnceLock::new();
+    *CHINA.get_or_init(|| {
+        let locale = sys_locale::get_locale().unwrap_or_default().to_ascii_lowercase();
+        if locale == "zh" || locale.starts_with("zh-cn") || locale.starts_with("zh-hans") {
+            return true;
+        }
+        #[cfg(windows)]
+        {
+            use winreg::enums::HKEY_LOCAL_MACHINE;
+            use winreg::RegKey;
+            let zone = RegKey::predef(HKEY_LOCAL_MACHINE)
+                .open_subkey(r"SYSTEM\CurrentControlSet\Control\TimeZoneInformation")
+                .and_then(|k| k.get_value::<String, _>("TimeZoneKeyName"))
+                .unwrap_or_default();
+            if zone.split('\0').next() == Some("China Standard Time") {
+                return true;
+            }
+        }
+        false
+    })
+}
+
+// Gitee first: as set (updateFrom), or by itself in China.
+fn gitee_first(sh: &Shared) -> bool {
+    match sh.setting("updateFrom").as_str() {
+        Some("gitee") => true,
+        Some("github") => false,
+        _ => in_china(),
+    }
 }
 
 // Whether one version is newer than another: their numbers one by one (so
@@ -94,61 +193,158 @@ pub fn newer(theirs: &str, ours: &str) -> bool {
     !a_pre && b_pre
 }
 
-// The release GitHub's JSON says, if it counts (no draft, no prerelease):
-// its version, its page, and its exe by name with the SHA-256 given for it.
-pub fn release_of(v: &Value) -> Option<Release> {
+fn same_version(a: &str, b: &str) -> bool {
+    !newer(a, b) && !newer(b, a)
+}
+
+fn exe_name(version: &str) -> String {
+    format!("wakuwaku-v{version}-windows-x64.exe")
+}
+
+// A release's version by its tag, if it counts (no draft, no prerelease).
+fn version_of(v: &Value) -> Option<String> {
     if v["draft"] == true || v["prerelease"] == true {
         return None;
     }
     let version = v["tag_name"].as_str()?.trim().trim_start_matches(['v', 'V']).to_string();
-    if version.is_empty() {
-        return None;
-    }
-    let name = format!("wakuwaku-v{version}-windows-x64.exe");
+    (!version.is_empty()).then_some(version)
+}
+
+// A SHA-256 in hex, lowercase.
+fn sha256_hex(h: &str) -> Option<String> {
+    let h = h.trim();
+    (h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())).then(|| h.to_ascii_lowercase())
+}
+
+// An <exe>.sha256 as sha256sum writes it ("<hex>  <name>"), or the hex alone.
+pub fn sums_of(text: &str) -> Option<String> {
+    sha256_hex(text.trim_start_matches('\u{feff}').split_whitespace().next()?)
+}
+
+// GitHub's release JSON: its exe by name with the SHA-256 given for it.
+pub fn github_release(v: &Value) -> Option<Found> {
+    let version = version_of(v)?;
+    let name = exe_name(&version);
     let asset = v["assets"].as_array().and_then(|all| all.iter().find(|a| a["name"].as_str() == Some(name.as_str())));
-    let digest = asset
-        .and_then(|a| a["digest"].as_str())
-        .and_then(|d| d.strip_prefix("sha256:"))
-        .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
-        .map(str::to_ascii_lowercase);
-    Some(Release {
+    Some(Found {
+        source: Source::GitHub,
         page: v["html_url"].as_str().unwrap_or("").to_string(),
         exe: asset.and_then(|a| a["browser_download_url"].as_str()).map(str::to_string),
-        digest,
+        digest: asset.and_then(|a| a["digest"].as_str()).and_then(|d| d.strip_prefix("sha256:")).and_then(sha256_hex),
         size: asset.and_then(|a| a["size"].as_u64()).unwrap_or(0),
         version,
     })
 }
 
-// From GitHub itself (its release pages, and the downloads they redirect
-// to), unless a test gave the release from elsewhere.
-fn from_github(url: &str) -> bool {
-    if test_url().is_some() {
-        return true;
-    }
-    url.strip_prefix("https://github.com/zhoupengjie/Wakuwaku/").is_some()
+// Gitee's releases (a list, or one; no draft, page, size or SHA-256 in its
+// JSON): the highest version of those that count, its exe by name, and
+// where its <exe>.sha256 is, to be read.
+pub fn gitee_release(v: &Value) -> Option<(Found, Option<String>)> {
+    let list: Vec<&Value> = match v {
+        Value::Array(all) => all.iter().collect(),
+        one => vec![one],
+    };
+    let (version, r) = list.into_iter().filter_map(|r| Some((version_of(r)?, r))).reduce(|a, b| if newer(&b.0, &a.0) { b } else { a })?;
+    let name = exe_name(&version);
+    let url = |name: &str| {
+        let asset = r["assets"].as_array().and_then(|all| all.iter().find(|a| a["name"].as_str() == Some(name)));
+        asset.and_then(|a| a["browser_download_url"].as_str()).map(str::to_string)
+    };
+    let tag = r["tag_name"].as_str().unwrap_or("").trim();
+    let found = Found { source: Source::Gitee, page: format!("{GITEE_REPO}releases/tag/{tag}"), exe: url(&name), digest: None, size: 0, version };
+    let sums = url(&format!("{name}.sha256"));
+    Some((found, sums))
+}
+
+// The newest either place has: the places that have it, and its SHA-256.
+pub fn merge(found: Vec<Found>) -> Option<Release> {
+    let version = found.iter().map(|f| f.version.clone()).reduce(|a, b| if newer(&b, &a) { b } else { a })?;
+    let mut from: Vec<Found> = found.into_iter().filter(|f| same_version(&f.version, &version)).collect();
+    from.sort_by_key(|f| f.source == Source::Gitee);
+    let mut digests: Vec<&String> = from.iter().filter_map(|f| f.digest.as_ref()).collect();
+    digests.dedup();
+    let conflict = digests.len() > 1;
+    let digest = if conflict { None } else { digests.first().map(|d| d.to_string()) };
+    Some(Release { version, from, digest, conflict })
+}
+
+// From GitHub or Gitee itself (their release pages, and the downloads they
+// redirect to), unless a test gave the release from elsewhere.
+fn allowed(url: &str) -> bool {
+    testing() || [GITHUB_REPO, GITEE_REPO].iter().any(|repo| url.get(..repo.len()).is_some_and(|p| p.eq_ignore_ascii_case(repo)))
 }
 
 fn agent(seconds: u64) -> ureq::Agent {
     ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(seconds))).build().new_agent()
 }
 
-fn fetch_latest() -> Result<Option<Release>, String> {
-    let url = test_url().unwrap_or_else(|| LATEST.to_string());
-    let body: Value = agent(20)
-        .get(&url)
-        .header("user-agent", &format!("wakuwaku/{}", current()))
-        .header("accept", "application/vnd.github+json")
-        .call()
-        .map_err(|e| e.to_string())?
-        .body_mut()
-        .read_json()
-        .map_err(|e| e.to_string())?;
-    Ok(release_of(&body))
+// A JSON from there; none if it is not there (404: no release yet).
+fn get_json(url: &str, accept: &str) -> Result<Option<Value>, String> {
+    let res = agent(20).get(url).header("user-agent", &format!("wakuwaku/{}", current())).header("accept", accept).call();
+    match res {
+        Err(ureq::Error::StatusCode(404)) => Ok(None),
+        Err(e) => Err(e.to_string()),
+        Ok(mut res) => res.body_mut().read_json().map(Some).map_err(|e| e.to_string()),
+    }
+}
+
+fn get_text(url: &str) -> Result<String, String> {
+    let mut res = agent(20).get(url).header("user-agent", &format!("wakuwaku/{}", current())).call().map_err(|e| e.to_string())?;
+    res.body_mut().with_config().limit(4096).read_to_string().map_err(|e| e.to_string())
+}
+
+// Where each place's release is looked at: both, or those a test gives.
+fn endpoints() -> Vec<(Source, String)> {
+    if !testing() {
+        return vec![(Source::GitHub, GITHUB_LATEST.to_string()), (Source::Gitee, GITEE_RELEASES.to_string())];
+    }
+    [(Source::GitHub, test_url(GITHUB_TEST)), (Source::Gitee, test_url(GITEE_TEST))].into_iter().filter_map(|(source, url)| Some((source, url?))).collect()
+}
+
+// What one place says; Gitee's <exe>.sha256 read with it (none if it
+// cannot be).
+fn fetch(source: Source, url: &str) -> Result<Option<Found>, String> {
+    match source {
+        Source::GitHub => Ok(get_json(url, "application/vnd.github+json")?.as_ref().and_then(github_release)),
+        Source::Gitee => {
+            let Some((mut found, sums)) = get_json(url, "application/json")?.as_ref().and_then(gitee_release) else { return Ok(None) };
+            found.digest = sums.filter(|u| allowed(u)).and_then(|u| get_text(&u).ok()).as_deref().and_then(sums_of);
+            Ok(Some(found))
+        }
+    }
+}
+
+// Both places looked at together, and the newest of what they say. Neither
+// answering is an error; one not, only said in the log.
+fn fetch_latest(sh: &Shared) -> Result<Option<Release>, String> {
+    let asked = endpoints();
+    let got: Vec<(Source, Result<Option<Found>, String>)> = std::thread::scope(|s| {
+        let looks: Vec<_> = asked.iter().map(|(source, url)| (*source, s.spawn(move || fetch(*source, url)))).collect();
+        looks.into_iter().map(|(source, look)| (source, look.join().unwrap_or_else(|_| Err("stopped".into())))).collect()
+    });
+    let mut found = Vec::new();
+    let mut failed = Vec::new();
+    for (source, got) in got {
+        match got {
+            Ok(f) => found.extend(f),
+            Err(e) => failed.push(format!("{}: {e}", source.name())),
+        }
+    }
+    if !failed.is_empty() && failed.len() == asked.len() {
+        return Err(failed.join("; "));
+    }
+    for e in &failed {
+        sh.log(&format!("update: could not look on {e}"));
+    }
+    Ok(merge(found))
 }
 
 fn error(code: &str, detail: impl Into<String>) -> Value {
     json!({ "code": code, "detail": detail.into() })
+}
+
+fn places(r: &Release) -> String {
+    r.from.iter().map(|f| f.source.name()).collect::<Vec<_>>().join(", ")
 }
 
 // Looked at now (one look at a time); told on the island if newer.
@@ -161,7 +357,7 @@ pub fn check_now(sh: &Arc<Shared>) {
         s.checking = true;
     }
     sh.push_settings();
-    let got = fetch_latest();
+    let got = fetch_latest(sh);
     let now = crate::now_ms();
     {
         let mut s = STATE.lock().unwrap();
@@ -172,7 +368,8 @@ pub fn check_now(sh: &Arc<Shared>) {
                 s.latest = release.clone();
                 s.next_at = now + DAY_MS;
                 if s.stage.is_none() {
-                    s.error = None;
+                    // GitHub and Gitee not agreeing on a newer one's SHA-256.
+                    s.error = release.as_ref().filter(|r| r.conflict && newer(&r.version, current())).map(|r| error("mismatch", r.version.clone()));
                 }
             }
             // Quietly again in an hour.
@@ -183,10 +380,15 @@ pub fn check_now(sh: &Arc<Shared>) {
         }
     }
     match &got {
-        Ok(Some(r)) if newer(&r.version, current()) => sh.log(&format!("update: v{} out, newer than v{}", r.version, current())),
-        Ok(Some(r)) => sh.log(&format!("update: v{} is the latest; this is v{}", r.version, current())),
+        Ok(Some(r)) if newer(&r.version, current()) => sh.log(&format!("update: v{} out ({}), newer than v{}", r.version, places(r), current())),
+        Ok(Some(r)) => sh.log(&format!("update: v{} is the latest ({}); this is v{}", r.version, places(r), current())),
         Ok(None) => sh.log("update: no release to go by (none, a draft or a prerelease)"),
         Err(e) => sh.log(&format!("update: could not look ({e}); again in an hour")),
+    }
+    if let Ok(Some(r)) = &got {
+        if r.conflict {
+            sh.log(&format!("update: v{}: GitHub and Gitee give different SHA-256s; not to be installed", r.version));
+        }
     }
     tell(sh);
     sh.push_settings();
@@ -237,10 +439,20 @@ pub fn start(sh: &Arc<Shared>) {
     });
 }
 
-// For the settings: this version, the latest, and how an update goes.
-pub fn view() -> Value {
+// For the settings: this version, the latest (its page the preferred
+// place's), and how an update goes.
+pub fn view(sh: &Shared) -> Value {
+    let first = gitee_first(sh);
     let s = STATE.lock().unwrap();
-    let latest = s.latest.as_ref().map(|r| json!({ "version": r.version, "page": r.page, "newer": newer(&r.version, current()), "canInstall": r.exe.is_some() && r.digest.is_some() }));
+    let latest = s.latest.as_ref().map(|r| {
+        json!({
+            "version": r.version,
+            "page": r.page(first),
+            "newer": newer(&r.version, current()),
+            "canInstall": r.can_install(),
+            "places": r.from.iter().map(|f| f.source.name()).collect::<Vec<_>>(),
+        })
+    });
     json!({
         "current": current(),
         "may": may_update(),
@@ -250,15 +462,18 @@ pub fn view() -> Value {
         "latest": latest,
         "error": s.error,
         "stage": s.stage,
+        "from": s.from.map(Source::name),
         "got": s.got,
         "total": s.total,
     })
 }
 
-// The latest release's page, opened (only GitHub's, unless a test's).
+// The latest release's page, opened: the preferred place's (only GitHub's
+// or Gitee's, unless a test's).
 pub fn open_page(sh: &Shared) {
-    let page = STATE.lock().unwrap().latest.as_ref().map(|r| r.page.clone()).unwrap_or_default();
-    if page.is_empty() || !from_github(&page) {
+    let first = gitee_first(sh);
+    let page = STATE.lock().unwrap().latest.as_ref().map(|r| r.page(first)).unwrap_or_default();
+    if page.is_empty() || !allowed(&page) {
         return;
     }
     if !crate::jump::open_url(&page) {
@@ -275,8 +490,9 @@ pub fn update_now(sh: &Arc<Shared>) {
         }
         let Some(r) = s.latest.clone().filter(|r| newer(&r.version, current())) else { return };
         s.stage = Some("download");
+        s.from = None;
         s.got = 0;
-        s.total = r.size;
+        s.total = 0;
         s.error = None;
         r
     };
@@ -287,6 +503,7 @@ pub fn update_now(sh: &Arc<Shared>) {
             sh.log(&format!("update: v{} not installed: {e}", release.version));
             let mut s = STATE.lock().unwrap();
             s.stage = None;
+            s.from = None;
             s.error = Some(e);
             drop(s);
             sh.push_settings();
@@ -303,22 +520,50 @@ fn install(sh: &Arc<Shared>, r: &Release) -> Result<(), Value> {
     if !may_update() {
         return Err(error("source", ""));
     }
-    let url = r.exe.as_deref().ok_or_else(|| error("noExe", ""))?;
+    if r.conflict {
+        return Err(error("mismatch", r.version.clone()));
+    }
     let digest = r.digest.as_deref().ok_or_else(|| error("noDigest", ""))?;
-    if !from_github(url) {
-        return Err(error("elsewhere", url));
-    }
+    let exes: Vec<(Source, &str, u64)> = r.ordered(gitee_first(sh)).into_iter().filter_map(|f| Some((f.source, f.exe.as_deref()?, f.size))).collect();
     let part = sh.dir.join(format!("update-v{}.exe.part", r.version));
-    let got = download(sh, url, &part).map_err(|e| {
+    // From the place preferred; the other should that fail.
+    let mut failed = error("noExe", "");
+    let mut done = false;
+    for (source, url, size) in exes {
+        if !allowed(url) {
+            failed = error("elsewhere", url);
+            continue;
+        }
+        {
+            let mut s = STATE.lock().unwrap();
+            s.stage = Some("download");
+            s.from = Some(source);
+            s.got = 0;
+            s.total = size;
+        }
+        sh.push_settings();
+        let got = match download(sh, url, &part) {
+            Ok(got) => got,
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                sh.log(&format!("update: v{} not downloaded from {}: {e}", r.version, source.name()));
+                failed = error("download", format!("{}: {e}", source.name()));
+                continue;
+            }
+        };
+        stage(sh, "verify");
+        if got == digest {
+            sh.log(&format!("update: v{} downloaded from {}, its SHA-256 as given", r.version, source.name()));
+            done = true;
+            break;
+        }
         let _ = std::fs::remove_file(&part);
-        error("download", e)
-    })?;
-    stage(sh, "verify");
-    if got != digest {
-        let _ = std::fs::remove_file(&part);
-        return Err(error("digest", format!("{got} ≠ {digest}")));
+        sh.log(&format!("update: v{} from {}: SHA-256 {got}, not {digest}", r.version, source.name()));
+        failed = error("digest", format!("{}: {got} ≠ {digest}", source.name()));
     }
-    sh.log(&format!("update: v{} downloaded, its SHA-256 as GitHub gives it", r.version));
+    if !done {
+        return Err(failed);
+    }
     // A prompt waiting for an answer: answered first (the new one would
     // not have it).
     if !sh.asks.lock().unwrap().is_empty() {
@@ -462,7 +707,7 @@ pub fn wait_after_update(args: &[String]) {
 mod tests {
     use serde_json::json;
 
-    use super::{newer, release_of};
+    use super::{allowed, gitee_release, github_release, merge, newer, sums_of, Found, Source};
 
     // Her version said the same everywhere it is said: what updates go by
     // (Cargo.toml), the exe's own and the settings' (tauri.conf.json), and
@@ -490,30 +735,159 @@ mod tests {
     }
 
     #[test]
-    fn releases_read() {
+    fn github_read() {
         let asset = |name: &str, digest: &str| json!({ "name": name, "size": 7, "digest": digest, "browser_download_url": format!("https://github.com/zhoupengjie/Wakuwaku/releases/download/x/{name}") });
         let good = json!({
             "tag_name": "v0.2.1", "draft": false, "prerelease": false,
             "html_url": "https://github.com/zhoupengjie/Wakuwaku/releases/tag/v0.2.1",
             "assets": [asset("notes.txt", ""), asset("wakuwaku-v0.2.1-windows-x64.exe", &format!("sha256:{}", "AB".repeat(32)))],
         });
-        let r = release_of(&good).unwrap();
+        let r = github_release(&good).unwrap();
+        assert_eq!(r.source, Source::GitHub);
         assert_eq!(r.version, "0.2.1");
         assert_eq!(r.digest.as_deref(), Some("ab".repeat(32).as_str()));
         assert!(r.exe.unwrap().ends_with("wakuwaku-v0.2.1-windows-x64.exe"));
         let mut draft = good.clone();
         draft["draft"] = json!(true);
-        assert!(release_of(&draft).is_none());
+        assert!(github_release(&draft).is_none());
         let mut pre = good.clone();
         pre["prerelease"] = json!(true);
-        assert!(release_of(&pre).is_none());
+        assert!(github_release(&pre).is_none());
         // No SHA-256 given, or not one: none to check by.
         let mut bare = good.clone();
         bare["assets"] = json!([asset("wakuwaku-v0.2.1-windows-x64.exe", "md5:xyz")]);
-        assert_eq!(release_of(&bare).unwrap().digest, None);
+        assert_eq!(github_release(&bare).unwrap().digest, None);
         // The exe by another name: none to install.
         let mut other = good;
         other["assets"] = json!([asset("wakuwaku.exe", "")]);
-        assert_eq!(release_of(&other).unwrap().exe, None);
+        assert_eq!(github_release(&other).unwrap().exe, None);
+    }
+
+    // Gitee's list as its API gives it (the source archives among the
+    // assets, no size or digest): the highest version that counts, not the
+    // first or the last edited.
+    #[test]
+    fn gitee_read() {
+        let release = |tag: &str, pre: bool, files: &[&str]| {
+            let mut assets: Vec<_> = files.iter().map(|f| json!({ "name": f, "browser_download_url": format!("https://gitee.com/zhoupengjie/Wakuwaku/releases/download/{tag}/{f}") })).collect();
+            assets.push(json!({ "name": format!("{tag}.zip"), "browser_download_url": format!("https://gitee.com/zhoupengjie/Wakuwaku/archive/refs/tags/{tag}.zip") }));
+            json!({ "id": 1, "tag_name": tag, "target_commitish": "abc", "prerelease": pre, "name": tag, "body": "", "assets": assets })
+        };
+        let list = json!([
+            release("v0.2.1", false, &["wakuwaku-v0.2.1-windows-x64.exe"]),
+            release("v0.3.0-beta", true, &["wakuwaku-v0.3.0-beta-windows-x64.exe"]),
+            release("v0.2.2", false, &["wakuwaku-v0.2.2-windows-x64.exe", "wakuwaku-v0.2.2-windows-x64.exe.sha256"]),
+        ]);
+        let (found, sums) = gitee_release(&list).unwrap();
+        assert_eq!(found.source, Source::Gitee);
+        assert_eq!(found.version, "0.2.2");
+        assert_eq!(found.page, "https://gitee.com/zhoupengjie/Wakuwaku/releases/tag/v0.2.2");
+        assert_eq!(found.exe.as_deref(), Some("https://gitee.com/zhoupengjie/Wakuwaku/releases/download/v0.2.2/wakuwaku-v0.2.2-windows-x64.exe"));
+        assert_eq!(found.digest, None);
+        assert!(sums.unwrap().ends_with("wakuwaku-v0.2.2-windows-x64.exe.sha256"));
+        // One release alone (its own endpoint) reads the same; none at all, nothing.
+        let (one, sums) = gitee_release(&release("v0.2.1", false, &["wakuwaku-v0.2.1-windows-x64.exe"])).unwrap();
+        assert_eq!(one.version, "0.2.1");
+        assert_eq!(sums, None);
+        assert!(gitee_release(&json!([])).is_none());
+        assert!(gitee_release(&json!({ "message": "404 Not Found" })).is_none());
+    }
+
+    #[test]
+    fn sums_read() {
+        let hex = "AB".repeat(32);
+        assert_eq!(sums_of(&format!("{hex}  wakuwaku-v0.2.2-windows-x64.exe\n")).as_deref(), Some("ab".repeat(32).as_str()));
+        assert_eq!(sums_of(&format!("\u{feff}{hex} *wakuwaku.exe\r\n")).as_deref(), Some("ab".repeat(32).as_str()));
+        assert_eq!(sums_of(&hex).as_deref(), Some("ab".repeat(32).as_str()));
+        assert_eq!(sums_of("not a sum"), None);
+        assert_eq!(sums_of(""), None);
+    }
+
+    fn found(source: Source, version: &str, digest: Option<&str>) -> Found {
+        Found { source, version: version.into(), page: format!("{}/{version}", source.name()), exe: Some(format!("{}/{version}.exe", source.name())), digest: digest.map(str::to_string), size: 0 }
+    }
+
+    #[test]
+    fn places_merged() {
+        let (a, b) = ("a".repeat(64), "b".repeat(64));
+        // The same release in both: GitHub's SHA-256, both places to download from.
+        let r = merge(vec![found(Source::Gitee, "0.2.2", Some(&a)), found(Source::GitHub, "0.2.2", Some(&a))]).unwrap();
+        assert_eq!(r.version, "0.2.2");
+        assert_eq!(r.from.iter().map(|f| f.source).collect::<Vec<_>>(), [Source::GitHub, Source::Gitee]);
+        assert_eq!(r.digest.as_deref(), Some(a.as_str()));
+        assert!(!r.conflict && r.can_install());
+        // The preferred place first.
+        assert_eq!(r.ordered(true)[0].source, Source::Gitee);
+        assert_eq!(r.ordered(false)[0].source, Source::GitHub);
+        assert_eq!(r.page(true), "Gitee/0.2.2");
+        // Gitee without a .sha256 read: GitHub's still checks Gitee's exe.
+        let r = merge(vec![found(Source::GitHub, "0.2.2", Some(&a)), found(Source::Gitee, "0.2.2", None)]).unwrap();
+        assert_eq!(r.digest.as_deref(), Some(a.as_str()));
+        // One newer: only it, by its own SHA-256.
+        let r = merge(vec![found(Source::GitHub, "0.2.1", Some(&a)), found(Source::Gitee, "0.2.2", Some(&b))]).unwrap();
+        assert_eq!(r.version, "0.2.2");
+        assert_eq!(r.from.len(), 1);
+        assert_eq!(r.digest.as_deref(), Some(b.as_str()));
+        // Two that differ: none trusted.
+        let r = merge(vec![found(Source::GitHub, "0.2.2", Some(&a)), found(Source::Gitee, "v0.2.2", Some(&b))]).unwrap();
+        assert!(r.conflict);
+        assert_eq!(r.digest, None);
+        assert!(!r.can_install());
+        // None given: nothing to install.
+        assert!(!merge(vec![found(Source::Gitee, "0.2.2", None)]).unwrap().can_install());
+        assert_eq!(merge(vec![]), None);
+    }
+
+    // Both places as they answer now (network; `cargo test live -- --ignored`).
+    #[test]
+    #[ignore]
+    fn live_places() {
+        let github = super::fetch(Source::GitHub, super::GITHUB_LATEST).unwrap();
+        let gitee = super::fetch(Source::Gitee, super::GITEE_RELEASES).unwrap();
+        println!("GitHub: {github:?}\nGitee: {gitee:?}");
+        assert!(github.is_some_and(|f| f.digest.is_some() && f.exe.is_some()));
+        // Another repo's releases on Gitee: its versions read, though no exe of hers.
+        let other = super::fetch(Source::Gitee, "https://gitee.com/api/v5/repos/cxasm/notepad--/releases?per_page=10&direction=desc").unwrap().unwrap();
+        println!("notepad--: {other:?}");
+        assert!(other.exe.is_none() && other.digest.is_none());
+        println!("{:?}", merge(gitee.into_iter().chain([other]).collect()));
+    }
+
+    // Against test/fake-release.js (started with --version 0.2.2), the test
+    // URLs set: `cargo test fake_places -- --ignored --test-threads 1`.
+    #[test]
+    #[ignore]
+    fn fake_places() {
+        let set = |m: &str| {
+            ureq::get(&format!("http://127.0.0.1:47390/mode?{m}")).call().unwrap();
+        };
+        let look = || merge(super::endpoints().into_iter().filter_map(|(s, u)| super::fetch(s, &u).unwrap()).collect()).unwrap();
+        set("githubOld=0&giteeOld=0&noDigest=0&noSums=0&badSums=0&giteeEmpty=0");
+        let r = look();
+        assert_eq!((r.version.as_str(), r.from.len(), r.conflict), ("0.2.2", 2, false));
+        assert_eq!(r.from[1].digest, r.digest, "Gitee's .sha256, through its redirect, agrees with GitHub");
+        set("badSums=1");
+        assert!(look().conflict);
+        set("badSums=0&noDigest=1");
+        assert!(look().digest.is_some(), "Gitee's .sha256 when GitHub gives none");
+        set("noSums=1");
+        assert!(!look().can_install());
+        set("noDigest=0&noSums=0&githubOld=1");
+        let r = look();
+        assert_eq!((r.version.as_str(), r.from.len(), r.from[0].source), ("0.2.2", 1, Source::Gitee));
+        set("githubOld=0&giteeEmpty=1");
+        assert_eq!(look().from.len(), 1);
+        set("giteeEmpty=0");
+    }
+
+    #[test]
+    fn only_her_repos() {
+        assert!(allowed("https://github.com/zhoupengjie/Wakuwaku/releases/download/v0.2.2/wakuwaku-v0.2.2-windows-x64.exe"));
+        assert!(allowed("https://gitee.com/zhoupengjie/Wakuwaku/releases/download/v0.2.2/wakuwaku-v0.2.2-windows-x64.exe"));
+        assert!(allowed("https://gitee.com/zhoupengjie/wakuwaku/releases/tag/v0.2.2"));
+        assert!(!allowed("https://gitee.com/someone/Wakuwaku/releases/download/v0.2.2/x.exe"));
+        assert!(!allowed("https://gitee.com.evil.example/zhoupengjie/Wakuwaku/"));
+        assert!(!allowed("http://gitee.com/zhoupengjie/Wakuwaku/releases/download/v0.2.2/x.exe"));
+        assert!(!allowed("https://gitee.com/zhoupengjie/Wakuwaku"));
     }
 }

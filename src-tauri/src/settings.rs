@@ -50,7 +50,7 @@ pub fn snapshot(sh: &Shared) -> Value {
         "winPaper": crate::paper::now(),
         "version": sh.app.package_info().version.to_string(),
         // Her updates: this version, the latest, an update under way (updates.rs).
-        "update": crate::updates::view(),
+        "update": crate::updates::view(&sh),
         "fullscreenAvailable": fullscreen::AVAILABLE,
         "widgets": sh.widgets_view(),
         // The plugins she runs, and where waku is for the terminal.
@@ -95,6 +95,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "pet" => v.as_str().is_some_and(|id| data::pets(&sh.dir).iter().any(|p| p.id == id)),
         "scale" => v.as_f64().is_some_and(|s| data::SCALES.iter().any(|(_, x)| (x - s).abs() < 1e-9)),
         "details" | "walk" | "look" | "sound" | "dnd" | "hideInFullscreen" | "onboarded" | "out" | "settingsPin" | "settingsTop" | "oledShift" | "autoUpdateCheck" => is_bool,
+        // Where an update is downloaded from first (updates.rs gitee_first).
+        "updateFrom" => matches!(v.as_str(), Some("auto" | "github" | "gitee")),
         "display" => matches!(v.as_str(), Some("island" | "taskbar")),
         "islandWidth" => matches!(v.as_str(), Some("narrow" | "normal" | "wide")),
         "taskbarMaterial" => matches!(v.as_str(), Some("mica" | "black" | "clear")),

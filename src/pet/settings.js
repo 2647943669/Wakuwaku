@@ -1634,7 +1634,8 @@
   // Her updates (updates.rs): this version and the latest, its notes and
   // Update, or a look now; how an update goes (downloaded, checked, waiting
   // for a prompt's answer, restarting) or went wrong; looked for by itself
-  // or not. A build run from the source tree is never looked for.
+  // or not; downloaded from GitHub or Gitee first. A build run from the
+  // source tree is never looked for.
   function pageUpdate() {
     const u = snap.update || {}
     const version = T('s.updateVersion', { version: u.current || snap.version })
@@ -1643,7 +1644,7 @@
     const newer = !!latest?.newer
     const mb = n => (n / 1048576).toFixed(1)
     let state = ''
-    if (u.stage === 'download') state = T('s.updateDownloading', { pct: u.total ? Math.min(100, Math.floor((100 * u.got) / u.total)) : 0, got: mb(u.got || 0), total: mb(u.total || 0) })
+    if (u.stage === 'download') state = T('s.updateDownloading', { from: u.from || '', pct: u.total ? Math.min(100, Math.floor((100 * u.got) / u.total)) : 0, got: mb(u.got || 0), total: mb(u.total || 0) })
     else if (u.stage) state = T(`s.updateStage.${u.stage}`)
     else if (u.checking) state = T('s.updateChecking')
     else if (u.error) state = T(`s.updateError.${u.error.code}`, { detail: u.error.detail || '' })
@@ -1662,6 +1663,7 @@
     return `${sec(T('s.update'))}<div class="grp">
         ${row(esc(title), esc(state), buttons)}
         ${row(esc(T('s.updateAuto')), esc([T('s.updateAutoNote'), when].filter(Boolean).join(' · ')), sw('autoUpdateCheck', snap.settings.autoUpdateCheck !== false))}
+        ${row(esc(T('s.updateFrom')), esc(T('s.updateFromNote')), seg('updateFrom', [['auto', T('s.updateFromAuto')], ['gitee', 'Gitee'], ['github', 'GitHub']], snap.settings.updateFrom || 'auto'))}
       </div>`
   }
 
@@ -2025,7 +2027,7 @@
         gallery.items = []
         return loadGallery(false)
       }
-      const value = ['lang', 'islandWidth', 'taskbarMaterial', 'taskbarClearWhen', 'taskbarButtons', 'taskbarAlign', 'mailAgent', 'mailOffline'].includes(key) ? raw : raw === 'seen' ? 'seen' : Number(raw)
+      const value = ['lang', 'islandWidth', 'taskbarMaterial', 'taskbarClearWhen', 'taskbarButtons', 'taskbarAlign', 'mailAgent', 'mailOffline', 'updateFrom'].includes(key) ? raw : raw === 'seen' ? 'seen' : Number(raw)
       return patch({ [key]: value })
     }
     const tile = at('[data-tile]')

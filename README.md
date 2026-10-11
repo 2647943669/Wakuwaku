@@ -91,7 +91,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
 - **单个 exe（Windows）**：`wakuwaku.exe` 约 7 MB，放进哪个文件夹都能直接运行，设置和宠物都存在它旁边的 `wakuwaku-data` 文件夹里；不要了直接删掉这两样。用的是 Windows 11 自带的 WebView2，不用另装运行库。
 
-在 [Releases](https://github.com/zhoupengjie/Wakuwaku/releases) 下载 `wakuwaku-<版本>-windows-x64.exe`，不需要安装。exe 没有代码签名，第一次运行时 Windows SmartScreen 可能会拦下，点「更多信息 → 仍要运行」即可。也可以自己构建，见下面"从源码运行"。
+在 [Releases](https://github.com/zhoupengjie/Wakuwaku/releases) 下载 `wakuwaku-<版本>-windows-x64.exe`，不需要安装；在国内可以从 [Gitee 的发行版](https://gitee.com/zhoupengjie/Wakuwaku/releases) 下载同一个文件。exe 没有代码签名，第一次运行时 Windows SmartScreen 可能会拦下，点「更多信息 → 仍要运行」即可。也可以自己构建，见下面"从源码运行"。
 - **从源码运行**：见下文。
 
 第一次打开时，她会自动下载默认宠物 Claude 小姐（需要联网；没网时设置面板会自己打开，之后再挑）。想换别的，单击灵动岛打开设置，在「宠物」页挑一只（图库直接来自 codex-pets.net，点「下载」即可），或者粘贴宠物页面的地址。
@@ -173,9 +173,10 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 
 ### 更新
 
-下载的 exe 启动时会看一次 GitHub 上的最新发布（`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`，不带任何账号信息），之后每天看一次。草稿和预发布不算。有新版本时灵动岛提示一次，点一下打开设置「通用」页的「软件更新」，那里能看说明，点「更新」才会下载。
+下载的 exe 启动时会同时看一次 GitHub 和 Gitee 上的最新发布（`https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest` 和 `https://gitee.com/api/v5/repos/zhoupengjie/Wakuwaku/releases`，都不带任何账号信息），之后每天看一次。草稿和预发布不算。有新版本时灵动岛提示一次，点一下打开设置「通用」页的「软件更新」，那里能看说明，点「更新」才会下载。
 
-- 下载的是发布页上的 `wakuwaku-v<版本>-windows-x64.exe`，先按 GitHub 给出的 SHA-256 校验，对不上或者没给校验值就不装，也不改动任何文件。
+- 下载的是发布页上的 `wakuwaku-v<版本>-windows-x64.exe`：在中国先从 Gitee 下载，其他地方先从 GitHub，一边下载失败就换另一边（「软件更新」里的「从哪里下载」可以指定）。
+- 下载后先校验 SHA-256：用 GitHub 给出的校验值，GitHub 没给时用 Gitee 发布里的 `.sha256` 文件。对不上、没有校验值、或者两边给的不一样，就不装，也不改动任何文件。
 - 校验通过后，原来的 exe 改名为 `<原名>.old.exe`，新 exe 放到原来的位置（保留你的文件名），然后启动新版、退出旧版；有确认请求在等你时，会等你处理完再重启。新版正常运行一分钟后删掉 `.old.exe`。
 - 新版起不来时，`.old.exe` 还在：退出她，删掉新的 exe，把 `.old.exe` 改回原来的名字就是原来的版本。
 - 不想自动检查：在「软件更新」里关掉「自动检查更新」，需要时点「现在检查」。
