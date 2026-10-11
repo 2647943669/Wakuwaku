@@ -300,6 +300,12 @@ mod imp {
         pid
     }
 
+    // A session's own process still the one it was: running, started when
+    // the chain says (its number not reused).
+    pub fn still_running(pid: u32, at: u64) -> bool {
+        started(pid) == Some(at)
+    }
+
     // A window found before is still the one: there, shown, of the same process.
     pub fn still_there(hwnd: isize, pid: u32) -> bool {
         // SAFETY: plain queries.
@@ -482,6 +488,9 @@ mod imp {
     pub fn still_there(_hwnd: isize, _pid: u32) -> bool {
         false
     }
+    pub fn still_running(_pid: u32, _at: u64) -> bool {
+        false
+    }
     pub fn bring(_hwnd: isize) -> bool {
         false
     }
@@ -493,7 +502,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, hook_chain, still_there, windows_for};
+pub use imp::{chain_of, client_of, hook_chain, still_running, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {

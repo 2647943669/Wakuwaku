@@ -740,7 +740,8 @@ mod imp {
         let mut asked: Vec<(String, String)> = Vec::new();
         for (id, mood, chain, hints) in targets {
             if let Some(&(hwnd, pid, at)) = found.get(&id) {
-                if at.elapsed() < Duration::from_secs(60) && jump::still_there(hwnd, pid) {
+                // Kept while the session's own process runs and the window is there.
+                if at.elapsed() < Duration::from_secs(60) && chain.first().is_some_and(|&(p, t)| jump::still_running(p, t)) && jump::still_there(hwnd, pid) {
                     marks.entry(hwnd).or_default().push(json!({ "id": id, "mood": mood }));
                     continue;
                 }
@@ -1650,6 +1651,11 @@ mod imp {
             // title the same, an icon alone, a window with no button) wait
             // for the next look, which asks that window's icon again.
             HSHELL_REDRAW => {
+                // Never ours (no button; and asking our own window's title
+                // from here would wait on the main thread).
+                if tasks::is_ours(hwnd) {
+                    return;
+                }
                 REDRAWN.lock().unwrap().push(hwnd);
                 let shown = TITLES.lock().unwrap().as_ref().and_then(|t| t.get(&hwnd).cloned());
                 match shown {

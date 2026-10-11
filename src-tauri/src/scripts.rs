@@ -368,17 +368,29 @@ pub fn sync(sh: &Shared) -> bool {
                 if !is_on && r.trouble.remove(s.id).is_some() {
                     stale.push(s.id);
                 }
-                // Turned on again later, it looks at once.
-                r.done.remove(s.id);
+                // Between its turns: what it posted goes with it; turned on
+                // again later, it looks at once.
+                if r.done.remove(s.id).is_some() {
+                    stale.push(s.id);
+                }
                 continue;
             }
             if r.trouble.get(s.id).and_then(|t| t.retry_at).is_some_and(|at| at > now) {
                 continue;
             }
-            // Between turns, with the same settings: not yet.
+            // Between turns, with the same settings: not yet. With other
+            // settings: what it posted goes, and it looks now.
             if let Some(turn) = s.turn {
-                if r.done.get(s.id).is_some_and(|(at, with)| *with == args && at.elapsed() < turn) {
+                let (waiting, other) = match r.done.get(s.id) {
+                    Some((at, with)) => (*with == args && at.elapsed() < turn, *with != args),
+                    None => (false, false),
+                };
+                if waiting {
                     continue;
+                }
+                if other {
+                    stale.push(s.id);
+                    r.done.remove(s.id);
                 }
             }
             match r.start(s, &args, &folder, s.turn.is_some()) {

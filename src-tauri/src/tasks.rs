@@ -188,6 +188,7 @@ mod imp {
         fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
         fn GetWindowLongPtrW(hwnd: Hwnd, index: i32) -> isize;
         fn GetWindowTextW(hwnd: Hwnd, text: *mut u16, max: i32) -> i32;
+        fn InternalGetWindowText(hwnd: Hwnd, text: *mut u16, max: i32) -> i32;
         fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
         fn GetClassNameW(hwnd: Hwnd, name: *mut u16, max: i32) -> i32;
         fn GetForegroundWindow() -> Hwnd;
@@ -711,7 +712,17 @@ mod imp {
     // A window's title now (taskbar.rs on_shell: a title said to have
     // changed, against the one shown).
     pub fn title(hwnd: isize) -> String {
-        title_of(hwnd as Hwnd)
+        let mut text = [0u16; 512];
+        // SAFETY: our own buffer, its size passed. The text as the window
+        // keeps it, not asked of the window (GetWindowTextW sends WM_GETTEXT
+        // to a window of this process, and waits on its thread).
+        let n = unsafe { InternalGetWindowText(hwnd as Hwnd, text.as_mut_ptr(), 512) }.max(0) as usize;
+        String::from_utf16_lossy(&text[..n])
+    }
+
+    // A window of this process (taskbar.rs on_shell: never a button, never asked).
+    pub fn is_ours(hwnd: isize) -> bool {
+        pid_of(hwnd as Hwnd) == std::process::id()
     }
 
     // Whether a window would have a button (taskbar.rs on_shell: one just
@@ -827,6 +838,9 @@ mod imp {
     pub fn title(_hwnd: isize) -> String {
         String::new()
     }
+    pub fn is_ours(_hwnd: isize) -> bool {
+        false
+    }
     pub fn is_task_window(_hwnd: isize) -> bool {
         false
     }
@@ -896,7 +910,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
 
 #[cfg(test)]
 mod tests {
