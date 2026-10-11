@@ -216,6 +216,29 @@ mod imp {
         })
     }
 
+    // The room of a taskbar of Explorer's along the bottom of a display while
+    // it shows there (not hidden, not slid away): what the handover pictures.
+    pub fn shown_room(mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
+        let (bottom, right) = (mon.1 + mon.3, mon.0 + mon.2);
+        taskbars().into_iter().find_map(|h| {
+            let mut r = Rect::default();
+            // SAFETY: our own struct; a gone window fails both calls.
+            let ok = unsafe { GetWindowRect(h as Hwnd, &mut r) } != 0 && unsafe { IsWindowVisible(h as Hwnd) } != 0;
+            let there = ok && r.bottom == bottom && r.left <= mon.0 && r.right >= right && r.top > mon.1 + mon.3 / 2;
+            there.then_some((mon.0, r.top, mon.2, r.bottom - r.top))
+        })
+    }
+
+    // Every taskbar of Explorer's shown again, its state (auto-hide) and the
+    // file left for restore: the handover's quitting shows it under hers a
+    // moment before she goes.
+    pub fn show_bars() {
+        for h in taskbars() {
+            // SAFETY: as in rehide().
+            unsafe { ShowWindow(h as Hwnd, SW_SHOWNA) };
+        }
+    }
+
     // Its state set back and shown, and the file gone; false (the file kept)
     // when there was nothing to give back, or no Explorer to give it to.
     pub fn restore(file: &Path) -> bool {
@@ -334,7 +357,7 @@ mod imp {
     pub fn guard(_pid: u32, _file: &Path, _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
 }
 
-pub use imp::{explorer_tray, guard, hide, recover, rehide, restore, room, spawn_guard, started, taskbar_created, taskbars, visible};
+pub use imp::{explorer_tray, guard, hide, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
 
 // The guard's arguments, when this process is one: its pid and file.
 pub fn guard_args(args: &[String]) -> Option<(u32, &Path)> {

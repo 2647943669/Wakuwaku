@@ -11,7 +11,7 @@
 //
 // Sizes here are logical (the page's) unless they say physical.
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tauri::utils::config::BackgroundThrottlingPolicy;
@@ -400,7 +400,14 @@ pub fn ready(sh: &Arc<Shared>) {
     sh.redraw();
     taskbar::resend(sh);
     sh.greet();
+    // Taking the taskbar over: Windows' own laid over ours first, put away
+    // under it, then turned to dust that settles into ours.
+    let covered = handoff_cover(sh);
     apply_visibility(sh);
+    if covered {
+        handoff_ask(sh, json!({ "step": "go" }));
+        sh.log("handoff: go");
+    }
     if let Some(tab) = pending {
         let _ = sh.app.emit_to("island", "island:settings", json!({ "tab": tab }));
     }
@@ -450,6 +457,86 @@ pub fn apply_visibility(sh: &Arc<Shared>) {
     if let Some(win) = window(sh) {
         let _ = if want { win.show() } else { win.hide() };
     }
+}
+
+// --- The handover with Windows' taskbar (handoff.js) ----------------------------------
+// Windows' taskbar never gone for a moment. Taking over: a picture of it
+// laid over ours, shown exactly over it, before it is put away; then its
+// picture turns to dust that settles into ours. Quitting: ours turns to
+// dust, Windows' shown again under it, ours fading over it before she
+// goes. Each answer of the page's (covered, bare, done) waited for so long
+// at most: neither side can hold the other. Not on the main thread: its
+// events reach the page through the main thread.
+static HANDOFF: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static HANDOFF_SAID: std::sync::Condvar = std::sync::Condvar::new();
+
+// What the page answers (taskbar_handoff).
+pub fn handoff_answer(what: &str) {
+    HANDOFF.lock().unwrap().push(what.to_string());
+    HANDOFF_SAID.notify_all();
+}
+
+// A step told the page; its answers from before forgotten.
+fn handoff_ask(sh: &Shared, step: Value) {
+    HANDOFF.lock().unwrap().clear();
+    let _ = sh.app.emit_to("island", "taskbar:handoff", step);
+}
+
+// An answer, within ms at most: true once it came.
+fn handoff_wait(what: &str, ms: u64) -> bool {
+    let said = HANDOFF.lock().unwrap();
+    let (said, _) = HANDOFF_SAID.wait_timeout_while(said, std::time::Duration::from_millis(ms), |s| !s.iter().any(|x| x == what)).unwrap();
+    said.iter().any(|x| x == what)
+}
+
+// Her page ready, the taskbar to be taken (not yet up, nothing full screen,
+// no other copy of hers holding it): Windows' taskbar pictured, her window
+// shown exactly over it with the picture laid on, before it is put away.
+// True once covered: then `go` follows the taking. A picture that cannot
+// be had (auto-hidden, already put away) is none: the dust comes from above.
+fn handoff_cover(sh: &Arc<Shared>) -> bool {
+    if sh.home() != "taskbar" || taskbar::is_up() {
+        return false;
+    }
+    taskbar::look_for_other(sh);
+    if !is_shown(sh) {
+        return false;
+    }
+    let Some(area) = area(sh) else { return false };
+    let picture = taskbar::strip_picture(area.mon);
+    let _ = fit(sh);
+    let (pos, size, hwnd) = {
+        let mut isl = sh.island.lock().unwrap();
+        isl.shown = true;
+        (isl.pos, isl.size, isl.hwnd)
+    };
+    let Some(win) = window(sh) else { return false };
+    let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
+    let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
+    let _ = win.show();
+    // Over Windows' own, which is kept on top too.
+    crate::tasks::raise_top(hwnd);
+    let pictured = picture.is_some();
+    handoff_ask(sh, json!({ "step": "in", "picture": picture }));
+    let covered = handoff_wait("covered", 800);
+    sh.log(&format!("handoff: in ({}), {}", if pictured { "pictured" } else { "no picture" }, if covered { "covered" } else { "no answer in 800 ms" }));
+    true
+}
+
+// Quitting with the taskbar up (and nothing full screen): hers turns to
+// dust, Windows' shown under it once the page says so (bare), hers kept
+// over it while it fades (done). Then she goes, and gives it back as ever.
+pub fn handoff_out(sh: &Shared) {
+    let shown = sh.island.lock().unwrap().shown;
+    if sh.home() != "taskbar" || !taskbar::is_up() || !shown || sh.is_fullscreen() {
+        return;
+    }
+    handoff_ask(sh, json!({ "step": "out" }));
+    let bare = handoff_wait("bare", 500);
+    crate::shell::show_bars();
+    crate::tasks::raise_top(hwnd(sh));
+    let done = bare && handoff_wait("done", 1500);
+    sh.log(&format!("handoff: out, {}, {}", if bare { "bare" } else { "no answer in 500 ms" }, if done { "done" } else { "not waited for" }));
 }
 
 // Kept in its place (a display gone, the scale changed, another bar). And

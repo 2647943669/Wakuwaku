@@ -522,6 +522,9 @@ impl Shared {
     // then, whatever is stuck; the guard gives Windows' taskbar back once
     // she is gone.
     pub fn quit(self: &Arc<Self>) {
+        if QUITTING.swap(true, Ordering::SeqCst) {
+            return;
+        }
         self.log("quitting");
         let watched = self.clone();
         std::thread::spawn(move || {
@@ -529,7 +532,14 @@ impl Shared {
             watched.log("quitting: not done in 8 s: ended");
             end_now();
         });
-        self.app.exit(0);
+        // The handover first (the taskbar's dust over Windows' shown again,
+        // two seconds at most), off the main thread: its events reach the
+        // page through it.
+        let going = self.clone();
+        std::thread::spawn(move || {
+            island::handoff_out(&going);
+            going.app.exit(0);
+        });
     }
 
     pub fn is_shuffling(&self) -> bool {
@@ -744,6 +754,12 @@ async fn pet_walk_stop(app: AppHandle) {
 #[tauri::command]
 async fn island_holding(app: AppHandle, is_holding: bool) {
     island::set_holding(&shared(&app), is_holding);
+}
+
+// The handover with Windows' taskbar: the page's answers (covered, bare, done).
+#[tauri::command]
+fn taskbar_handoff(what: String) {
+    island::handoff_answer(&what);
 }
 
 // Where the page laid her island out on the taskbar: her seat.
@@ -1081,6 +1097,7 @@ fn main() {
             mail::mail_keep_draft,
             taskbar::taskbar_tray,
             taskbar::taskbar_open,
+            taskbar_handoff,
             taskbar::taskbar_tray_rects,
             taskbar::taskbar_window,
             taskbar::taskbar_windows,
@@ -1329,6 +1346,9 @@ fn main() {
 }
 
 // This process ended at once, whatever its threads are doing.
+// Quitting once: a second quit (the tray, an update) while the first hands over does nothing.
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
 fn end_now() -> ! {
     #[cfg(windows)]
     {

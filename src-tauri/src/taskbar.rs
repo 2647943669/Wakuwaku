@@ -1961,6 +1961,59 @@ mod imp {
         Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(out)))
     }
 
+    // Windows' taskbar on a display as it is on screen now, across the
+    // display (physical px), as a PNG data URL: laid over it by her page
+    // before it is put away (island.rs handoff_cover). None while it does
+    // not show there (auto-hidden, put away), or should the screen not read.
+    pub fn strip_picture(mon: (i32, i32, i32, i32)) -> Option<String> {
+        let (x, y, w, h) = shell::shown_room(mon)?;
+        if w <= 0 || h <= 0 || w > 16_384 || h > 512 {
+            return None;
+        }
+        let n = (w * h) as usize;
+        // SAFETY: the screen's DC released, our own DC, bitmap and pixels
+        // freed; the pixels read from the bitmap while selected.
+        let bgra = unsafe {
+            let screen = GetDC(std::ptr::null_mut());
+            if screen == 0 {
+                return None;
+            }
+            let dc = CreateCompatibleDC(screen);
+            let info = BitmapInfoHeader { size: std::mem::size_of::<BitmapInfoHeader>() as u32, width: w, height: -h, planes: 1, bit_count: 32, compression: 0, size_image: 0, x_ppm: 0, y_ppm: 0, clr_used: 0, clr_important: 0 };
+            let mut bits: *mut u8 = std::ptr::null_mut();
+            let bmp = CreateDIBSection(dc, &info, 0, &mut bits, 0, 0);
+            let pixels = if bmp == 0 || bits.is_null() {
+                None
+            } else {
+                let old = SelectObject(dc, bmp);
+                // SRCCOPY | CAPTUREBLT: what is composed there, layered windows too.
+                let ok = BitBlt(dc, 0, 0, w, h, screen, x, y, 0x00CC_0020 | 0x4000_0000) != 0;
+                let pixels = ok.then(|| std::slice::from_raw_parts(bits, n * 4).to_vec());
+                SelectObject(dc, old);
+                DeleteObject(bmp);
+                pixels
+            };
+            DeleteDC(dc);
+            ReleaseDC(std::ptr::null_mut(), screen);
+            pixels
+        }?;
+        // BGR to RGB, all of it opaque.
+        let mut rgba = bgra;
+        for px in rgba.chunks_exact_mut(4) {
+            px.swap(0, 2);
+            px[3] = 255;
+        }
+        let mut out = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut out, w as u32, h as u32);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().ok()?;
+            writer.write_image_data(&rgba).ok()?;
+        }
+        Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(out)))
+    }
+
     // An app's icon as Windows' taskbar shows it, asked of the shell by the
     // app's id (tasks::app_id): its Apps folder's item, drawn by the shell at
     // `size` from the app's own pictures (a store app's plain one for the
@@ -1996,6 +2049,7 @@ mod imp {
 
     #[link(name = "gdi32")]
     extern "system" {
+        fn BitBlt(dst: isize, x: i32, y: i32, w: i32, h: i32, src: isize, sx: i32, sy: i32, rop: u32) -> i32;
         fn GetDIBits(dc: isize, bmp: isize, start: u32, lines: u32, bits: *mut u8, info: *mut BitmapInfoHeader, usage: u32) -> i32;
     }
 
@@ -2203,9 +2257,12 @@ mod imp {
     pub fn work_area_bottom() -> i32 {
         0
     }
+    pub fn strip_picture(_mon: (i32, i32, i32, i32)) -> Option<String> {
+        None
+    }
 }
 
-pub use imp::{explorer_room, give_back, look_for_other, look_now, note, resend, strip_moved, take, waiting, wake, work_area_bottom};
+pub use imp::{explorer_room, give_back, is_up, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser
