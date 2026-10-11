@@ -12,8 +12,8 @@
 //   - her pages' renderer (or WebView2's browser process) gone: its
 //     ProcessFailed; the page loaded again (the browser: she starts anew)
 // The guard makes the report as she ends; her next start, for a record no
-// guard saw (shell.rs runs one whenever reports are not off, or Windows'
-// taskbar is put away). A report is crashes/<time>-<kind>-<pid>.json, what is
+// guard saw (main.rs runs one while reports can be sent and are not off;
+// the taskbar home runs one anyway, shell.rs). A report is crashes/<time>-<kind>-<pid>.json, what is
 // sent word for word: her version, Windows' and WebView2's, her home, how long
 // she ran, and the last lines of her log from the five minutes before, each
 // with what is theirs taken out (redact.rs). Her log goes to recent.log
@@ -62,6 +62,8 @@ const TEST_URL: &str = "WAKUWAKU_CRASH_URL";
 const TEST_CRASH: &str = "WAKUWAKU_CRASH_TEST";
 
 const TAIL_MAX: u64 = 256 * 1024;
+// The line each run begins with in recent.log ("start: pid 1234, v0.2.2").
+const START_LINE: &str = "start: pid ";
 const TAIL_WINDOW_MS: u64 = 5 * 60 * 1000;
 const TAIL_LINES: usize = 60;
 const KEEP: usize = 20;
@@ -120,6 +122,12 @@ fn write_tail(tail: &mut Option<(fs::File, u64)>, data: &Path, whole: &str) {
     }
 }
 
+// Something of the person's in a log line (a program's name, say): ‹it›,
+// kept in her log, taken out of a report whatever it is (redact.rs).
+pub fn private(text: &str) -> String {
+    format!("‹{}›", text.replace(['‹', '›'], ""))
+}
+
 fn log_line(text: &str) -> String {
     format!("{} [tauri] {text}", crate::now_ms())
 }
@@ -136,10 +144,17 @@ pub fn install(data: &Path) {
     #[cfg(windows)]
     win::catch_native(&dir.join(format!("native-{}.txt", std::process::id())), started);
     let _ = started;
+    // Where this run begins in her log: a report tells only of its own run.
+    tail(data, &log_line(&format!("{}{}, v{}", START_LINE, std::process::id(), crate::updates::current())));
     let before = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         record_panic(info);
         before(info);
+        // Built to abort (release): ended now, with the code the abort's
+        // fast fail would give, not after Windows' error reporting has kept
+        // her (and the taskbar) some seconds more.
+        #[cfg(all(windows, panic = "abort"))]
+        win::end_with(0xC000_0409);
     }));
     test_crash();
 }
@@ -193,10 +208,12 @@ fn testing_webview() -> bool {
 // Exit codes of a crash: Windows' errors (0xC…: an access violation, a
 // stack overflow, a fast fail as Rust's abort is, a heap broken), a
 // breakpoint, a C++ exception, and Rust's 101 (a panic, built to unwind).
-// Not 0, not 1 (ended by Task Manager or taskkill), not Ctrl+C's.
+// Not 0, not 1 (ended by Task Manager or taskkill), not 0xFFFFFFFF (ended
+// by PowerShell's Stop-Process or .NET's Kill: TerminateProcess(-1)), not
+// Ctrl+C's.
 pub fn is_crash_code(code: u32) -> bool {
     match code {
-        0xC000_013A => false,
+        0xC000_013A | 0xFFFF_FFFF => false,
         101 | 0x8000_0003 | 0xE06D_7363 => true,
         c => c & 0xC000_0000 == 0xC000_0000,
     }
@@ -318,9 +335,10 @@ fn iso_minute(ms: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}Z")
 }
 
-// The log's last lines before `at` (five minutes of them, sixty at most), as
-// "-4.1s <line>", each redacted.
-fn log_before(data: &Path, at: u64, r: &Redactor) -> Vec<String> {
+// The log's last lines before `at` (five minutes of them, sixty at most),
+// from pid's start on when its start line is there (an earlier run's
+// lines are another story), as "-4.1s <line>", each redacted.
+fn log_before(data: &Path, at: u64, pid: u32, r: &Redactor) -> Vec<String> {
     let mut lines = Vec::new();
     for name in ["recent.old.log", "recent.log"] {
         let Ok(text) = fs::read(data.join(name)) else { continue };
@@ -336,6 +354,10 @@ fn log_before(data: &Path, at: u64, r: &Redactor) -> Vec<String> {
         }
     }
     lines.sort_by_key(|(ms, _)| *ms);
+    let start = format!("{START_LINE}{pid},");
+    if let Some(i) = lines.iter().rposition(|(_, text)| text.starts_with(&start)) {
+        lines.drain(..i);
+    }
     let from = lines.len().saturating_sub(TAIL_LINES);
     lines[from..].iter().map(|(ms, text)| format!("-{:.1}s {}", at.saturating_sub(*ms) as f64 / 1000.0, r.text(text))).collect()
 }
@@ -360,7 +382,7 @@ fn report_of(data: &Path, f: &Found, theirs: &[String]) -> Value {
         "lang": crate::i18n::lang(settings.get("lang").and_then(Value::as_str).unwrap_or("auto")),
         "uptime": f.uptime,
         "at": iso_minute(f.at),
-        "log": log_before(data, f.at, &r),
+        "log": log_before(data, f.at, f.pid, &r),
     });
     #[cfg(windows)]
     {
@@ -634,9 +656,11 @@ pub fn after_exit(data: &Path, pid: u32, code: Option<u32>, started: Option<u64>
     }
 }
 
-// Whether she wants the guard for her reports (not off).
+// Whether she wants the guard for her reports: not off, and somewhere to
+// send them (without, a panic's or a native crash's record still becomes a
+// report at her next start; the taskbar home has its guard anyway).
 pub fn wants_guard(data: &Path) -> bool {
-    mode_of(&crate::data::load(data)) != "off"
+    can_send() && mode_of(&crate::data::load(data)) != "off"
 }
 
 // --- In her --------------------------------------------------------------------------------
@@ -851,7 +875,7 @@ mod tests {
         for code in [0xC000_0005, 0xC000_00FD, 0xC000_0409, 0xC000_0374, 101, 0x8000_0003] {
             assert!(is_crash_code(code), "{code:#x}");
         }
-        for code in [0, 1, 0xC000_013A, 0x4001_0004, 259] {
+        for code in [0, 1, 0xC000_013A, 0x4001_0004, 259, 0xFFFF_FFFF] {
             assert!(!is_crash_code(code), "{code:#x}");
         }
     }

@@ -87,7 +87,8 @@ pub fn take_from_windows(sh: &std::sync::Arc<crate::Shared>) {
     let mine = sh.setting("taskbarPinned").as_array().cloned().unwrap_or_default();
     let all = merge(windows.clone(), &mine);
     let from_windows: Vec<String> = windows.iter().map(key_of).collect();
-    let names = |pins: Vec<&Value>| pins.iter().map(|p| p["name"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>().join(", ");
+    // Their names marked as the person's: a crash report leaves them out (crash.rs).
+    let names = |pins: Vec<&Value>| pins.iter().map(|p| crate::crash::private(p["name"].as_str().unwrap_or("?"))).collect::<Vec<_>>().join(", ");
     let (theirs, hers): (Vec<&Value>, Vec<&Value>) = all.iter().partition(|p| from_windows.contains(&key_of(p)));
     sh.log(&format!("taskbar: Windows' pins taken: {}; hers kept after them: {}", names(theirs), names(hers)));
     for why in notes {
@@ -201,7 +202,7 @@ mod imp {
                     if !id.is_empty() {
                         return Ok(json!({ "path": "", "id": id, "name": name, "lnk": file }));
                     }
-                    return Err(format!("{name}: its shortcut leads nowhere ({target:?})"));
+                    return Err(format!("{}: its shortcut leads nowhere ({target:?})", crate::crash::private(&name)));
                 }
                 let proxy = target.to_ascii_lowercase().ends_with("_proxy.exe");
                 return Ok(if proxy && !id.is_empty() {
@@ -213,7 +214,7 @@ mod imp {
             if !id.is_empty() {
                 return Ok(json!({ "path": "", "id": id, "name": name }));
             }
-            Err(format!("{name:?}: neither a shortcut nor an app"))
+            Err(format!("{}: neither a shortcut nor an app", crate::crash::private(&name)))
         }
     }
 

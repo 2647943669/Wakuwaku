@@ -34,6 +34,12 @@ const FOLDERS: [&str; 32] = [
 // The ends of host names taken for one (not "wakuwaku.exe").
 const TLDS: [&str; 30] = ["com", "net", "org", "cn", "io", "me", "co", "edu", "gov", "info", "biz", "dev", "app", "xyz", "top", "uk", "de", "jp", "ru", "fr", "tw", "hk", "sg", "kr", "in", "ai", "cc", "tv", "us", "eu"];
 
+// Files of the person's, by their extension: named without a path, only
+// that is kept (not her own: .rs, .json, .log).
+const USER_FILES: [&str; 31] = [
+    "jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "tif", "tiff", "mp4", "mov", "mkv", "avi", "mp3", "wav", "flac", "txt", "md", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "zip", "rar", "7z", "eml", "lnk", "url",
+];
+
 // Where a path or URL ends.
 const PATH_END: &str = "\"'<>|?*";
 
@@ -172,7 +178,8 @@ fn rustc(s: &str) -> String {
     out
 }
 
-// What is in double quotes, unless a short lowercase word: "‹…›".
+// What is in double quotes, unless a JSON key (a short lowercase word with
+// a colon after it): "‹…›". A tip of one word ("slack") is a program's too.
 fn quoted(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.char_indices().peekable();
@@ -191,8 +198,9 @@ fn quoted(s: &str) -> String {
             }
         }
         let inner = end.map(|j| &s[i + 1..j]);
+        let is_key = end.is_some_and(|j| s[j + 1..].starts_with(':'));
         match inner {
-            Some(w) if (1..=16).contains(&w.len()) && w.chars().all(|c| c.is_ascii_lowercase() || c == '_') => {
+            Some(w) if is_key && (1..=16).contains(&w.len()) && w.chars().all(|c| c.is_ascii_lowercase() || c == '_') => {
                 out.push('"');
                 out.push_str(w);
                 out.push('"');
@@ -201,6 +209,28 @@ fn quoted(s: &str) -> String {
         }
     }
     out
+}
+
+// What her code marked as the person's (crash::private: ‹name›), whatever it is.
+fn marked(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut at = 0;
+    while let Some(found) = s[at..].find('‹') {
+        let start = at + found;
+        let Some(len) = s[start..].find('›') else { break };
+        out.push_str(&s[at..start]);
+        out.push_str("‹…›");
+        at = start + len + '›'.len_utf8();
+    }
+    out.push_str(&s[at..]);
+    out
+}
+
+// Programs she may name: Windows' shell, her, her WebView2. Any other
+// program the person runs says something of them.
+fn is_known_program(exe: &str) -> bool {
+    let exe = exe.to_ascii_lowercase();
+    exe == "explorer.exe" || exe == "msedgewebview2.exe" || exe.starts_with("wakuwaku")
 }
 
 // Each URL to its scheme and host (<host> unless hers), its path "/…".
@@ -459,6 +489,7 @@ impl Redactor {
             s = replace_ci(&s, path, with);
         }
         s = rustc(&registry(&s));
+        s = marked(&s);
         s = quoted(&s);
         s = runs(&s, |c| c.is_ascii_alphanumeric() || "._%+-@".contains(c), |w| {
             let (body, stop) = split_stop(w);
@@ -472,6 +503,20 @@ impl Redactor {
         s = runs(&s, |c| c.is_ascii_alphanumeric() || "_.-".contains(c), |w| {
             let (body, stop) = split_stop(w);
             is_known_token(body).then(|| format!("<token>{stop}"))
+        });
+        // Other programs by their exe: <app>; the person's files named
+        // without a path (a wallpaper's, a shortcut's): *.jpg.
+        s = runs(&s, |c| c.is_ascii_alphanumeric() || "_.-".contains(c), |w| {
+            let (body, stop) = split_stop(w);
+            let (stem, ext) = body.rsplit_once('.')?;
+            let ext = ext.to_ascii_lowercase();
+            if stem.is_empty() {
+                return None;
+            }
+            if ext == "exe" {
+                return (!is_known_program(body)).then(|| format!("<app>{stop}"));
+            }
+            USER_FILES.contains(&ext.as_str()).then(|| format!("*.{ext}{stop}"))
         });
         s = runs(&s, |c| c.is_ascii_alphanumeric() || "_+/=-".contains(c), |w| is_secret_like(w).then(|| "<token>".to_string()));
         s = runs(&s, |c| c.is_ascii_alphanumeric(), |w| is_long_hex(w).then(|| "<hex>".to_string()));
@@ -510,7 +555,10 @@ mod tests {
         let r = redactor();
         let cases = [
             (r"up on port 47213, data in C:\Users\zhang\AppData\Local\wakuwaku-data", "up on port 47213, data in <data>"),
-            (r#"taskbar: tray: Taskmgr.exe tip "CPU 12%⏎内存 40%""#, r#"taskbar: tray: Taskmgr.exe tip "‹…›""#),
+            (r#"taskbar: tray: Taskmgr.exe tip "CPU 12%⏎内存 40%""#, r#"taskbar: tray: <app> tip "‹…›""#),
+            (r#"taskbar: tray: Slack.exe tip "slack""#, r#"taskbar: tray: <app> tip "‹…›""#),
+            ("taskbar: tray: explorer.exe speaks version 4; wakuwaku-test.exe too", "taskbar: tray: explorer.exe speaks version 4; wakuwaku-test.exe too"),
+            ("taskbar: Windows' pins taken: ‹Everything›, ‹Google Chrome›; hers kept after them: ", "taskbar: Windows' pins taken: ‹…›, ‹…›; hers kept after them: "),
             (r#"taskbar: wallpaper: Some("D:\\Library\\Pictures\\家里.jpg")"#, r#"taskbar: wallpaper: Some("‹…›")"#),
             (r"settings: wallpaper set D:\Library\Pictures\家里.jpg: true", r"settings: wallpaper set D:\…\Pictures\*.jpg: true"),
             ("mail zhang@corp.com: sent to 2 (0 files)", "mail <email>: sent to 2 (0 files)"),
@@ -529,7 +577,11 @@ mod tests {
             ("loopback 127.0.0.1:47213 and WebView2 141.0.3537.71", "loopback 127.0.0.1:47213 and WebView2 141.0.3537.71"),
             (r##"taskbar: look: {"accent":{"base":"#3a5fcd"}}"##, r#"taskbar: look: {"accent":{"base":"‹…›"}}"#),
             ("island: mouse caught", "island: mouse caught"),
-            ("taskbar: tray: added Weixin.exe (id 3, by window)", "taskbar: tray: added Weixin.exe (id 3, by window)"),
+            ("taskbar: tray: added Weixin.exe (id 3, by window), RazerAppEngine.exe.", "taskbar: tray: added <app> (id 3, by window), <app>."),
+            (r#"island: settings open on Some("crash")"#, r#"island: settings open on Some("‹…›")"#),
+            ("settings: wallpaper: next: from pixiewall-3mckjo-3840x2160.jpg; to Slack.lnk", "settings: wallpaper: next: from *.jpg; to *.lnk"),
+            ("another app full screen: true, ‹Chrome_WidgetWin_1› (chrome.exe) exstyle 0x8", "another app full screen: true, ‹…› (<app>) exstyle 0x8"),
+            (r"panic at src\taskbar.rs:12:5 reading config.json", r"panic at src\taskbar.rs:12:5 reading config.json"),
             ("frame wakuwaku.exe+0x4c1d20 in v0.2.2", "frame wakuwaku.exe+0x4c1d20 in v0.2.2"),
             ("--renderer-process-limit=1 --disable-features=msWebOOUI", "--renderer-process-limit=1 --disable-features=msWebOOUI"),
             (r"\\fileserver\share\plan.docx opened", r"\\… opened"),
@@ -546,6 +598,19 @@ mod tests {
         assert_eq!(r.text(r"at C:\Users\zhang\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-2.12.1\src\app.rs:120:5"), r"at tauri-2.12.1\src\app.rs:120:5");
         assert_eq!(r.text("/rustc/90b35a6239c3d8bdabc530a6a0816f7ff89a0aaf/library/core/src/option.rs:2009:5"), "library/core/src/option.rs:2009:5");
         assert_eq!(r.text(r"src\taskbar.rs:1234:17"), r"src\taskbar.rs:1234:17");
+    }
+
+    // By hand, on a real log, to look for what slips through:
+    // WAKUWAKU_REDACT_FILE=<log> WAKUWAKU_REDACT_DATA=<her data folder> cargo test redact_a_file -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn redact_a_file() {
+        let Ok(path) = std::env::var("WAKUWAKU_REDACT_FILE") else { return };
+        let data = std::env::var("WAKUWAKU_REDACT_DATA").unwrap_or_default();
+        let r = Redactor::here(std::path::Path::new(&data), &[]);
+        for line in std::fs::read_to_string(path).unwrap_or_default().lines() {
+            println!("{}", r.text(line.split_once(" [tauri] ").map_or(line, |(_, rest)| rest)));
+        }
     }
 
     #[test]

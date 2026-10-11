@@ -1005,8 +1005,9 @@ fn main() {
         }
     };
 
-    // Her crashes caught from here on, and a guard to see her end unless
-    // her reports are off (the taskbar home starts one anyway): crash.rs.
+    // Her crashes caught from here on, and a guard to see her end while
+    // her reports can go and are not off (the taskbar home starts one
+    // anyway): crash.rs.
     crash::install(&dir);
     if crash::wants_guard(&dir) {
         shell::spawn_guard(&dir.join("taskbar.json"));

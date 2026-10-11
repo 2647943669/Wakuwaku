@@ -190,7 +190,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 
 - A report is posted **publicly** as an issue: on Wakuwaku on Gitee in China, on GitHub elsewhere. One crash gets one issue; the same crash again only adds to its count.
 - It holds her version, what crashed and where, Windows' and WebView2's versions, whether she lives in the island or the taskbar, how long she had run, and the last few minutes of her log.
-- Taken out before it's sent: user and computer names, paths (as `%USERPROFILE%`), other programs' window titles and tray tips, mail addresses and accounts, session and project names, anything that looks like a token, and every word in Chinese or any other non-English script.
+- Taken out before it's sent: user and computer names, paths (as `%USERPROFILE%`), other programs' names (only Explorer and her own are kept), window titles and tray tips, mail addresses and accounts, session and project names, anything that looks like a token, and every word in Chinese or any other non-English script.
 - There's no account or token in the exe: reports go to a relay (its code is in `relay/`), which opens the issue and limits how many one address can send.
 - A report that can't be sent stays in `crashes/` in her data folder and is tried again later. Run from source, she only keeps them, and never asks or sends.
 

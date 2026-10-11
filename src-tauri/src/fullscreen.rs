@@ -140,7 +140,8 @@ mod imp {
                 CloseHandle(process);
             }
             let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            format!("{class} ({file}) exstyle {ex:#x}")
+            // Its class says which program it is: the person's (crash.rs private).
+            format!("{} ({file}) exstyle {ex:#x}", crate::crash::private(&class))
         }
     }
 
