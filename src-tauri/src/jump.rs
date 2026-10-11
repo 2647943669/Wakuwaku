@@ -158,7 +158,10 @@ mod imp {
         out
     }
 
-    // When a process started (100 ns since 1601), or None when gone or not ours to ask.
+    // When a process started (100 ns since 1601), or None when gone or not
+    // ours to ask. One that has ended but whose handle someone still holds
+    // (a terminal's, a test's) can still be opened and still has its
+    // times: its exit time set, it is gone too.
     fn started(pid: u32) -> Option<u64> {
         // SAFETY: a handle we close; the times are written into our own structs.
         unsafe {
@@ -169,7 +172,8 @@ mod imp {
             let (mut created, mut exited, mut kernel, mut user) = (FileTime::default(), FileTime::default(), FileTime::default(), FileTime::default());
             let ok = GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user);
             CloseHandle(process);
-            (ok != 0).then(|| (u64::from(created.high) << 32) | u64::from(created.low))
+            let running = exited.low == 0 && exited.high == 0;
+            (ok != 0 && running).then(|| (u64::from(created.high) << 32) | u64::from(created.low))
         }
     }
 
