@@ -51,6 +51,8 @@ pub fn snapshot(sh: &Shared) -> Value {
         "version": sh.app.package_info().version.to_string(),
         // Her updates: this version, the latest, an update under way (updates.rs).
         "update": crate::updates::view(&sh),
+        // Her crash reports: as set, those waiting, the last sent (crash.rs).
+        "crash": crate::crash::view(sh),
         "fullscreenAvailable": fullscreen::AVAILABLE,
         "widgets": sh.widgets_view(),
         // The plugins she runs, and where waku is for the terminal.
@@ -97,6 +99,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "details" | "walk" | "look" | "sound" | "dnd" | "hideInFullscreen" | "onboarded" | "out" | "settingsPin" | "settingsTop" | "oledShift" | "autoUpdateCheck" => is_bool,
         // Where an update is downloaded from first (updates.rs gitee_first).
         "updateFrom" => matches!(v.as_str(), Some("auto" | "github" | "gitee")),
+        // Crash reports sent by themselves, never, or asked about (crash.rs).
+        "crashReports" => matches!(v.as_str(), Some("auto" | "off" | "ask")),
         "display" => matches!(v.as_str(), Some("island" | "taskbar")),
         "islandWidth" => matches!(v.as_str(), Some("narrow" | "normal" | "wide")),
         "taskbarMaterial" => matches!(v.as_str(), Some("mica" | "black" | "clear")),
@@ -164,8 +168,13 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     }
     let plugins = rest.contains_key("plugins");
     let offline = rest.contains_key("mailOffline");
+    let crash_auto = rest.get("crashReports").and_then(Value::as_str) == Some("auto");
     if !rest.is_empty() {
         sh.change(Value::Object(rest));
+    }
+    // Crash reports turned on: those waiting sent now.
+    if crash_auto {
+        crate::crash::send_now(sh);
     }
     if plugins && scripts::sync(sh) {
         sh.redraw();
@@ -361,6 +370,26 @@ pub async fn settings_update(app: AppHandle, what: String) -> Value {
         }
         "page" => crate::updates::open_page(&sh),
         "update" => crate::updates::update_now(&sh),
+        _ => {}
+    }
+    snapshot(&sh)
+}
+
+// Her crash reports, from the General page: the answer to her asking
+// (yes: sent from now on; no: never), sent now, or the last one's issue
+// opened (crash.rs). The snapshot as it is then.
+#[tauri::command]
+pub async fn settings_crash(app: AppHandle, what: String) -> Value {
+    let sh = shared(&app);
+    match what.as_str() {
+        "yes" => crate::crash::answer(&sh, true),
+        "no" => crate::crash::answer(&sh, false),
+        "send" => crate::crash::send_now(&sh),
+        "open" => {
+            if let Some(url) = crate::crash::open_last(&sh) {
+                crate::jump::open_url(&url);
+            }
+        }
         _ => {}
     }
     snapshot(&sh)

@@ -37,7 +37,7 @@
   // page they are part of opens, scrolled to them (PART_OF, showPart).
   const TABS = ['now', 'look', 'widgets', 'mail']
   const TAB_KEY = { now: 's.tabGeneral', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
-  const PART_OF = { pets: 'look', alerts: 'now', connect: 'now', update: 'now' }
+  const PART_OF = { pets: 'look', alerts: 'now', connect: 'now', update: 'now', crash: 'now' }
   const HEAD_KEY = { working: 's.headWorking', waiting: 's.headWaiting', done: 's.headDone', review: 's.headReview', error: 's.headError' }
   const SIZES = [['small', 0.4], ['medium', 0.55], ['large', 0.75]]
   const HOMES = ['island', 'taskbar']
@@ -57,6 +57,8 @@
   let tab = 'now'
   let snap = null
   let lang = 'en'
+  // The crash report shown, as it would be sent (pageCrash).
+  let crashShown = false
   // The download box: what is typed, and how the last download went.
   let typedRef = ''
   let fetching = null
@@ -1667,9 +1669,37 @@
       </div>`
   }
 
+  // Her crash reports (crash.rs): asked about once (yes from now on, or no),
+  // the report shown as it would be sent; sent by themselves or not; those
+  // waiting, sending, what went wrong, the last one's issue. Nothing while
+  // there is nowhere to send to (a build from the source tree, no relay yet).
+  function pageCrash() {
+    const c = snap.crash || {}
+    if (!c.can) return ''
+    const when = ms => new Date(ms).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const ask =
+      c.mode === 'ask' && c.newest
+        ? `<div class="grp">
+            <div class="note">${esc(T('s.crashAsk', { when: when(c.newest.at) }))}</div>
+            ${crashShown ? `<pre class="crash-text mono">${esc(c.newest.text)}</pre>` : ''}
+            <div class="r"><button class="pbtn sm" data-crash-show>${esc(T(crashShown ? 's.crashHide' : 's.crashShow'))}</button><div class="grow"></div><span class="btns"><button class="pbtn sm" data-crash="no">${esc(T('s.crashNo'))}</button><button class="pbtn sm al" data-crash="yes">${esc(T('s.crashYes'))}</button></span></div>
+          </div>`
+        : ''
+    let state = ''
+    if (c.sending) state = T('s.crashSending')
+    else if (c.mode === 'auto' && c.waiting && c.error) state = T('s.crashError', { n: c.waiting, detail: c.error })
+    else if (c.mode === 'auto' && c.waiting) state = T('s.crashWaiting', { n: c.waiting })
+    else if (c.last?.at) state = T('s.crashSent', { when: when(c.last.at), n: c.last.number ? `#${c.last.number}` : '' })
+    const retry = c.mode === 'auto' && c.waiting && !c.sending ? `<button class="pbtn sm" data-crash="send">${esc(T('s.crashSend'))}</button>` : ''
+    const open = c.last?.url ? `<button class="pbtn sm" data-crash="open">${esc(T('s.crashOpen'))}</button>` : ''
+    return `${sec(T('s.crash'))}${ask}<div class="grp">
+        ${row(esc(T('s.crashAuto')), esc([T('s.crashAutoNote'), state].filter(Boolean).join(' · ')), `${retry}${open}${sw('crashReports', c.mode === 'auto')}`)}
+      </div>`
+  }
+
   // General: the sessions and the quick switches, the alerts, startup and
-  // the language, her updates, connecting (the plugin, the hooks) and what
-  // this is.
+  // the language, her updates, her crash reports, connecting (the plugin,
+  // the hooks) and what this is.
   function pageGeneral() {
     return `${pageNow()}
       ${part('alerts', pageAlerts())}
@@ -1678,6 +1708,7 @@
         ${row(esc(T('home.language')), '', seg('lang', [['auto', T('settings.languageAuto')], ['zh', '中文'], ['en', 'EN']], snap.settings.lang))}
       </div>
       ${part('update', pageUpdate())}
+      ${part('crash', pageCrash())}
       ${part('connect', pageConnect())}`
   }
 
@@ -1957,6 +1988,8 @@
     if (toggle && !toggle.disabled) {
       const key = toggle.dataset.sw
       if (key === 'login') return window.pet.settings.login(!snap.loginAtStart).then(got => ((snap = got), draw()))
+      // Crash reports: sent by themselves, or never (not asked again).
+      if (key === 'crashReports') return patch({ crashReports: snap.crash?.mode === 'auto' ? 'off' : 'auto' })
       if (key === 'paperShuffle') return paperDo('shuffle', !snap.winPaper?.shuffle)
       if (key === 'ilookBare') return ilookSave(ilookFor(), { ...ilookOf(ilookFor()), bare: !ilookOf(ilookFor()).bare })
       if (key.startsWith('notify.')) return patch({ notify: { ...s.notify, [key.slice(7)]: !s.notify?.[key.slice(7)] } })
@@ -2061,6 +2094,9 @@
     // Her updates: look now, the release's notes, Update.
     const updateButton = at('[data-update]')
     if (updateButton && !updateButton.disabled) return window.pet.settings.update(updateButton.dataset.update).then(got => ((snap = got), draw()))
+    if (at('[data-crash-show]')) return ((crashShown = !crashShown), draw())
+    const crashButton = at('[data-crash]')
+    if (crashButton && !crashButton.disabled) return window.pet.settings.crash(crashButton.dataset.crash).then(got => ((snap = got), draw()))
     const paperButton = at('[data-paper]')
     if (paperButton && !paperButton.disabled) return paperDo(paperButton.dataset.paper)
     const accent = at('[data-accent]')

@@ -47,3 +47,7 @@ strip = true
 [target."cfg(windows)".dependencies]
 tauri-winrt-notification = "0.8.1"
 winreg = "0.56.0"
+# WebView2's ProcessFailed: her pages' renderer gone (crash/win.rs); both
+# already in the tree, under Tauri.
+webview2-com = "0.39"
+windows-core = "0.62"

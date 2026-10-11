@@ -4241,6 +4241,8 @@ dependencies = [
  "tauri-winrt-notification",
  "tiny_http",
  "ureq",
+ "webview2-com",
+ "windows-core",
  "winreg",
 ]
 

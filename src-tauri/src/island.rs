@@ -377,6 +377,8 @@ fn create(sh: &Arc<Shared>) {
                     sh.island.lock().unwrap().hwnd = hwnd.0 as isize;
                 }
                 sh.own_window(&win);
+                // Its renderer gone: told, and the page loaded again (crash.rs).
+                crate::crash::watch(&sh, &win);
             }
             Err(err) => sh.log(&format!("island: could not make its window: {err}")),
         }

@@ -69,6 +69,7 @@ mod imp {
         fn CloseHandle(handle: Handle) -> i32;
         fn WaitForSingleObject(handle: Handle, ms: u32) -> u32;
         fn GetProcessTimes(process: Handle, created: *mut FileTime, exited: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
+        fn GetExitCodeProcess(process: Handle, code: *mut u32) -> i32;
         fn QueryFullProcessImageNameW(process: Handle, flags: u32, name: *mut u16, size: *mut u32) -> i32;
     }
 
@@ -265,22 +266,33 @@ mod imp {
     }
 
     // The guard's whole life: wait for her to end, then give the taskbar back
-    // if she did not (trying for a minute, in case Explorer is restarting).
-    pub fn guard(pid: u32, file: &Path) {
-        // SAFETY: a handle we close.
+    // if she did not (trying for a minute, in case Explorer is restarting),
+    // and meanwhile `after` (main.rs: whether she crashed, crash.rs) with
+    // her exit code and when she started (ms since 1970).
+    pub fn guard(pid: u32, file: &Path, after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {
+        // When she started, as ms since 1970.
+        let started = started(pid).map(|t| (t / 10_000).saturating_sub(11_644_473_600_000));
+        let mut code = None;
+        // SAFETY: a handle we close; the code written into our own u32.
         unsafe {
-            let process = OpenProcess(SYNCHRONIZE, 0, pid);
+            let process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if process != 0 {
                 WaitForSingleObject(process, INFINITE);
+                let mut c = 0u32;
+                if GetExitCodeProcess(process, &mut c) != 0 {
+                    code = Some(c);
+                }
                 CloseHandle(process);
             }
         }
+        let meanwhile = std::thread::spawn(move || after(code, started));
         for _ in 0..30 {
             if !file.exists() || restore(file) {
-                return;
+                break;
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
+        let _ = meanwhile.join();
     }
 }
 
@@ -319,7 +331,7 @@ mod imp {
     pub fn spawn_guard(_file: &Path) -> bool {
         false
     }
-    pub fn guard(_pid: u32, _file: &Path) {}
+    pub fn guard(_pid: u32, _file: &Path, _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
 }
 
 pub use imp::{explorer_tray, guard, hide, recover, rehide, restore, room, spawn_guard, started, taskbar_created, taskbars, visible};

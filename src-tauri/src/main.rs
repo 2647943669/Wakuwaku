@@ -34,6 +34,7 @@ mod appbar;
 mod asks;
 mod audio;
 mod connection;
+mod crash;
 mod data;
 mod events;
 mod events_codex;
@@ -198,7 +199,11 @@ impl Shared {
         }
     }
 
+    // A line in recent.log always (what a crash report tells of what came
+    // before, crash.rs), and in debug.log while debugging.
     pub fn log(&self, line: &str) {
+        let whole = format!("{} [tauri] {line}\n", now_ms());
+        crash::tail(&self.dir, &whole);
         if !self.is_logging {
             return;
         }
@@ -208,7 +213,6 @@ impl Shared {
         // open (it was opened and closed for every line); opened again
         // should a write fail (the file taken away).
         static LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
-        let whole = format!("{} [tauri] {line}\n", now_ms());
         let mut log = LOG.lock().unwrap_or_else(|e| e.into_inner());
         let written = log.as_mut().is_some_and(|f| f.write_all(whole.as_bytes()).is_ok());
         if !written {
@@ -968,10 +972,12 @@ fn codex_hook(port: u16) {
 
 fn main() {
     // Her exe again, as the taskbar's guard (shell.rs): it waits for her to
-    // end, and gives Windows' taskbar back if she could not.
+    // end, and gives Windows' taskbar back if she could not; and sees
+    // whether she crashed (crash.rs; her data folder is the file's).
     let args: Vec<String> = std::env::args().collect();
     if let Some((pid, file)) = shell::guard_args(&args) {
-        return shell::guard(pid, file);
+        let data = file.parent().map(PathBuf::from).unwrap_or_default();
+        return shell::guard(pid, file, move |code, started| crash::after_exit(&data, pid, code, started));
     }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(47213);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
@@ -998,6 +1004,13 @@ fn main() {
             return;
         }
     };
+
+    // Her crashes caught from here on, and a guard to see her end unless
+    // her reports are off (the taskbar home starts one anyway): crash.rs.
+    crash::install(&dir);
+    if crash::wants_guard(&dir) {
+        shell::spawn_guard(&dir.join("taskbar.json"));
+    }
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -1033,6 +1046,7 @@ fn main() {
             settings::settings_gallery,
             settings::settings_open_site,
             settings::settings_update,
+            settings::settings_crash,
             mail::mail_discover,
             mail::mail_probe,
             mail::mail_save,
@@ -1126,6 +1140,8 @@ fn main() {
             mail::sync(&sh);
             // Her updates looked for (a downloaded exe only).
             updates::start(&sh);
+            // Crashes since: their reports made, sent or asked about.
+            crash::start(&sh);
 
             // The mouse: click-through, her eyes, drags; for both windows.
             // Quiet (nobody touching it), looked at once a second.

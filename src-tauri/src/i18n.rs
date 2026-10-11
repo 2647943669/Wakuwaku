@@ -39,6 +39,13 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.deviceManager" => if zh { "设备管理器" } else { "Device Manager" },
         "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
         "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },
+        "crash.out" => if zh { "她上次意外退出了，要发崩溃报告吗？" } else { "She quit unexpectedly. Send a crash report?" },
+        "crash.tap" => if zh { "点一下看看" } else { "Tap to see" },
+        "crash.box" => if zh {
+            "Wakuwaku 最近连续崩溃了 {n} 次。\n\n要从现在起自动发送崩溃报告吗？报告会公开发到 GitHub 或 Gitee 的 issue 里，用户名、路径、窗口标题、邮箱这类内容会先去掉。\n\n以后可以在 设置 → 通用 → 崩溃报告 里关掉。"
+        } else {
+            "Wakuwaku has crashed {n} times in a row.\n\nSend crash reports automatically from now on? They are posted publicly as issues on GitHub or Gitee, with user names, paths, window titles, mail addresses and the like taken out first.\n\nYou can turn this off in Settings → General → Crash reports."
+        },
         "wallpaper.pickPicture" => if zh { "选择壁纸图片" } else { "Pick a picture for the desktop" },
         "wallpaper.pickFolder" => if zh { "选择一个文件夹，里面的图片轮流做壁纸" } else { "Pick a folder whose pictures take turns on the desktop" },
         "wallpaper.pictures" => if zh { "图片" } else { "Pictures" },

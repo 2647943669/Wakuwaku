@@ -140,7 +140,7 @@ fn testing() -> bool {
 
 // In China, as far as Windows says: its time zone China's, or its language
 // Chinese as written there. Asked once.
-fn in_china() -> bool {
+pub(crate) fn in_china() -> bool {
     static CHINA: OnceLock<bool> = OnceLock::new();
     *CHINA.get_or_init(|| {
         let locale = sys_locale::get_locale().unwrap_or_default().to_ascii_lowercase();
@@ -674,6 +674,12 @@ fn start_new(exe: &Path) -> Result<(), String> {
         command.creation_flags(flags);
     }
     command.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+// Her own exe started again, to wait for her to end (crash.rs: WebView2's
+// browser process gone, her pages with it).
+pub fn start_again() -> Result<(), String> {
+    start_new(&std::env::current_exe().map_err(|e| e.to_string())?)
 }
 
 // After a minute's run, the exe an update left: gone (tried a few times:

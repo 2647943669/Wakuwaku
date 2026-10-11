@@ -513,6 +513,12 @@ impl Pet {
         self.sessions.values().any(|s| s.mood == "waiting" || is_ending(&s.mood))
     }
 
+    // What the sessions are called (projects, titles, tasks): kept out of a
+    // crash report (crash.rs).
+    pub fn names(&self) -> Vec<String> {
+        self.sessions.values().flat_map(|s| [s.project.clone(), s.title.clone(), s.task.clone()]).filter(|n| !n.trim().is_empty()).collect()
+    }
+
     // Whether a session already knows where it runs.
     pub fn has_chain(&self, id: &str) -> bool {
         self.sessions.get(id).is_some_and(|s| !s.chain.is_empty())

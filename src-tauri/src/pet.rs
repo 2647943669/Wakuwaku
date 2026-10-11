@@ -214,6 +214,8 @@ pub fn create(sh: &Shared) -> tauri::Result<()> {
     // Clicks pass through until the pointer is on her.
     win.set_ignore_cursor_events(true)?;
     sh.own_window(&win);
+    // Its renderer gone: told, and the page loaded again (crash.rs).
+    crate::crash::watch(&crate::shared(&sh.app), &win);
     Ok(())
 }
 

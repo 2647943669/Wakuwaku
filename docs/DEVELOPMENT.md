@@ -31,6 +31,7 @@ src-tauri/
     tasks.rs              任务栏上该有按钮的窗口、程序名和图标、启动程序；输入法和大写锁定
     pins.rs               第一次启动时读 Windows 自己任务栏的固定项（只读一次，不写回）
     updates.rs            软件更新：看 GitHub 和 Gitee 的最新发布、在岛上提示、下载校验替换并重启
+    crash.rs, crash/      崩溃报告：panic 钩子、未处理异常过滤器、守护进程看退出码、WebView2 进程挂掉；常开的尾日志、脱敏（redact.rs）、问一次、发到中转
     wallpaper.rs          每块显示器的桌面壁纸：文件、摆法、底色（IDesktopWallpaper），给任务栏的云母用
     settings.rs           设置看到的快照、校验后的设置补丁、设置的各个命令
     pointer.rs            两个窗口共用的点击穿透
@@ -57,7 +58,8 @@ src-tauri/
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 .claude-plugin/           插件市场入口 marketplace.json（位置是 Claude Code 规定的）
 scripts/make-icons.js     画图标（node + ImageMagick），输出提交在 src-tauri/icons
-test/                     页面的单元测试（node --test，不需要 npm install）；fake-imap.js、fake-smtp.js 是试邮件用的假 IMAP、SMTP 服务器
+test/                     页面的单元测试（node --test，不需要 npm install）；fake-imap.js、fake-smtp.js 是试邮件用的假 IMAP、SMTP 服务器；fake-relay.js 是假的崩溃报告中转
+relay/                    崩溃报告中转（Cloudflare Worker → GitHub issue；阿里云函数计算 → Gitee issue），部署步骤在 relay/README.md
 examples/widgets/         岛上插件的示例脚本：waku、CI、番茄钟、截止日期、开发服务器、股票、天气、邮件……
 integrations/thunderbird/ Thunderbird 扩展：未读邮件发到岛上（build.ps1 打包成 .xpi）
 docs/prototypes/          设计原型：island-settings.html 是设置长在岛里的手感原型
@@ -363,6 +365,24 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
 - **手动换回旧版**：新版起不来、`.old.exe` 还在时：结束 wakuwaku 进程，删掉新的 exe，把 `<原名>.old.exe` 改回 `<原名>.exe`。
 - **测试**：环境变量 `WAKUWAKU_UPDATE_URL` 当作 GitHub latest release 的 JSON 地址，`WAKUWAKU_UPDATE_GITEE_URL` 当作 Gitee 仓库的地址（读 `<地址>.git/info/refs` 和 `<地址>/releases/download/…`；给了其中一个时只问给了的那边，下载地址也不限于 GitHub 和 Gitee），`WAKUWAKU_UPDATE_FORCE=1` 让源码树里的调试版也检查、更新。日志都以 `update:` 开头。`node test/fake-release.js --exe <新版 exe> --version <版本>` 同时扮演这两边（端口 47390，`/mode?…=1` 在运行中切换各种故障，见文件开头）。
 - **发布到 Gitee**：先在 GitHub 照常发布，再把 tag 推到 Gitee，然后运行 `scripts/gitee-release.ps1 -Version <版本>`（私人令牌放在环境变量 `GITEE_TOKEN`，需要 `projects` 权限；令牌放在请求头 `Authorization: token …` 里，放在 multipart 表单的 `access_token` 字段里时上传附件会被拒绝，返回 40001）。脚本从 GitHub 发布下载 exe，按 GitHub 的 `digest` 校验后，在 Gitee 建同名发布（说明照抄 GitHub 的），先传 exe、再传 `<exe>.sha256`，最后像更新器那样（不登录、不用 API）从 Gitee 下载回来再校验一遍。不带令牌运行时什么也不写，只做最后的校验。从国外往 Gitee 上传大约每秒 25 KB，7 MB 的 exe 要几分钟。Gitee 每个附件不超过 100 MB，每个仓库的附件总共不超过 1 GB，满了就删掉旧版本的附件。
+
+## 崩溃报告（crash.rs、relay/）
+
+她自己退出（崩溃）时记下发生了什么，用户同意后把去掉隐私的报告公开发成 Wakuwaku 的 issue。exe 里没有 token：报告先发到中转（`relay/`），token 只在中转里。
+
+- **抓到什么**：
+  - panic：release 版 `panic = "abort"`，任何线程 panic 整个进程都会结束。钩子在结束前写 `crashes/panic-<pid>.json`：消息、`文件:行:列`、线程名、调用栈（`模块+偏移`，`RtlCaptureStackBackTrace`）。
+  - 原生崩溃（访问违例、栈溢出等）：`SetUnhandledExceptionFilter` 的过滤器写 `crashes/native-<pid>.txt`：异常码、出错的 `模块+偏移`、访问违例是读/写/执行以及是不是空指针附近、调用栈。过滤器不分配内存、不拿锁（堆可能已经坏了），路径在启动时就准备好。
+  - 都没写下来、但退出码是崩溃的（`0xC0000374` 堆损坏、fast fail 等）：守护进程（shell.rs，她自己的 exe 带 `--taskbar-guard`，在她的进程外等她结束）拿到退出码。算崩溃的：`0xC…` 错误级 NTSTATUS（`0xC000013A` Ctrl+C 除外）、`0x80000003`、`0xE06D7363`、Rust 的 101；0 和 1（任务管理器、`taskkill /F`）不算。
+  - WebView2 的进程挂了（`ProcessFailed`）：她页面的渲染进程退出或无响应，或浏览器进程退出。被杀掉的（`terminated`）只记日志不报告。渲染进程：重新加载页面；两个页面共用一个渲染进程，10 秒内的第二次不再报告。浏览器进程：运行超过一分钟时，她启动一个新的自己然后退出（和更新一样用 `--after-update <pid>` 等她结束）。
+- **守护进程**：以前只在任务栏模式下有，现在崩溃报告没关（`crashReports` 不是 `off`）时，启动一拿到端口就开一个（`main.rs`；任务栏模式再调一次 `spawn_guard` 不会再开第二个）。它等她结束，先照旧还 Windows 的任务栏，同时生成报告（`crash::after_exit`）。数据文件夹就是 `taskbar.json` 所在的文件夹。
+- **常开的尾日志**：`Shared::log` 每一行都写 `recent.log`（不管 debug 开没开），超过 256 KB 改名成 `recent.old.log` 重新开始；一行里的换行写成 `⏎`，保证一条日志就是一行。debug.log 照旧只在 `debug.on` 时写。
+- **报告**：`crashes/<时间>-<类型>-<pid>.json`，文件内容就是要发出去的全部内容：版本、类型、退出码、位置、消息、调用栈、Windows 版本（注册表的 CurrentBuild，≥ 22000 算 11）、WebView2 版本、她的家、运行了多久、时间（UTC，到分钟），以及崩溃前 5 分钟内的日志（最后 60 行，每行最多 300 字）。没有守护进程看到的记录（比如之前关着报告），下次启动时补成报告。等着发的最多留 20 份。
+- **脱敏**（`crash/redact.rs`，单元测试列了每条规则的例子）：数据文件夹、exe 所在文件夹、`%USERPROFILE%` 换成占位符；Cargo registry 里依赖的路径缩成 `<crate>/src/…`；引号里的内容都换成 `"‹…›"`（只留 16 个字符以内的纯小写单词，比如 JSON 的键）；邮箱、URL 的主机和路径（只留 GitHub、Gitee、codex-pets.net、本机）、其他路径（只留盘符、大家都有的文件夹和扩展名，如 `D:\…\Pictures\*.jpg`）、UUID、token、长十六进制、IP、主机名；用户名、计算机名、邮件账号、会话的项目名标题任务（只有进程内的 WebView2 报告知道这些）按整词替换；含非 ASCII 字母的词都换成 `‹…›`（日志本身是英文，非 ASCII 的几乎都是窗口标题、文件夹名这类用户内容）。中转收到后再按通用规则脱敏一次。
+- **发不发**：设置 `crashReports`：`ask`（默认）、`auto`、`off`。`ask` 时，下次启动 20 秒后在岛上提示一次（`crashTold` 记着最新那份的名字；她不在视线里或有会话在等你时，10 分钟后再看），点一下打开设置「通用」页的「崩溃报告」：显示要发的内容，「以后自动发送」或「不发送」（清掉等着发的）。之后由开关控制。启动就崩、10 分钟内崩了 3 次还没回答过的，守护进程弹 Windows 自己的「是 / 否」对话框问同样的问题，答案直接写进 config.json。中转地址是空的、或从源码树运行（没设测试地址）时什么都不问也不发，只在本地记。
+- **发送**：`auto` 时守护进程生成报告后马上发；她启动 20 秒后、之后每 10 分钟看一次，有等着发的就发（失败后 6 小时再试）。一次最多 5 份；每份先改名成 `.sending` 占住，守护进程和她不会重复发（进程半路没了，10 分钟后还原）。在中国（`updates::in_china`）先发 Gitee 的中转，否则先发 GitHub 的；一个发不出去换另一个。设了 Windows 系统代理（注册表 `ProxyEnable` / `ProxyServer`，Clash、v2rayN 都这么设）且环境变量里没有代理时，先走代理再直连。200/201：存进 `crashes/sent/`（带 issue 地址，设置里可以点「查看 issue」）；400 等：存进 `crashes/refused/`，不再发；429、5xx、连不上：留着以后再发。
+- **中转**（`relay/relay.js`，一份代码；Cloudflare Worker 直接用，Node 下由 `relay/server.js` 跑）：只收 `POST /report`，要带 `x-wakuwaku: 1`，不超过 48 KB，字段白名单逐个校验（多一个字段就 400）；同一 IP 每分钟 5 次（Cloudflare 的 rate limit 绑定）、每天 20 次（KV，IP 加盐哈希）；全部加起来每天最多新开 30 个 issue。同一个崩溃按签名去重（panic：文件和行，不带列；原生：异常码和 `模块+偏移`；其余：类型和退出码），签名的哈希前 10 位作为标题里的 `[crash:…]`。同一个签名：前 10 次各加一条评论，之后只更新正文里的计数，出现新版本时再评论；issue 已关闭时，旧版本的只计数，更新的版本新开一个 issue 并链接旧的。GitHub 推荐用 GitHub App（issue 由机器人开，你能收到通知），也支持 fine-grained token；Gitee 用私人令牌（建议用小号）。部署步骤见 `relay/README.md`。中转地址填在 `crash.rs` 的 `GITHUB_RELAY`、`GITEE_RELAY`。
+- **测试**：`node test/fake-relay.js`（端口 47391）用 relay.js 自己的 `handle()`，issue 存在内存里并打印出来；`GET /issues` 看全部，`GET /issues/<n>` 看一个，`GET /close/<n>` 关掉一个（试回归），`GET /mode?down=1|busy=1|refuse=1|slow=1` 切换故障。宠物用 `WAKUWAKU_CRASH_URL=http://127.0.0.1:47391/report` 指过去（逗号分隔可以给两个；设了它从源码树运行也会发）。`WAKUWAKU_CRASH_TEST=<类型>[:<秒>]` 让她在启动后几秒（默认 10）崩一次：`panic`、`native`（往空指针写）、`exit`（以 `0xC0000374` 结束，什么都不写）、`webview`（杀掉渲染进程时照样报告）。release 版的 panic 会结束进程；调试版的 panic 只结束那个线程，记录要等下次启动才变成报告。中转的单元测试在 `test/relay.test.js`，脱敏和记录解析的在 `cargo test crash`。
 
 ## 设置（长在岛里）
 

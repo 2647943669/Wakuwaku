@@ -136,6 +136,8 @@
       openSite: place => invoke('settings_open_site', { place }),
       // Her updates: 'check', 'page' (the release's), 'update' (updates.rs).
       update: what => invoke('settings_update', { what }),
+      // Her crash reports: 'yes', 'no' (her asking answered), 'send', 'open' (the last one's issue; crash.rs).
+      crash: what => invoke('settings_crash', { what }),
     },
     // Mail accounts (mail.rs): the server for an address, an account kept
     // once it signs in, one removed, one on or off, a server tried without
