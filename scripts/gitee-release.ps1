@@ -27,8 +27,17 @@ $api = "https://gitee.com/api/v5/repos/$owner/$repo"
 $headers = @{ 'User-Agent' = 'wakuwaku-release' }
 $token = $env:GITEE_TOKEN
 if (-not $token -and -not $DryRun) { throw 'GITEE_TOKEN is not set (a Gitee private token with the projects scope)' }
+# The token in a header, as Gitee takes it everywhere (an access_token field
+# in a multipart upload was refused: 40001, after the whole exe had gone).
+$auth = $headers + @{ Authorization = "token $token" }
 
 function Sha256([string]$path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() }
+
+# The token tried first, so a bad one fails in a second.
+if (-not $DryRun) {
+    $me = Invoke-RestMethod -Headers $auth 'https://gitee.com/api/v5/user'
+    "Gitee: signed in as $($me.login)"
+}
 
 # GitHub's release: its title, its notes, its exe's SHA-256.
 $gh = Invoke-RestMethod -Headers ($headers + @{ Accept = 'application/vnd.github+json' }) "https://api.github.com/repos/$owner/$repo/releases/tags/$tag"
@@ -61,18 +70,22 @@ $commit = ($line -split "`t")[0]
 $release = Invoke-RestMethod -Headers $headers "$api/releases/tags/$tag"
 if (-not $release.id) {
     if ($DryRun) { "would make the release $tag on Gitee: $($gh.name)"; return }
-    $form = @{ access_token = $token; tag_name = $tag; name = $gh.name; body = "$($gh.body)"; prerelease = 'false'; target_commitish = $commit }
-    $release = Invoke-RestMethod -Method Post -Headers $headers -ContentType 'application/x-www-form-urlencoded; charset=utf-8' -Body $form "$api/releases"
+    $form = @{ tag_name = $tag; name = $gh.name; body = "$($gh.body)"; prerelease = 'false'; target_commitish = $commit }
+    $release = Invoke-RestMethod -Method Post -Headers $auth -ContentType 'application/x-www-form-urlencoded; charset=utf-8' -Body $form "$api/releases"
     "made the release $tag on Gitee (id $($release.id))"
 }
 
-# The exe and its .sha256, those not there yet.
+# The .sha256 and the exe, those not there yet (the small one first: a
+# refusal comes before minutes of upload).
 $have = @(Invoke-RestMethod -Headers $headers "$api/releases/$($release.id)/attach_files" | ForEach-Object { $_.name })
-foreach ($f in @($file, $sums)) {
+foreach ($f in @($sums, $file)) {
     $leaf = Split-Path $f -Leaf
     if ($have -contains $leaf) { "on Gitee already: $leaf"; continue }
     if ($DryRun) { "would upload: $leaf"; continue }
-    Invoke-RestMethod -Method Post -Headers $headers -Form @{ access_token = $token; file = Get-Item -LiteralPath $f } "$api/releases/$($release.id)/attach_files" | Out-Null
+    # No progress is shown; from outside China it goes at some 25 KB a second.
+    $size = (Get-Item -LiteralPath $f).Length
+    if ($size -gt 1MB) { "uploading $leaf ({0:N1} MB; minutes from outside China)…" -f ($size / 1MB) } else { "uploading $leaf…" }
+    Invoke-RestMethod -Method Post -Headers $auth -Form @{ file = Get-Item -LiteralPath $f } "$api/releases/$($release.id)/attach_files" | Out-Null
     "uploaded: $leaf"
 }
 if ($DryRun) { return }
@@ -83,6 +96,7 @@ $url = ($listed.assets | Where-Object name -EQ $name).browser_download_url
 $sumsUrl = ($listed.assets | Where-Object name -EQ "$name.sha256").browser_download_url
 if (-not $url -or -not $sumsUrl) { throw "Gitee's $tag does not list $name and its .sha256" }
 $back = Join-Path $work "back-$name"
+"downloading $name back from Gitee to check it…"
 Invoke-WebRequest -Headers $headers $url -OutFile $back
 if ((Sha256 $back) -ne $digest) { throw "Gitee's $name is not GitHub's: delete it there and run this again" }
 Invoke-WebRequest -Headers $headers $sumsUrl -OutFile "$back.sha256"

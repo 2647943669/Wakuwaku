@@ -408,12 +408,20 @@ fn tell(sh: &Arc<Shared>) {
     sh.log(&format!("update: v{} told on the island", r.version));
 }
 
-// As she starts: the old exe gone after a minute's run, and the looks
+// As she starts: a download cut off cleared away, the old exe gone after a
+// minute's run, and the looks
 // (twenty seconds in, then as due; every ten minutes it is seen whether a
 // look is due, or a newer one waits to be told).
 pub fn start(sh: &Arc<Shared>) {
     if let Some(pid) = *AFTER.lock().unwrap() {
         sh.log(&format!("update: v{} up, after pid {pid} ended", current()));
+    }
+    // A download cut off (she quit in the middle of it): its .part gone.
+    for entry in std::fs::read_dir(&sh.dir).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("update-v") && name.ends_with(".exe.part") && std::fs::remove_file(entry.path()).is_ok() {
+            sh.log(&format!("update: {name}, left by a download cut off, removed"));
+        }
     }
     let tidy = sh.clone();
     std::thread::spawn(move || {
