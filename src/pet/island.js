@@ -244,13 +244,28 @@
   // The session a press in the open island landed on: the clocks redraw it
   // every second, so the release may come down on its redrawn self.
   let pressed = { id: '', at: 0 }
-  // The widgets that are on, the one shown, and the turn to the next.
+  // The widgets that are on, the one shown, and the turn to the next; all
+  // with something to say, on or off (any may be on the taskbar).
   let widgets = []
   let widgetAt = 0
+  let allWidgets = []
   // The monitor, pinned (its setting, on by default): always in sight at the
   // island's right end (the bar's), never one of the turns. Unpinned it is
   // one of the widgets taking turns.
   let monitor = null
+
+  // The widgets as sent: those that take turns are those on, but for the
+  // monitor pinned and what the taskbar shows of its own; the same one
+  // stays shown as the list changes around it.
+  function takeWidgets(all) {
+    const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
+    allWidgets = Array.isArray(all) ? all : []
+    monitor = allWidgets.find(w => w.id === 'monitor' && w.on !== false) || null
+    const onBar = home() === 'taskbar' ? Widgets.shownOn(tbLayout(), allWidgets) : new Set()
+    widgets = allWidgets.filter(w => w.on !== false && !(w === monitor && isPinned()) && !onBar.has(w.id))
+    const still = widgets.findIndex(w => w.id === was)
+    if (still >= 0) widgetAt = still
+  }
   // What the compact island showed last, and when something else came: it
   // slides in, and carries on sliding in when the island is drawn again.
   let shownKey = ''
@@ -932,28 +947,91 @@
 
   // The layout: the one being edited, or as kept, or before any as
   // taskbarAlign had it; each part once, one it lacks (new since) where the
-  // default has it.
+  // default has it; the widgets put there (widgets.js layoutOf).
   function tbLayout(saved = editLayout || config.taskbarLayout) {
     const base = saved && typeof saved === 'object' ? saved : config.taskbarAlign === 'left' ? TB_PRESETS.left : TB_PRESETS.win11
-    const seen = new Set()
-    const run = k => (Array.isArray(base[k]) ? base[k] : []).filter(p => TB_PARTS.includes(p) && !seen.has(p) && seen.add(p))
-    const out = { left: run('left'), center: run('center'), right: run('right') }
-    for (const [k, parts] of Object.entries(TB_PRESETS.win11)) for (const p of parts) if (!seen.has(p)) out[k].push(p)
-    return out
+    return Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11)
   }
-  // Which preset a layout is ('custom': none).
-  const presetOf = layout => Object.keys(TB_PRESETS).find(k => JSON.stringify(tbLayout(TB_PRESETS[k])) === JSON.stringify(tbLayout(layout))) || 'custom'
+  // Which preset its parts are as ('custom': none), whatever widgets are there.
+  const presetOf = layout => {
+    const parts = JSON.stringify(Widgets.partsAlone(tbLayout(layout)))
+    return Object.keys(TB_PRESETS).find(k => JSON.stringify(tbLayout(TB_PRESETS[k])) === parts) || 'custom'
+  }
 
-  // The parts into their runs, as the layout has them.
+  // The widgets put there, each its node, kept while it stays there (by its
+  // id); dragged by its id as a part by its name while the layout is edited.
+  const entryNodes = new Map()
+  function entryNode(e) {
+    let node = entryNodes.get(e.id)
+    if (!node) {
+      node = el('span', `tw tw-${e.type}`)
+      node.dataset.part = e.id
+      node.dataset.entry = e.id
+      entryNodes.set(e.id, node)
+    }
+    node._entry = e
+    if (Widgets.isSource(e)) node.dataset.size = e.size === 'S' ? 'S' : 'M'
+    return node
+  }
+
+  // The parts and widgets into their runs, as the layout has them.
   function arrangeTaskbar() {
     const layout = tbLayout()
     const key = JSON.stringify(layout)
     if (key === arranged) return
     arranged = key
-    for (const k of Object.keys(zones)) zones[k].replaceChildren(...layout[k].map(p => PART_NODES[p]))
+    for (const k of Object.keys(zones)) zones[k].replaceChildren(...layout[k].map(p => (typeof p === 'string' ? PART_NODES[p] : entryNode(p))))
+    const ids = new Set(Object.values(layout).flatMap(run => run.filter(p => typeof p !== 'string').map(p => p.id)))
+    for (const id of [...entryNodes.keys()]) if (!ids.has(id)) entryNodes.delete(id)
     // First at the strip's left end: her island at its very edge, as ever.
     herSlot.classList.toggle('first', layout.left[0] === 'her')
+    // A run with a flexible spacer takes the room there is (the middle one
+    // not in the middle of the screen then: its spacer has the say).
+    const stretch = k => layout[k].some(p => p.type === 'flex')
+    for (const k of Object.keys(zones)) zones[k].classList.toggle('stretch', stretch(k))
+    barRest.classList.toggle('tb-stretch', Object.keys(zones).some(stretch))
+    // What the strip shows takes no turns in the island too.
+    takeWidgets(allWidgets)
   }
+
+  // Each widget put there, as big as it is set: S its icon and value; M its
+  // value over its name, as the clock has the date under the time. One with
+  // nothing to say (not yet, or gone) greyed, with its name. A plugin with
+  // several (stocks, CI runs) shows them in turn.
+  const ENTRY_TURN_MS = 5000
+  function drawEntries() {
+    const turn = Math.floor(Date.now() / ENTRY_TURN_MS)
+    const detailed = isDetailed()
+    for (const node of entryNodes.values()) {
+      const e = node._entry
+      const name = Widgets.nameOf(lang, e, allWidgets, detailed)
+      node.dataset.label = name
+      if (!Widgets.isSource(e)) continue
+      const from = Widgets.sourcesOf(e, allWidgets)
+      const w = from.length ? from[turn % from.length] : null
+      const said = w ? Widgets.words(lang, w, detailed) : null
+      const colour = (w && stripInk(w.color)) || stripHue().idle
+      const drawn = JSON.stringify([e.size, name, said, w?.icon || e.icon, colour])
+      if (node._drawn === drawn) continue
+      node._drawn = drawn
+      const icon = el('span', 'twi')
+      icon.innerHTML = Widgets.icon(w?.icon || e.icon || 'dot')
+      icon.style.color = colour
+      const none = t(lang, 'taskbar.w.none')
+      node.classList.toggle('empty', !w)
+      node.title = w ? [said.label, said.value].filter(Boolean).join(' · ') : `${name} · ${none}`
+      if (node.dataset.size === 'S') node.replaceChildren(icon, el('b', 'twv', said?.value || '—'))
+      else {
+        const text = el('span', 'twt')
+        text.append(el('b', 'twv', said?.value || none), el('i', '', name))
+        node.replaceChildren(icon, text)
+      }
+    }
+    if (wgFor) drawWidgetPop()
+  }
+  setInterval(() => {
+    if (taskbarBuilt && home() === 'taskbar' && entryNodes.size) drawEntries()
+  }, ENTRY_TURN_MS)
 
   // Her island over its slot, as wide as it is: from the strip's left, or,
   // its slot past the middle, from the right (what it grows into goes the
@@ -993,12 +1071,13 @@
     if (!taskbarBuilt) {
       // As wide as the strip: her island lies over its slot in it (placeHer).
       barRest.style.left = '0px'
-      barRest.replaceChildren(glide, zones.left, zones.center, growNode, zones.right, deskEdge, pop)
+      barRest.replaceChildren(glide, zones.left, zones.center, growNode, zones.right, deskEdge, pop, wgPop)
       taskbarBuilt = true
       trayDrawn = ''
       windowsDrawn = ''
     }
     arrangeTaskbar()
+    drawEntries()
     // The programs' buttons as icons alone (taskbarButtons), or with their titles.
     barRest.classList.toggle('icons', config.taskbarButtons !== 'labels')
     startButton.title = t(lang, 'taskbar.start')
@@ -1013,6 +1092,8 @@
     alignApps()
     placeHer()
     snapStart()
+    // Editing: the chosen one's tools over it, where it is now.
+    if (editLayout && chosen) drawTools()
   }
 
   // The middle run in the middle of the screen, as Windows 11 has Start and
@@ -1026,8 +1107,9 @@
     // Measured by the margin as it is now (it may be sliding), set to the one wanted.
     const target = parseFloat(middle.style.marginLeft) || 0
     let want = 0
-    // Empty, it is still a place to drop a part while the layout is edited.
-    if (middle.childElementCount || editLayout) {
+    // Empty, it is still a place to drop a part while the layout is edited;
+    // with a flexible spacer anywhere, the spacer places it.
+    if ((middle.childElementCount || editLayout) && !barRest.classList.contains('tb-stretch')) {
       const now = parseFloat(getComputedStyle(middle).marginLeft) || 0
       const start = middle.getBoundingClientRect()
       const width = start.width
@@ -1046,6 +1128,8 @@
     if (glideOn?.isConnected) glideTo(glideOn, true)
     placeHer()
     snapStart()
+    if (editLayout && chosen) drawTools()
+    if (wgFor) drawWidgetPop()
     requestAnimationFrame(sendTrayRects)
   })
 
@@ -1058,7 +1142,7 @@
   // place, jumps rather than slides a long way, and gives a little under a
   // press. Not over what opens above the buttons, nor while a tray icon or
   // a program's button is being dragged.
-  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tclock, .gear, .tag[data-jump]'
+  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tclock, .gear, .tag[data-jump]'
   const GLIDE_FAR = 360
   const glide = el('span', 'hdrop')
   let glideOn = null
@@ -1101,7 +1185,7 @@
     }, 90)
   }
 
-  const isGlideOn = node => node?.matches?.(GLIDE_ON) && !node.closest('.wpop, .tfly')
+  const isGlideOn = node => node?.matches?.(GLIDE_ON) && !node.closest('.wpop, .wgpop, .tfly')
   barRest.addEventListener(
     'mouseenter',
     e => {
@@ -1199,6 +1283,7 @@
   const appOf = key => taskWindows.find(a => a.app === key)
 
   function openPop(key, kind) {
+    if (wgFor) closeWidgetPop()
     clearTimeout(popTimer)
     popFor = { app: key, kind }
     drawPop()
@@ -1224,8 +1309,10 @@
   // press anywhere else closes them, as Windows' do: told by the host
   // (taskbar.rs press hook), for ours never take the focus whose loss would.
   let watching = false
+  // The widget on the taskbar whose card is open (openWidgetPop).
+  let wgFor = null
   function watchPresses() {
-    const want = !!popFor || trayOpen
+    const want = !!popFor || trayOpen || !!wgFor
     if (want === watching) return
     watching = want
     window.pet.taskbar.watch(want)
@@ -1235,6 +1322,99 @@
     const over = document.elementFromPoint(at.x, at.y)
     if (popFor && !(over && (pop.contains(over) || windowsBox.contains(over)))) closePop()
     if (trayOpen && !(over && trayBox.contains(over))) openTray(false)
+    if (wgFor && !(over && (wgPop.contains(over) || entryNodes.get(wgFor)?.contains(over)))) closeWidgetPop()
+  })
+
+  // --- A widget on the taskbar, opened ------------------------------------------------
+  // A press on one (or a right press) opens its card above it, as the
+  // clock's opens Windows' calendar: what it says (each of a plugin's
+  // widgets), where it comes from, and its settings, its mail, or taking it
+  // off the taskbar. A press anywhere else closes it (watchPresses).
+  const wgPop = el('div', 'wgpop')
+  wgPop.hidden = true
+  barRest.append(wgPop)
+
+  function openWidgetPop(id) {
+    if (popFor) closePop()
+    wgFor = id
+    drawWidgetPop()
+    watchPresses()
+  }
+
+  function closeWidgetPop() {
+    wgFor = null
+    wgPop.hidden = true
+    watchPresses()
+  }
+
+  function drawWidgetPop() {
+    const node = wgFor && entryNodes.get(wgFor)
+    const e = node?._entry
+    if (!e || !node.isConnected || editLayout || home() !== 'taskbar') return closeWidgetPop()
+    const detailed = isDetailed()
+    const from = Widgets.sourcesOf(e, allWidgets)
+    const first = from[0]
+    const head = el('div', 'wghead')
+    head.innerHTML = Widgets.icon(first?.icon || e.icon || 'dot')
+    head.firstChild.style.color = (first && stripInk(first.color)) || stripHue().idle
+    const kind = e.type === 'plugin' ? 'plugin' : first?.from || 'widget'
+    head.append(el('b', '', Widgets.nameOf(lang, e, allWidgets, detailed)), el('span', 'wgfrom', t(lang, `taskbar.w.from.${kind}`)))
+    const rows = from.map(w => {
+      const said = Widgets.words(lang, w, detailed)
+      const row = el('div', 'wgrow')
+      const value = el('b', '', said.value)
+      if (Widgets.partsOf(w)) value.innerHTML = Widgets.partsHTML(w)
+      // A plugin's several: each by its own label.
+      row.append(...(from.length > 1 && said.label ? [el('span', '', said.label)] : []), value)
+      return row
+    })
+    if (!rows.length) rows.push(el('div', 'wgnone', t(lang, 'taskbar.w.none')))
+    const acts = el('div', 'wgacts')
+    const button = (what, label) => {
+      const b = el('button', 'wgbtn', label)
+      b.type = 'button'
+      b.dataset.wg = what
+      return b
+    }
+    if (kind === 'mail') acts.append(button('mail', t(lang, 'taskbar.w.mail')))
+    if (kind === 'plugin' || kind === 'builtIn') acts.append(button('settings', t(lang, 'taskbar.w.settings')))
+    acts.append(button('remove', t(lang, 'taskbar.w.remove')))
+    wgPop.replaceChildren(head, ...rows, acts)
+    wgPop.hidden = false
+    const r = node.getBoundingClientRect()
+    const base = barRest.getBoundingClientRect()
+    const left = r.left - base.left + r.width / 2 - wgPop.offsetWidth / 2
+    wgPop.style.left = `${Math.max(4, Math.min(left, barRest.offsetWidth - wgPop.offsetWidth - 4))}px`
+  }
+
+  // Off the taskbar, and kept so.
+  function removeEntry(id) {
+    const layout = tbLayout()
+    for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => Widgets.keyOf(p) !== id)
+    if (editLayout) editLayout = layout
+    else {
+      config.taskbarLayout = layout
+      window.pet.settings.set({ taskbarLayout: layout })
+    }
+    if (wgFor === id) closeWidgetPop()
+    arranged = ''
+    update()
+    if (libOpen) drawLibrary()
+  }
+
+  wgPop.addEventListener('click', e => {
+    const what = e.target.closest('[data-wg]')?.dataset.wg
+    const entry = wgFor && entryNodes.get(wgFor)?._entry
+    if (!what || !entry) return
+    if (what === 'remove') return removeEntry(entry.id)
+    closeWidgetPop()
+    if (what === 'mail') return window.pet.openSettings('mail')
+    if (entry.type === 'plugin') window.Settings?.openPlugin?.(entry.of)
+    window.pet.openSettings('widgets')
+  })
+  wgPop.addEventListener('contextmenu', e => {
+    e.preventDefault()
+    e.stopPropagation()
   })
 
   function drawPop() {
@@ -1946,12 +2126,19 @@
   barRest.addEventListener('click', e => {
     const what = e.target.closest('[data-bar]')?.dataset.bar
     if (what && what !== 'settings') window.pet.taskbar.open(what)
+    // A widget put there: its card, or closed again.
+    const widget = e.target.closest('.tw-widget, .tw-plugin')
+    if (widget) wgFor === widget.dataset.entry ? closeWidgetPop() : openWidgetPop(widget.dataset.entry)
   })
   // A right press: a tray icon's program has it; on the input method, the
-  // input methods to pick from; elsewhere, her menu.
+  // input methods to pick from; on a widget put there, its card; elsewhere,
+  // her menu.
   barRest.addEventListener('contextmenu', e => {
     e.preventDefault()
     if (trayKey(e)) return
+    if (wgPop.contains(e.target)) return
+    const widget = e.target.closest('.tw-widget, .tw-plugin')
+    if (widget) return openWidgetPop(widget.dataset.entry)
     if (e.target.closest('[data-bar="ime"]')) return window.pet.taskbar.open('inputs')
     window.pet.menu()
   })
@@ -1962,16 +2149,50 @@
   // --- Editing the layout: the parts dragged about on the strip itself -------------------
   // As KDE edits a panel: each part outlined, the three runs shown (an empty
   // one a place to drop into), a part dragged to where a line shows it goes
-  // and laid out there at once; a bar above the strip to reset, cancel or
-  // keep it (taskbarLayout). The parts' own presses are held back meanwhile;
-  // her island lets the pointer through to its slot, to be dragged by it.
+  // and laid out there at once; a bar above the strip to add widgets, reset,
+  // cancel or keep it (taskbarLayout). The widgets come from a library over
+  // the strip, the island's other side (by kind, each a card): dragged onto
+  // it, or a press puts one at the right run's start. One there is chosen by
+  // a press (its size, or off the strip), or dragged off: onto the library,
+  // or up away from the strip. The parts' own presses are held back
+  // meanwhile; her island lets the pointer through to its slot, to be
+  // dragged by it.
   const editBar = el('div', 'tbedit')
   const editMark = el('span', 'tbmark')
+  const library = el('div', 'tblib')
+  const tools = el('div', 'tbtools')
   let drag = null
+  // The library: open, the kind shown, what it knows (settings_get: every
+  // widget, on or off, and the plugins), the cards drawn; the widget chosen
+  // on the strip.
+  let libOpen = false
+  let libKind = 'all'
+  let libSnap = null
+  let libCards = []
+  let chosen = null
+  // Let go this far above the strip, a widget goes.
+  const OFF_STRIP_PX = 90
+  // The spacers' marks in the library (a widget's own are widgets.js ICONS).
+  const SPACER_MARK = {
+    flex: '<path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3"/>',
+    gap: '<path d="M5 7v10M19 7v10M8 12h8"/>',
+    sep: '<path d="M12 4v16"/>',
+  }
+
+  // A new widget's id, as settings.rs takes it: "w" and up to 15 of a-z 0-9.
+  const newId = () => `w${Date.now().toString(36).slice(-6)}${Math.random().toString(36).slice(2, 6)}`
+
+  // Pointer in or out of what editing puts over the strip: the window takes it.
+  for (const node of [editBar, library, tools]) {
+    node.addEventListener('mouseenter', () => window.pet.hover(true))
+    node.addEventListener('mouseleave', () => window.pet.hover(false))
+  }
 
   function editTaskbar() {
     if (home() !== 'taskbar' || editLayout) return
     if (isSetting()) window.Settings?.close?.('edit')
+    if (wgFor) closeWidgetPop()
+    if (popFor) closePop()
     editLayout = JSON.parse(JSON.stringify(tbLayout()))
     // Each part's name: shown on one with nothing in it now, and dragged by.
     for (const [part, node] of Object.entries(PART_NODES)) node.dataset.label = t(lang, `taskbar.part.${part}`)
@@ -1980,26 +2201,43 @@
     clearTimeout(hoverTimer)
     isHover = false
     body.classList.add('tb-editing')
-    const button = what => {
-      const b = el('button', `tbe tbe-${what}`, t(lang, `taskbar.edit.${what}`))
-      b.dataset.edit = what
-      return b
-    }
-    editBar.replaceChildren(el('span', 'hint', t(lang, 'taskbar.edit.hint')), button('reset'), button('cancel'), button('done'))
+    libOpen = false
+    chosen = null
+    drawEditBar()
     document.body.append(editBar)
     arranged = ''
     update()
+  }
+
+  function drawEditBar() {
+    const button = (what, label = t(lang, `taskbar.edit.${what}`)) => {
+      const b = el('button', `tbe tbe-${what}`, label)
+      b.dataset.edit = what
+      return b
+    }
+    editBar.replaceChildren(el('span', 'hint', t(lang, 'taskbar.edit.hint')), button('add', t(lang, libOpen ? 'taskbar.edit.hideAdd' : 'taskbar.edit.add')), button('reset'), button('cancel'), button('done'))
   }
 
   function endEdit(keep) {
     if (!editLayout) return
     const layout = editLayout
     editLayout = null
+    endDrag()
     body.classList.remove('tb-editing')
     editBar.remove()
+    library.remove()
+    tools.remove()
+    libOpen = false
+    chosen = null
+    for (const node of entryNodes.values()) node.classList.remove('tb-chosen')
     if (keep) {
       config.taskbarLayout = layout
-      window.pet.settings.set({ taskbarLayout: layout })
+      const patch = { taskbarLayout: layout }
+      // A plugin put there that was not running: it runs now.
+      const plugins = config.plugins && typeof config.plugins === 'object' ? config.plugins : {}
+      const off = [...new Set(Object.values(layout).flatMap(run => run.filter(p => p.type === 'plugin').map(p => p.of)))].filter(id => plugins[id]?.on !== true)
+      if (off.length) patch.plugins = { ...plugins, ...Object.fromEntries(off.map(id => [id, { ...(plugins[id] || {}), on: true }])) }
+      window.pet.settings.set(patch)
     }
     arranged = ''
     update()
@@ -2009,14 +2247,145 @@
     const what = e.target.closest('[data-edit]')?.dataset.edit
     if (what === 'done') endEdit(true)
     else if (what === 'cancel') endEdit(false)
+    else if (what === 'add') showLibrary(!libOpen)
     else if (what === 'reset') {
-      editLayout = JSON.parse(JSON.stringify(TB_PRESETS.win11))
+      // The parts as Windows 11 has them; the widgets kept, where they were.
+      editLayout = tbLayout(Widgets.withParts(TB_PRESETS.win11, tbLayout()))
       arranged = ''
       update()
     }
   })
-  editBar.addEventListener('mouseenter', () => window.pet.hover(true))
-  editBar.addEventListener('mouseleave', () => window.pet.hover(false))
+
+  // --- The library -------------------------------------------------------------------
+  function showLibrary(open) {
+    libOpen = open
+    drawEditBar()
+    if (!open) return library.remove()
+    drawLibrary()
+    document.body.append(library)
+    window.pet.settings.get().then(got => {
+      libSnap = got
+      if (libOpen) drawLibrary()
+    })
+  }
+
+  // Its cards: the built-in widgets (not the monitor, a part of its own),
+  // the plugins she runs, each mail account's, those of anyone else's
+  // scripts there now, and the spacers.
+  function cardsOf(all) {
+    const cards = []
+    const named = w => (w.private ? {} : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') })
+    for (const w of all.filter(w => w.builtIn && w.id !== 'monitor')) cards.push({ kind: 'builtIn', entry: { type: 'widget', of: w.id, icon: w.icon }, w })
+    for (const p of libSnap?.plugins || []) cards.push({ kind: 'plugin', entry: { type: 'plugin', of: p.id, icon: p.icon }, w: all.find(w => w.plugin === p.id), plugin: p })
+    for (const w of all.filter(w => w.from === 'mail')) cards.push({ kind: 'mail', entry: { type: 'widget', of: w.id, icon: w.icon, ...named(w) }, w })
+    for (const w of all.filter(w => w.from === 'script' && !w.plugin)) cards.push({ kind: 'script', entry: { type: 'widget', of: w.id, icon: w.icon, ...named(w) }, w })
+    for (const type of ['flex', 'gap', 'sep']) cards.push({ kind: 'layout', entry: { type } })
+    return cards
+  }
+
+  function drawLibrary() {
+    const all = libSnap?.widgets || allWidgets
+    const detailed = isDetailed()
+    const placed = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string' && Widgets.isSource(p)).map(p => `${p.type}:${p.of}`)))
+    libCards = cardsOf(all)
+    const kinds = ['all', ...new Set(libCards.map(c => c.kind))]
+    if (!kinds.includes(libKind)) libKind = 'all'
+    const tabs = el('div', 'tblkinds')
+    for (const kind of kinds) {
+      const b = el('button', kind === libKind ? 'tblkind on' : 'tblkind', t(lang, `taskbar.lib.${kind}`))
+      b.dataset.kind = kind
+      tabs.append(b)
+    }
+    const grid = el('div', 'tblgrid')
+    for (const [i, c] of libCards.entries()) {
+      if (libKind !== 'all' && c.kind !== libKind) continue
+      const isOn = Widgets.isSource(c.entry) && placed.has(`${c.entry.type}:${c.entry.of}`)
+      const card = el('div', isOn ? 'tblcard placed' : 'tblcard')
+      card.dataset.card = i
+      const mark = el('span', 'tblmark')
+      mark.innerHTML = SPACER_MARK[c.entry.type] ? `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SPACER_MARK[c.entry.type]}</svg>` : Widgets.icon(c.w?.icon || c.entry.icon || 'dot')
+      mark.style.color = (c.w && stripInk(c.w.color)) || stripHue().idle
+      const said = c.w ? Widgets.words(lang, c.w, detailed).value : ''
+      const note = isOn
+        ? t(lang, 'taskbar.lib.placed')
+        : c.plugin?.state === 'needs'
+          ? t(lang, 'taskbar.lib.needs')
+          : c.plugin && !c.plugin.on
+            ? t(lang, 'taskbar.lib.starts')
+            : said || t(lang, `taskbar.lib.note.${c.kind === 'layout' ? c.entry.type : c.kind}`)
+      card.append(mark, el('b', '', Widgets.nameOf(lang, { ...c.entry, id: 'w0' }, all, detailed)), el('span', 'tblnote', note))
+      grid.append(card)
+    }
+    const head = el('div', 'tblhead')
+    head.append(el('b', '', t(lang, 'taskbar.lib.title')), el('span', 'tblhint', t(lang, 'taskbar.lib.hint')))
+    library.replaceChildren(head, tabs, grid)
+  }
+
+  library.addEventListener('click', e => {
+    const kind = e.target.closest('[data-kind]')?.dataset.kind
+    if (!kind) return
+    libKind = kind
+    drawLibrary()
+  })
+
+  // A card picked up: a new widget, dragged onto the strip (or put at the
+  // right run's start by a press). One already there is not again.
+  library.addEventListener('pointerdown', e => {
+    const card = e.target.closest('[data-card]')
+    if (!card || e.button !== 0 || card.classList.contains('placed')) return
+    const c = libCards[card.dataset.card]
+    if (!c) return
+    e.preventDefault()
+    const fresh = { ...c.entry, id: newId(), ...(Widgets.isSource(c.entry) ? { size: 'M' } : {}) }
+    drag = { fresh, node: card, label: card.querySelector('b')?.textContent || '', x: e.clientX, y: e.clientY, moved: false }
+    try {
+      library.setPointerCapture(e.pointerId)
+    } catch {}
+  })
+
+  // --- The one chosen: its size, or off ------------------------------------------------
+  function choose(id) {
+    chosen = id
+    drawTools()
+  }
+
+  function drawTools() {
+    const node = chosen && entryNodes.get(chosen)
+    const e = node?._entry
+    for (const n of entryNodes.values()) n.classList.toggle('tb-chosen', n === node)
+    if (!editLayout || !e || !node.isConnected) {
+      chosen = null
+      return tools.remove()
+    }
+    const button = (what, label, on) => {
+      const b = el('button', on ? 'tbt on' : 'tbt', label)
+      b.type = 'button'
+      b.dataset.tool = what
+      return b
+    }
+    const items = [el('span', 'tbtname', node.dataset.label || '')]
+    if (Widgets.isSource(e)) items.push(button('S', t(lang, 'taskbar.w.size.S'), node.dataset.size === 'S'), button('M', t(lang, 'taskbar.w.size.M'), node.dataset.size === 'M'), el('span', 'tbtsep'))
+    items.push(button('remove', t(lang, 'taskbar.w.remove')))
+    tools.replaceChildren(...items)
+    if (!tools.isConnected) document.body.append(tools)
+    const r = node.getBoundingClientRect()
+    tools.style.left = `${Math.round(Math.max(4, Math.min(r.left + r.width / 2 - tools.offsetWidth / 2, innerWidth - tools.offsetWidth - 4)))}px`
+  }
+
+  tools.addEventListener('click', e => {
+    const what = e.target.closest('[data-tool]')?.dataset.tool
+    const id = chosen
+    if (!what || !id) return
+    if (what === 'remove') {
+      choose(null)
+      return removeEntry(id)
+    }
+    const layout = tbLayout()
+    for (const run of Object.values(layout)) for (const p of run) if (p.id === id) p.size = what
+    editLayout = layout
+    arranged = ''
+    update()
+  })
 
   // Where a part let go at x goes: the run under it (or the nearest), and
   // before the first part of it whose middle is past x; the line's place.
@@ -2037,13 +2406,21 @@
     return { zone: near.zone, index, line }
   }
 
-  function movePart(part, zone, index) {
+  // A part (by its name) or a widget (by its id) moved; a new widget put in.
+  function movePart(key, zone, index, fresh) {
     const layout = tbLayout()
-    for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== part)
-    layout[zone].splice(index, 0, part)
+    let item = fresh || key
+    for (const k of Object.keys(layout))
+      layout[k] = layout[k].filter(p => {
+        if (Widgets.keyOf(p) !== key) return true
+        item = p
+        return false
+      })
+    layout[zone].splice(index, 0, item)
     editLayout = layout
     arranged = ''
     update()
+    if (libOpen) drawLibrary()
   }
 
   function endDrag() {
@@ -2054,6 +2431,13 @@
     drag = null
   }
 
+  // Over the library (or let go there).
+  const overLibrary = (x, y) => {
+    if (!library.isConnected) return false
+    const r = library.getBoundingClientRect()
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+  }
+
   // While editing, the parts' own presses (Start, the buttons, the tray, the
   // menu) are held back: they are being moved, not used.
   for (const type of ['click', 'dblclick', 'contextmenu', 'pointerup']) {
@@ -2062,11 +2446,6 @@
       e => {
         if (!editLayout) return
         if (type !== 'pointerup') e.preventDefault()
-        if (type === 'pointerup' && drag) {
-          const d = drag
-          endDrag()
-          if (d.moved && d.at) movePart(d.part, d.at.zone, d.at.index)
-        }
         e.stopPropagation()
       },
       true,
@@ -2079,34 +2458,62 @@
       e.preventDefault()
       e.stopPropagation()
       const node = e.target.closest('[data-part]')
-      if (!node || e.button !== 0) return
-      drag = { part: node.dataset.part, node, x: e.clientX, y: e.clientY, moved: false }
+      if (e.button !== 0) return
+      if (!node) return choose(null)
+      drag = { key: node.dataset.part, entry: node._entry || null, node, label: node.dataset.label || '', x: e.clientX, y: e.clientY, moved: false }
       try {
         barRest.setPointerCapture(e.pointerId)
       } catch {}
     },
     true,
   )
-  barRest.addEventListener(
+
+  // A drag, from the strip or from the library: where it goes shown by a
+  // line in the run; a widget dragged off the strip (onto the library, or
+  // up away from it) goes, a new one there is not put in.
+  document.addEventListener(
     'pointermove',
     e => {
       if (!drag) return
-      e.stopPropagation()
       if (!drag.moved) {
         if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5) return
         drag.moved = true
-        drag.ghost = el('span', 'tbghost', t(lang, `taskbar.part.${drag.part}`))
+        drag.ghost = el('span', 'tbghost', drag.label)
         document.body.append(drag.ghost, editMark)
         drag.node.classList.add('tb-dragging')
+        choose(null)
       }
       drag.ghost.style.left = `${e.clientX}px`
       drag.ghost.style.top = `${e.clientY}px`
-      drag.at = dropAt(e.clientX)
-      editMark.style.left = `${Math.round(drag.at.line) - 1}px`
+      const strip = barRest.getBoundingClientRect()
+      const off = (!!drag.entry || !!drag.fresh) && (overLibrary(e.clientX, e.clientY) || e.clientY < strip.top - OFF_STRIP_PX)
+      drag.off = off
+      drag.ghost.classList.toggle('off', off)
+      drag.ghost.textContent = off && drag.entry ? t(lang, 'taskbar.w.drop', { name: drag.label }) : drag.label
+      editMark.hidden = off
+      drag.at = off ? null : dropAt(e.clientX)
+      if (drag.at) editMark.style.left = `${Math.round(drag.at.line) - 1}px`
     },
     true,
   )
-  barRest.addEventListener('pointercancel', endDrag, true)
+  document.addEventListener(
+    'pointerup',
+    e => {
+      if (!drag || e.button !== 0) return
+      const d = drag
+      endDrag()
+      if (!d.moved) {
+        // A press: a card goes to the right run's start; a widget on the
+        // strip is chosen (again: no longer); elsewhere, none is.
+        if (d.fresh) return movePart(d.fresh.id, 'right', 0, d.fresh)
+        return choose(d.entry && chosen !== d.entry.id ? d.entry.id : null)
+      }
+      if (d.off) return d.entry ? removeEntry(d.entry.id) : undefined
+      if (d.at) movePart(d.fresh ? d.fresh.id : d.key, d.at.zone, d.at.index, d.fresh)
+    },
+    true,
+  )
+  document.addEventListener('pointercancel', endDrag, true)
 
   function update() {
     clearInterval(clockTimer)
@@ -2514,13 +2921,7 @@
     spriteUrl = data.sprite
     second = data.second || null
     quiet = data.quiet === true
-    // The same widget stays shown as the list changes around it.
-    const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
-    const all = Array.isArray(data.widgets) ? data.widgets : []
-    monitor = all.find(w => w.id === 'monitor') || null
-    widgets = all.filter(w => !(w === monitor && isPinned()))
-    const still = widgets.findIndex(w => w.id === was)
-    if (still >= 0) widgetAt = still
+    takeWidgets(data.widgets)
     place()
     // Something new that wants you, or is finished: the island opens for a
     // moment, a longer one with Claude's words to read.
@@ -2534,16 +2935,13 @@
   // alone; the island drawn anew where it shows them in its lines, or when
   // another widget's words changed (the capsule shows them in turn).
   window.pet.onWidgets(({ widgets: all }) => {
-    const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
     const others = JSON.stringify(widgets)
-    const list = Array.isArray(all) ? all : []
-    monitor = list.find(w => w.id === 'monitor') || null
-    widgets = list.filter(w => !(w === monitor && isPinned()))
-    const still = widgets.findIndex(w => w.id === was)
-    if (still >= 0) widgetAt = still
+    takeWidgets(all)
     if (!isOn()) return
-    if (home() === 'taskbar' && view === 'compact' && JSON.stringify(widgets) === others) facesBox.replaceChildren(...widgetFaces())
-    else update()
+    if (home() === 'taskbar' && view === 'compact' && JSON.stringify(widgets) === others) {
+      facesBox.replaceChildren(...widgetFaces())
+      drawEntries()
+    } else update()
   })
 
   // Nobody at the keyboard or mouse for a while, or someone again: she
@@ -2647,5 +3045,5 @@
 
   // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
   window.pet.onTaskbarEdit(() => editTaskbar())
-  window.Island = { isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), editTaskbar }
+  window.Island = { isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar }
 })()

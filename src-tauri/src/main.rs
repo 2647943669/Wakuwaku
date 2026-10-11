@@ -250,9 +250,9 @@ impl Shared {
         now["islandTemp"] = json!(temp);
         now["settingsOpen"] = json!(settings_open);
         now["quiet"] = json!(self.is_quiet());
-        // The widgets that are on and have something to say, for the island
-        // while nothing needs you.
-        now["widgets"] = Value::Array(self.widgets_view().as_array().into_iter().flatten().filter(|w| w["on"] == true && !w["value"].is_null()).cloned().collect());
+        // The widgets that have something to say: those on take their turns
+        // in the island while nothing needs you; any may be on the taskbar.
+        now["widgets"] = self.widgets_said();
         now
     }
 
@@ -284,8 +284,7 @@ impl Shared {
     // seconds): the island's widgets alone, not the whole state to both
     // pages, the tray and the settings.
     pub fn redraw_widgets(&self) {
-        let widgets = Value::Array(self.widgets_view().as_array().into_iter().flatten().filter(|w| w["on"] == true && !w["value"].is_null()).cloned().collect());
-        let _ = self.app.emit_to("island", "pet:widgets", json!({ "widgets": widgets }));
+        let _ = self.app.emit_to("island", "pet:widgets", json!({ "widgets": self.widgets_said() }));
         self.push_settings();
     }
 
@@ -341,6 +340,17 @@ impl Shared {
 
     pub fn is_widget_on(&self, id: &str) -> bool {
         !self.list_setting("widgetsOff").iter().any(|o| o == id)
+    }
+
+    // On in the island, or put on the taskbar (taskbarLayout) while she is
+    // the taskbar: a built-in one is worked out then.
+    pub fn is_widget_wanted(&self, id: &str) -> bool {
+        self.is_widget_on(id) || (self.setting("display") == "taskbar" && settings::is_on_taskbar(&self.setting("taskbarLayout"), id))
+    }
+
+    // The widgets with something to say, each saying whether it is on.
+    fn widgets_said(&self) -> Value {
+        Value::Array(self.widgets_view().as_array().into_iter().flatten().filter(|w| !w["value"].is_null()).cloned().collect())
     }
 
     // Every widget, in the person's order, on or off.
@@ -1187,10 +1197,10 @@ fn main() {
                         };
                     };
                     // Just turned on: read now, not at its next turn.
-                    let unread = |id: &str| watcher.is_widget_on(id) && watcher.widgets.lock().unwrap().label_of(id).is_none();
+                    let unread = |id: &str| watcher.is_widget_wanted(id) && watcher.widgets.lock().unwrap().label_of(id).is_none();
                     if tokens_at.is_none_or(|t| t.elapsed() >= tokens::EVERY) || unread("tokens") {
                         tokens_at = Some(std::time::Instant::now());
-                        let count = watcher.is_widget_on("tokens").then(|| {
+                        let count = watcher.is_widget_wanted("tokens").then(|| {
                             tokens.update(&claude_dir, &codex_dir, widgets::local_midnight());
                             tokens::words(tokens.count())
                         });

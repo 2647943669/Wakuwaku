@@ -2720,11 +2720,12 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   pointer-events: none;
 }
 
-/* Above the strip: what to do, and reset, cancel, done. */
+/* Above the strip, over the chosen widget's tools: what to do, and add
+   widgets, reset, cancel, done. */
 .tbedit {
   position: fixed;
   left: 50%;
-  bottom: 62px;
+  bottom: 100px;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -2789,4 +2790,483 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   border-color: #005fb8;
   background: #005fb8;
   color: #fff;
+}
+
+/* --- Widgets on the taskbar (island.js drawEntries) ---------------------------------
+   A button as the clock is: S its icon and value, M its value over its
+   name (the clock's time over its date); one with nothing to say greyed.
+   The spacers: one taking the room left in its run (its run takes the
+   room there is, .stretch), a little fixed room, a thin line. */
+#bar-rest .tw-widget,
+#bar-rest .tw-plugin {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 6px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+}
+
+#bar-rest .tw .twi {
+  display: flex;
+}
+
+#bar-rest .tw .twi .wicon {
+  width: 16px;
+  height: 16px;
+}
+
+#bar-rest .tw .twi .wicon.wglyph {
+  font-size: 16px;
+}
+
+#bar-rest .tw .twt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#bar-rest .tw .twv {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: #f5f5f7;
+}
+
+#bar-rest .tw[data-size='S'] {
+  gap: 6px;
+}
+
+#bar-rest .tw[data-size='S'] .twv {
+  max-width: 80px;
+}
+
+#bar-rest .tw .twt i {
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: normal;
+  color: #a1a1a6;
+}
+
+#bar-rest .tw.empty .twi {
+  opacity: 0.55;
+}
+
+#bar-rest .tw.empty .twv {
+  font-weight: 400;
+  color: #a1a1a6;
+}
+
+#bar-rest .tw-widget:hover,
+#bar-rest .tw-plugin:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+#bar-rest .tzone.stretch {
+  flex: 1 1 auto;
+}
+
+#bar-rest.tb-stretch .grow {
+  display: none;
+}
+
+#bar-rest .tw-flex {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 8px;
+}
+
+#bar-rest .tw-gap {
+  flex: none;
+  align-self: stretch;
+  width: 16px;
+}
+
+#bar-rest .tw-sep {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 6px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.tb-light #bar-rest .tw .twv {
+  color: #1b1b1b;
+}
+
+.tb-light #bar-rest .tw .twt i,
+.tb-light #bar-rest .tw.empty .twv {
+  color: #5d5d5d;
+}
+
+.tb-light #bar-rest .tw-widget:hover,
+.tb-light #bar-rest .tw-plugin:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.tb-light #bar-rest .tw-sep {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* On a picture: the name as plain as the value, the icon ringed. */
+.tb-clear:not(.tb-filled) #bar-rest .tw .twt i {
+  color: #e5e5ea;
+}
+
+.tb-light.tb-clear:not(.tb-filled) #bar-rest .tw .twt i {
+  color: #2b2b2b;
+}
+
+.tb-clear:not(.tb-filled) #bar-rest .tw .twi {
+  filter: var(--halo);
+}
+
+/* Editing: a spacer as wide as its name, to be seen and dragged; the one
+   chosen lit. */
+.tb-editing #bar-rest .tw-sep,
+.tb-editing #bar-rest .tw-gap {
+  width: auto;
+  height: auto;
+  margin: 0;
+  background: none;
+}
+
+.tb-editing #bar-rest .tw.tb-chosen {
+  box-shadow: inset 0 0 0 2px #5e9bff;
+  background: rgba(94, 155, 255, 0.32);
+}
+
+/* --- A widget's card (island.js drawWidgetPop) --------------------------------------
+   Above it, as the windows' list is above a program's button. */
+#bar-rest .wgpop {
+  position: absolute;
+  bottom: 54px;
+  z-index: 3;
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #1c1c1e;
+  color: #e5e5ea;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+#bar-rest .wgpop[hidden] {
+  display: none;
+}
+
+#bar-rest .wghead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#bar-rest .wghead .wicon {
+  width: 18px;
+  height: 18px;
+}
+
+#bar-rest .wghead b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#bar-rest .wgfrom,
+#bar-rest .wgrow span,
+#bar-rest .wgnone {
+  color: #a1a1a6;
+}
+
+#bar-rest .wgrow {
+  display: grid;
+  gap: 2px;
+}
+
+#bar-rest .wgrow b {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#bar-rest .wgacts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+#bar-rest .wgbtn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+#bar-rest .wgbtn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.tb-light #bar-rest .wgpop {
+  background: #f9f9f9;
+  color: #1b1b1b;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.tb-light #bar-rest .wgfrom,
+.tb-light #bar-rest .wgrow span,
+.tb-light #bar-rest .wgnone {
+  color: #5d5d5d;
+}
+
+.tb-light #bar-rest .wgbtn {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+
+.tb-light #bar-rest .wgbtn:hover {
+  background: #f0f0f0;
+}
+
+.tb-clear #bar-rest .wgpop {
+  --halo: opacity(1);
+  text-shadow: none;
+}
+
+/* --- Editing: the library and the chosen one's tools ----------------------------------
+   The library over the strip on the island's other side, above the edit
+   bar: its kinds, and a card for each widget; one there already dimmed. The
+   tools over the chosen one: its size, or off. */
+.tblib {
+  position: fixed;
+  right: 12px;
+  bottom: 156px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 440px;
+  max-width: calc(100vw - 24px);
+  height: 320px;
+  border-radius: 14px;
+  background: #2c2c2c;
+  color: #f5f5f7;
+  font-size: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+body.isl-right .tblib {
+  right: auto;
+  left: 12px;
+}
+
+.tblhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 14px 6px;
+}
+
+.tblhead b {
+  font-size: 13px;
+}
+
+.tblhint {
+  color: #a1a1a6;
+}
+
+.tblkinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 14px 8px;
+}
+
+.tblkind {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tblkind.on {
+  border-color: rgba(94, 155, 255, 0.7);
+  background: rgba(94, 155, 255, 0.22);
+}
+
+.tblgrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-content: start;
+  gap: 8px;
+  padding: 2px 14px 14px;
+  overflow: auto;
+}
+
+.tblcard {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: grab;
+  user-select: none;
+}
+
+.tblcard:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.tblcard.placed {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tblcard .wicon {
+  width: 18px;
+  height: 18px;
+}
+
+.tblcard b,
+.tblnote {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tblnote {
+  color: #a1a1a6;
+  font-size: 11px;
+}
+
+.tbtools {
+  position: fixed;
+  bottom: 54px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  background: #2c2c2c;
+  color: #f5f5f7;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.tbtname {
+  max-width: 160px;
+  margin-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #c7c7cc;
+}
+
+.tbt {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tbt:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.tbt.on {
+  border-color: rgba(94, 155, 255, 0.7);
+  background: rgba(94, 155, 255, 0.22);
+}
+
+.tbtsep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Off the strip: let go, it goes. */
+.tbghost.off {
+  background: #5a2a2a;
+}
+
+.tb-light .tblib,
+.tb-light .tbtools {
+  background: #f3f3f3;
+  color: #1b1b1b;
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.tb-light .tblhint,
+.tb-light .tblnote,
+.tb-light .tbtname {
+  color: #5d5d5d;
+}
+
+.tb-light .tblkind,
+.tb-light .tbt {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+
+.tb-light .tblkind.on,
+.tb-light .tbt.on {
+  border-color: #005fb8;
+  background: rgba(0, 95, 184, 0.12);
+}
+
+.tb-light .tblcard {
+  background: #fff;
+}
+
+.tb-light .tblcard:hover {
+  background: #f9f9f9;
+}
+
+.tb-light .tbtsep {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.tb-light .tbghost.off {
+  background: #f6d5d5;
 }

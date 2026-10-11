@@ -2052,7 +2052,8 @@
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
       if (key === 'taskbarLayout') {
-        const layout = window.Island?.tbPresets?.[raw]
+        // Its parts as the preset has them; the widgets put there kept.
+        const layout = window.Island?.tbWithPreset?.(raw)
         return layout && patch({ taskbarLayout: layout })
       }
       if (key === 'ilookMode') {
@@ -2671,5 +2672,7 @@
     close,
     // The letter to show once the Mail page opens ({ account, uid }).
     openLetter: target => (letterToOpen = target),
+    // The plugin whose settings are folded out once the plugins page opens.
+    openPlugin: id => (openPlugin = String(id || '')),
   }
 })()
