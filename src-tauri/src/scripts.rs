@@ -36,35 +36,46 @@ pub struct Script {
     pub icon: &'static str,
     pub params: &'static [Param],
     body: &'static [u8],
+    // Run for one look this often (its -Once), not kept running between
+    // looks: a PowerShell asleep for ten minutes held 110 MB (39 MB its
+    // own) and nineteen threads (2026-10-11). None: kept running, for a
+    // timer, or one that looks every few seconds (starting PowerShell each
+    // time would cost more than its sleep).
+    pub turn: Option<Duration>,
 }
 
 const fn p(name: &'static str, kind: Kind, required: bool) -> Param {
     Param { name, kind, required }
 }
 
+// The turns are the scripts' own waits (weather.ps1 -Minutes 10, stock.ps1
+// 5, ci.ps1 3): a widget's ttl is its wait and a little more.
 pub static SCRIPTS: [Script; 7] = [
-    Script { id: "weather", icon: "weather", params: &[p("City", Kind::Text, false)], body: include_bytes!("../../examples/widgets/weather.ps1") },
+    Script { id: "weather", icon: "weather", params: &[p("City", Kind::Text, false)], body: include_bytes!("../../examples/widgets/weather.ps1"), turn: Some(Duration::from_secs(600)) },
     Script {
         id: "stock",
         icon: "stock",
         params: &[p("Symbol", Kind::Text, false), p("Name", Kind::Text, false)],
         body: include_bytes!("../../examples/widgets/stock.ps1"),
+        turn: Some(Duration::from_secs(300)),
     },
     Script {
         id: "pomodoro",
         icon: "timer",
         params: &[p("Work", Kind::Number, false), p("Break", Kind::Number, false)],
         body: include_bytes!("../../examples/widgets/pomodoro.ps1"),
+        turn: None,
     },
     Script {
         id: "countdown",
         icon: "flag",
         params: &[p("At", Kind::Text, true), p("Title", Kind::Text, false)],
         body: include_bytes!("../../examples/widgets/countdown.ps1"),
+        turn: None,
     },
-    Script { id: "stretch", icon: "bell", params: &[p("Minutes", Kind::Number, false)], body: include_bytes!("../../examples/widgets/stretch.ps1") },
-    Script { id: "ci", icon: "check", params: &[p("Repo", Kind::Text, true), p("Prs", Kind::Flag, false)], body: include_bytes!("../../examples/widgets/ci.ps1") },
-    Script { id: "devserver", icon: "server", params: &[p("Url", Kind::Text, false)], body: include_bytes!("../../examples/widgets/devserver.ps1") },
+    Script { id: "stretch", icon: "bell", params: &[p("Minutes", Kind::Number, false)], body: include_bytes!("../../examples/widgets/stretch.ps1"), turn: None },
+    Script { id: "ci", icon: "check", params: &[p("Repo", Kind::Text, true), p("Prs", Kind::Flag, false)], body: include_bytes!("../../examples/widgets/ci.ps1"), turn: Some(Duration::from_secs(180)) },
+    Script { id: "devserver", icon: "server", params: &[p("Url", Kind::Text, false)], body: include_bytes!("../../examples/widgets/devserver.ps1"), turn: None },
 ];
 
 // waku is no plugin to switch on: a command wrapper, written out beside them
@@ -221,6 +232,8 @@ struct Run {
     child: Child,
     args: Vec<String>,
     since: Instant,
+    // Started for one look (-Once): ending is its turn done, not failing.
+    once: bool,
 }
 
 #[derive(Default)]
@@ -244,6 +257,9 @@ fn backoff(failures: u32) -> Duration {
 pub struct Runner {
     runs: HashMap<&'static str, Run>,
     trouble: HashMap<&'static str, Trouble>,
+    // A script run in turns: when its last look ended, and with what
+    // arguments (other ones, as the settings change: a look now).
+    done: HashMap<&'static str, (Instant, Vec<String>)>,
     // The last line each printed (a warning, an error).
     said: Arc<Mutex<HashMap<&'static str, String>>>,
     job: Option<job::Job>,
@@ -253,10 +269,13 @@ pub struct Runner {
 impl Runner {
     // Started hidden, in the job; all it prints goes to <folder>/<id>.log,
     // new each start, and its last line that says something is kept.
-    fn start(&mut self, s: &'static Script, args: &[String], folder: &Path) -> std::io::Result<Run> {
+    fn start(&mut self, s: &'static Script, args: &[String], folder: &Path, once: bool) -> std::io::Result<Run> {
         self.said.lock().unwrap().remove(s.id);
         let mut command = Command::new(powershell());
         command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        // No update check or telemetry of PowerShell's own, and no second
+        // thread for its garbage collector.
+        command.env("POWERSHELL_UPDATECHECK", "Off").env("POWERSHELL_TELEMETRY_OPTOUT", "1").env("DOTNET_gcConcurrent", "0");
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -287,7 +306,7 @@ impl Runner {
                 }
             });
         }
-        Ok(Run { child, args: args.to_vec(), since: Instant::now() })
+        Ok(Run { child, args: args.to_vec(), since: Instant::now(), once })
     }
 }
 
@@ -310,7 +329,12 @@ pub fn sync(sh: &Shared) -> bool {
             let c = &conf[s.id];
             let is_on = c["on"] == true;
             let want = is_on && missing(s, c).is_none();
-            let args = arguments(s, c, &folder, sh.port);
+            let mut args = arguments(s, c, &folder, sh.port);
+            if s.turn.is_some() {
+                if let Some(line) = args.last_mut() {
+                    line.push_str(" -Once");
+                }
+            }
             if let Some(mut run) = r.runs.remove(s.id) {
                 match run.child.try_wait() {
                     Ok(None) if want && run.args == args => {
@@ -322,6 +346,13 @@ pub fn sync(sh: &Shared) -> bool {
                         let _ = run.child.wait();
                         r.trouble.remove(s.id);
                         stale.push(s.id);
+                        changed = true;
+                    }
+                    // Its look done: the next one after its turn. What it
+                    // posted stays (its ttl outlasts the turn).
+                    Ok(Some(status)) if run.once && status.success() => {
+                        r.done.insert(s.id, (now, run.args.clone()));
+                        r.trouble.remove(s.id);
                     }
                     // It ended by itself.
                     _ => {
@@ -329,20 +360,28 @@ pub fn sync(sh: &Shared) -> bool {
                         t.failures = if run.since.elapsed() < Duration::from_secs(60) { t.failures + 1 } else { 0 };
                         t.retry_at = Some(now + backoff(t.failures));
                         sh.log(&format!("plugins: {} ended ({} in a row)", s.id, t.failures));
+                        changed = true;
                     }
                 }
-                changed = true;
             }
             if !want {
                 if !is_on && r.trouble.remove(s.id).is_some() {
                     stale.push(s.id);
                 }
+                // Turned on again later, it looks at once.
+                r.done.remove(s.id);
                 continue;
             }
             if r.trouble.get(s.id).and_then(|t| t.retry_at).is_some_and(|at| at > now) {
                 continue;
             }
-            match r.start(s, &args, &folder) {
+            // Between turns, with the same settings: not yet.
+            if let Some(turn) = s.turn {
+                if r.done.get(s.id).is_some_and(|(at, with)| *with == args && at.elapsed() < turn) {
+                    continue;
+                }
+            }
+            match r.start(s, &args, &folder, s.turn.is_some()) {
                 Ok(run) => {
                     r.runs.insert(s.id, run);
                 }
@@ -353,7 +392,8 @@ pub fn sync(sh: &Shared) -> bool {
                     t.retry_at = Some(now + backoff(t.failures));
                 }
             }
-            changed = true;
+            // A look in its turn changes nothing for the island or the settings.
+            changed |= s.turn.is_none();
         }
     }
     // Stopped by its switch or for new settings: what it showed goes with it.
@@ -388,6 +428,8 @@ pub fn view(sh: &Shared) -> Value {
                     _ if !on => "off",
                     _ if missing(s, c).is_some() => "needs",
                     _ if r.runs.contains_key(s.id) => "running",
+                    // Between its turns, as good as running.
+                    _ if s.turn.is_some() && r.done.contains_key(s.id) && r.trouble.get(s.id).and_then(|t| t.retry_at).is_none() => "running",
                     _ => "stopped",
                 };
                 let retry = r.trouble.get(s.id).and_then(|t| t.retry_at).map(|at| at.saturating_duration_since(now).as_secs());
