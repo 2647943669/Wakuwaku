@@ -1443,8 +1443,12 @@ body {
   opacity: 0.35;
 }
 
+/* Muted: the faint waves gone but their room kept (the struck-through
+   speaker over it is out of the flow: with nothing left in the flow it fell
+   below the middle and over the clock). */
 #bar-rest .tquick .vol .back[hidden] {
-  display: none;
+  display: block;
+  visibility: hidden;
 }
 
 #bar-rest .tquick .vol .front {
