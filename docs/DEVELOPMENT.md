@@ -394,6 +394,7 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
 没有单独的主窗口。设计和手感见 `docs/prototypes/island-settings.html`。
 
 - **默认宠物**（Claude小姐，`pets/claude-chan/`，仓库里跟踪，`.gitignore` 只放过它）：`fetch.rs` 用 `include_bytes!` / `include_str!` 把 `spritesheet.webp` 和 `pet.json` 打进 exe，首次运行一只宠物都没有时 `seed_default_pet` 直接写到 `wakuwaku-data/pets/claude-chan/`（先图、后 pet.json，免得只有一半被认成宠物），不再从 codex-pets.net 下载（国内访问慢）；写不进去才退回下载，再不行打开「宠物」页。exe 因此从约 7.4 MB 变成约 10.8 MB（2026-10-13：7,450,112 → 10,756,096 字节）。pet.json 里的出处说明原样保留（原始形象作者 B 站 UP 主 ZipZipPipe，非官方二创），README 的致谢里也写了。宠物库照样能下载别的宠物。
+- **新用户的默认外观**（2026-10-13 起，用户自己的样子）：任务栏透明（`taskbarMaterial: clear`，`taskbarClearWhen` 仍是 mica），深色模式下她的胶囊是简洁的（`settings.js` 的 `ILOOK_DEFAULT.dark.bare` 为 true；`island.js` 的 `drawIslandLook` 在没设过时也按深色简洁、浅色不简洁来）；深色的颜色（#2c2c2c、不透明 100、不模糊、细边线）、浅色的默认和各个预设都没动。老用户不受影响：读配置时（`data.rs` 的 `keep_old_look`），2026-10-13 之前写的 config（没有 `lookDefaults`）只做一次：没选过材质的写成 mica，深色的胶囊外观没明确设过（没有或是 null）的写成原来的灰色非简洁，再记 `lookDefaults: 2`；之后用户再改成什么都照他的。
 - **打开**：单击岛（不是拉她、不在确认面板上），或者托盘菜单「设置…」、勿扰时左键托盘、只有宠物时双击她、首次运行（没连接 Claude Code 时开在「连接」页；默认宠物放不到本地时开在「宠物」页）。都走 Rust 的 `island::open_settings`，它再发 `island:settings` 给岛的页面；页面还没起来时先记着，起来后再发。
 - **焦点**：只有设置会拿键盘。页面打开设置时调 `pet_keyboard(true)`，Rust 先记下当前前台窗口（`focus.rs`），再让岛的窗口可获得焦点并聚焦。悬停展开、自动展开、来了确认请求都不碰焦点，所以终端里打的字不会被吃掉。
 - **收起**：Esc、点 ✕、点面板头部，或窗口失去焦点（点岛外面：`WindowEvent::Focused(false)` → `island:blur`）。鼠标移开不收起。收起时页面发 `settings_closed`，Rust 让窗口变回不可获得焦点；如果前台还是岛（Esc、✕ 的情况），把焦点还给记下的窗口。

@@ -1940,7 +1940,9 @@
     }[mine.edge]
     if (edge) island.style.setProperty('--i-edge', edge)
     else island.style.removeProperty('--i-edge')
-    body.classList.toggle('island-bare', mine.bare === true)
+    // Bare unless said otherwise in the dark mode (the default since
+    // 2026-10-13, settings.js ILOOK_DEFAULT), not in the light.
+    body.classList.toggle('island-bare', isCapsule() && (mine.bare ?? look.mode === 'dark') === true)
     groundLight = bg === null ? null : lightness(bg) > 0.35
     setInk()
   }
