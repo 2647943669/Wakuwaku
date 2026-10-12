@@ -95,8 +95,9 @@ pub struct Island {
     // (taskbarLayout: it may be anywhere along the strip); none told yet: at
     // its start.
     seat_at: Option<f64>,
-    // The strip's thickness (physical) the page was last told (tell_strip).
-    strip_told: i32,
+    // The strip, its edge and the window as the page was last told of them
+    // (tell_strip).
+    strip_told: Option<((i32, i32, i32, i32), Edge, (i32, i32), (i32, i32))>,
 }
 
 impl Island {
@@ -220,9 +221,10 @@ fn thickness(edge: Edge, b: (i32, i32, i32, i32)) -> i32 {
     if edge.is_side() { b.2 } else { b.3 }
 }
 
-// The page told the strip's thickness when it changes (or anew once it is
-// ready), and a line for the log with all that sets where its inner edge
-// lies: Windows' room, the strip, the work area, the window.
+// The page told the strip's thickness when the strip, its edge or the window
+// change (or anew once it is ready), and a line for the log with all that
+// sets where its inner edge lies: Windows' room, the strip, the work area,
+// the window (on a change of edge too, the thickness the same: 2026-10-12).
 pub fn tell_strip(sh: &Shared, again: bool) {
     if sh.home() != "taskbar" {
         return;
@@ -234,10 +236,11 @@ pub fn tell_strip(sh: &Shared, again: bool) {
     };
     let Some(b) = bar else { return };
     let thick = thickness(edge, b);
-    if thick == told && !again {
+    let now = Some((b, edge, pos, size));
+    if now == told && !again {
         return;
     }
-    sh.island.lock().unwrap().strip_told = thick;
+    sh.island.lock().unwrap().strip_told = now;
     let room = (edge == Edge::Bottom).then(|| area(sh).and_then(|a| crate::shell::room(a.mon))).flatten();
     sh.log(&format!(
         "taskbar: strip {b:?} along the {edge:?}, {thick} px ({} at {sf}); Windows' room {room:?}; work area {:?}; window at {pos:?} {size:?}",

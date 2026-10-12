@@ -1885,11 +1885,12 @@
   function setStrip() {
     if (!stripThick) return
     document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
-    requestAnimationFrame(() => {
+    // Once laid out for it (its edge may have just changed too).
+    setTimeout(() => {
       const r = island.parentElement.getBoundingClientRect()
       const dpr = devicePixelRatio || 1
       console.log(`taskbar: strip in the page ${[r.left, r.top, r.right, r.bottom].map(v => +(v * dpr).toFixed(2)).join(', ')} (x ${dpr}, told ${stripThick} px)`)
-    })
+    }, 400)
   }
   window.pet.onStrip(({ thick } = {}) => {
     if (!(thick > 0)) return
