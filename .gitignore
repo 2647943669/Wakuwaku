@@ -8,6 +8,8 @@ data/
 # Downloaded pets are their authors' work
 pets/*
 !pets/.gitkeep
+# Except the default pet, carried in the exe (fetch.rs seed_default_pet).
+!pets/claude-chan/
 
 # Left from the Electron build, if still around locally
 node_modules/

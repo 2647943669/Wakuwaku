@@ -10,6 +10,22 @@ use tauri::Url;
 
 pub const SITE: &str = "https://codex-pets.net";
 pub const DEFAULT_PET: &str = "claude-chan";
+// The default pet (Claude小姐: pixel art by zhoupengjie, an unofficial fan
+// work of ZipZipPipe's character, as its pet.json says), carried in the exe:
+// written into her pets on the first run, nothing to download (codex-pets.net
+// slow or out of reach, in China above all). The gallery gets the others.
+const DEFAULT_SHEET: &[u8] = include_bytes!("../../pets/claude-chan/spritesheet.webp");
+const DEFAULT_JSON: &str = include_str!("../../pets/claude-chan/pet.json");
+
+// The default pet into <dir>/claude-chan/: its sheet, then its pet.json (by
+// which a pet is found, so never half of one). Its pet.json read back.
+pub fn seed_default_pet(dir: &Path) -> std::io::Result<Value> {
+    let out = dir.join(DEFAULT_PET);
+    fs::create_dir_all(&out)?;
+    fs::write(out.join("spritesheet.webp"), DEFAULT_SHEET)?;
+    fs::write(out.join("pet.json"), DEFAULT_JSON)?;
+    Ok(serde_json::from_str(DEFAULT_JSON).unwrap_or(Value::Null))
+}
 // The layouts the page plays: 8 columns of 192 x 208 cells, 11 rows (v2) or
 // 9 (v1, without the look-around rows).
 const ATLASES: [&str; 2] = ["1536x2288", "1536x1872"];
@@ -225,9 +241,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_default_pet_comes_from_the_exe() {
+        let dir = std::env::temp_dir().join(format!("wakuwaku-seed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let got = seed_default_pet(&dir).unwrap();
+        assert_eq!(got["id"], DEFAULT_PET);
+        // Her credits kept as they are.
+        assert!(got["description"].as_str().unwrap().contains("ZipZipPipe"));
+        let sheet = fs::read(dir.join(DEFAULT_PET).join("spritesheet.webp")).unwrap();
+        assert_eq!(sheet.len(), DEFAULT_SHEET.len());
+        assert!(&sheet[..4] == b"RIFF" && &sheet[8..12] == b"WEBP");
+        assert!(dir.join(DEFAULT_PET).join("pet.json").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn ids_from_whatever_was_pasted() {
         let id = |s: &str| parse_pet_ref(s).ok();
         assert_eq!(id("claude-chan").as_deref(), Some("claude-chan"));
+        assert_eq!(id(DEFAULT_PET).as_deref(), Some("claude-chan"));
         assert_eq!(id(" https://codex-pets.net/#/pets/claude-chan ").as_deref(), Some("claude-chan"));
         assert_eq!(id("codex-pets.net/#/pets/deepseek-chan?x=1").as_deref(), Some("deepseek-chan"));
         assert_eq!(id("https://codex-pets.net/api/pets/abc/download").as_deref(), Some("abc"));

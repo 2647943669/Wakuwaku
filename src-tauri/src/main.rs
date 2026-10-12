@@ -1317,18 +1317,30 @@ fn main() {
                 }
             });
 
-            // No pet at all yet: get the default one (Claude小姐). Offline,
-            // or the site down: the settings, to pick one later.
+            // No pet at all yet: the default one (Claude小姐), from the exe
+            // (fetch.rs seed_default_pet); written nowhere (the disk full,
+            // the folder not to be written), downloaded; that failing too,
+            // the settings, to pick one later.
             if found.is_empty() {
                 let first = sh.clone();
-                std::thread::spawn(move || match fetch::download_pet(fetch::DEFAULT_PET, &first.dir.join("pets")) {
-                    Ok(got) => {
-                        first.log(&format!("default pet downloaded: {}", got["id"]));
-                        first.change(json!({ "pet": got["id"] }));
-                    }
-                    Err(e) => {
-                        first.log(&format!("default pet: {}", fetch::describe("en", &e)));
-                        island::open_settings(&first, Some("pets"));
+                std::thread::spawn(move || {
+                    let pets = first.dir.join("pets");
+                    let got = match fetch::seed_default_pet(&pets) {
+                        Ok(got) => Ok(got),
+                        Err(e) => {
+                            first.log(&format!("default pet not written ({e}): downloading it"));
+                            fetch::download_pet(fetch::DEFAULT_PET, &pets).map_err(|e| fetch::describe("en", &e))
+                        }
+                    };
+                    match got {
+                        Ok(got) => {
+                            first.log(&format!("default pet in place: {}", got["id"]));
+                            first.change(json!({ "pet": got["id"] }));
+                        }
+                        Err(e) => {
+                            first.log(&format!("default pet: {e}"));
+                            island::open_settings(&first, Some("pets"));
+                        }
                     }
                 });
             }

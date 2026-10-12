@@ -393,7 +393,8 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
 
 没有单独的主窗口。设计和手感见 `docs/prototypes/island-settings.html`。
 
-- **打开**：单击岛（不是拉她、不在确认面板上），或者托盘菜单「设置…」、勿扰时左键托盘、只有宠物时双击她、首次运行（没连接 Claude Code 时开在「连接」页；默认宠物下载失败时开在「宠物」页）。都走 Rust 的 `island::open_settings`，它再发 `island:settings` 给岛的页面；页面还没起来时先记着，起来后再发。
+- **默认宠物**（Claude小姐，`pets/claude-chan/`，仓库里跟踪，`.gitignore` 只放过它）：`fetch.rs` 用 `include_bytes!` / `include_str!` 把 `spritesheet.webp` 和 `pet.json` 打进 exe，首次运行一只宠物都没有时 `seed_default_pet` 直接写到 `wakuwaku-data/pets/claude-chan/`（先图、后 pet.json，免得只有一半被认成宠物），不再从 codex-pets.net 下载（国内访问慢）；写不进去才退回下载，再不行打开「宠物」页。exe 因此从约 7.4 MB 变成约 10.8 MB（2026-10-13：7,450,112 → 10,756,096 字节）。pet.json 里的出处说明原样保留（原始形象作者 B 站 UP 主 ZipZipPipe，非官方二创），README 的致谢里也写了。宠物库照样能下载别的宠物。
+- **打开**：单击岛（不是拉她、不在确认面板上），或者托盘菜单「设置…」、勿扰时左键托盘、只有宠物时双击她、首次运行（没连接 Claude Code 时开在「连接」页；默认宠物放不到本地时开在「宠物」页）。都走 Rust 的 `island::open_settings`，它再发 `island:settings` 给岛的页面；页面还没起来时先记着，起来后再发。
 - **焦点**：只有设置会拿键盘。页面打开设置时调 `pet_keyboard(true)`，Rust 先记下当前前台窗口（`focus.rs`），再让岛的窗口可获得焦点并聚焦。悬停展开、自动展开、来了确认请求都不碰焦点，所以终端里打的字不会被吃掉。
 - **收起**：Esc、点 ✕、点面板头部，或窗口失去焦点（点岛外面：`WindowEvent::Focused(false)` → `island:blur`）。鼠标移开不收起。收起时页面发 `settings_closed`，Rust 让窗口变回不可获得焦点；如果前台还是岛（Esc、✕ 的情况），把焦点还给记下的窗口。
 - **只有宠物时**：打开设置会临时升起一颗岛（`Island.temp`，`payload.islandTemp` 让页面把自己当成"岛开着"），收起后等岛缩回（620ms）再藏起来。设置里切成灵动岛模式，岛就留下来。

@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/zhoupengjie/Wakuwaku/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/zhoupengjie/Wakuwaku?style=flat-square&amp;label=release&amp;color=ff7eb3"></a>
   <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-0078d4?style=flat-square">
-  <img alt="About 7 MB" src="https://img.shields.io/badge/one%20exe-about%207%20MB-8b5cf6?style=flat-square">
+  <img alt="About 11 MB" src="https://img.shields.io/badge/one%20exe-about%2011%20MB-8b5cf6?style=flat-square">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-34d27b?style=flat-square"></a>
 </p>
 
@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 - **Any pet you like.** Search [codex-pets.net](https://codex-pets.net) and download one. Pull her up out of the taskbar and she hops onto your desktop; double-click her and she flies home.
 - **Keep your own taskbar if you'd rather.** Make her an island at the top of the screen instead, with the system monitor pinned at its right end.
 
-About 7 MB, one exe, nothing to install, free and open source. Next (planned): letting AI work your desktop, and raising your pet.
+About 11 MB, one exe, nothing to install, free and open source. Next (planned): letting AI work your desktop, and raising your pet.
 
 | Done, and she tells you | Needs your OK: click it on the taskbar |
 | --- | --- |
@@ -91,7 +91,7 @@ Each pet has 11 animations, and every one of them has a job:
 
 ### 1. Get the pet
 
-- **One exe (Windows)**: `wakuwaku.exe` is about 7 MB, runs from any folder and keeps her settings and pets in a `wakuwaku-data` folder beside it; to remove her, delete the two. It uses the WebView2 that comes with Windows 11, nothing else to install.
+- **One exe (Windows)**: `wakuwaku.exe` is about 11 MB (3 of them the default pet), runs from any folder and keeps her settings and pets in a `wakuwaku-data` folder beside it; to remove her, delete the two. It uses the WebView2 that comes with Windows 11, nothing else to install.
 
 Download `wakuwaku-<version>-windows-x64.exe` from [Releases](https://github.com/zhoupengjie/Wakuwaku/releases) (in China, the same file is on [Gitee](https://gitee.com/zhoupengjie/Wakuwaku/releases)); there is nothing to install. The exe is not code-signed, so on first run Windows SmartScreen may stop it: click More info → Run anyway. Or build it yourself, see below.
 - **From source**: see below.
@@ -233,6 +233,6 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Chinese) for development note
 ## License and credits
 
 - The code is under the [MIT License](LICENSE).
-- The pet sprites come from [codex-pets.net](https://codex-pets.net) and belong to their authors. **They are not in this repository or the exe**; you download them in the settings.
-- The default pet, [Claude小姐](https://codex-pets.net/#/pets/claude-chan), is pixel art by zhoupengjie: an unofficial fan work of the Claude小姐 character by Bilibili creator [ZipZipPipe](https://space.bilibili.com/4168597). It too is not in this repository or the exe; the first run downloads it from codex-pets.net.
+- The pet sprites come from [codex-pets.net](https://codex-pets.net) and belong to their authors. **Except the default pet, they are not in this repository or the exe**; you download them in the settings.
+- The default pet, [Claude小姐](https://codex-pets.net/#/pets/claude-chan), is pixel art by zhoupengjie: an unofficial fan work of the Claude小姐 character by Bilibili creator [ZipZipPipe](https://space.bilibili.com/4168597) (the character's original creator). It is in this repository (`pets/claude-chan/`) and carried in the exe: the first run puts her in place with nothing to download.
 - The 16 look directions follow codex-pets.net's mapping (clockwise from straight up, one step per 22.5°).

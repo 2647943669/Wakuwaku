@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/zhoupengjie/Wakuwaku/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/zhoupengjie/Wakuwaku?style=flat-square&amp;label=%E7%89%88%E6%9C%AC&amp;color=ff7eb3"></a>
   <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-0078d4?style=flat-square">
-  <img alt="约 7 MB" src="https://img.shields.io/badge/%E5%8D%95%E4%B8%AA%20exe-%E7%BA%A6%207%20MB-8b5cf6?style=flat-square">
+  <img alt="约 11 MB" src="https://img.shields.io/badge/%E5%8D%95%E4%B8%AA%20exe-%E7%BA%A6%2011%20MB-8b5cf6?style=flat-square">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-34d27b?style=flat-square"></a>
 </p>
 
@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 - **宠物随便换。** [codex-pets.net](https://codex-pets.net) 上的宠物，搜一下就能下载。按住往上拉，她就跳到桌面上；双击，她飞回来。
 - **不想换掉任务栏也行。** 切成屏幕顶上的一颗灵动岛，系统监控固定在岛的右边。
 
-约 7 MB，单个 exe，不用安装，免费开源。下一步（规划中）：让 AI 帮你操作桌面，宠物养成。
+约 11 MB，单个 exe，不用安装，免费开源。下一步（规划中）：让 AI 帮你操作桌面，宠物养成。
 
 | 做完了，自己弹出来 | 要批准，任务栏上点 |
 | --- | --- |
@@ -89,7 +89,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
 ### 1. 装上宠物
 
-- **单个 exe（Windows）**：`wakuwaku.exe` 约 7 MB，放进哪个文件夹都能直接运行，设置和宠物都存在它旁边的 `wakuwaku-data` 文件夹里；不要了直接删掉这两样。用的是 Windows 11 自带的 WebView2，不用另装运行库。
+- **单个 exe（Windows）**：`wakuwaku.exe` 约 11 MB（其中 3 MB 是默认宠物），放进哪个文件夹都能直接运行，设置和宠物都存在它旁边的 `wakuwaku-data` 文件夹里；不要了直接删掉这两样。用的是 Windows 11 自带的 WebView2，不用另装运行库。
 
 在 [Releases](https://github.com/zhoupengjie/Wakuwaku/releases) 下载 `wakuwaku-<版本>-windows-x64.exe`，不需要安装；在国内可以从 [Gitee 的发行版](https://gitee.com/zhoupengjie/Wakuwaku/releases) 下载同一个文件。exe 没有代码签名，第一次运行时 Windows SmartScreen 可能会拦下，点「更多信息 → 仍要运行」即可。也可以自己构建，见下面"从源码运行"。
 - **从源码运行**：见下文。
@@ -231,6 +231,6 @@ node --test "test/*.test.js"   # 页面：多语言、16 方向注视（不需�
 ## 许可与致谢
 
 - 代码以 [MIT 许可](LICENSE) 发布。
-- 宠物精灵图来自 [codex-pets.net](https://codex-pets.net)，版权归各自作者所有，**不包含在本仓库和 exe 里**，由用户在设置里下载到本地。
-- 默认宠物 [Claude 小姐](https://codex-pets.net/#/pets/claude-chan) 的像素形象由 zhoupengjie 制作，是基于 B 站 UP 主 [ZipZipPipe](https://space.bilibili.com/4168597) 的 Claude 小姐形象的非官方二创。它同样不在本仓库和 exe 里，第一次运行时从 codex-pets.net 下载。
+- 宠物精灵图来自 [codex-pets.net](https://codex-pets.net)，版权归各自作者所有，**除默认宠物外都不包含在本仓库和 exe 里**，由用户在设置里下载到本地。
+- 默认宠物 [Claude 小姐](https://codex-pets.net/#/pets/claude-chan) 的像素形象由 zhoupengjie 制作，是基于 B 站 UP 主 [ZipZipPipe](https://space.bilibili.com/4168597) 的 Claude 小姐形象的非官方二创（原始角色形象作者：ZipZipPipe）。它放在本仓库的 `pets/claude-chan/` 里，也打包进了 exe：第一次运行时直接放到本地，不用联网下载。
 - 16 个注视方向的映射规则（从正上方开始顺时针，每 22.5° 一档）与 codex-pets.net 保持一致。
