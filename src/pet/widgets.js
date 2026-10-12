@@ -143,8 +143,9 @@
   // The rows as markup (the taskbar's): each reading its cell, in the
   // text's own colour. The battery not: the tray has Windows' own, beside
   // the network's and the sound's.
-  const rowsHTML = w =>
-    rowsOf((partsOf(w) || []).filter(p => p.icon !== 'battery' && p.icon !== 'bolt'))
+  // One reading a row (a side bar's one column), or in two rows.
+  const rowsHTML = (w, column = false) =>
+    (column ? parts => parts.map(p => [p]) : rowsOf)((partsOf(w) || []).filter(p => p.icon !== 'battery' && p.icon !== 'bolt'))
       .map(row => `<span class="wrow">${row.map(cellHTML).join('')}</span>`)
       .join('')
 

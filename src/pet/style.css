@@ -3320,3 +3320,499 @@ html.handoff-wait body.home-taskbar #island-row {
 .tb-top #bar-rest .tchev.open .fi {
   transform: none;
 }
+
+/* --- The taskbar along a side (island.js isSide; taskbarEdge left or right,
+   tb-side with tb-left or tb-right) -------------------------------------------------
+   Upright, 48 px wide, the whole screen tall: its runs top, middle and
+   bottom, each part centred across it and one above another (Start and the
+   programs' buttons 40 x 40, icons alone; the monitor's readings one a row;
+   the tray's icons, the input method, the quick settings' two glyphs, the
+   clock's time over a short date, the settings' cog; the show-desktop
+   sliver at its foot). Her capsule upright (A): her portrait in its round
+   end, her session's clock under it. What opens from it grows into the
+   screen, its top at the capsule's (from the bar's lower half its foot at
+   the capsule's foot, isl-low); beside a right bar the island mirrored, she
+   at its right. The settings beside the bar, 8 px off it. Its hairline on
+   its inner edge. */
+.tb-left {
+  --hair-x: -1px;
+  --hair-y: 0px;
+}
+
+.tb-right {
+  --hair-x: 1px;
+  --hair-y: 0px;
+}
+
+.tb-side.home-taskbar #island-row {
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  height: auto;
+}
+
+.tb-left.home-taskbar #island-row {
+  left: 0;
+  right: auto;
+}
+
+.tb-right.home-taskbar #island-row {
+  left: auto;
+  right: 0;
+}
+
+.tb-side.home-taskbar #bar-rest {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: auto;
+  height: auto;
+  flex-direction: column;
+  padding: 4px 0 0;
+}
+
+.tb-side #bar-rest .tzone {
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+}
+
+/* Crowded, the middle run gives way: the programs' column scrolls with the
+   wheel. */
+.tb-side #bar-rest .tz-center {
+  flex: 0 1 auto;
+  min-height: 0;
+  transition: margin-top 0.25s ease;
+}
+
+.tb-side #bar-rest .tslot {
+  align-self: stretch;
+}
+
+.tb-side #bar-rest .tslot.first {
+  margin-left: 0;
+  margin-top: -4px;
+}
+
+/* Start and the programs: a column, icons alone, their marks on the
+   screen's side of each, along it. */
+.tb-side.home-taskbar #bar-rest .wins {
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 0;
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-width: none;
+}
+
+.tb-side #bar-rest .start {
+  margin-top: 4px;
+}
+
+.tb-side #bar-rest .win {
+  flex: none;
+  width: 40px;
+  min-width: 0;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+.tb-side #bar-rest .win .wt,
+.tb-side #bar-rest .win .count {
+  display: none;
+}
+
+.tb-side #bar-rest .win::after {
+  top: 50%;
+  bottom: auto;
+  width: 3px;
+  height: 6px;
+  transform: translateY(-50%);
+  transition:
+    height 0.2s ease,
+    background 0.2s ease;
+}
+
+.tb-left #bar-rest .win::after {
+  left: 2px;
+  right: auto;
+}
+
+.tb-right #bar-rest .win::after {
+  left: auto;
+  right: 2px;
+}
+
+.tb-side #bar-rest .win.front::after {
+  width: 3px;
+  height: 18px;
+}
+
+.tb-side #bar-rest .ticon.drop-before,
+.tb-side #bar-rest .win.drop-before {
+  box-shadow: inset 0 2px 0 #5e9bff;
+}
+
+.tb-side #bar-rest .ticon.drop-after,
+.tb-side #bar-rest .win.drop-after {
+  box-shadow: inset 0 -2px 0 #5e9bff;
+}
+
+/* The monitor: one reading a row, each 42 x 16, in a 46 wide box. */
+.tb-side #bar-rest .faces {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tb-side.home-taskbar #bar-rest .faces:not(:empty),
+.tb-side.home-taskbar #bar-rest .faces:has(.mon.rows) {
+  margin: 0 0 4px;
+}
+
+.tb-side.home-taskbar #bar-rest .mon.rows {
+  width: 46px;
+  height: auto;
+  padding: 3px 0;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 2px;
+}
+
+.tb-side #bar-rest .mon.rows .wcell {
+  --g: 11px;
+  width: 42px;
+  height: 16px;
+  font-size: 10px;
+}
+
+/* The tray: its ^ into the screen, its icons a column; what uses the
+   microphone, camera or location, the input method, the quick settings'
+   glyphs: one above another. */
+.tb-side #bar-rest .tray,
+.tb-side #bar-rest .tout,
+.tb-side #bar-rest .tpriv,
+.tb-side #bar-rest .kbd {
+  flex-direction: column;
+}
+
+.tb-side #bar-rest .tpair {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tb-side #bar-rest .tchev {
+  width: 40px;
+  height: 24px;
+}
+
+.tb-left #bar-rest .tchev .fi {
+  transform: rotate(90deg);
+}
+
+.tb-left #bar-rest .tchev.open .fi {
+  transform: rotate(270deg);
+}
+
+.tb-right #bar-rest .tchev .fi {
+  transform: rotate(-90deg);
+}
+
+.tb-right #bar-rest .tchev.open .fi {
+  transform: rotate(90deg);
+}
+
+.tb-side #bar-rest .ticon {
+  width: 40px;
+  height: 28px;
+}
+
+.tb-side #bar-rest .tpriv .fi {
+  justify-content: center;
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  font-size: 15px;
+}
+
+.tb-side #bar-rest .kbd .caps {
+  margin: 3px 0;
+}
+
+.tb-side #bar-rest .kbd .ime {
+  width: 40px;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.tb-side #bar-rest .tquick {
+  flex-direction: column;
+  justify-content: center;
+  width: 40px;
+  height: auto;
+  padding: 8px 0;
+  gap: 8px;
+}
+
+/* The clock: its time over a short date (no year), in the middle. */
+.tb-side #bar-rest .tclock {
+  align-items: center;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.tb-side.home-taskbar #bar-rest .gear {
+  width: 32px;
+  height: 32px;
+  margin: 2px 0;
+}
+
+/* Show the desktop: a sliver along the bar's foot, its line on its top. */
+.tb-side #bar-rest .tdesk {
+  align-self: stretch;
+  width: auto;
+  height: 9px;
+  margin: 3px 0 0;
+  border-left: 0;
+  border-top: 1px solid transparent;
+}
+
+.tb-side #bar-rest .tdesk:hover {
+  border-top-color: rgba(255, 255, 255, 0.35);
+}
+
+.tb-light.tb-side #bar-rest .tdesk:hover {
+  border-top-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Widgets small (its icon over its value, 40 wide); the spacers along. */
+.tb-side #bar-rest :is(.tw-widget, .tw-plugin) {
+  flex-direction: column;
+  justify-content: center;
+  width: 40px;
+  height: auto;
+  min-height: 40px;
+  padding: 4px 0;
+  gap: 2px;
+  box-sizing: border-box;
+  font-size: 10px;
+}
+
+.tb-side #bar-rest .tw .twv {
+  max-width: 40px;
+}
+
+.tb-side #bar-rest .tw-flex {
+  min-width: 0;
+  min-height: 8px;
+}
+
+.tb-side #bar-rest .tw-gap {
+  width: auto;
+  height: 12px;
+}
+
+.tb-side #bar-rest .tw-sep {
+  width: 24px;
+  height: 1px;
+  margin: 6px 0;
+}
+
+/* The pointer's highlight squashes across the bar. */
+.tb-side.home-taskbar #bar-rest .hdrop.squash {
+  animation-name: drop-squash-across;
+}
+
+@keyframes drop-squash-across {
+  30% {
+    scale: 0.82 1.03;
+  }
+  70% {
+    scale: 1.04 0.99;
+  }
+}
+
+/* Her island: over its slot from the bar's side (5 px in on a capsule's
+   strip, the strip's end on the black one), from the capsule's top, or its
+   foot in the bar's lower half. */
+.tb-left.home-taskbar #island {
+  left: 0;
+  right: auto;
+}
+
+.tb-right.home-taskbar #island {
+  left: auto;
+  right: 0;
+}
+
+.tb-side.home-taskbar #island {
+  top: var(--isl-y, 0px);
+  bottom: auto;
+  transition:
+    width 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
+    height 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
+    border-radius 0.4s ease,
+    top 0.3s ease,
+    bottom 0.3s ease;
+}
+
+.tb-side.isl-low.home-taskbar #island {
+  top: auto;
+  bottom: var(--isl-y, 0px);
+}
+
+.tb-left.home-taskbar.tb-capsule #island:not([data-view='settings']) {
+  left: 5px;
+  right: auto;
+}
+
+.tb-right.home-taskbar.tb-capsule #island:not([data-view='settings']) {
+  left: auto;
+  right: 5px;
+}
+
+.tb-side.home-taskbar.tb-capsule #island:not([data-view='settings']) {
+  top: var(--isl-y, 6px);
+  bottom: auto;
+}
+
+.tb-side.isl-low.home-taskbar.tb-capsule #island:not([data-view='settings']) {
+  top: auto;
+  bottom: var(--isl-y, 6px);
+}
+
+/* The settings beside the bar, 8 px off it (island.js placeSideSettings). */
+.tb-side.home-taskbar #island[data-view='settings'] {
+  top: var(--set-y, 8px);
+  bottom: auto;
+}
+
+.tb-side.isl-low.home-taskbar #island[data-view='settings'] {
+  top: auto;
+  bottom: var(--set-y, 8px);
+}
+
+.tb-left.home-taskbar #island[data-view='settings'] {
+  left: 56px;
+  right: auto;
+}
+
+.tb-right.home-taskbar #island[data-view='settings'] {
+  left: auto;
+  right: 56px;
+}
+
+.tb-left.home-taskbar #island:not([data-view='compact']) {
+  box-shadow: 12px 0 30px rgba(0, 0, 0, 0.45);
+}
+
+.tb-right.home-taskbar #island:not([data-view='compact']) {
+  box-shadow: -12px 0 30px rgba(0, 0, 0, 0.45);
+}
+
+/* The upright capsule's clock under her portrait (her portrait 4 px in from
+   its round end, on the black strip's end 9). */
+.tb-side.home-taskbar #island-compact {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  height: auto;
+  padding: 4px 0 0;
+  font-size: 11px;
+}
+
+.tb-side.home-taskbar.has-her #island-compact {
+  padding: 38px 0 0;
+}
+
+.tb-side.home-taskbar:not(.tb-capsule).has-her #island-compact {
+  padding-top: 43px;
+}
+
+.tb-side #island-compact .clock {
+  max-width: none;
+  font-weight: 600;
+  line-height: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Beside a right bar, the island mirrored: she at its right, its lines at
+   its left. */
+.tb-right.has-her #island-expanded {
+  padding: 12px 124px 12px 22px;
+}
+
+/* Editing a side bar's layout: its runs boxes one above another, the line
+   where a part goes across the bar, the tools and the library beside the
+   bar, 8 px off it; an empty part's name upright. */
+.tb-side.tb-editing #bar-rest .tzone {
+  width: 42px;
+  min-width: 0;
+  height: auto;
+  min-height: 72px;
+  margin: 4px 0;
+}
+
+.tb-side .tbmark {
+  bottom: auto;
+  width: 36px;
+  height: 3px;
+}
+
+.tb-left .tbmark {
+  left: 6px;
+}
+
+.tb-right .tbmark {
+  left: auto;
+  right: 6px;
+}
+
+.tb-side .tbedit {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.tb-left .tbedit {
+  left: 56px;
+}
+
+.tb-right .tbedit {
+  left: auto;
+  right: 56px;
+}
+
+.tb-side .tblib {
+  top: 8px;
+  bottom: auto;
+}
+
+.tb-left .tblib {
+  left: 56px;
+  right: auto;
+}
+
+.tb-right .tblib {
+  left: auto;
+  right: 56px;
+}
+
+.tb-side.tb-editing #bar-rest [data-part]:empty:not(.tslot)::before {
+  height: auto;
+  padding: 10px 0;
+  writing-mode: vertical-rl;
+}
+
+.tb-side.tb-editing #bar-rest :is(.tw-sep, .tw-gap) {
+  width: auto;
+  height: auto;
+  margin: 0;
+}

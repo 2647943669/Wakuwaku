@@ -31,6 +31,10 @@ test("the monitor's readings in two rows: the machine's over the network's", () 
   assert.deepEqual(icons(Widgets.rowsOf([p('cpu'), p('memory'), p('battery')])), [['cpu', 'memory'], ['battery']])
   assert.deepEqual(icons(Widgets.rowsOf([p('cpu')])), [['cpu']])
   assert.deepEqual(Widgets.rowsOf([]), [])
+  // A side bar's one column: a reading a row, the battery left out as ever.
+  const monitor = { value: { parts: [p('cpu'), p('memory'), p('down'), p('up'), p('battery')] } }
+  assert.equal((Widgets.rowsHTML(monitor, true).match(/class="wrow"/g) || []).length, 4)
+  assert.equal((Widgets.rowsHTML(monitor).match(/class="wrow"/g) || []).length, 2)
 })
 
 test('a reading wants a look when the machine is nearly full or the battery low', () => {

@@ -301,6 +301,28 @@
   // Windows' own, or top, left, right. Its look turns with it (style.css
   // tb-top, tb-left, tb-right).
   const tbEdge = () => (home() === 'taskbar' && ['top', 'left', 'right'].includes(config.taskbarEdge) ? config.taskbarEdge : 'bottom')
+  // Along the left or right of the screen: upright, its runs top, middle,
+  // bottom, its buttons one above another.
+  const isSide = () => tbEdge() === 'left' || tbEdge() === 'right'
+  // Along the strip and across it, in the page: x and left/right on a
+  // bottom or top bar, y and top/bottom on a side one.
+  const along = (x, y) => (isSide() ? y : x)
+  const across = (x, y) => (isSide() ? x : y)
+  const lo = r => (isSide() ? r.top : r.left)
+  const hi = r => (isSide() ? r.bottom : r.right)
+  const len = r => (isSide() ? r.height : r.width)
+  const crossLo = r => (isSide() ? r.left : r.top)
+  const crossHi = r => (isSide() ? r.right : r.bottom)
+  // A side bar's capsule (A): upright, as wide as the strip less 5 a side
+  // (on the black strip, its end as wide as the strip), her portrait in its
+  // round end, her session's clock under it, no words (the tooltip and the
+  // open island have them): a circle with no clock.
+  const SIDE_CLOCK = 4 + 13 + 7
+  function sideCapsule(timed) {
+    const width = isCapsule() ? TASKBAR_H - 2 * CAPSULE_Y : TASKBAR_H
+    const inset = (width - TASK_HEAD) / 2
+    return { width, height: timed ? inset + TASK_HEAD + SIDE_CLOCK : width }
+  }
   // The compact taskbar island's height: the strip's, or the capsule's.
   const taskCompactH = () => (isCapsule() ? TASKBAR_H - 2 * CAPSULE_Y : TASKBAR_H)
   // In her seat: there is a pet to show, and she is not out on the desktop.
@@ -388,6 +410,22 @@
   // --- The shapes ---------------------------------------------------------------
 
   function fillCompact() {
+    // A side bar's upright capsule: her portrait (as the island draws it, or
+    // a still one while she is out) and her session's clock under it; its
+    // words in its tooltip.
+    if (isSide()) {
+      const at = time()
+      const clock = el('span', 'clock', at)
+      clock.dataset.live = 'time'
+      clock.style.color = hue()[now.mood]
+      compact.replaceChildren(...(isHome() ? [] : [stillHer(TASK_HEAD)]), ...(at ? [clock] : []))
+      compact.classList.toggle('bare', !at)
+      compact.style.width = ''
+      compact.title = Status.brief(lang, now, { detailed: isDetailed() })
+      compactWidth = sideCapsule(!!at).width
+      return
+    }
+    compact.title = ''
     // Three places: her at the left (her portrait while she is out), a line
     // of words cut short in the middle, a short value at its right (the
     // clock, a widget's number), with "+N" for the other sessions before it;
@@ -588,7 +626,7 @@
   // (small in the compact island, a little bigger in the settings' head), or
   // her whole self standing at the left. All the same sheet, cropped and
   // scaled, so one springs into another.
-  function placeHer({ height }) {
+  function placeHer({ width, height }) {
     if (!isHome()) return
     const s = her.style
     const portrait = (px, scale, left, top) => {
@@ -602,8 +640,13 @@
     } else if (view === 'settings') {
       portrait(SET_HEAD, SET_HEAD_SCALE, 16, 13)
     } else {
-      const top = tbEdge() === 'top' ? 12 : height - BODY_H - (view === 'ask' ? 10 : 6)
-      Object.assign(s, { left: '12px', top: `${top}px`, width: `${BODY_W}px`, height: `${BODY_H}px`, borderRadius: '0px' })
+      // Under a top bar, or from a side bar's capsule in its upper half, she
+      // hangs from the island's top; else she stands on its foot. Beside a
+      // right bar, at the island's right (it is mirrored).
+      const hangs = tbEdge() === 'top' || (isSide() && !body.classList.contains('isl-low'))
+      const top = hangs ? 12 : height - BODY_H - (view === 'ask' ? 10 : 6)
+      const left = tbEdge() === 'right' ? width - BODY_W - 12 : 12
+      Object.assign(s, { left: `${left}px`, top: `${top}px`, width: `${BODY_W}px`, height: `${BODY_H}px`, borderRadius: '0px' })
       herSheet.style.transform = `translate(0px, 0px) scale(${BODY_SCALE})`
     }
   }
@@ -651,6 +694,7 @@
     // The taskbar: what grows up from it, or the settings standing above it,
     // past its room (the window then grows up too, which flashes: its room
     // is kept as high as the settings ever are, settingsMax).
+    if (home() === 'taskbar' && isSide()) return null
     if (home() === 'taskbar') {
       const height = want.height + TASKBAR_SHADE + (view === 'settings' ? TASKBAR_H + TASKBAR_GAP : isCapsule() ? CAPSULE_Y : 0)
       if (height <= TASKBAR_H + TASKBAR_ROOM) return null
@@ -681,17 +725,18 @@
     island.style.height = `${height}px`
     // The taskbar's left end is square, and what grows up from it is rounded
     // above (on its Mica, her capsule and all it grows into round).
+    // What grows from her end is flat where it meets the strip: the strip's
+    // own end on the black one (its corners at the screen's edge square).
+    const flat = { bottom: '22px 22px 0 0', top: '0 0 22px 22px', left: '0 22px 22px 0', right: '22px 0 0 22px' }
     island.style.borderRadius =
       home() === 'taskbar'
         ? view === 'compact'
           ? isCapsule()
-            ? `${height / 2}px`
+            ? `${(isSide() ? width : height) / 2}px`
             : '0'
           : view === 'settings' || isCapsule()
             ? '22px'
-            : tbEdge() === 'top'
-              ? '0 0 22px 22px'
-              : '22px 22px 0 0'
+            : flat[tbEdge()]
         : `${height > 60 ? 30 : height / 2}px`
   }
 
@@ -712,6 +757,7 @@
         ? { width: Math.min(OPEN_MAX_W, Math.max(320, expanded.offsetWidth)), height: Math.max(OPEN_H, expanded.offsetHeight) }
         : { width: Math.min(OPEN_BARE_MAX_W, Math.max(300, expanded.offsetWidth)), height: Math.max(84, expanded.offsetHeight) }
     }
+    if (isSide()) return sideCapsule(!!time())
     return { width: compactWidth, height: home() === 'taskbar' ? taskCompactH() : 36 }
   }
 
@@ -747,7 +793,7 @@
     if (isPinned()) {
       const inRows = home() === 'taskbar'
       const readings = el('span', inRows ? 'face mon rows' : 'face mon')
-      readings.innerHTML = inRows ? Widgets.rowsHTML(monitor) : Widgets.partsHTML(monitor)
+      readings.innerHTML = inRows ? Widgets.rowsHTML(monitor, isSide()) : Widgets.partsHTML(monitor)
       faces.push(readings)
     }
     return faces
@@ -953,7 +999,7 @@
       entryNodes.set(e.id, node)
     }
     node._entry = e
-    if (Widgets.isSource(e)) node.dataset.size = e.size === 'S' ? 'S' : 'M'
+    if (Widgets.isSource(e)) node.dataset.size = e.size === 'S' || isSide() ? 'S' : 'M'
     return node
   }
 
@@ -997,7 +1043,7 @@
       // A plugin with nothing to say: maybe it wants its settings first.
       if (!w && e.type === 'plugin') askPlugins()
       const needs = !w && needsSettings(e)
-      const drawn = JSON.stringify([e.size, name, said, w?.icon || e.icon, colour, needs])
+      const drawn = JSON.stringify([node.dataset.size, name, said, w?.icon || e.icon, colour, needs])
       if (node._drawn === drawn) continue
       node._drawn = drawn
       const icon = el('span', 'twi')
@@ -1045,6 +1091,10 @@
   // name of the one that shapes her in the island, which was never called
   // again: she was an empty ring, 2026-10-12.)
   function placeSlot() {
+    if (isSide()) return placeSideSlot()
+    herSlot.style.height = ''
+    herSlot.style.marginBottom = ''
+    body.classList.remove('isl-low')
     const pad = isCapsule() ? CAPSULE_X : 0
     herSlot.style.width = `${onPixels(sizeOf('compact').width + 2 * pad)}px`
     herSlot.style.marginRight = `${pad ? 2 : 4}px`
@@ -1060,6 +1110,38 @@
       window.pet.seat(seat)
     }
   }
+  // On a side bar: the slot as tall as her upright capsule, from the bar's
+  // top, or from its foot in its lower half (isl-low: what it grows into
+  // goes up); her seat her portrait, along the bar from its top.
+  function placeSideSlot() {
+    const pad = isCapsule() ? CAPSULE_X : 0
+    const cap = sizeOf('compact')
+    herSlot.style.width = ''
+    herSlot.style.marginRight = ''
+    herSlot.style.height = `${onPixels(cap.height + 2 * pad)}px`
+    herSlot.style.marginBottom = `${pad ? 2 : 4}px`
+    const shifted = (oledOn && parseFloat(document.documentElement.style.getPropertyValue('--oled-y'))) || 0
+    const r = herSlot.getBoundingClientRect()
+    const top = r.top - shifted + pad
+    const low = (r.top + r.bottom) / 2 - shifted > innerHeight / 2
+    body.classList.remove('isl-right')
+    body.classList.toggle('isl-low', low)
+    document.documentElement.style.setProperty('--isl-y', `${onPixels(low ? innerHeight - (r.bottom - shifted - pad) : top)}px`)
+    const seat = Math.round(top + cap.width / 2)
+    if (seat !== seatSent) {
+      seatSent = seat
+      window.pet.seat(seat)
+    }
+  }
+
+  // The settings beside a side bar, from her capsule's top (or foot, in the
+  // bar's lower half), kept 8 px off the screen's ends.
+  function placeSideSettings(height) {
+    const at = parseFloat(document.documentElement.style.getPropertyValue('--isl-y')) || TASKBAR_GAP
+    const y = Math.max(TASKBAR_GAP, Math.min(at, innerHeight - TASKBAR_GAP - height))
+    document.documentElement.style.setProperty('--set-y', `${Math.round(y)}px`)
+  }
+
   // The tray's icons as last sent ({ key, png, tip, exe }), and as drawn.
   let trayIcons = []
   let trayDrawn = ''
@@ -1085,7 +1167,7 @@
     arrangeTaskbar()
     drawEntries()
     // The programs' buttons as icons alone (taskbarButtons), or with their titles.
-    barRest.classList.toggle('icons', config.taskbarButtons !== 'labels')
+    barRest.classList.toggle('icons', isSide() || config.taskbarButtons !== 'labels')
     startButton.title = t(lang, 'taskbar.start')
     quickBox.title = t(lang, 'taskbar.quick')
     clockBox.title = t(lang, 'taskbar.clock')
@@ -1109,26 +1191,42 @@
   function alignApps() {
     if (!taskbarBuilt) return
     const middle = zones.center
+    // Along the bar: its left margin, a side bar's top one (the other none).
+    const margin = isSide() ? 'marginTop' : 'marginLeft'
+    middle.style[isSide() ? 'marginLeft' : 'marginTop'] = ''
     // Measured by the margin as it is now (it may be sliding), set to the one wanted.
-    const target = parseFloat(middle.style.marginLeft) || 0
+    const target = parseFloat(middle.style[margin]) || 0
     let want = 0
     // Empty, it is still a place to drop a part while the layout is edited;
     // with a flexible spacer anywhere, the spacer places it.
     if ((middle.childElementCount || editLayout) && !barRest.classList.contains('tb-stretch')) {
-      const now = parseFloat(getComputedStyle(middle).marginLeft) || 0
+      const now = parseFloat(getComputedStyle(middle)[margin]) || 0
       const start = middle.getBoundingClientRect()
-      const width = start.width
-      const room = growNode.getBoundingClientRect().width + now
+      const length = len(start)
+      const room = len(growNode.getBoundingClientRect()) + now
       // Where it lies without OLED's shift (which moves the bar after): the
       // margin taken from where it is drawn undid the shift, and the middle
       // ones stayed put across.
-      const shifted = (oledOn && parseFloat(document.documentElement.style.getPropertyValue('--oled-x'))) || 0
-      want = Math.round(Math.max(0, Math.min((innerWidth - width) / 2 - (start.left - shifted - now), room)))
+      const shifted = (oledOn && parseFloat(document.documentElement.style.getPropertyValue(isSide() ? '--oled-y' : '--oled-x'))) || 0
+      want = Math.round(Math.max(0, Math.min(((isSide() ? innerHeight : innerWidth) - length) / 2 - (lo(start) - shifted - now), room)))
+      // A side bar's middle run gives way when crowded (its programs then
+      // scroll), so its own height and the room left are worked out from
+      // what everything wants, not from what it has been squeezed to.
+      if (isSide()) {
+        const natural = middle.scrollHeight
+        const others = [...barRest.children].filter(n => n !== middle && n !== growNode && getComputedStyle(n).position !== 'absolute')
+        const used = others.reduce((a, n) => {
+          const cs = getComputedStyle(n)
+          return a + n.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0)
+        }, 0)
+        const free = barRest.clientHeight - (parseFloat(getComputedStyle(barRest).paddingTop) || 0) - used - natural
+        want = Math.round(Math.max(0, Math.min((innerHeight - natural) / 2 - (start.top - shifted - now), free)))
+      }
     }
-    if (want !== Math.round(target)) middle.style.marginLeft = `${want}px`
+    if (want !== Math.round(target)) middle.style[margin] = `${want}px`
   }
   zones.center.addEventListener('transitionend', e => {
-    if (e.target !== zones.center || e.propertyName !== 'margin-left') return
+    if (e.target !== zones.center || (e.propertyName !== 'margin-left' && e.propertyName !== 'margin-top')) return
     if (popFor) drawPop()
     if (glideOn?.isConnected) glideTo(glideOn, true)
     placeSlot()
@@ -1157,23 +1255,30 @@
     clearTimeout(glideTimer)
     const bar = barRest.getBoundingClientRect()
     const r = node.getBoundingClientRect()
-    const left = r.left - bar.left
-    const right = bar.right - r.right
-    const was = glideOn && glide.classList.contains('on') ? parseFloat(glide.style.left) : null
-    glide.style.top = `${r.top - bar.top}px`
-    glide.style.height = `${r.height}px`
+    // Along the bar its two ends slide (left and right, or a side bar's top
+    // and bottom); across it, as the button is.
+    const [from, to, crossFrom, crossSize] = isSide() ? ['top', 'bottom', 'left', 'width'] : ['left', 'right', 'top', 'height']
+    const left = lo(r) - lo(bar)
+    const right = hi(bar) - hi(r)
+    const was = glideOn && glide.classList.contains('on') && glide.dataset.axis === from ? parseFloat(glide.style[from]) : null
+    if (glide.dataset.axis !== from) {
+      for (const p of ['left', 'right', 'top', 'bottom', 'width', 'height']) glide.style[p] = ''
+      glide.dataset.axis = from
+    }
+    glide.style[crossFrom] = `${crossLo(r) - crossLo(bar)}px`
+    glide.style[crossSize] = `${isSide() ? r.width : r.height}px`
     if (still || was === null || Math.abs(left - was) > GLIDE_FAR) {
       glide.style.transition = 'none'
-      glide.style.left = `${left}px`
-      glide.style.right = `${right}px`
+      glide.style[from] = `${left}px`
+      glide.style[to] = `${right}px`
       void glide.offsetWidth
       glide.style.transition = ''
     } else if (left !== was) {
-      const lead = left > was ? 'right' : 'left'
-      const trail = lead === 'right' ? 'left' : 'right'
+      const lead = left > was ? to : from
+      const trail = lead === to ? from : to
       glide.style.transition = `${lead} 0.22s cubic-bezier(0.3, 1.3, 0.5, 1), ${trail} 0.42s cubic-bezier(0.3, 1.45, 0.5, 1), opacity 0.16s ease, transform 0.3s cubic-bezier(0.3, 1.45, 0.5, 1)`
-      glide.style.left = `${left}px`
-      glide.style.right = `${right}px`
+      glide.style[from] = `${left}px`
+      glide.style[to] = `${right}px`
       glide.classList.remove('squash')
       void glide.offsetWidth
       glide.classList.add('squash')
@@ -1649,16 +1754,17 @@
   // taskbar, or on itself.
   function winDropAt(x, y, key) {
     const strip = windowsBox.getBoundingClientRect()
-    if (y < strip.top - 24 || y > strip.bottom + 24) return null
+    const [a, c] = [along(x, y), across(x, y)]
+    if (c < crossLo(strip) - 24 || c > crossHi(strip) + 24) return null
     const buttons = [...windowsBox.querySelectorAll('[data-app]')]
     const self = buttons.find(b => b.dataset.app === key)
     const r0 = self?.getBoundingClientRect()
-    if (r0 && x >= r0.left && x <= r0.right) return null
+    if (r0 && a >= lo(r0) && a <= hi(r0)) return null
     const others = buttons.filter(b => b !== self)
     if (!others.length) return null
     for (const b of others) {
       const r = b.getBoundingClientRect()
-      if (x < r.right) return { target: b.dataset.app, after: x > r.left + r.width / 2, slot: b }
+      if (a < hi(r)) return { target: b.dataset.app, after: a > lo(r) + len(r) / 2, slot: b }
     }
     const last = others[others.length - 1]
     return { target: last.dataset.app, after: true, slot: last }
@@ -1755,7 +1861,7 @@
     body.classList.toggle('tb-clear-mica', clearMica)
     body.classList.toggle('tb-filled', isFilled())
     body.classList.toggle('tb-solid', isFilled() && clearWhen() === 'solid')
-    if (isMica() || clearMica) mica.set(paper, innerWidth, TASKBAR_H, look.mode)
+    if (isMica() || clearMica) mica.set(paper, isSide() ? TASKBAR_H : innerWidth, isSide() ? innerHeight : TASKBAR_H, look.mode)
     else mica.clear()
     drawIslandLook()
   }
@@ -1843,7 +1949,7 @@
   function tickClock() {
     const d = new Date()
     const time = d.toLocaleTimeString(lang === 'zh' ? 'zh-CN' : undefined, { hour: '2-digit', minute: '2-digit' })
-    const date = d.toLocaleDateString(lang === 'zh' ? 'zh-CN' : undefined, { year: 'numeric', month: 'numeric', day: 'numeric' })
+    const date = d.toLocaleDateString(lang === 'zh' ? 'zh-CN' : undefined, isSide() ? { month: 'numeric', day: 'numeric' } : { year: 'numeric', month: 'numeric', day: 'numeric' })
     if (clockBox.dataset.at !== time + date) {
       clockBox.dataset.at = time + date
       clockBox.replaceChildren(el('b', '', time), el('i', '', date))
@@ -2106,7 +2212,10 @@
     const mine = slot && (out ? outBox : flyout).contains(slot) ? slot : null
     if (!mine) return { out, target: null, after: false, slot: null }
     const r = mine.getBoundingClientRect()
-    return { out, target: mine.dataset.name, after: x > r.left + r.width / 2, slot: mine }
+    // The folded ones in their grid; those kept out along the bar.
+    const a = out ? along(x, y) : x
+    const [start, size] = out && isSide() ? [r.top, r.height] : [r.left, r.width]
+    return { out, target: mine.dataset.name, after: a > start + size / 2, slot: mine }
   }
 
   // While dragging: a bar on the side of the icon it would land beside.
@@ -2430,16 +2539,16 @@
     let near = null
     for (const [zone, node] of Object.entries(zones)) {
       const r = node.getBoundingClientRect()
-      const d = x < r.left ? r.left - x : x > r.right ? x - r.right : 0
+      const d = x < lo(r) ? lo(r) - x : x > hi(r) ? x - hi(r) : 0
       if (!near || d < near.d) near = { zone, d, r }
     }
     const parts = [...zones[near.zone].children].filter(n => n !== drag.node)
     let index = parts.findIndex(n => {
       const r = n.getBoundingClientRect()
-      return x < r.left + r.width / 2
+      return x < lo(r) + len(r) / 2
     })
     if (index < 0) index = parts.length
-    const line = index < parts.length ? parts[index].getBoundingClientRect().left : parts.length ? parts[parts.length - 1].getBoundingClientRect().right : near.r.left + near.r.width / 2
+    const line = index < parts.length ? lo(parts[index].getBoundingClientRect()) : parts.length ? hi(parts[parts.length - 1].getBoundingClientRect()) : lo(near.r) + len(near.r) / 2
     return { zone: near.zone, index, line }
   }
 
@@ -2523,14 +2632,17 @@
       drag.ghost.style.left = `${e.clientX}px`
       drag.ghost.style.top = `${e.clientY}px`
       const strip = barRest.getBoundingClientRect()
-      const away = tbEdge() === 'top' ? e.clientY > strip.bottom + OFF_STRIP_PX : e.clientY < strip.top - OFF_STRIP_PX
+      const away = { bottom: e.clientY < strip.top - OFF_STRIP_PX, top: e.clientY > strip.bottom + OFF_STRIP_PX, left: e.clientX > strip.right + OFF_STRIP_PX, right: e.clientX < strip.left - OFF_STRIP_PX }[tbEdge()]
       const off = (!!drag.entry || !!drag.fresh) && (overLibrary(e.clientX, e.clientY) || away)
       drag.off = off
       drag.ghost.classList.toggle('off', off)
       drag.ghost.textContent = off && drag.entry ? t(lang, 'taskbar.w.drop', { name: drag.label }) : drag.label
       editMark.hidden = off
-      drag.at = off ? null : partDropAt(e.clientX)
-      if (drag.at) editMark.style.left = `${Math.round(drag.at.line) - 1}px`
+      drag.at = off ? null : partDropAt(along(e.clientX, e.clientY))
+      if (drag.at) {
+        editMark.style.left = isSide() ? '' : `${Math.round(drag.at.line) - 1}px`
+        editMark.style.top = isSide() ? `${Math.round(drag.at.line) - 1}px` : ''
+      }
     },
     true,
   )
@@ -2567,6 +2679,7 @@
     seatPanel()
     body.classList.toggle('has-her', isHome())
     for (const e of ['top', 'left', 'right']) body.classList.toggle(`tb-${e}`, tbEdge() === e)
+    body.classList.toggle('tb-side', isSide())
     body.classList.toggle('compact-her', view === 'compact' || view === 'settings')
     if (spriteUrl) sheetImage(herSheet, spriteUrl)
     fillCompact()
@@ -2574,6 +2687,7 @@
     fillBar()
 
     const want = sizeOf(view)
+    if (view === 'settings' && isSide()) placeSideSettings(want.height)
     // Reaching for her keeps the room to reach in.
     const grows = setRoom(isReaching ? PULL_ROOM : roomFor(want))
     // The window has its room before the island (and she) grow into it.
@@ -2699,11 +2813,13 @@
   // drop below the island hangs from its lower edge, and one above the
   // taskbar stands on its upper edge.
   function edgeNear(r, x, y) {
-    return [Math.min(Math.max(x, r.left + 24), r.right - 24), Math.min(Math.max(y, r.top + 14), r.bottom - 14)]
+    const [ix, iy] = isSide() ? [14, 24] : [24, 14]
+    return [Math.min(Math.max(x, r.left + ix), r.right - ix), Math.min(Math.max(y, r.top + iy), r.bottom - iy)]
   }
 
   // Her seat in her home, in the page: where she springs back to.
   function seatIn(r) {
+    if (home() === 'taskbar' && isSide()) return [r.left + r.width / 2, r.top + r.width / 2]
     if (home() === 'taskbar') return [r.left + r.height / 2, r.top + r.height / 2]
     return [r.left + 18, r.top + 18]
   }
@@ -2737,10 +2853,11 @@
   // thins as it stretches, and pinches off past BREAK_PX.
   function stretch(x, y) {
     const r = island.getBoundingClientRect()
-    const cx = x
     // From the top of the screen (her island, a top bar) she can only come
-    // down, from a bottom bar only up.
-    const cy = home() === 'taskbar' && tbEdge() === 'bottom' ? Math.min(y + 30, r.top + 10) : Math.max(y + 30, r.bottom - 10)
+    // down, from a bottom bar only up, from a side bar only into the screen.
+    const edge = home() === 'taskbar' ? tbEdge() : 'top'
+    const cx = edge === 'left' ? Math.max(x, r.right - 10) : edge === 'right' ? Math.min(x, r.left + 10) : x
+    const cy = edge === 'bottom' ? Math.min(y + 30, r.top + 10) : edge === 'top' ? Math.max(y + 30, r.bottom - 10) : y
     const [ax, ay] = edgeNear(r, cx, cy)
     const dist = Math.hypot(cx - ax, cy - ay)
     pull.broken = dist > BREAK_PX
@@ -3077,7 +3194,7 @@
   // panel.js tells the island when its prompt changes.
   // The most the settings may be high: above the taskbar, its room (the
   // window never moves for them); elsewhere, none said (the screen's).
-  const settingsMax = () => (home() === 'taskbar' ? TASKBAR_ROOM - TASKBAR_GAP - TASKBAR_SHADE : null)
+  const settingsMax = () => (home() === 'taskbar' ? (isSide() ? innerHeight - 2 * TASKBAR_GAP - TASKBAR_SHADE : TASKBAR_ROOM - TASKBAR_GAP - TASKBAR_SHADE) : null)
 
   // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
   window.pet.onTaskbarEdit(() => editTaskbar())
