@@ -2630,7 +2630,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
 /* --- The taskbar's layout (island.js tbLayout) --------------------------------------
    Its parts in three runs: from the left end, in the middle (alignApps
    moves it there by its margin), and up to the right end. Her island lies
-   over its slot (placeHer, --isl-x): first at the left end, at the strip's
+   over its slot (placeSlot, --isl-x): first at the left end, at the strip's
    very edge; past the middle, held by its right edge (isl-right), so what
    it grows into (the open island, a prompt, the settings) goes leftwards. */
 #bar-rest .tzone {

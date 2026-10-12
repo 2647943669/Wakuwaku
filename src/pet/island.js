@@ -922,7 +922,7 @@
   // the middle of the screen (moved left when crowded, alignApps), and up to
   // the right end; show-the-desktop's sliver last of all, always (Windows'
   // corner). Her island is one of the parts ('her'): a slot in its run with
-  // the island laid over it (placeHer), growing from it the way there is
+  // the island laid over it (placeSlot), growing from it the way there is
   // room (body.isl-right: from its right edge, leftwards). Edited by
   // dragging the parts about on the strip itself (editTaskbar).
   const TB_PARTS = ['her', 'start', 'apps', 'tags', 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
@@ -1058,8 +1058,10 @@
   // its slot past the middle, from the right (what it grows into goes the
   // way there is room). Where it lies without OLED's shift, which moves
   // them both after. Her seat (where she is reached for, and flies back
-  // to) told to main once it moves.
-  function placeHer() {
+  // to) told to main once it moves. (Named placeHer at first, it took the
+  // name of the one that shapes her in the island, which was never called
+  // again: she was an empty ring, 2026-10-12.)
+  function placeSlot() {
     const pad = isCapsule() ? CAPSULE_X : 0
     herSlot.style.width = `${onPixels(sizeOf('compact').width + 2 * pad)}px`
     herSlot.style.marginRight = `${pad ? 2 : 4}px`
@@ -1090,7 +1092,7 @@
 
   function fillTaskbar() {
     if (!taskbarBuilt) {
-      // As wide as the strip: her island lies over its slot in it (placeHer).
+      // As wide as the strip: her island lies over its slot in it (placeSlot).
       barRest.style.left = '0px'
       barRest.replaceChildren(glide, zones.left, zones.center, growNode, zones.right, deskEdge, pop, wgPop)
       taskbarBuilt = true
@@ -1111,7 +1113,7 @@
     drawTray()
     tickClock()
     alignApps()
-    placeHer()
+    placeSlot()
     snapStart()
     // Editing: the chosen one's tools over it, where it is now.
     if (editLayout && chosen) drawTools()
@@ -1147,7 +1149,7 @@
     if (e.target !== zones.center || e.propertyName !== 'margin-left') return
     if (popFor) drawPop()
     if (glideOn?.isConnected) glideTo(glideOn, true)
-    placeHer()
+    placeSlot()
     snapStart()
     if (editLayout && chosen) drawTools()
     if (wgFor) drawWidgetPop()
@@ -1229,7 +1231,7 @@
   window.addEventListener('resize', () => {
     if (!isOn() || home() !== 'taskbar') return
     alignApps()
-    placeHer()
+    placeSlot()
   })
 
   // A button for each program (taskbar.rs): those kept on the taskbar
@@ -2412,7 +2414,9 @@
 
   // Where a part let go at x goes: the run under it (or the nearest), and
   // before the first part of it whose middle is past x; the line's place.
-  function dropAt(x) {
+  // (Named dropAt at first, it took the name of the tray's: an icon dragged
+  // in the tray was dropped as a part, 2026-10-12.)
+  function partDropAt(x) {
     let near = null
     for (const [zone, node] of Object.entries(zones)) {
       const r = node.getBoundingClientRect()
@@ -2514,7 +2518,7 @@
       drag.ghost.classList.toggle('off', off)
       drag.ghost.textContent = off && drag.entry ? t(lang, 'taskbar.w.drop', { name: drag.label }) : drag.label
       editMark.hidden = off
-      drag.at = off ? null : dropAt(e.clientX)
+      drag.at = off ? null : partDropAt(e.clientX)
       if (drag.at) editMark.style.left = `${Math.round(drag.at.line) - 1}px`
     },
     true,
