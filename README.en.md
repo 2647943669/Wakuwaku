@@ -163,6 +163,10 @@ No Node and no Tauri CLI needed. The first run downloads the default pet; connec
 
 Paste its URL (like `https://codex-pets.net/#/pets/deepseek-chan`) on the Pets page of the settings, or just its id (the URL's last part); or click Download in the gallery below. Only codex-pets.net URLs are taken, and only that site is downloaded from.
 
+### Wallpapers
+
+The repository's [`wallpapers/`](wallpapers/) folder has five desktop wallpapers (the original PNGs, 3072×1728, 6.5–7.4 MB each). The app doesn't download or set them; to use one, download it and pick it in Windows' Settings → Personalization → Background.
+
 ### Off for a while
 
 | You want | Do |
