@@ -1188,8 +1188,13 @@
   // never back past where it starts nor into the right run (the room before
   // it is all it may take). Moved, it slides; what hangs over a button (its
   // windows' list) is placed again once it is there, and her island too.
+  // The room always kept between the middle run and the last (the empty
+  // .grow): crowded, the programs give way before it does (style.css).
+  const RUNS_APART = 12
+
   function alignApps() {
     if (!taskbarBuilt) return
+    fadeWins()
     const middle = zones.center
     // Along the bar: its left margin, a side bar's top one (the other none).
     const margin = isSide() ? 'marginTop' : 'marginLeft'
@@ -1203,7 +1208,7 @@
       const now = parseFloat(getComputedStyle(middle)[margin]) || 0
       const start = middle.getBoundingClientRect()
       const length = len(start)
-      const room = len(growNode.getBoundingClientRect()) + now
+      const room = Math.max(0, len(growNode.getBoundingClientRect()) - RUNS_APART) + now
       // Where it lies without OLED's shift (which moves the bar after): the
       // margin taken from where it is drawn undid the shift, and the middle
       // ones stayed put across.
@@ -1213,13 +1218,17 @@
       // scroll), so its own height and the room left are worked out from
       // what everything wants, not from what it has been squeezed to.
       if (isSide()) {
-        const natural = middle.scrollHeight
+        // Its programs' column scrolls: its whole height, not what it shows.
+        const natural = [...middle.children].reduce((a, n) => {
+          const cs = getComputedStyle(n)
+          return a + (n === windowsBox ? n.scrollHeight : n.offsetHeight) + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0)
+        }, 0)
         const others = [...barRest.children].filter(n => n !== middle && n !== growNode && getComputedStyle(n).position !== 'absolute')
         const used = others.reduce((a, n) => {
           const cs = getComputedStyle(n)
           return a + n.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0)
         }, 0)
-        const free = barRest.clientHeight - (parseFloat(getComputedStyle(barRest).paddingTop) || 0) - used - natural
+        const free = barRest.clientHeight - (parseFloat(getComputedStyle(barRest).paddingTop) || 0) - used - natural - RUNS_APART
         want = Math.round(Math.max(0, Math.min((innerHeight - natural) / 2 - (start.top - shifted - now), free)))
       }
     }
@@ -1340,6 +1349,16 @@
       .sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1])
       .map(([a]) => a)
   }
+
+  // A side bar's programs crowded into their column: faded where more of
+  // them lies past an end (12 px), as it scrolls.
+  function fadeWins() {
+    const side = isSide()
+    const more = windowsBox.scrollHeight - windowsBox.clientHeight
+    windowsBox.classList.toggle('fade-start', side && more > 0 && windowsBox.scrollTop > 0)
+    windowsBox.classList.toggle('fade-end', side && more > 0 && windowsBox.scrollTop < more - 1)
+  }
+  windowsBox.addEventListener('scroll', fadeWins, { passive: true })
 
   function drawWindows() {
     const apps = orderedApps()

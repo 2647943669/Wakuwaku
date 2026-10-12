@@ -3900,3 +3900,30 @@ html.handoff-wait body.home-taskbar #island-row {
   left: auto;
   right: 54px;
 }
+
+/* The room kept between the middle run and the last (island.js RUNS_APART):
+   crowded, the programs give way first; on a side bar their column then
+   scrolls, faded 12 px where more lies past an end. */
+.home-taskbar #bar-rest .grow {
+  min-width: 12px;
+}
+
+.tb-side.home-taskbar #bar-rest .grow {
+  min-width: 0;
+  min-height: 12px;
+}
+
+.tb-side #bar-rest .wins.fade-start {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px);
+  mask-image: linear-gradient(to bottom, transparent, #000 12px);
+}
+
+.tb-side #bar-rest .wins.fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent);
+}
+
+.tb-side #bar-rest .wins.fade-start.fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+}
