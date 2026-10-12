@@ -589,6 +589,14 @@ body {
   transition-delay: 0.12s;
 }
 
+/* The open island's rows take the pointer: a session there goes to its
+   window, a widget is the one shown. Let through like the compact's, a
+   press on a session hit the island itself and only opened the settings
+   (2026-10-13, the user). */
+[data-view='expanded'] #island-expanded {
+  pointer-events: auto;
+}
+
 #island-compact .label {
   flex: 1;
   min-width: 0;
