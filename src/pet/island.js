@@ -883,6 +883,8 @@
   function showVolume(v) {
     const [level, muted] = Array.isArray(v) ? v : [null, false]
     volFront.textContent = muted ? '' : level == null || level >= 67 ? '' : level >= 34 ? '' : level > 0 ? '' : ''
+    // Muted, the waves' room is the struck-through speaker's, unseen.
+    volBack.textContent = muted ? volFront.textContent : ''
     volBack.hidden = !!muted
     volMark.title = level == null ? '' : muted ? t(lang, 'taskbar.muted') : t(lang, 'taskbar.volume', { n: level })
   }
