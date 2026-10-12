@@ -676,8 +676,10 @@
       const [px, at] = home() === 'taskbar' ? [TASK_HEAD, (taskCompactH() - TASK_HEAD) / 2] : [HEAD, 6]
       if (home() === 'taskbar') portrait(TASK_HEAD, TASK_HEAD * PER_PX, at, at)
       else portrait(HEAD, HEAD_SCALE, 6, 6)
-      // The dot over her portrait's top-right, 2 px out.
-      Object.assign(hintDot.style, { left: `${at + px - 7}px`, top: `${at - 2}px` })
+      // The dot over her portrait's top-right, 2 px out; 1 px in on an
+      // upright capsule, whose round top would cut it (the island clips).
+      const [dx, dy] = isSide() ? [px - 10, 1] : [px - 7, -2]
+      Object.assign(hintDot.style, { left: `${at + dx}px`, top: `${at + dy}px` })
     } else if (view === 'settings') {
       portrait(SET_HEAD, SET_HEAD_SCALE, 16, 13)
     } else {
