@@ -161,6 +161,10 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 
 在设置的「宠物」页粘贴地址（比如 `https://codex-pets.net/#/pets/deepseek-chan`）下载，只写 id（地址最后那一段）也行；或者在下面的图库里直接点「下载」。只接受 codex-pets.net 上的地址，也只会从那里下载。
 
+### 附带的壁纸
+
+仓库的 [`wallpapers/`](wallpapers/) 文件夹里附带 5 张桌面壁纸（3072×1728 的 PNG 原图，每张 6.5–7.4 MB）。软件不会下载或设置它们；想用就下载下来，在 Windows 的「设置 → 个性化 → 背景」里选。
+
 ### 暂时关掉
 
 | 想要 | 怎么做 |
