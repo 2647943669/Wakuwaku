@@ -405,6 +405,16 @@ mod imp {
         HOST.lock().unwrap().is_some()
     }
 
+    // Quitting with the handover: Windows' taskbar shown again under hers on
+    // purpose (island.rs handoff_out), so neither the timer nor its show
+    // event puts it away again in the second before it is given back (it
+    // was: the foot of the screen bare for that second).
+    static HANDING_BACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    pub fn handing_back() {
+        HANDING_BACK.store(true, Ordering::SeqCst);
+    }
+
     // The main display's work area's bottom (physical), for the log.
     pub fn work_area_bottom() -> i32 {
         work_bottom()
@@ -1671,6 +1681,9 @@ mod imp {
     }
 
     fn put_away_again(how: &str) {
+        if HANDING_BACK.load(Ordering::SeqCst) {
+            return;
+        }
         shell::rehide();
         log(&format!("Windows' shown again ({how}): put away"));
         if systray::keep_first() {
@@ -1752,7 +1765,7 @@ mod imp {
     // (the same one: ours, or another tray's).
     fn on_created() {
         let now = shell::taskbars().first().copied().unwrap_or(0);
-        if now == EXPLORER.swap(now, Ordering::SeqCst) {
+        if now == EXPLORER.swap(now, Ordering::SeqCst) || HANDING_BACK.load(Ordering::SeqCst) {
             return;
         }
         log("Explorer started again");
@@ -2221,6 +2234,7 @@ mod imp {
     pub fn is_up() -> bool {
         false
     }
+    pub fn handing_back() {}
     pub fn take(_sh: &Shared, _strip: (i32, i32, i32, i32)) -> bool {
         true
     }
@@ -2262,7 +2276,7 @@ mod imp {
     }
 }
 
-pub use imp::{explorer_room, give_back, is_up, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom};
+pub use imp::{explorer_room, give_back, handing_back, is_up, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser

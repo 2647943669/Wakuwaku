@@ -517,7 +517,10 @@ fn handoff_cover(sh: &Arc<Shared>) -> bool {
     // Over Windows' own, which is kept on top too.
     crate::tasks::raise_top(hwnd);
     let pictured = picture.is_some();
-    handoff_ask(sh, json!({ "step": "in", "picture": picture }));
+    // Its window's size (physical) too: the page lays the picture only once
+    // its own size has come to that (a window made bigger reaches the page
+    // some frames later; laid before, it sat too small, up and to the left).
+    handoff_ask(sh, json!({ "step": "in", "picture": picture, "size": [size.0, size.1] }));
     let covered = handoff_wait("covered", 800);
     sh.log(&format!("handoff: in ({}), {}", if pictured { "pictured" } else { "no picture" }, if covered { "covered" } else { "no answer in 800 ms" }));
     true
@@ -533,6 +536,7 @@ pub fn handoff_out(sh: &Shared) {
     }
     handoff_ask(sh, json!({ "step": "out" }));
     let bare = handoff_wait("bare", 500);
+    taskbar::handing_back();
     crate::shell::show_bars();
     crate::tasks::raise_top(hwnd(sh));
     let done = bare && handoff_wait("done", 1500);

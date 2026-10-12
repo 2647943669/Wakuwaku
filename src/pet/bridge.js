@@ -109,8 +109,9 @@
       thumbs: items => send('taskbar_thumbs', { items }),
       // The handover with Windows' own taskbar (handoff.js): its picture is
       // over it (covered), hers is bare for Windows' to show under it (bare),
-      // the dust has settled (done).
-      handoff: what => send('taskbar_handoff', { what: String(what) }),
+      // the dust has settled (done). Out of the queue: the program may be
+      // waiting on it inside an earlier call (pet_ready waits for covered).
+      handoff: what => invoke('taskbar_handoff', { what: String(what) }).catch(() => {}),
     },
     // The handover's steps ({ step: in, picture } with Windows' strip as a
     // picture, { step: go } once Windows' is hidden under it, { step: out }).

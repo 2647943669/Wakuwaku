@@ -45,12 +45,13 @@
   // pixels, as tall as Windows' strip is: not always hers), laid over where
   // it is, at the window's foot; resolves once it is on the screen (two
   // frames drawn, or a moment: no frames come while the window is hidden).
-  async function cover(url) {
+  async function cover(url, size) {
     const mine = ++step
     drop()
     const img = new Image()
     img.src = url
     await img.decode()
+    await sized(size)
     if (mine !== step) return
     const tall = (img.naturalHeight * innerWidth) / img.naturalWidth
     picture = canvasLayer(`left:0;bottom:0;width:100%;height:${tall}px;z-index:2147483000`)
@@ -59,6 +60,18 @@
     picture.height = img.naturalHeight
     picture.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0)
     await Promise.race([new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), wait(120)])
+  }
+
+  // The page as big as its window ([w, h], physical) by now, or half a
+  // second gone: a window just made bigger reaches the page some frames
+  // later, and the picture laid at the old size sat too small, up and to the
+  // left, Windows' clock showing past its end.
+  async function sized(size, ms = 500) {
+    const [w, h] = Array.isArray(size) ? size : []
+    if (!(w > 0 && h > 0)) return
+    const there = () => Math.abs(innerWidth * devicePixelRatio - w) <= 2 && Math.abs(innerHeight * devicePixelRatio - h) <= 2
+    const until = performance.now() + ms
+    while (!there() && performance.now() < until) await Promise.race([new Promise(r => requestAnimationFrame(r)), wait(16)])
   }
 
   // Hers kept out of sight from the start until the picture is over Windows'
@@ -268,12 +281,12 @@
   // in: Windows' strip's picture to lay over it (none: nothing to cover).
   // go: Windows' is hidden under it now: the dust.
   // out: quitting: hers crumbles, Windows' to be shown under it (bare).
-  pet.onHandoff(async ({ step: next, picture: url } = {}) => {
+  pet.onHandoff(async ({ step: next, picture: url, size } = {}) => {
     if (next === 'in') {
       if (quiet()) unhide()
       else if (url) {
         try {
-          await cover(url)
+          await cover(url, size)
         } catch {
           drop()
         }
