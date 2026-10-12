@@ -601,6 +601,7 @@ fn handoff_cover(sh: &Arc<Shared>) -> bool {
     let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
     let _ = win.show();
+    let shown = std::time::Instant::now();
     // Over Windows' own, which is kept on top too.
     crate::tasks::raise_top(hwnd);
     let pictured = picture.is_some();
@@ -609,7 +610,26 @@ fn handoff_cover(sh: &Arc<Shared>) -> bool {
     // some frames later; laid before, it sat too small, up and to the left).
     handoff_ask(sh, json!({ "step": "in", "picture": picture, "size": [size.0, size.1] }));
     let covered = handoff_wait("covered", 800);
-    sh.log(&format!("handoff: in ({}), {}", if pictured { "pictured" } else { "no picture" }, if covered { "covered" } else { "no answer in 800 ms" }));
+    // Drawn by the page is not yet on the screen: a window just shown hands
+    // WebView2's frames to DWM some 40 ms later, and Windows' strip put away
+    // at once left the bare desktop under the strip that long (whatever the
+    // material: the test session's films, 2026-10-13). So two of DWM's passes
+    // waited for, and 150 ms since the window showed at least; the picture is
+    // Windows' strip itself, so the wait cannot be seen.
+    if pictured {
+        crate::tasks::dwm_flush();
+        crate::tasks::dwm_flush();
+        let least = std::time::Duration::from_millis(150);
+        if let Some(rest) = least.checked_sub(shown.elapsed()) {
+            std::thread::sleep(rest);
+        }
+    }
+    sh.log(&format!(
+        "handoff: in ({}), {} ({} ms after the window showed)",
+        if pictured { "pictured" } else { "no picture" },
+        if covered { "covered" } else { "no answer in 800 ms" },
+        shown.elapsed().as_millis()
+    ));
     true
 }
 
