@@ -1705,21 +1705,40 @@
       </div>`
   }
 
-  // --- The welcome: Claude Code (and Codex) connected, at the top of General ------
+  // --- The welcome: Claude Code and Codex connected, at the top of General -------
   // While nothing is connected, and on the first open after one is (until
-  // she is set up, onboarded): a card with one button, which writes the hooks
-  // (what it does said under it), the plugin the other way, Codex under it;
-  // the hooks in and no session seen yet, a green card saying what is left;
-  // connected, one row. Managing the connections stays in the page's
-  // Connect part.
+  // she is set up, onboarded): a card with a button for each of the two on
+  // this computer, as equals (whichever one uses, or both), each button
+  // turning into how that one stands; under them what each still needs, or
+  // why it could not be written; what the buttons write; Claude Code's
+  // plugin the other way. Connected (a session of either seen), one row.
+  // Managing the connections stays in the page's Connect part.
   let connecting = ''
-  let connectError = ''
+  // Why each could not be written: { error, kind } (locked, invalid, other).
+  const failed = {}
   let pluginOpen = false
+  const TOOL = { claude: 'Claude Code', codex: 'Codex' }
   const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
   const claudeIn = () => snap.connection !== 'none'
   const showWelcome = () => (!claudeIn() && !codexIn()) || !snap.settings.onboarded
 
-  // Windows' accent for the one accent-filled button: its light shade on the
+  // The ones on this computer: Codex by its folder, Claude Code by its own
+  // (or connected). Neither found: both (it cannot be told).
+  function toolsHere() {
+    const here = ['claude', 'codex'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap.codex?.hooks !== 'absent'))
+    return here.length ? here : ['claude', 'codex']
+  }
+
+  // How one stands: busy, seen (a session's event came, or the plugin in),
+  // set (written, no session yet: Codex's to be trusted first), failed, none.
+  function toolState(tool) {
+    if (connecting === tool) return 'busy'
+    if (tool === 'claude' && claudeIn()) return snap.claudeSeen || snap.connection === 'plugin' ? 'seen' : 'set'
+    if (tool === 'codex' && codexIn()) return snap.codex?.seen ? 'seen' : 'set'
+    return failed[tool] ? 'failed' : 'none'
+  }
+
+  // Windows' accent for the accent-filled buttons: its light shade on the
   // dark settings, its dark one on the light (the taskbar's look, else
   // Windows' defaults).
   function accentButton() {
@@ -1727,44 +1746,71 @@
     return winMode() === 'light' ? `--acc:${pair.dark || '#0067c0'};--acc-ink:#fff` : `--acc:${pair.light || '#4cc2ff'};--acc-ink:#000`
   }
 
-  function codexRow() {
-    const codex = snap.codex || {}
-    if (codex.hooks === 'absent') return ''
-    const busy = connecting === 'codex'
-    if (codexIn() && codex.seen) return `<div class="wc-div"></div><div class="wc-codex"><span class="dot" style="background:${COLOR.done}"></span><div class="grow">${esc(T('wc.codexOk'))}</div></div>`
-    if (codexIn()) return `<div class="wc-div"></div><div class="wc-codex"><span class="dot" style="background:${COLOR.waiting}"></span><div class="grow"><div>${esc(T('wc.codexTrust'))}</div><div class="d">${esc(T('wc.codexTrustNote'))}</div></div></div>`
-    return `<div class="wc-div"></div><div class="wc-codex"><div class="grow"><div>${esc(T('wc.codexAsk'))}</div><div class="d">${esc(T('wc.codexNote'))}</div></div><button class="pbtn" data-codex="install" ${busy ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('wc.codexGo'))}</button></div>`
+  // One's button, as it stands: the done and the one-step-left ones say so
+  // in green or amber, and do nothing.
+  function toolButton(tool) {
+    const name = TOOL[tool]
+    const act = tool === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'
+    const state = toolState(tool)
+    if (state === 'busy') return `<button class="wc-main" disabled><span class="spin"></span>${esc(T('wc.busy'))}</button>`
+    if (state === 'seen') return `<button class="wc-main done" disabled>${esc(T('wc.on', { name }))}</button>`
+    if (state === 'set') return tool === 'claude' ? `<button class="wc-main done" disabled>${esc(T('wc.claudeSet'))}</button>` : `<button class="wc-main warn" disabled>${esc(T('wc.codexSet'))}</button>`
+    return `<button class="wc-main" ${act}>${esc(T(state === 'failed' ? 'wc.retry' : 'wc.go', { name }))}</button>`
+  }
+
+  // Under the buttons: what each still needs (Claude Code where it was
+  // written, and undone), or why it could not be written.
+  function toolNote(tool) {
+    const state = toolState(tool)
+    const mono = text => `<span class="mono">${esc(text)}</span>`
+    if (tool === 'claude' && state === 'set') {
+      const file = snap.settingsShown || snap.settingsFile || ''
+      const where = snap.settingsBackup ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
+      return `<div class="wc-tnote"><div>${T('wc.claudeLeft')}</div><div class="wc-where">${where}<span class="link" data-hooks="remove">${esc(T('wc.undo'))}</span></div></div>`
+    }
+    if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
+    if (state !== 'failed') return ''
+    const { error, kind } = failed[tool]
+    const file = tool === 'claude' ? snap.settingsShown || snap.settingsFile || '' : snap.codex?.file || ''
+    const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
+    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: tool === 'claude' ? 'settings.json' : 'hooks.json' }))}</b></div>
+        <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
   }
 
   function welcomeBlock() {
-    const sessions = (snap.sessions || []).length
-    // Connected (a session seen, or the plugin in): one row, this once.
-    if ((claudeIn() && (snap.claudeSeen || snap.connection === 'plugin')) || (!claudeIn() && codexIn() && snap.codex?.seen)) {
-      const what = claudeIn() ? `${T('wc.ok')}${codexIn() && snap.codex?.seen ? T('wc.okCodexToo') : ''}` : T('wc.codexOk')
-      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow">${esc(what)}</div><span class="d">${esc(T('s.sessionsOnline', { n: sessions }))}</span><span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div></div>`
+    const tools = toolsHere()
+    const seen = tools.filter(tool => toolState(tool) === 'seen')
+    // Connected: one row, this once; one on this computer not written yet
+    // keeps a button at its end.
+    if (seen.length) {
+      const what = seen.length === 2 ? T('wc.onBoth') : T('wc.on', { name: TOOL[seen[0]] })
+      const other = tools.find(tool => ['none', 'failed', 'busy'].includes(toolState(tool)))
+      const busy = other && toolState(other) === 'busy'
+      const more = other ? `<button class="pbtn" ${other === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'} ${busy ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('wc.connect', { name: TOOL[other] }))}</button>` : ''
+      const sessions = (snap.sessions || []).length
+      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow"><div>${esc(what)}</div>
+          <div class="d">${esc(T('wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div></div>${more}</div></div>`
     }
-    // The hooks in, no session yet: what is left to do.
-    if (claudeIn()) {
-      return `<div class="wcard green"><div class="wc-title">${esc(T('wc.set'))}</div><div class="wc-sub">${esc(T('wc.setSub'))}</div>
-        <div class="wc-note">${T('wc.setNote')} <span class="link" data-hooks="remove">${esc(T('wc.undo'))}</span></div>${codexRow()}</div>`
-    }
+    const both = tools.length === 2
     const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
-    const face = pet ? `<span class="wc-face" style="${accentButton()}">${thumb(40, pet.url, pet.version)}</span>` : ''
-    const busy = connecting === 'claude'
-    const main = `<button class="wc-main" data-hooks="install" style="${accentButton()}" ${busy ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(connectError ? 'wc.retry' : 'wc.go'))}</button>`
-    const error = connectError ? `<div class="wc-err"><b>${esc(T('wc.errLead'))}</b> ${esc(connectError)} ${esc(T('wc.errWay'))}</div>` : ''
-    const safe = ['wc.safe1', 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
+    const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
+    const title = both ? T('wc.titleBoth') : T('wc.title', { name: TOOL[tools[0]] })
+    const safe = [both ? 'wc.safeBoth' : tools[0] === 'claude' ? 'wc.safeClaude' : 'wc.safeCodex', 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
+    // Claude Code's plugin, while it is here and not written.
     const commands = snap.pluginCommands || []
-    const plugin = pluginOpen
+    const plugBody = pluginOpen
       ? `<div class="wc-plugbody"><div class="d">${esc(T('wc.plugHow'))}</div>${commands.map(c => `<div class="wc-cmd mono">${esc(c)}</div>`).join('')}
           <div class="wc-copy"><button class="pbtn" data-copy="${esc(commands.join('\n'))}" data-label="${esc(T('wc.copyBoth'))}">${esc(T('wc.copyBoth'))}</button><span class="d">${esc(T('wc.plugWake'))}</span></div></div>`
       : ''
-    return `<div class="wcard${connectError ? ' failed' : ''}">
-        <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(T('wc.title'))}</div><div class="wc-sub">${esc(T('wc.sub'))}</div></div></div>
-        ${main}${error}<div class="wc-safe">${safe}</div>
-        <div class="wc-div"></div>
-        <button class="wc-plug${pluginOpen ? ' open' : ''}" data-plugin-toggle><span class="fi chev">\uE76C</span><span>${esc(T('wc.plug'))}</span><span class="d">${esc(T('wc.plugNote'))}</span></button>
-        ${plugin}${codexRow()}
+    const plugin =
+      tools.includes('claude') && ['none', 'failed', 'busy'].includes(toolState('claude'))
+        ? `<div class="wc-div"></div>
+        <button class="wc-plug${pluginOpen ? ' open' : ''}" data-plugin-toggle><span class="fi chev">\uE76C</span><span>${esc(T('wc.plug'))}</span><span class="d">${esc(T('wc.plugNote'))}</span></button>${plugBody}`
+        : ''
+    return `<div class="wcard" style="${accentButton()}">
+        <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(title)}</div><div class="wc-sub">${esc(T('wc.sub'))}${both ? esc(T('wc.subBoth')) : ''}</div></div></div>
+        <div class="wc-btns${both ? ' two' : ''}">${tools.map(toolButton).join('')}</div>${tools.map(toolNote).join('')}
+        <div class="wc-safe">${safe}</div>${plugin}
       </div>`
   }
 
@@ -2215,15 +2261,15 @@
       const action = hooks.dataset.hooks
       if (action === 'install') {
         connecting = 'claude'
-        connectError = ''
+        delete failed.claude
         draw()
       }
       return window.pet.settings.hooks(action).then(got => {
         connecting = ''
         snap = got.snapshot
-        // Not written: why (it names the file), and the plugin the other way.
+        // Not written: why (the welcome names the file), and the plugin the other way.
         if (action === 'install' && !got.ok) {
-          connectError = got.error || ''
+          failed.claude = { error: got.error || '', kind: got.kind || 'other' }
           pluginOpen = true
         }
         draw()
@@ -2235,11 +2281,13 @@
       const action = codexHooks.dataset.codex
       if (action === 'install') {
         connecting = 'codex'
+        delete failed.codex
         draw()
       }
       return window.pet.settings.codexHooks(action).then(got => {
         connecting = ''
         snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.codex = { error: got.error || '', kind: got.kind || 'other' }
         draw()
         relayout()
       })

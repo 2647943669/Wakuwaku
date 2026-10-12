@@ -1859,13 +1859,17 @@
   text-align: right;
 }
 
-/* --- The welcome: Claude Code connected (settings.js welcomeBlock) ----------------
-   A card in a blue tint (green once the hooks are in, waiting for a
-   session): her portrait ringed in the accent, what she does once
-   connected, one accent-filled button (the only one in the settings), what
-   it writes said under it, the plugin the other way folded under a line,
-   Codex under another. */
+/* --- The welcome: Claude Code and Codex connected (settings.js welcomeBlock) ------
+   A card in a blue tint: her portrait ringed in the accent, what she does
+   once connected, an accent-filled button for each of the two on this
+   computer (side by side, the same: neither is the main one), each turning
+   into how that one stands (a green ring done, an amber one a step left);
+   under them what each still needs, in a tint of its colour, or why it
+   could not be written; what they write; Claude Code's plugin the other
+   way, folded under a line. */
 #island-settings .wcard {
+  --wc-ok: #34d27b;
+  --wc-warn: #ffb340;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1875,18 +1879,64 @@
   background: rgba(94, 155, 255, 0.13);
 }
 
-#island-settings .wcard.green {
-  background: rgba(52, 210, 123, 0.12);
-}
-
 .isl-light #island-settings .wcard,
 .tb-light #island-settings .wcard {
+  --wc-ok: #107c10;
+  --wc-warn: #9d5d00;
   background: rgba(0, 103, 192, 0.08);
 }
 
-.isl-light #island-settings .wcard.green,
-.tb-light #island-settings .wcard.green {
-  background: rgba(16, 124, 16, 0.08);
+#island-settings .wc-btns {
+  display: grid;
+  gap: 8px;
+}
+
+#island-settings .wc-btns.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#island-settings .wc-btns .wc-main {
+  min-width: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+#island-settings .wc-main.done:disabled,
+#island-settings .wc-main.warn:disabled {
+  opacity: 1;
+  background: transparent;
+  filter: none;
+}
+
+#island-settings .wc-main.done {
+  color: var(--wc-ok);
+  box-shadow: inset 0 0 0 1.5px var(--wc-ok);
+}
+
+#island-settings .wc-main.warn {
+  color: var(--wc-warn);
+  box-shadow: inset 0 0 0 1.5px var(--wc-warn);
+}
+
+#island-settings .wc-tnote {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--wc-ok) 12%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+#island-settings .wc-tnote.warn {
+  background: color-mix(in srgb, var(--wc-warn) 13%, transparent);
+}
+
+#island-settings .wc-where {
+  margin-top: 2px;
+  color: var(--g5);
+}
+
+#island-settings .wc-where .link {
+  margin-left: 6px;
 }
 
 #island-settings .wc-head {
@@ -1914,7 +1964,6 @@
 }
 
 #island-settings .wc-sub,
-#island-settings .wc-note,
 #island-settings .wc-safe,
 #island-settings .wc-err {
   font-size: 12.5px;
@@ -1922,7 +1971,6 @@
 }
 
 #island-settings .wc-sub,
-#island-settings .wc-note,
 #island-settings .wc-safe {
   color: var(--g5);
 }
@@ -1999,12 +2047,7 @@
   flex: none;
   font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
   font-size: 11px;
-  color: #34d27b;
-}
-
-.isl-light #island-settings .wc-safe .fi,
-.tb-light #island-settings .wc-safe .fi {
-  color: #107c10;
+  color: var(--wc-ok);
 }
 
 #island-settings .wc-div {
@@ -2063,13 +2106,10 @@
   gap: 10px;
 }
 
-#island-settings .wc-codex {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 #island-settings .wc-err {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   padding: 8px 12px;
   border-radius: 12px;
   background: rgba(255, 107, 107, 0.12);

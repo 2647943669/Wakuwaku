@@ -42,6 +42,13 @@ pub fn snapshot(sh: &Shared) -> Value {
         // and a session seen (connected), or still waiting for one.
         "claudeSeen": sh.claude_seen.load(Ordering::SeqCst) > 0,
         "settingsFile": connection::claude_settings_file().to_string_lossy(),
+        // The same as read (~ for the home folder), whether a copy of it was
+        // kept (none: there was no file before), and whether Claude Code is
+        // on this computer at all (its folder): the welcome offers the ones
+        // that are.
+        "settingsShown": connection::shown_path(&connection::claude_settings_file()),
+        "settingsBackup": connection::backup_of(&connection::claude_settings_file()).exists(),
+        "claudeHere": connection::claude_here(),
         // Codex's hooks.json, whether any Codex event came (they run once
         // trusted), and its version: one before 0.148 gets no background hooks.
         "codex": {
@@ -378,7 +385,7 @@ pub async fn settings_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_hooks(&action, sh.port) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
-        Err(error) => json!({ "ok": false, "error": error, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 
@@ -388,7 +395,7 @@ pub async fn settings_codex_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_codex_hooks(&action, &i18n::t(sh.lang(), "codex.waiting")) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
-        Err(error) => json!({ "ok": false, "error": error, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 
