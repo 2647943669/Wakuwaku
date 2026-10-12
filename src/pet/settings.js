@@ -318,7 +318,9 @@
   // out under the taskbar's options. Open, the settings are the island
   // itself, so a small one here shows the look (hovered, it opens).
   const ILOOK_DEFAULT = {
-    dark: { bg: '#2c2c2c', op: 100, blur: 0, edge: 'line', bare: false },
+    // Bare in the dark mode, a new user's since 2026-10-13 (the person's own
+    // look; island.js drawIslandLook takes it as the default too).
+    dark: { bg: '#2c2c2c', op: 100, blur: 0, edge: 'line', bare: true },
     light: { bg: '#f3f3f3', op: 100, blur: 0, edge: 'line', bare: false },
   }
   const ILOOK_PRESETS = {
@@ -440,7 +442,7 @@
     const look = ilookOf(mode)
     const active = ilookPreset(mode)
     // On the black strip in the dark, she is part of it: none of this shows.
-    const isCapsule = (s.taskbarMaterial || 'mica') !== 'black' || winMode() === 'light'
+    const isCapsule = (s.taskbarMaterial || 'clear') !== 'black' || winMode() === 'light'
     const cards = ILOOK_PRESETS[mode]
       .map(([id, p]) => `<button class="ilook-card${id === active ? ' on' : ''}" data-ilook-preset="${id}">${ilookPreview(mode, p)}<span>${esc(ilookName(mode, id))}</span></button>`)
       .join('')

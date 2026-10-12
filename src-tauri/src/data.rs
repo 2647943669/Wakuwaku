@@ -75,9 +75,10 @@ fn defaults() -> Map<String, Value> {
         "islandWidth": "normal",
         // The taskbar's strip: mica (the desktop's picture through it, mica.js),
         // black (solid: black, or light in Windows' light mode) or clear (the
-        // desktop itself through it); clear, Mica or solid while a window is
-        // maximized or full screen on its display (mica, solid), or clear always.
-        "taskbarMaterial": "mica",
+        // desktop itself through it, a new user's since 2026-10-13); clear,
+        // Mica or solid while a window is maximized or full screen on its
+        // display (mica, solid), or clear always.
+        "taskbarMaterial": "clear",
         "taskbarClearWhen": "mica",
         // Its programs' buttons: icons alone or with their titles; in the
         // middle of the screen or after her end (island.js alignApps).
@@ -117,6 +118,9 @@ fn defaults() -> Map<String, Value> {
         "dnd": false,
         "hideInFullscreen": true,
         "onboarded": false,
+        // Which defaults a config was written under (load: one from before
+        // 2026-10-13 keeps the look it had).
+        "lookDefaults": 2,
     }) else {
         unreachable!()
     };
@@ -125,7 +129,8 @@ fn defaults() -> Map<String, Value> {
 
 pub fn load(dir: &Path) -> Map<String, Value> {
     let mut settings = defaults();
-    if let Ok(Value::Object(saved)) = fs::read_to_string(dir.join("config.json")).map_err(|_| ()).and_then(|t| serde_json::from_str(&t).map_err(|_| ())) {
+    if let Ok(Value::Object(mut saved)) = fs::read_to_string(dir.join("config.json")).map_err(|_| ()).and_then(|t| serde_json::from_str(&t).map_err(|_| ())) {
+        keep_old_look(&mut saved);
         settings.extend(saved);
     }
     // The homes of earlier versions are the island now: the capsule, the
@@ -156,6 +161,28 @@ fn drop_part(settings: &mut Map<String, Value>, part: &str) {
             if let Some(list) = run.as_array_mut() {
                 list.retain(|p| p.as_str() != Some(part));
             }
+        }
+    }
+}
+
+// The defaults changed on 2026-10-13 (a new user's taskbar clear, and her
+// island bare in the dark mode, the person's own look): a config written
+// before keeps the look it had, once (lookDefaults then 2): Mica where none
+// was chosen, and her island in the dark mode Windows' grey flyout, not
+// bare, where it was the default.
+fn keep_old_look(saved: &mut Map<String, Value>) {
+    if saved.contains_key("lookDefaults") {
+        return;
+    }
+    saved.insert("lookDefaults".into(), json!(2));
+    saved.entry("taskbarMaterial").or_insert_with(|| json!("mica"));
+    let looks = saved.entry("islandLook").or_insert(Value::Null);
+    if !looks.is_object() {
+        *looks = json!({});
+    }
+    if let Some(looks) = looks.as_object_mut() {
+        if !looks.get("dark").is_some_and(Value::is_object) {
+            looks.insert("dark".into(), json!({ "bg": "#2c2c2c", "op": 100, "blur": 0, "edge": "line", "bare": false }));
         }
     }
 }
@@ -310,6 +337,33 @@ mod tests {
         let mut s = settings(json!({ "widgetsOff": ["monitor"] }));
         adopt_monitor(&mut s);
         assert!(!s.contains_key("monitor"));
+    }
+
+    #[test]
+    fn a_config_from_before_keeps_its_look() {
+        // Written before 2026-10-13, nothing chosen: Mica, and her island grey.
+        let mut s = settings(json!({ "pet": "x" }));
+        keep_old_look(&mut s);
+        assert_eq!(s["taskbarMaterial"], "mica");
+        assert_eq!(s["islandLook"]["dark"]["bare"], false);
+        assert_eq!(s["lookDefaults"], 2);
+        // What was chosen stays; a light look stays; the dark one as it was.
+        let mut s = settings(json!({ "taskbarMaterial": "black", "islandLook": { "light": { "bare": true }, "dark": { "bg": "#000000", "bare": true } } }));
+        keep_old_look(&mut s);
+        assert_eq!(s["taskbarMaterial"], "black");
+        assert_eq!(s["islandLook"]["light"]["bare"], true);
+        assert_eq!(s["islandLook"]["dark"]["bg"], "#000000");
+        // Reset to the default before (null): the old default, grey.
+        let mut s = settings(json!({ "islandLook": { "dark": null } }));
+        keep_old_look(&mut s);
+        assert_eq!(s["islandLook"]["dark"]["bare"], false);
+        // Once only: one written since keeps whatever it says, the new defaults included.
+        let mut s = settings(json!({ "lookDefaults": 2, "islandLook": null }));
+        keep_old_look(&mut s);
+        assert_eq!(s["islandLook"], Value::Null);
+        assert!(!s.contains_key("taskbarMaterial"));
+        // A new user: the new defaults.
+        assert_eq!(defaults()["taskbarMaterial"], "clear");
     }
 
     #[test]
