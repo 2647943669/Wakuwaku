@@ -167,7 +167,7 @@ Paste its URL (like `https://codex-pets.net/#/pets/deepseek-chan`) on the Pets p
 
 | You want | Do |
 | --- | --- |
-| Off for now | Right-click → Quit. The next new Claude Code session brings her back |
+| Off for now | Right-click → Quit. Claude Code and Codex sessions no longer bring her back: open her yourself, or wait for the next start at login (only after a crash does a session start her again) |
 | Some quiet | Right-click → Do not disturb: she hides, no notifications, prompts go to the terminal |
 | No automatic start, only when I open her | Connect with the plugin (it never starts her) and turn off Start at login; open her yourself |
 

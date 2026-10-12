@@ -33,6 +33,29 @@ pub fn folder() -> PathBuf {
 
 // Run from the source tree it was built in (its target folder), not a
 // downloaded exe: its data stays in the tree, and it updates by a build.
+// Quit by the person (her menu's Quit, from the tray or the taskbar): marked
+// in her data folder, so that a session's hook (Claude Code's SessionStart,
+// Codex's) does not start her again (it did, at once: a resume, /clear and
+// a compaction start a session too) until she is started otherwise: opened
+// by hand, at login, by an update, which every start of hers clears. A
+// crash leaves no mark: the hooks start her again then, as ever. /quit
+// (scripts, a new build put in her place, which starts her itself) leaves
+// none either.
+const QUIT_MARK: &str = "quit-by-choice";
+
+pub fn mark_quit(dir: &Path) {
+    let _ = fs::write(dir.join(QUIT_MARK), "quit from her menu: a session's hook does not start her until she is opened again\n");
+}
+
+pub fn clear_quit(dir: &Path) {
+    let _ = fs::remove_file(dir.join(QUIT_MARK));
+}
+
+// Whether a session's hook may start her (none answering on her port).
+pub fn may_start(dir: &Path) -> bool {
+    !dir.join(QUIT_MARK).exists()
+}
+
 pub fn from_source() -> bool {
     std::env::current_exe().unwrap_or_default().starts_with(Path::new(SOURCE_TREE).join("target"))
 }
@@ -287,6 +310,22 @@ mod tests {
         let mut s = settings(json!({ "widgetsOff": ["monitor"] }));
         adopt_monitor(&mut s);
         assert!(!s.contains_key("monitor"));
+    }
+
+    #[test]
+    fn quit_by_choice_keeps_her_from_the_hooks_until_she_starts() {
+        let dir = std::env::temp_dir().join(format!("wakuwaku-quit-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        // Crashed (nothing marked): a session's hook starts her.
+        clear_quit(&dir);
+        assert!(may_start(&dir));
+        // Quit from her menu: it does not.
+        mark_quit(&dir);
+        assert!(!may_start(&dir));
+        // Started otherwise (by hand, at login, an update): it may again.
+        clear_quit(&dir);
+        assert!(may_start(&dir));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
