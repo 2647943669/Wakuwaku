@@ -560,17 +560,24 @@ mod imp {
         }
         *SH.lock().unwrap() = Some(crate::shared(&sh.app));
         let file = sh.dir.join("taskbar.json");
+        // Each step timed, for a start that took long (one took 600 ms
+        // where most take 10, 2026-10-13: which step waited on Explorer?).
+        let began = Instant::now();
         if let Err(e) = shell::hide(&file) {
             sh.log(&format!("taskbar: could not write {}: {e}", file.display()));
             return false;
         }
-        sh.log(&format!("taskbar: Windows' put away; guard started: {}", shell::spawn_guard(&file)));
+        let hidden = began.elapsed();
+        let guarded = shell::spawn_guard(&file);
+        let guard = began.elapsed() - hidden;
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let thread = crate::spawn_named("taskbar host", move || run(strip, ready_tx));
         match ready_rx.recv_timeout(Duration::from_secs(3)) {
             Ok(hwnd) => *HOST.lock().unwrap() = Some(Host { hwnd, thread }),
             Err(_) => sh.log("taskbar: its thread did not start"),
         }
+        let host = began.elapsed() - hidden - guard;
+        sh.log(&format!("taskbar: Windows' put away; guard started: {guarded} (put away {} ms, guard {} ms, host {} ms)", hidden.as_millis(), guard.as_millis(), host.as_millis()));
         TASKS_STOP.store(false, Ordering::SeqCst);
         let sh = crate::shared(&sh.app);
         let keys_sh = sh.clone();

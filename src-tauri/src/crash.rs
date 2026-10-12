@@ -763,16 +763,40 @@ pub fn answer(sh: &Arc<Shared>, yes: bool) {
 
 // For the settings: as set, whether it can send, those waiting (the newest
 // one whole, as it would be sent), sending now, what went wrong, the last sent.
+// A report's file as last read into the view, kept while it is the same
+// file at the same time: the view is made for every settings snapshot (up
+// to four a second while they are open), and a report holds five minutes
+// of log.
+static VIEWED: Mutex<Option<std::collections::HashMap<&'static str, (PathBuf, Option<u64>, Value)>>> = Mutex::new(None);
+
+fn viewed(which: &'static str, path: Option<&Path>, read: impl FnOnce(&Path) -> Option<Value>) -> Option<Value> {
+    let path = path?;
+    let at = modified_ms(path);
+    let mut kept = VIEWED.lock().unwrap_or_else(|e| e.into_inner());
+    let kept = kept.get_or_insert_with(std::collections::HashMap::new);
+    if let Some((p, t, value)) = kept.get(which) {
+        if p == path && *t == at {
+            return Some(value.clone());
+        }
+    }
+    let value = read(path)?;
+    kept.insert(which, (path.to_path_buf(), at, value.clone()));
+    Some(value)
+}
+
 pub fn view(sh: &Shared) -> Value {
     let waiting = pending(&sh.dir);
-    let newest = waiting.last().and_then(|p| {
+    let newest = viewed("newest", waiting.last().map(PathBuf::as_path), |p| {
         let text = fs::read_to_string(p).ok()?;
         let report: Value = serde_json::from_str(&text).ok()?;
         Some(json!({ "id": p.file_stem()?.to_string_lossy(), "at": modified_ms(p), "kind": report["kind"], "where": report["where"], "text": text }))
     });
     let mut sent: Vec<PathBuf> = fs::read_dir(folder(&sh.dir).join("sent")).into_iter().flatten().flatten().map(|e| e.path()).collect();
     sent.sort();
-    let last = sent.last().and_then(|p| serde_json::from_str::<Value>(&fs::read_to_string(p).ok()?).ok()).map(|v| json!({ "at": v["sentAt"], "url": v["answer"]["url"], "number": v["answer"]["number"], "count": v["answer"]["count"] }));
+    let last = viewed("sent", sent.last().map(PathBuf::as_path), |p| {
+        let v = serde_json::from_str::<Value>(&fs::read_to_string(p).ok()?).ok()?;
+        Some(json!({ "at": v["sentAt"], "url": v["answer"]["url"], "number": v["answer"]["number"], "count": v["answer"]["count"] }))
+    });
     let s = STATUS.lock().unwrap();
     json!({
         "mode": mode_of(&sh.settings.lock().unwrap()),

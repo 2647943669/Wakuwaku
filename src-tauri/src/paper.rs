@@ -208,6 +208,7 @@ mod imp {
     // What the desktop shows: a slideshow or one picture, its file (the
     // slideshow's of the moment), the slideshow's folder, how it is laid,
     // the turns.
+    #[derive(Clone)]
     struct State {
         slideshow: bool,
         file: String,
@@ -215,6 +216,23 @@ mod imp {
         position: &'static str,
         every: u32,
         shuffle: bool,
+    }
+
+    // The desktop as read within the last second, for the settings'
+    // snapshot (now): made up to four times a second while they are open,
+    // and each read is six calls into Explorer's wallpaper object.
+    static LATELY: Mutex<Option<(std::time::Instant, Option<State>)>> = Mutex::new(None);
+
+    fn state_lately() -> Option<State> {
+        let mut lately = LATELY.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((at, s)) = lately.as_ref() {
+            if at.elapsed() < std::time::Duration::from_secs(1) {
+                return s.clone();
+            }
+        }
+        let s = state();
+        *lately = Some((std::time::Instant::now(), s.clone()));
+        s
     }
 
     // The desktop as it was before each change made here, the latest last:
@@ -236,7 +254,7 @@ mod imp {
     // For the settings: the desktop now, and whether a change of ours can be
     // undone.
     pub fn now() -> Value {
-        let Some(s) = state() else { return Value::Null };
+        let Some(s) = state_lately() else { return Value::Null };
         if s.slideshow {
             seen(&s.file);
         }

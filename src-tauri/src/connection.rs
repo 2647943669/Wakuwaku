@@ -82,7 +82,28 @@ pub fn error_kind(error: &str) -> &'static str {
 }
 
 // A JSON settings file: {} when there is none, Err when unreadable.
+// A file as last read, kept while its size and time stay (a look at the
+// file's metadata, not its contents): the settings' snapshot asks for
+// Claude Code's settings.json three times and Codex's hooks.json twice,
+// up to four times a second while the settings are open (2026-10-13).
+type Stamp = Option<(u64, std::time::SystemTime)>;
+static READ: Mutex<Option<std::collections::HashMap<PathBuf, (Stamp, Result<Value, String>)>>> = Mutex::new(None);
+
 fn read_json(file: &Path) -> Result<Value, String> {
+    let stamp: Stamp = fs::metadata(file).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+    let mut read = READ.lock().unwrap_or_else(|e| e.into_inner());
+    let read = read.get_or_insert_with(std::collections::HashMap::new);
+    if let Some((at, value)) = read.get(file) {
+        if *at == stamp {
+            return value.clone();
+        }
+    }
+    let value = read_json_now(file);
+    read.insert(file.to_path_buf(), (stamp, value.clone()));
+    value
+}
+
+fn read_json_now(file: &Path) -> Result<Value, String> {
     match fs::read_to_string(file) {
         Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!({})),
