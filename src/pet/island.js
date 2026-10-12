@@ -3248,14 +3248,16 @@
       // A click in the settings (✕, the head) may just have closed them: not a click to open.
       if (isSetting() || window.Settings?.layer?.contains(e.target) || Date.now() - pulledAt < 500) return
       if (view === 'ask' || panel.contains(e.target) || her.contains(e.target)) return
-      // Not connected: "don't remind me" puts the hint away; any other
-      // press but on a widget's row opens the settings' welcome.
-      if (e.target.closest('[data-hint-off]')) return window.pet.settings.set({ connectHintOff: true })
-      if (isHinting() && !e.target.closest('[data-widget]')) return window.pet.openSettings('connect')
       // The press, if the clocks redrew the session between it and the release.
       const id = view === 'expanded' && (e.target.closest('[data-jump]')?.dataset.jump || (Date.now() - pressed.at < 1000 && pressed.id))
       pressed = { id: '', at: 0 }
       if (id) return jumpTo(id)
+      // Not connected: "don't remind me" puts the hint away; any other
+      // press but on a session's or a widget's row opens the settings'
+      // welcome (a session listed still goes to its window: the hooks
+      // removed while it runs).
+      if (e.target.closest('[data-hint-off]')) return window.pet.settings.set({ connectHintOff: true })
+      if (isHinting() && !e.target.closest('[data-widget]')) return window.pet.openSettings('connect')
       // A widget in the open island: the one shown from now on.
       const row = view === 'expanded' && e.target.closest('[data-widget]')
       if (row) {
