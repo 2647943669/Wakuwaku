@@ -379,6 +379,7 @@ fn create(sh: &Arc<Shared>) {
                 #[cfg(windows)]
                 if let Ok(hwnd) = win.hwnd() {
                     sh.island.lock().unwrap().hwnd = hwnd.0 as isize;
+                    crate::tasks::no_transitions(hwnd.0 as isize);
                 }
                 sh.own_window(&win);
                 // Its renderer gone: told, and the page loaded again (crash.rs).

@@ -206,6 +206,7 @@ mod imp {
     #[link(name = "dwmapi")]
     extern "system" {
         fn DwmGetWindowAttribute(hwnd: Hwnd, attr: u32, value: *mut c_void, size: u32) -> i32;
+        fn DwmSetWindowAttribute(hwnd: Hwnd, attr: u32, value: *const c_void, size: u32) -> i32;
     }
 
     #[link(name = "kernel32")]
@@ -571,6 +572,17 @@ mod imp {
         unsafe { SetWindowPos(hwnd as Hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) };
     }
 
+    // Shown and hidden at once, without the system's own fade and growing
+    // from the middle (DWMWA_TRANSITIONS_FORCEDISABLED), as Windows' own
+    // taskbar is: shown for the handover it grew from a smaller, see-through
+    // copy of itself for a fifth of a second, over a screen's foot already bare.
+    pub fn no_transitions(hwnd: isize) {
+        const DWMWA_TRANSITIONS_FORCEDISABLED: u32 = 3;
+        let on: i32 = 1;
+        // SAFETY: our own BOOL, its size given.
+        unsafe { DwmSetWindowAttribute(hwnd as Hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &on as *const i32 as *const c_void, 4) };
+    }
+
     // A press on the button of a program with several windows: all of them
     // to the front (restored if minimized), the one on top of them on top
     // still; all minimized when one of them is the one in front, as a
@@ -857,6 +869,7 @@ mod imp {
         false
     }
     pub fn raise_top(_hwnd: isize) {}
+    pub fn no_transitions(_hwnd: isize) {}
     pub fn in_use() -> [(&'static str, Vec<String>); 3] {
         [("mic", Vec::new()), ("cam", Vec::new()), ("loc", Vec::new())]
     }
@@ -910,7 +923,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, no_transitions, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
 
 #[cfg(test)]
 mod tests {
