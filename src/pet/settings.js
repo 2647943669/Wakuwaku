@@ -1791,7 +1791,7 @@
       const more = other ? `<button class="pbtn" ${other === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'} ${busy ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('wc.connect', { name: TOOL[other] }))}</button>` : ''
       const sessions = (snap.sessions || []).length
       return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow"><div>${esc(what)}</div>
-          <div class="d">${esc(T('wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div></div>${more}</div></div>`
+          <div class="d">${esc(T(sessions === 1 ? 'wc.online1' : 'wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div></div>${more}</div></div>`
     }
     const both = tools.length === 2
     const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
