@@ -126,7 +126,12 @@ fn write_json(file: &Path, value: &Value) -> Result<(), String> {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    fs::write(file, format!("{text}\n")).map_err(|e| e.to_string())
+    let written = fs::write(file, format!("{text}\n")).map_err(|e| e.to_string());
+    // As last read no longer: read again next time, whatever its stamp.
+    if let Some(read) = READ.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        read.remove(file);
+    }
+    written
 }
 
 // This program, as the hook command starts it.
@@ -300,7 +305,8 @@ pub fn connection(port: u16) -> &'static str {
 // Change Claude Code's settings.json, backed up once beside itself.
 // action: install, install-http, remove.
 pub fn write_hooks(action: &str, port: u16) -> Result<(), String> {
-    let before = read_settings()?;
+    // Read from the disk, not as last read: nothing of someone else's is written back.
+    let before = read_json_now(&claude_settings_file())?;
     let after = match action {
         "remove" => uninstall(&before),
         "install" => install(&before, port, false),
@@ -545,7 +551,8 @@ pub fn seems_connected() -> bool {
 // Change Codex's hooks.json, backed up once beside itself. action: install, remove.
 pub fn write_codex_hooks(action: &str, waiting: &str) -> Result<(), String> {
     let file = codex_hooks_file();
-    let before = read_json(&file)?;
+    // Read from the disk, not as last read: nothing of someone else's is written back.
+    let before = read_json_now(&file)?;
     let after = match action {
         "remove" if !file.exists() => return Ok(()),
         "remove" => uninstall(&before),
