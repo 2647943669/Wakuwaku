@@ -106,7 +106,8 @@ impl ClickThrough {
         if self.over && !held && !within(cursor, pos, size, 0) && !self.calm() {
             self.over = false;
         }
-        let mode = if held || self.over { Mode::Catch } else if near { Mode::Forward } else { Mode::Pass };
+        // Kept caught while a bounce is calmed, whatever the page said meanwhile.
+        let mode = if held || self.over || self.calm() { Mode::Catch } else if near { Mode::Forward } else { Mode::Pass };
         let ignore = self.force(mode);
         let pointer = if mode == Mode::Forward && moved {
             self.pointing = true;
@@ -124,13 +125,13 @@ impl ClickThrough {
     }
 
     // The page says the pointer is on something of its own, or not. Said
-    // not while a bounce is calmed, it stays caught.
+    // not while a bounce is calmed, it is kept, and the window stays caught
+    // only until the calm is over (look). It was dropped: the window stayed
+    // caught over the lower half of the screen, taking every click, until
+    // the pointer went above it or over her again (2026-10-12).
     pub fn set_over(&mut self, over: bool, held: bool, passive: bool) -> Option<bool> {
-        if !over && self.calm() && !passive && !held {
-            return None;
-        }
         self.over = over;
-        if passive || held {
+        if passive || held || (!over && self.calm()) {
             return None;
         }
         self.force(if over { Mode::Catch } else { Mode::Forward })
@@ -166,15 +167,38 @@ mod tests {
         assert!(ct.set_over(true, false, false).is_some());
         assert!(ct.calmed(), "the third catch within the moment calms it");
         assert!(!ct.calmed(), "said once");
-        // Calmed: the page saying not on her changes nothing, and a look
-        // outside the window keeps her over.
+        // Calmed: the page saying not on her is kept, yet the window stays
+        // caught, inside it or out.
         assert_eq!(ct.set_over(false, false, false), None);
-        assert!(ct.over);
+        assert!(!ct.over);
         let seen = ct.look((500, 500), pos, size, 1.0, false, false);
         assert_eq!(seen.ignore, None);
-        assert!(ct.over);
         let seen = ct.look(inside, pos, size, 1.0, false, false);
         assert_eq!(seen.ignore, None);
+        // The calm over: the next look lets clicks through again (the
+        // pointer still in the window, as over the lower half of the screen).
+        ct.calm_until = Some(Instant::now() - Duration::from_millis(1));
+        let seen = ct.look(inside, pos, size, 1.0, false, false);
+        assert_eq!(seen.ignore, Some(true));
+        assert!(seen.forward);
+    }
+
+    // Calmed while the page still says on her: caught on, and once the calm
+    // is over still caught for as long as she is under the pointer.
+    #[test]
+    fn calmed_over_her_stays_caught() {
+        let mut ct = ClickThrough::default();
+        let (pos, size) = ((0, 0), (100, 100));
+        for _ in 0..2 {
+            ct.set_over(true, false, false);
+            ct.set_over(false, false, false);
+        }
+        ct.set_over(true, false, false);
+        assert!(ct.calmed());
+        ct.calm_until = Some(Instant::now() - Duration::from_millis(1));
+        let seen = ct.look((50, 50), pos, size, 1.0, false, false);
+        assert_eq!(seen.ignore, None);
+        assert!(ct.over);
     }
 
     #[test]
