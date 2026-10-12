@@ -1773,7 +1773,7 @@
     if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
     if (state !== 'failed') return ''
     const { error, kind } = failed[tool]
-    const file = tool === 'claude' ? snap.settingsShown || snap.settingsFile || '' : snap.codex?.file || ''
+    const file = tool === 'claude' ? snap.settingsShown || snap.settingsFile || '' : snap.codex?.fileShown || snap.codex?.file || ''
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
     return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: tool === 'claude' ? 'settings.json' : 'hooks.json' }))}</b></div>
         <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`

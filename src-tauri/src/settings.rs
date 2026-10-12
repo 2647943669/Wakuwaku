@@ -54,6 +54,7 @@ pub fn snapshot(sh: &Shared) -> Value {
         "codex": {
             "hooks": connection::codex_hooks_status(),
             "file": connection::codex_hooks_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::codex_hooks_file()),
             "seen": sh.codex_seen.load(Ordering::SeqCst) > 0,
             "version": connection::codex_version().map(|(a, b, c)| format!("{a}.{b}.{c}")),
             "async": connection::codex_runs_async(),
