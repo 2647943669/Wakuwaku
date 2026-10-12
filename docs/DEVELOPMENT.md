@@ -98,7 +98,7 @@ cd .. && node --test "test/*.test.js"   # 页面的单元测试
 
 ## hook 怎么送到宠物
 
-除 `SessionStart` 外的事件都是 HTTP hook（`type: "http"`，POST 到 `/hook?from=wakuwaku`），不开进程；`/hook` 一般立刻回 `{}`，只有 `PermissionRequest` 会挂起，等面板上的回答。**Claude Code 不对 `SessionStart` 运行 HTTP hook**，所以写入 settings.json 的方式给它配了一条后台命令（`async: true`）：程序本身加 `--wakuwaku-ensure-running`。它从 stdin 读事件，端口上有 wakuwaku 应答就把事件转过去（打招呼、登记会话），没有就以独立进程（`DETACHED_PROCESS`）启动一份宠物，然后马上退出。
+除 `SessionStart` 外的事件都是 HTTP hook（`type: "http"`，POST 到 `/hook?from=wakuwaku`），不开进程；`/hook` 一般立刻回 `{}`，只有 `PermissionRequest` 会挂起，等面板上的回答。**Claude Code 不对 `SessionStart` 运行 HTTP hook**，所以写入 settings.json 的方式给它配了一条后台命令（`async: true`）：程序本身加 `--wakuwaku-ensure-running`。它从 stdin 读事件，端口上有 wakuwaku 应答就把事件转过去（打招呼、登记会话），没有就以独立进程（`DETACHED_PROCESS`）启动一份宠物，然后马上退出。**用户主动退出后不启动**：右键菜单（托盘或任务栏）的「退出」在数据文件夹写一个 `quit-by-choice` 标记（`data.rs` 的 `mark_quit`），`--wakuwaku-ensure-running` 和 Codex 的 `SessionStart` 看到它就不启动（`may_start`）；不然退出后马上又会被拉起来（`resume`、`/clear`、自动压缩也会触发 `SessionStart`）。她每次真正启动（手动打开、开机自启、更新后重启、崩溃后被拉起）都会清掉它（`main()` 拿到端口后 `clear_quit`）。崩溃不留标记，会话照旧把她拉起来。HTTP 的 `/quit` 不算主动退出、不留标记：它是给脚本和换新版本用的（换完会自己启动新的），有人 /quit 之后没再启动，会话把她拉起来也说得过去。
 
 `connection.rs` 的 `status_of()` 判断我们的条目：`ok`、`httpOnly`（没有启动命令）、`missing`、`partial`（缺事件）、`stale`（端口不对、指向另一份程序，或者是旧版本）。识别"是我们的"靠 URL 里的 `from=wakuwaku`、参数里的 `--wakuwaku-ensure-running`，以及改名前的 `claude-pets` 两个记号和更早的 `claude-hook.js`。写之前把原文件备份到 `settings.json.wakuwaku.bak`（只备份一次）。
 

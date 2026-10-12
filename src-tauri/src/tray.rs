@@ -137,7 +137,12 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
         "deviceManager" => {
             crate::tasks::launch("devmgmt.msc");
         }
-        "quit" => sh.quit(),
+        // Quit by the person: no session's hook starts her again until she
+        // is opened (data.rs mark_quit).
+        "quit" => {
+            crate::data::mark_quit(&sh.dir);
+            sh.quit();
+        }
         _ => {
             if let Some(home) = id.strip_prefix("display:") {
                 crate::set_display(sh, home);

@@ -949,8 +949,9 @@ fn start_detached() {
     let _ = command.spawn();
 }
 
-// If no pet answers on the port, start one; if one does, hand her the event.
-// Then leave, quick and quiet, whatever happens.
+// If no pet answers on the port, start one (unless the person quit her:
+// data.rs mark_quit); if one does, hand her the event. Then leave, quick and
+// quiet, whatever happens.
 fn ensure_running(port: u16) {
     let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_millis(800))).build().new_agent();
     let up = agent
@@ -964,7 +965,7 @@ fn ensure_running(port: u16) {
         if let Some(event) = event {
             let _ = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku")).send_json(&event);
         }
-    } else {
+    } else if data::may_start(&data::folder()) {
         start_detached();
     }
 }
@@ -974,7 +975,8 @@ fn ensure_running(port: u16) {
 // Codex runs its hooks as commands: this program with CODEX_FLAG, for every
 // event. Hand her the event, and print her answer to a prompt, the decision
 // Codex reads; nothing else, since Codex takes what a hook prints as words
-// for the model. SessionStart starts her when she is not up. Whatever
+// for the model. SessionStart starts her when she is not up (unless the
+// person quit her: data.rs mark_quit). Whatever
 // happens, leave with 0, so Codex never shows a failed hook.
 fn codex_hook(port: u16) {
     let Some(mut event) = read_event() else { return };
@@ -998,7 +1000,8 @@ fn codex_hook(port: u16) {
             }
         }
         Ok(_) | Err(ureq::Error::StatusCode(_)) => {}
-        Err(_) if name == "SessionStart" => start_detached(),
+        // Not if the person quit her (data.rs mark_quit).
+        Err(_) if name == "SessionStart" && data::may_start(&data::folder()) => start_detached(),
         Err(_) => {}
     }
 }
@@ -1037,6 +1040,11 @@ fn main() {
             return;
         }
     };
+
+    // She is up: quit from her menu before, she is wanted again now (by
+    // hand, at login, an update), and the sessions' hooks may start her
+    // from here on.
+    data::clear_quit(&dir);
 
     // Her crashes caught from here on, and a guard to see her end while
     // her reports can go and are not off (the taskbar home starts one
