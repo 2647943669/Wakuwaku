@@ -308,8 +308,10 @@ mod imp {
     static CREATED_MSG: AtomicU32 = AtomicU32::new(0);
     static TICKS: AtomicU32 = AtomicU32::new(0);
     static WORK_BOTTOM: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-    // The screen's edge the strip is along (island.rs, taskbarEdge).
+    // The screen's edge the strip is along (island.rs, taskbarEdge), and the
+    // one the work area was last made whole for (strip_moved).
     static EDGE: Mutex<Edge> = Mutex::new(Edge::Bottom);
+    static WORK_EDGE: Mutex<Option<Edge>> = Mutex::new(None);
     // The strip as granted (physical); since when (tick) the work area has
     // reached into it, and when it was last taken again for that.
     static STRIP: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
@@ -1248,6 +1250,26 @@ mod imp {
     // there too, for those who ask the taskbar's window where it is.
     pub fn strip_moved(strip: (i32, i32, i32, i32)) {
         *STRIP.lock().unwrap() = Some(strip);
+        // Along another edge than the bottom (taken there, or moved there):
+        // the work area made the display less the strip, at once. The self-heal only ever moves the
+        // strip's own side, and the room the last edge took was kept: from
+        // the left to the right the work area kept its 60 px on the left too,
+        // then the top's as well (2026-10-12). Along the bottom Windows' own
+        // takes its room back and sets it whole itself.
+        let edge = *EDGE.lock().unwrap();
+        let was = std::mem::replace(&mut *WORK_EDGE.lock().unwrap(), Some(edge));
+        if is_up() && was != Some(edge) && edge != Edge::Bottom {
+            let ((x, y, w, h), _) = monitor_of(strip);
+            let mut r = Rect { left: x, top: y, right: x + w, bottom: y + h };
+            match edge {
+                Edge::Top => r.top = strip.1 + strip.3,
+                Edge::Left => r.left = strip.0 + strip.2,
+                Edge::Right => r.right = strip.0,
+                Edge::Bottom => r.bottom = strip.1,
+            }
+            log(&format!("the strip now along the {edge:?}: work area made ({}, {}, {}, {})", r.left, r.top, r.right, r.bottom));
+            set_work_area(r);
+        }
         if is_up() {
             systray::place(strip);
             // SAFETY: our own window; a posted message, no pointers.
@@ -1372,15 +1394,21 @@ mod imp {
             Edge::Left => r.left = side,
             Edge::Right => r.right = side,
         }
+        set_work_area(r);
+    }
+
+    fn set_work_area(mut r: Rect) {
         // SAFETY: our own struct, handed back.
-        let ok = unsafe { SystemParametersInfoW(SPI_SETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0) };
-        let error = std::io::Error::last_os_error();
+        let ok = unsafe { SystemParametersInfoW(SPI_SETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0) } != 0;
+        // Why, only when it failed: a call that worked leaves an old error
+        // there (it read "access denied" after a set that took).
+        let error = if ok { String::new() } else { format!(" ({})", std::io::Error::last_os_error()) };
         let now = work_area();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(150));
             let later = work_area();
             log(&format!(
-                "work area set: {ok} ({error}); then ({}, {}, {}, {}), 150 ms after ({}, {}, {}, {})",
+                "work area set: {ok}{error}; then ({}, {}, {}, {}), 150 ms after ({}, {}, {}, {})",
                 now.left, now.top, now.right, now.bottom, later.left, later.top, later.right, later.bottom
             ));
         });

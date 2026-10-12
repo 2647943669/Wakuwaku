@@ -138,16 +138,43 @@
   // colour: an icon's own (its picture's pixels), else the words' colour.
   function partsPoints(n) {
     const parts = [...document.querySelectorAll(PARTS)].filter(el => el.getClientRects().length && el.offsetWidth)
-    const boxes = parts.map(el => ({ el, r: el.getBoundingClientRect(), colours: coloursOf(el) }))
+    const boxes = parts.map(el => ({ el, r: el.getBoundingClientRect() }))
     const total = boxes.reduce((a, b) => a + b.r.width * b.r.height, 0) || 1
-    const out = []
-    for (const b of boxes) {
-      const k = Math.max(5, Math.round((n * b.r.width * b.r.height) / total))
-      for (let i = 0; i < k; i++)
-        out.push({ el: b.el, x: b.r.left + b.r.width * (0.15 + 0.7 * Math.random()), y: b.r.top + b.r.height * (0.2 + 0.6 * Math.random()), c: b.colours[(Math.random() * b.colours.length) | 0] })
-    }
-    return out
+    return boxes.flatMap(b => pointsOn(b.el, Math.max(5, Math.round((n * b.r.width * b.r.height) / total)), b.r))
   }
+
+  // k points on one part, each with a colour of its own.
+  function pointsOn(el, k, r = el.getBoundingClientRect()) {
+    const colours = coloursOf(el)
+    return Array.from({ length: k }, () => ({ el, x: r.left + r.width * (0.15 + 0.7 * Math.random()), y: r.top + r.height * (0.2 + 0.6 * Math.random()), c: colours[(Math.random() * colours.length) | 0] }))
+  }
+
+  // Parts drawn after the dust has set out (the programs' buttons come a
+  // moment after the taskbar is taken: sooner than that along the top or a
+  // side, with no picture to wait for, they came with none and just
+  // appeared): dust of their own, gathering from the screen's side, each
+  // coming as its dust lands.
+  let late = null
+  // When the last of it lands (performance.now()).
+  let lateEnd = 0
+  function watchLate() {
+    lateEnd = 0
+    late?.disconnect()
+    const bar = document.getElementById('bar-rest')
+    if (!bar) return
+    late = new MutationObserver(records => {
+      const fresh = records.flatMap(r => [...r.addedNodes]).filter(n => n.nodeType === 1 && n.matches(PARTS) && n.getClientRects().length)
+      const to = fresh.flatMap(el => pointsOn(el, 16))
+      if (!to.length) return
+      const lands = settle(to.map(() => ({ ...awayFromStrip(), c: GLINTS[(Math.random() * GLINTS.length) | 0] })), to, false)
+      for (const el of fresh) comeAt(el, lands.get(el) ?? SETTLE_MS)
+      lateEnd = Math.max(lateEnd, performance.now() + Math.max(SETTLE_MS + 250, ...lands.values()))
+    })
+    late.observe(bar, { childList: true, subtree: true })
+  }
+
+  // A part coming as its dust lands (hidden till then).
+  const comeAt = (el, at) => el.animate([{ opacity: 0, transform: 'scale(0.6)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: Math.max(0, at - 160), easing: 'cubic-bezier(0.3, 1.4, 0.5, 1)', fill: 'backwards' })
 
   function coloursOf(el) {
     const img = el.querySelector('img')
@@ -274,19 +301,24 @@
   // Her parts come as their dust lands (hidden till then), the picture's
   // bare ground fading into hers meanwhile.
   function arrive(lands) {
-    for (const el of document.querySelectorAll(PARTS)) {
-      const at = lands.get(el) ?? SETTLE_MS
-      el.animate([{ opacity: 0, transform: 'scale(0.6)' }, { opacity: 1, transform: 'none' }], { duration: 320, delay: Math.max(0, at - 160), easing: 'cubic-bezier(0.3, 1.4, 0.5, 1)', fill: 'backwards' })
-    }
+    for (const el of document.querySelectorAll(PARTS)) comeAt(el, lands.get(el) ?? SETTLE_MS)
+    watchLate()
     picture?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, delay: 320, easing: 'ease', fill: 'forwards' })
     // Over by then whatever came of the frames (none drawn while the window
-    // is hidden or covered: the dust would stay where it was).
+    // is hidden or covered: the dust would stay where it was), or, a late
+    // part's dust on its way, once that has landed (2.5 s more at most).
     const most = Math.max(SETTLE_MS + 250, ...lands.values())
-    setTimeout(() => {
+    const giveUp = performance.now() + most + 2500
+    const finish = () => {
+      const wait = Math.min(lateEnd, giveUp) - performance.now()
+      if (wait > 0) return setTimeout(finish, wait + 260)
+      late?.disconnect()
+      late = null
       drop()
       stop()
       pet.taskbar.handoff('done')
-    }, most + 260)
+    }
+    setTimeout(finish, most + 260)
   }
 
   // --- The steps ------------------------------------------------------------------------
@@ -322,6 +354,8 @@
     }
     if (next === 'out') {
       step++
+      late?.disconnect()
+      late = null
       unhide()
       drop()
       if (quiet()) {

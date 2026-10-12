@@ -2389,7 +2389,7 @@
       b.dataset.edit = what
       return b
     }
-    editBar.replaceChildren(el('span', 'hint', t(lang, 'taskbar.edit.hint')), button('add', t(lang, libOpen ? 'taskbar.edit.hideAdd' : 'taskbar.edit.add')), button('reset'), button('cancel'), button('done'))
+    editBar.replaceChildren(el('span', 'hint', t(lang, isSide() ? 'taskbar.edit.hintSide' : 'taskbar.edit.hint')), button('add', t(lang, libOpen ? 'taskbar.edit.hideAdd' : 'taskbar.edit.add')), button('reset'), button('cancel'), button('done'))
   }
 
   function endEdit(keep) {
