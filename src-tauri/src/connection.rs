@@ -466,6 +466,27 @@ pub fn is_codex_connected() -> bool {
     matches!(codex_hooks_status(), "ok" | "stale" | "upgradable" | "partial")
 }
 
+// Whether Claude Code or Codex is connected, as last looked (at start, as the
+// settings read it, after connecting) or heard (any event from them): what
+// the island asks for while it is not (island.js), without reading their
+// settings files on every redraw. Connected until looked, so a first draw
+// never asks wrongly.
+static CONNECTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn note_connected(connected: bool) -> bool {
+    CONNECTED.swap(connected, std::sync::atomic::Ordering::SeqCst) != connected
+}
+
+pub fn look_connected(port: u16) -> bool {
+    let connected = connection(port) != "none" || is_codex_connected();
+    note_connected(connected);
+    connected
+}
+
+pub fn seems_connected() -> bool {
+    CONNECTED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 // Change Codex's hooks.json, backed up once beside itself. action: install, remove.
 pub fn write_codex_hooks(action: &str, waiting: &str) -> Result<(), String> {
     let file = codex_hooks_file();

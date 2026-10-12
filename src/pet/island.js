@@ -154,6 +154,11 @@
   const expanded = document.getElementById('island-expanded')
   const her = document.getElementById('island-her')
   const herSheet = her.querySelector('.sheet')
+  // Not connected yet: a dot in Windows' accent at her portrait's top-right
+  // (placeHer puts it there; style.css shows it in the compact island).
+  const hintDot = document.createElement('span')
+  hintDot.className = 'hint-dot'
+  her.after(hintDot)
   const gooIsland = document.querySelector('#goo .goo-island')
   const gooNeck = document.querySelector('#goo .goo-neck')
   const gooDrop = document.querySelector('#goo .goo-drop')
@@ -333,6 +338,13 @@
   const isNudging = () => !!nudge && Date.now() < nudge.until
   // The specifics on screen (session names, commands, replies), unless turned off.
   const isDetailed = () => config.details !== false
+  // Neither Claude Code nor Codex connected (main.rs payload, unconnected),
+  // and no "don't remind me" (connectHintOff): the island asks for it, and a
+  // press on it opens the settings' welcome, where they are connected.
+  const isHinting = () => now.unconnected === true && config.connectHintOff !== true
+  // Windows' accent as it reads on the island's ground: its light shade on a
+  // dark one, its dark shade on a light one.
+  const hintAccent = () => (isLight() ? look.accent?.dark || '#0067c0' : look.accent?.light || '#4cc2ff')
   // Nothing from the sessions to show: the widgets' turn.
   const isQuiet = () => now.mood === 'idle'
   const shownWidget = () => (isQuiet() && widgets.length ? widgets[widgetAt % widgets.length] : null)
@@ -415,24 +427,34 @@
     // words in its tooltip.
     if (isSide()) {
       const at = time()
-      const clock = el('span', 'clock', at)
-      clock.dataset.live = 'time'
-      clock.style.color = hue()[now.mood]
-      compact.replaceChildren(...(isHome() ? [] : [stillHer(TASK_HEAD)]), ...(at ? [clock] : []))
-      compact.classList.toggle('bare', !at)
+      const hint = isHinting()
+      // Not connected: a link's glyph in the clock's place, in the accent.
+      const clock = hint ? el('span', 'fi chint', '\uE71B') : el('span', 'clock', at)
+      if (!hint) {
+        clock.dataset.live = 'time'
+        clock.style.color = hue()[now.mood]
+      }
+      compact.replaceChildren(...(isHome() ? [] : [stillHer(TASK_HEAD)]), ...(hint || at ? [clock] : []))
+      compact.classList.toggle('bare', !(hint || at))
       compact.style.width = ''
-      compact.title = Status.brief(lang, now, { detailed: isDetailed() })
-      compactWidth = sideCapsule(!!at).width
+      compact.title = hint ? t(lang, 'hint.tip') : Status.brief(lang, now, { detailed: isDetailed() })
+      compactWidth = sideCapsule(hint || !!at).width
       return
     }
-    compact.title = ''
+    compact.title = isHinting() ? t(lang, 'hint.tip') : ''
     // Three places: her at the left (her portrait while she is out), a line
     // of words cut short in the middle, a short value at its right (the
     // clock, a widget's number), with "+N" for the other sessions before it;
     // then, pinned, the monitor's readings at the island's right end.
     const widget = shownWidget()
     let words, value, key
-    if (widget && Widgets.partsOf(widget)) {
+    if (isHinting()) {
+      // Not connected: "Connect Claude Code ›" in the accent, no clock.
+      words = el('span', 'label hint', t(lang, 'hint.connect'))
+      words.append(el('span', 'fi hchev', '\uE76C'))
+      value = el('span', 'clock', '')
+      key = 'hint'
+    } else if (widget && Widgets.partsOf(widget)) {
       words = el('span', 'label wparts')
       words.innerHTML = Widgets.partsHTML(widget)
       value = el('span', 'clock')
@@ -537,7 +559,17 @@
       me.append(progress)
     }
     const lines = el('span', 'lines')
-    lines.append(me)
+    if (isHinting() && !isNudging()) {
+      // Not connected: what it is for, and a row to go and connect.
+      const card = el('span', 'me')
+      const top = el('span', 'head')
+      top.append(el('span', 'title', t(lang, 'hint.title')))
+      card.append(top, el('span', 'sub', t(lang, 'hint.sub')))
+      const go = el('span', 'hintgo')
+      go.dataset.connect = '1'
+      go.append(el('span', '', t(lang, 'hint.go')), el('span', '', '›'))
+      lines.append(card, go)
+    } else lines.append(me)
     if (others.length) {
       const list = el('span', 'others')
       for (const x of others.slice(0, OTHERS_SHOWN)) {
@@ -576,6 +608,12 @@
       top.append(el('span', 'title', words || label || value))
       card.append(top, el('span', 'sub', words ? [label, value].filter(Boolean).join(' · ') : label ? value : ''))
       lines.replaceChildren(card)
+    }
+    // Not connected: at its foot, "don't remind me".
+    if (isHinting() && !isNudging()) {
+      const off = el('span', 'hintoff', t(lang, 'hint.off'))
+      off.dataset.hintOff = '1'
+      lines.append(off)
     }
     expanded.replaceChildren(...(isHome() ? [] : [stillHer(48)]), lines)
   }
@@ -635,8 +673,11 @@
       herSheet.style.transform = `translate(${-(CELL_W * scale - px) / 2}px, -2px) scale(${scale})`
     }
     if (view === 'compact') {
-      if (home() === 'taskbar') portrait(TASK_HEAD, TASK_HEAD * PER_PX, (taskCompactH() - TASK_HEAD) / 2, (taskCompactH() - TASK_HEAD) / 2)
+      const [px, at] = home() === 'taskbar' ? [TASK_HEAD, (taskCompactH() - TASK_HEAD) / 2] : [HEAD, 6]
+      if (home() === 'taskbar') portrait(TASK_HEAD, TASK_HEAD * PER_PX, at, at)
       else portrait(HEAD, HEAD_SCALE, 6, 6)
+      // The dot over her portrait's top-right, 2 px out.
+      Object.assign(hintDot.style, { left: `${at + px - 7}px`, top: `${at - 2}px` })
     } else if (view === 'settings') {
       portrait(SET_HEAD, SET_HEAD_SCALE, 16, 13)
     } else {
@@ -757,7 +798,7 @@
         ? { width: Math.min(OPEN_MAX_W, Math.max(320, expanded.offsetWidth)), height: Math.max(OPEN_H, expanded.offsetHeight) }
         : { width: Math.min(OPEN_BARE_MAX_W, Math.max(300, expanded.offsetWidth)), height: Math.max(84, expanded.offsetHeight) }
     }
-    if (isSide()) return sideCapsule(!!time())
+    if (isSide()) return sideCapsule(isHinting() || !!time())
     return { width: compactWidth, height: home() === 'taskbar' ? taskCompactH() : 36 }
   }
 
@@ -2735,6 +2776,8 @@
     seatPanel()
     body.classList.toggle('has-her', isHome())
     for (const e of ['top', 'left', 'right']) body.classList.toggle(`tb-${e}`, tbEdge() === e)
+    body.classList.toggle('hinting', isHinting() && isHome())
+    document.documentElement.style.setProperty('--hint-accent', hintAccent())
     body.classList.toggle('tb-side', isSide())
     body.classList.toggle('compact-her', view === 'compact' || view === 'settings')
     if (spriteUrl) sheetImage(herSheet, spriteUrl)
@@ -3203,6 +3246,10 @@
       // A click in the settings (✕, the head) may just have closed them: not a click to open.
       if (isSetting() || window.Settings?.layer?.contains(e.target) || Date.now() - pulledAt < 500) return
       if (view === 'ask' || panel.contains(e.target) || her.contains(e.target)) return
+      // Not connected: "don't remind me" puts the hint away; any other
+      // press but on a widget's row opens the settings' welcome.
+      if (e.target.closest('[data-hint-off]')) return window.pet.settings.set({ connectHintOff: true })
+      if (isHinting() && !e.target.closest('[data-widget]')) return window.pet.openSettings('connect')
       // The press, if the clocks redrew the session between it and the release.
       const id = view === 'expanded' && (e.target.closest('[data-jump]')?.dataset.jump || (Date.now() - pressed.at < 1000 && pressed.id))
       pressed = { id: '', at: 0 }
@@ -3254,5 +3301,5 @@
 
   // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
   window.pet.onTaskbarEdit(() => editTaskbar())
-  window.Island = { isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar }
 })()

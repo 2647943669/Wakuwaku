@@ -114,6 +114,9 @@ pub struct Shared {
     // When the last Codex event came (ms), 0 never: Codex runs its hooks
     // only once the person trusts them.
     pub codex_seen: std::sync::atomic::AtomicU64,
+    // When the last Claude Code event came (ms), 0 never: the settings tell
+    // connected from installed, waiting for a session (settings.js).
+    pub claude_seen: std::sync::atomic::AtomicU64,
     is_logging: bool,
     // Our windows' handles: never counted as another app full screen.
     own: Mutex<Vec<isize>>,
@@ -253,6 +256,9 @@ impl Shared {
         // The widgets that have something to say: those on take their turns
         // in the island while nothing needs you; any may be on the taskbar.
         now["widgets"] = self.widgets_said();
+        // Neither Claude Code nor Codex connected: the island says so, and
+        // a press on it opens the settings where they are (island.js).
+        now["unconnected"] = json!(!connection::seems_connected());
         now
     }
 
@@ -1154,6 +1160,7 @@ fn main() {
                 quiet: AtomicBool::new(false),
                 greeted: AtomicBool::new(false),
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
+                claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),
                 push_pending: AtomicBool::new(false),
@@ -1344,8 +1351,10 @@ fn main() {
                     }
                 });
             }
-            // Never set up: the settings, where Claude Code or Codex gets connected.
-            if !sh.flag("onboarded") && connection::connection(port) == "none" && !connection::is_codex_connected() {
+            // Never set up: the settings, where Claude Code or Codex gets
+            // connected (every start until one is: closing them is not
+            // setting up, island.rs settings_closed).
+            if !connection::look_connected(port) && !sh.flag("onboarded") {
                 island::open_settings(&sh, Some("connect"));
             }
             Ok(())

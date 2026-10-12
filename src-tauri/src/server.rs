@@ -76,11 +76,17 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
     match (method.as_str(), path.as_str()) {
         ("POST", "/hook") => {
             let Some(mut event) = read_json(&mut req) else { return reply(req, 200, json!({})) };
+            // Heard from one: connected (the island stops asking).
+            if crate::connection::note_connected(true) {
+                sh.redraw();
+            }
             // Codex's events, tagged for the prompts (asks.rs) and read their own way.
             let is_codex = is_from_codex(req.url());
             if let (true, Some(fields)) = (is_codex, event.as_object_mut()) {
                 fields.insert("agent".into(), json!("codex"));
                 sh.codex_seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+            } else {
+                sh.claude_seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
             }
             let msg = if is_codex { events_codex::to_message(&event) } else { events::to_message(&event) };
             if let Some(mut msg) = msg {
