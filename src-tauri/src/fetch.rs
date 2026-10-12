@@ -17,14 +17,46 @@ pub const DEFAULT_PET: &str = "claude-chan";
 const DEFAULT_SHEET: &[u8] = include_bytes!("../../pets/claude-chan/spritesheet.webp");
 const DEFAULT_JSON: &str = include_str!("../../pets/claude-chan/pet.json");
 
-// The default pet into <dir>/claude-chan/: its sheet, then its pet.json (by
-// which a pet is found, so never half of one). Its pet.json read back.
+// The default pet into <dir>/claude-chan/, whole (put_pet). Its pet.json
+// read back.
 pub fn seed_default_pet(dir: &Path) -> std::io::Result<Value> {
-    let out = dir.join(DEFAULT_PET);
-    fs::create_dir_all(&out)?;
-    fs::write(out.join("spritesheet.webp"), DEFAULT_SHEET)?;
-    fs::write(out.join("pet.json"), DEFAULT_JSON)?;
+    put_pet(dir, DEFAULT_PET, DEFAULT_SHEET, DEFAULT_JSON.as_bytes())?;
     Ok(serde_json::from_str(DEFAULT_JSON).unwrap_or(Value::Null))
+}
+
+// A pet into <dir>/<id>/ whole: its pet.json and sheet written into
+// <dir>/.<id>.new/ (no pet: data.rs passes a name with a dot by), then moved
+// in by one rename. A pet is found by its sheet, and what was found kept until
+// her pets' folder itself changes (data.rs pets): looked at between the sheet
+// and its pet.json, she was "claude-chan" with no author the whole run (the
+// test session, 2026-10-13). One there before is moved aside first, and
+// removed; held (its sheet open), it is written over in place, its pet.json
+// first. Either way her pets are looked for anew (data.rs forget_pets).
+fn put_pet(dir: &Path, id: &str, sheet: &[u8], meta: &[u8]) -> std::io::Result<()> {
+    let put = write_pet(dir, id, sheet, meta);
+    crate::data::forget_pets();
+    put
+}
+
+fn write_pet(dir: &Path, id: &str, sheet: &[u8], meta: &[u8]) -> std::io::Result<()> {
+    let out = dir.join(id);
+    let stage = dir.join(format!(".{id}.new"));
+    let old = dir.join(format!(".{id}.old"));
+    let _ = fs::remove_dir_all(&stage);
+    fs::create_dir_all(&stage)?;
+    fs::write(stage.join("pet.json"), meta)?;
+    fs::write(stage.join("spritesheet.webp"), sheet)?;
+    if out.exists() {
+        let _ = fs::remove_dir_all(&old);
+        if fs::rename(&out, &old).is_err() {
+            let _ = fs::remove_dir_all(&stage);
+            fs::write(out.join("pet.json"), meta)?;
+            return fs::write(out.join("spritesheet.webp"), sheet);
+        }
+    }
+    fs::rename(&stage, &out)?;
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
 }
 // The layouts the page plays: 8 columns of 192 x 208 cells, 11 rows (v2) or
 // 9 (v1, without the look-around rows).
@@ -140,10 +172,7 @@ pub fn download_pet(input: &str, dir: &Path) -> Result<Value, PetError> {
         .read_to_vec()
         .map_err(|e| err("network", json!({ "message": e.to_string(), "url": sheet_url.as_str() })))?;
 
-    let out = dir.join(&id);
     let write = || -> std::io::Result<()> {
-        fs::create_dir_all(&out)?;
-        fs::write(out.join("spritesheet.webp"), &sheet)?;
         let meta = json!({
             "id": pet["id"],
             "displayName": pet["displayName"],
@@ -154,7 +183,7 @@ pub fn download_pet(input: &str, dir: &Path) -> Result<Value, PetError> {
             "spriteVersionNumber": pet["spriteVersionNumber"],
             "kind": pet["kind"],
         });
-        fs::write(out.join("pet.json"), format!("{}\n", serde_json::to_string_pretty(&meta).unwrap_or_default()))
+        put_pet(dir, &id, &sheet, format!("{}\n", serde_json::to_string_pretty(&meta).unwrap_or_default()).as_bytes())
     };
     write().map_err(|e| err("write", json!({ "message": e.to_string() })))?;
 
@@ -252,7 +281,42 @@ mod tests {
         assert_eq!(sheet.len(), DEFAULT_SHEET.len());
         assert!(&sheet[..4] == b"RIFF" && &sheet[8..12] == b"WEBP");
         assert!(dir.join(DEFAULT_PET).join("pet.json").exists());
+        // Put in whole, nothing left beside it; and again over itself.
+        let left = |dir: &Path| fs::read_dir(dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect::<Vec<_>>();
+        assert_eq!(left(&dir), [DEFAULT_PET]);
+        fs::write(dir.join(DEFAULT_PET).join("pet.json"), "{}").unwrap();
+        seed_default_pet(&dir).unwrap();
+        assert_eq!(left(&dir), [DEFAULT_PET]);
+        assert_eq!(fs::read_to_string(dir.join(DEFAULT_PET).join("pet.json")).unwrap(), DEFAULT_JSON);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pet_is_found_only_whole_and_as_soon_as_she_puts_it_in() {
+        // Her data folder (pets in its pets/), and hers there: not the source
+        // tree's nor Codex's (one with the same id may be in them).
+        let data = std::env::temp_dir().join(format!("wakuwaku-whole-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&data);
+        let dir = data.join("pets");
+        let mine = |data: &Path| crate::data::pets(data).into_iter().find(|p| p.id == DEFAULT_PET && p.sheet.starts_with(data));
+        // One being put in (its sheet in .claude-chan.new) is no pet.
+        let stage = dir.join(format!(".{DEFAULT_PET}.new"));
+        fs::create_dir_all(&stage).unwrap();
+        fs::write(stage.join("spritesheet.webp"), DEFAULT_SHEET).unwrap();
+        assert!(crate::data::pets(&data).iter().all(|p| !p.id.starts_with('.')) && mine(&data).is_none());
+        // Looked at while her folder had its sheet and no pet.json yet: kept
+        // so, as her pets' folder's time does not move; put in by her, found
+        // whole at once.
+        let out = dir.join(DEFAULT_PET);
+        fs::create_dir_all(&out).unwrap();
+        fs::write(out.join("spritesheet.webp"), DEFAULT_SHEET).unwrap();
+        crate::data::forget_pets();
+        assert_eq!(mine(&data).unwrap().name, DEFAULT_PET);
+        seed_default_pet(&dir).unwrap();
+        let pet = mine(&data).unwrap();
+        assert!(pet.name != DEFAULT_PET && !pet.author.is_empty());
+        assert!(!stage.exists());
+        let _ = fs::remove_dir_all(&data);
     }
 
     #[test]

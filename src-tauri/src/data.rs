@@ -246,20 +246,31 @@ pub fn pet_dirs(dir: &Path) -> Vec<PathBuf> {
 }
 
 // The pets, as last found, until one of their folders changes (a pet added
-// or taken away changes its folder's time). Asked for on every redraw: the
-// folders were read through each time.
-static PETS: std::sync::Mutex<Option<(Vec<Option<std::time::SystemTime>>, Vec<PetInfo>)>> = std::sync::Mutex::new(None);
+// or taken away changes its folder's time), or she puts one in herself
+// (forget_pets). Asked for on every redraw: the folders were read through
+// each time.
+static PETS: std::sync::Mutex<Option<(u64, Vec<Option<std::time::SystemTime>>, Vec<PetInfo>)>> = std::sync::Mutex::new(None);
+static PETS_PUT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+// A pet put in by her (fetch.rs put_pet): what was found is looked for anew.
+// The folder's time alone may not say so: it moves on by the clock's tick
+// (some 15 ms), and two changes within one look the same. Counted, so a look
+// under way as she puts it in is not kept either.
+pub fn forget_pets() {
+    PETS_PUT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
 
 pub fn pets(dir: &Path) -> Vec<PetInfo> {
+    let put = PETS_PUT.load(std::sync::atomic::Ordering::SeqCst);
     let stamps: Vec<Option<std::time::SystemTime>> = pet_dirs(dir).iter().map(|root| fs::metadata(root).and_then(|m| m.modified()).ok()).collect();
     let mut kept = PETS.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((at, found)) = kept.as_ref() {
-        if *at == stamps {
+    if let Some((was, at, found)) = kept.as_ref() {
+        if *was == put && *at == stamps {
             return found.clone();
         }
     }
     let found = scan_pets(dir);
-    *kept = Some((stamps, found.clone()));
+    *kept = Some((put, stamps, found.clone()));
     found
 }
 
@@ -272,6 +283,8 @@ fn scan_pets(dir: &Path) -> Vec<PetInfo> {
             .flatten()
             .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
             .map(|e| e.file_name().to_string_lossy().into_owned())
+            // Not one being put in place (fetch.rs put_pet: .<id>.new).
+            .filter(|id| !id.starts_with('.'))
             .collect();
         ids.sort();
         for id in ids {
