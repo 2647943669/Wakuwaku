@@ -3341,8 +3341,14 @@ body.isl-right.tb-away.home-taskbar #island-stand {
   right: var(--isl-x, 0px);
 }
 
+/* Bare (no capsule of its own until it opens): no ground, its ring all
+   there is of it while the island is away (the ring outranked the bare
+   rule's none before, and it had none). */
 .island-bare.tb-away.home-taskbar.tb-capsule #island-stand {
   background: transparent;
+}
+
+.island-bare.tb-away.home-taskbar.tb-capsule:not(.isl-away) #island-stand {
   box-shadow: none;
 }
 
