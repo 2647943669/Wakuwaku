@@ -21,6 +21,11 @@ pub fn snapshot(sh: &Shared) -> Value {
         (pet.get(now_ms()), pet.list())
     };
     let (win_light, win_accent) = crate::wallpaper::look();
+    // Whether either is connected, as the island tells it (connection.rs).
+    let conn = connection::connection(sh.port);
+    if connection::note_connected(conn != "none" || connection::is_codex_connected()) {
+        sh.redraw();
+    }
     json!({
         "settings": Value::Object(sh.settings.lock().unwrap().clone()),
         "lang": sh.lang(),
@@ -30,10 +35,20 @@ pub fn snapshot(sh: &Shared) -> Value {
         "asks": sh.asks.lock().unwrap().views(),
         "isVisible": sh.is_visible(),
         "hidden": sh.hidden.load(Ordering::SeqCst),
-        "connection": connection::connection(sh.port),
+        "connection": conn,
         "pluginCommands": connection::PLUGIN_COMMANDS,
         "hooks": connection::hooks_status(sh.port),
+        // Whether any Claude Code event came since she started: installed,
+        // and a session seen (connected), or still waiting for one.
+        "claudeSeen": sh.claude_seen.load(Ordering::SeqCst) > 0,
         "settingsFile": connection::claude_settings_file().to_string_lossy(),
+        // The same as read (~ for the home folder), whether a copy of it was
+        // kept (none: there was no file before), and whether Claude Code is
+        // on this computer at all (its folder): the welcome offers the ones
+        // that are.
+        "settingsShown": connection::shown_path(&connection::claude_settings_file()),
+        "settingsBackup": connection::backup_of(&connection::claude_settings_file()).exists(),
+        "claudeHere": connection::claude_here(),
         // Codex's hooks.json, whether any Codex event came (they run once
         // trusted), and its version: one before 0.148 gets no background hooks.
         "codex": {
@@ -191,6 +206,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
             })
         }),
         "widgetNudge" => is_bool,
+        // Not to be reminded that nothing is connected (island.js isHinting).
+        "connectHintOff" => is_bool,
         // Her island's look on the taskbar, by Windows' mode (island.js
         // drawIslandLook): none, or a mode's none, is Windows' own grey.
         "islandLook" => v.is_null() || v.as_object().is_some_and(|m| m.iter().all(|(mode, look)| matches!(mode.as_str(), "dark" | "light") && is_island_look(look))),
@@ -368,7 +385,7 @@ pub async fn settings_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_hooks(&action, sh.port) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
-        Err(error) => json!({ "ok": false, "error": error, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 
@@ -378,7 +395,7 @@ pub async fn settings_codex_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_codex_hooks(&action, &i18n::t(sh.lang(), "codex.waiting")) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
-        Err(error) => json!({ "ok": false, "error": error, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 

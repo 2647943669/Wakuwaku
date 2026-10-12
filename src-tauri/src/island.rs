@@ -883,7 +883,10 @@ pub fn settings_closed(sh: &Arc<Shared>) {
     sh.island.lock().unwrap().settings_open = false;
     sh.log("island: settings closed");
     keep_on_top(sh);
-    if !sh.flag("onboarded") {
+    // Set up once Claude Code or Codex is connected, not as the settings
+    // close (a click outside closed them, and a new user, nothing
+    // connected, was never asked again: the test session, 2026-10-12).
+    if !sh.flag("onboarded") && crate::connection::seems_connected() {
         sh.change(json!({ "onboarded": true }));
     } else {
         sh.redraw();

@@ -47,6 +47,40 @@ pub fn claude_settings_file() -> PathBuf {
     dir.join("settings.json")
 }
 
+// Whether Claude Code is on this computer, as far as can be told: its
+// folder there (~/.claude, or CLAUDE_CONFIG_DIR).
+pub fn claude_here() -> bool {
+    claude_settings_file().parent().is_some_and(Path::is_dir)
+}
+
+// The copy write_json keeps of a settings file (made once, beside it).
+pub fn backup_of(file: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.wakuwaku.bak", file.display()))
+}
+
+// A path as the person reads it: ~ for the home folder when it is under it.
+pub fn shown_path(file: &Path) -> String {
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from);
+    match home.as_deref().filter(|h| !h.as_os_str().is_empty()).and_then(|h| file.strip_prefix(h).ok()) {
+        Some(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        None => file.display().to_string(),
+    }
+}
+
+// What kept a settings file from being written, for what to do about it:
+// locked (another program has it open), invalid (not JSON), other. From
+// the error's text: io's ends "(os error 32)" (or 33) whatever the
+// language, serde_json's says where, "at line 3 column 5".
+pub fn error_kind(error: &str) -> &'static str {
+    if error.contains("(os error 32)") || error.contains("(os error 33)") {
+        "locked"
+    } else if error.contains(" at line ") && error.contains(" column ") {
+        "invalid"
+    } else {
+        "other"
+    }
+}
+
 // A JSON settings file: {} when there is none, Err when unreadable.
 fn read_json(file: &Path) -> Result<Value, String> {
     match fs::read_to_string(file) {
@@ -63,7 +97,7 @@ fn read_settings() -> Result<Value, String> {
 
 // Write a settings file, backed up once beside itself.
 fn write_json(file: &Path, value: &Value) -> Result<(), String> {
-    let backup = PathBuf::from(format!("{}.wakuwaku.bak", file.display()));
+    let backup = backup_of(file);
     if file.exists() && !backup.exists() {
         fs::copy(file, &backup).map_err(|e| e.to_string())?;
     }
@@ -466,6 +500,27 @@ pub fn is_codex_connected() -> bool {
     matches!(codex_hooks_status(), "ok" | "stale" | "upgradable" | "partial")
 }
 
+// Whether Claude Code or Codex is connected, as last looked (at start, as the
+// settings read it, after connecting) or heard (any event from them): what
+// the island asks for while it is not (island.js), without reading their
+// settings files on every redraw. Connected until looked, so a first draw
+// never asks wrongly.
+static CONNECTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn note_connected(connected: bool) -> bool {
+    CONNECTED.swap(connected, std::sync::atomic::Ordering::SeqCst) != connected
+}
+
+pub fn look_connected(port: u16) -> bool {
+    let connected = connection(port) != "none" || is_codex_connected();
+    note_connected(connected);
+    connected
+}
+
+pub fn seems_connected() -> bool {
+    CONNECTED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 // Change Codex's hooks.json, backed up once beside itself. action: install, remove.
 pub fn write_codex_hooks(action: &str, waiting: &str) -> Result<(), String> {
     let file = codex_hooks_file();
@@ -529,6 +584,13 @@ pub use login::{is_on as is_open_at_login, set as set_open_at_login};
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_write_that_failed_says_why() {
+        assert_eq!(super::error_kind("另一个程序正在使用此文件，进程无法访问。 (os error 32)"), "locked");
+        assert_eq!(super::error_kind("expected `,` or `}` at line 3 column 5"), "invalid");
+        assert_eq!(super::error_kind("拒绝访问。 (os error 5)"), "other");
+    }
+
     use super::*;
 
     #[test]

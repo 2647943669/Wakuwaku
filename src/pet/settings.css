@@ -1858,3 +1858,273 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/* --- The welcome: Claude Code and Codex connected (settings.js welcomeBlock) ------
+   A card in a blue tint: her portrait ringed in the accent, what she does
+   once connected, an accent-filled button for each of the two on this
+   computer (side by side, the same: neither is the main one), each turning
+   into how that one stands (a green ring done, an amber one a step left);
+   under them what each still needs, in a tint of its colour, or why it
+   could not be written; what they write; Claude Code's plugin the other
+   way, folded under a line. */
+#island-settings .wcard {
+  --wc-ok: #34d27b;
+  --wc-warn: #ffb340;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px 16px 12px;
+  border-radius: 18px;
+  background: rgba(94, 155, 255, 0.13);
+}
+
+.isl-light #island-settings .wcard,
+.tb-light #island-settings .wcard {
+  --wc-ok: #107c10;
+  --wc-warn: #9d5d00;
+  background: rgba(0, 103, 192, 0.08);
+}
+
+#island-settings .wc-btns {
+  display: grid;
+  gap: 8px;
+}
+
+#island-settings .wc-btns.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#island-settings .wc-btns .wc-main {
+  min-width: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+#island-settings .wc-main.done:disabled,
+#island-settings .wc-main.warn:disabled {
+  opacity: 1;
+  background: transparent;
+  filter: none;
+}
+
+#island-settings .wc-main.done {
+  color: var(--wc-ok);
+  box-shadow: inset 0 0 0 1.5px var(--wc-ok);
+}
+
+#island-settings .wc-main.warn {
+  color: var(--wc-warn);
+  box-shadow: inset 0 0 0 1.5px var(--wc-warn);
+}
+
+#island-settings .wc-tnote {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--wc-ok) 12%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+#island-settings .wc-tnote.warn {
+  background: color-mix(in srgb, var(--wc-warn) 13%, transparent);
+}
+
+#island-settings .wc-where {
+  margin-top: 2px;
+  color: var(--g5);
+}
+
+#island-settings .wc-where .link {
+  margin-left: 6px;
+}
+
+#island-settings .wc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#island-settings .wc-face {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px var(--acc);
+}
+
+#island-settings .wc-face .thumb {
+  margin: -2px 0 0;
+}
+
+#island-settings .wc-title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+#island-settings .wc-sub,
+#island-settings .wc-safe,
+#island-settings .wc-err {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+#island-settings .wc-sub,
+#island-settings .wc-safe {
+  color: var(--g5);
+}
+
+#island-settings .wc-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+#island-settings .wc-main:hover {
+  filter: brightness(1.08);
+}
+
+#island-settings .wc-main:disabled,
+#island-settings .pbtn:disabled:has(.spin) {
+  opacity: 0.75;
+  cursor: default;
+}
+
+#island-settings .spin {
+  flex: none;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: wc-spin 0.8s linear infinite;
+}
+
+#island-settings .pbtn .spin {
+  margin-right: 6px;
+}
+
+@keyframes wc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #island-settings .spin {
+    animation: none;
+  }
+}
+
+#island-settings .wc-safe {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#island-settings .wc-safe > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+#island-settings .wc-safe .fi {
+  flex: none;
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 11px;
+  color: var(--wc-ok);
+}
+
+#island-settings .wc-div {
+  height: 1px;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+#island-settings .wc-plug {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+#island-settings .wc-plug > span:nth-child(2) {
+  flex: none;
+  white-space: nowrap;
+}
+
+#island-settings .wc-plug .chev {
+  flex: none;
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+#island-settings .wc-plug.open .chev {
+  transform: rotate(90deg);
+}
+
+#island-settings .wc-plugbody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+#island-settings .wc-cmd {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--g2);
+  font-size: 12px;
+  user-select: all;
+}
+
+#island-settings .wc-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#island-settings .wc-err {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(255, 107, 107, 0.12);
+}
+
+#island-settings .wc-err b {
+  color: #ff6b7a;
+}
+
+.isl-light #island-settings .wc-err,
+.tb-light #island-settings .wc-err {
+  background: rgba(196, 43, 28, 0.08);
+}
+
+.isl-light #island-settings .wc-err b,
+.tb-light #island-settings .wc-err b {
+  color: #c42b1c;
+}

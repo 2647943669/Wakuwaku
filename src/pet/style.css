@@ -3937,3 +3937,81 @@ html.handoff-wait body.home-taskbar #island-row {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
   mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
+
+/* --- Not connected yet (island.js isHinting) ----------------------------------------
+   A dot in Windows' accent (--hint-accent) at her portrait's top-right,
+   ringed in the capsule's ground (on none, haloed as the clear strip's words
+   are); the capsule's words "Connect Claude Code ›" in the accent, a side
+   capsule's link glyph in its clock's place; the open island what it is for,
+   a row to go and connect, and "don't remind me" at its foot. */
+#island .hint-dot {
+  display: none;
+  position: absolute;
+  z-index: 2;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--hint-accent, #4cc2ff);
+  box-shadow: 0 0 0 2px #000;
+  pointer-events: none;
+}
+
+body.hinting #island[data-view='compact'] .hint-dot {
+  display: block;
+}
+
+.home-taskbar.tb-capsule #island .hint-dot {
+  box-shadow: 0 0 0 2px var(--i-bg);
+}
+
+.home-taskbar:not(.tb-capsule) #island .hint-dot,
+.island-bare.home-taskbar.tb-capsule #island .hint-dot {
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.6);
+}
+
+.tb-light.island-bare.home-taskbar.tb-capsule #island .hint-dot {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+}
+
+#island-compact .label.hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--hint-accent, #4cc2ff);
+  font-weight: 600;
+}
+
+#island-compact .hchev {
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 9px;
+  font-weight: normal;
+}
+
+.tb-side #island-compact .chint {
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 12px;
+  line-height: 13px;
+  color: var(--hint-accent, #4cc2ff);
+}
+
+#island-expanded .hintgo {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--hint-accent, #4cc2ff) 16%, transparent);
+  color: var(--hint-accent, #4cc2ff);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+#island-expanded .hintoff {
+  align-self: flex-end;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #8e8e93;
+  text-decoration: underline;
+  cursor: pointer;
+}

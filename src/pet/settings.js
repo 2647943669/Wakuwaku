@@ -270,8 +270,7 @@
       ['sound', 'sound', T('settings.sound'), s.sound],
       ['home', 'pill', T(HOME_KEY[s.display] || 's.displayIsland'), true],
     ]
-    const welcome = !s.onboarded && snap.connection === 'none' ? `<div class="welcome">${esc(T('s.welcome'))}</div>` : ''
-    return `${welcome}${sec(T('home.sessions'))}<div class="grp">${list}</div>
+    return `${sec(T('home.sessions'))}<div class="grp">${list}</div>
       ${sec(T('s.quick'))}<div class="tiles">${tiles
         .map(([key, icon, label, on]) => `<div class="tile${on ? ' on' : ''}" data-tile="${key}"><span class="c">${svg(icon)}</span>${esc(label)}</div>`)
         .join('')}</div>`
@@ -1708,11 +1707,120 @@
       </div>`
   }
 
-  // General: the sessions and the quick switches, the alerts, startup and
-  // the language, her updates, her crash reports, connecting (the plugin,
-  // the hooks) and what this is.
+  // --- The welcome: Claude Code and Codex connected, at the top of General -------
+  // While nothing is connected, and on the first open after one is (until
+  // she is set up, onboarded): a card with a button for each of the two on
+  // this computer, as equals (whichever one uses, or both), each button
+  // turning into how that one stands; under them what each still needs, or
+  // why it could not be written; what the buttons write; Claude Code's
+  // plugin the other way. Connected (a session of either seen), one row.
+  // Managing the connections stays in the page's Connect part.
+  let connecting = ''
+  // Why each could not be written: { error, kind } (locked, invalid, other).
+  const failed = {}
+  let pluginOpen = false
+  const TOOL = { claude: 'Claude Code', codex: 'Codex' }
+  const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
+  const claudeIn = () => snap.connection !== 'none'
+  const showWelcome = () => (!claudeIn() && !codexIn()) || !snap.settings.onboarded
+
+  // The ones on this computer: Codex by its folder, Claude Code by its own
+  // (or connected). Neither found: both (it cannot be told).
+  function toolsHere() {
+    const here = ['claude', 'codex'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap.codex?.hooks !== 'absent'))
+    return here.length ? here : ['claude', 'codex']
+  }
+
+  // How one stands: busy, seen (a session's event came, or the plugin in),
+  // set (written, no session yet: Codex's to be trusted first), failed, none.
+  function toolState(tool) {
+    if (connecting === tool) return 'busy'
+    if (tool === 'claude' && claudeIn()) return snap.claudeSeen || snap.connection === 'plugin' ? 'seen' : 'set'
+    if (tool === 'codex' && codexIn()) return snap.codex?.seen ? 'seen' : 'set'
+    return failed[tool] ? 'failed' : 'none'
+  }
+
+  // Windows' accent for the accent-filled buttons: its light shade on the
+  // dark settings, its dark one on the light (the taskbar's look, else
+  // Windows' defaults).
+  function accentButton() {
+    const pair = window.Island?.accent?.() || {}
+    return winMode() === 'light' ? `--acc:${pair.dark || '#0067c0'};--acc-ink:#fff` : `--acc:${pair.light || '#4cc2ff'};--acc-ink:#000`
+  }
+
+  // One's button, as it stands: the done and the one-step-left ones say so
+  // in green or amber, and do nothing.
+  function toolButton(tool) {
+    const name = TOOL[tool]
+    const act = tool === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'
+    const state = toolState(tool)
+    if (state === 'busy') return `<button class="wc-main" disabled><span class="spin"></span>${esc(T('wc.busy'))}</button>`
+    if (state === 'seen') return `<button class="wc-main done" disabled>${esc(T('wc.on', { name }))}</button>`
+    if (state === 'set') return tool === 'claude' ? `<button class="wc-main done" disabled>${esc(T('wc.claudeSet'))}</button>` : `<button class="wc-main warn" disabled>${esc(T('wc.codexSet'))}</button>`
+    return `<button class="wc-main" ${act}>${esc(T(state === 'failed' ? 'wc.retry' : 'wc.go', { name }))}</button>`
+  }
+
+  // Under the buttons: what each still needs (Claude Code where it was
+  // written, and undone), or why it could not be written.
+  function toolNote(tool) {
+    const state = toolState(tool)
+    const mono = text => `<span class="mono">${esc(text)}</span>`
+    if (tool === 'claude' && state === 'set') {
+      const file = snap.settingsShown || snap.settingsFile || ''
+      const where = snap.settingsBackup ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
+      return `<div class="wc-tnote"><div>${T('wc.claudeLeft')}</div><div class="wc-where">${where}<span class="link" data-hooks="remove">${esc(T('wc.undo'))}</span></div></div>`
+    }
+    if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
+    if (state !== 'failed') return ''
+    const { error, kind } = failed[tool]
+    const file = tool === 'claude' ? snap.settingsShown || snap.settingsFile || '' : snap.codex?.file || ''
+    const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
+    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: tool === 'claude' ? 'settings.json' : 'hooks.json' }))}</b></div>
+        <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
+  }
+
+  function welcomeBlock() {
+    const tools = toolsHere()
+    const seen = tools.filter(tool => toolState(tool) === 'seen')
+    // Connected: one row, this once; one on this computer not written yet
+    // keeps a button at its end.
+    if (seen.length) {
+      const what = seen.length === 2 ? T('wc.onBoth') : T('wc.on', { name: TOOL[seen[0]] })
+      const other = tools.find(tool => ['none', 'failed', 'busy'].includes(toolState(tool)))
+      const busy = other && toolState(other) === 'busy'
+      const more = other ? `<button class="pbtn" ${other === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'} ${busy ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('wc.connect', { name: TOOL[other] }))}</button>` : ''
+      const sessions = (snap.sessions || []).length
+      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow"><div>${esc(what)}</div>
+          <div class="d">${esc(T('wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div></div>${more}</div></div>`
+    }
+    const both = tools.length === 2
+    const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
+    const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
+    const title = both ? T('wc.titleBoth') : T('wc.title', { name: TOOL[tools[0]] })
+    const safe = [both ? 'wc.safeBoth' : tools[0] === 'claude' ? 'wc.safeClaude' : 'wc.safeCodex', 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
+    // Claude Code's plugin, while it is here and not written.
+    const commands = snap.pluginCommands || []
+    const plugBody = pluginOpen
+      ? `<div class="wc-plugbody"><div class="d">${esc(T('wc.plugHow'))}</div>${commands.map(c => `<div class="wc-cmd mono">${esc(c)}</div>`).join('')}
+          <div class="wc-copy"><button class="pbtn" data-copy="${esc(commands.join('\n'))}" data-label="${esc(T('wc.copyBoth'))}">${esc(T('wc.copyBoth'))}</button><span class="d">${esc(T('wc.plugWake'))}</span></div></div>`
+      : ''
+    const plugin =
+      tools.includes('claude') && ['none', 'failed', 'busy'].includes(toolState('claude'))
+        ? `<div class="wc-div"></div>
+        <button class="wc-plug${pluginOpen ? ' open' : ''}" data-plugin-toggle><span class="fi chev">\uE76C</span><span>${esc(T('wc.plug'))}</span><span class="d">${esc(T('wc.plugNote'))}</span></button>${plugBody}`
+        : ''
+    return `<div class="wcard" style="${accentButton()}">
+        <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(title)}</div><div class="wc-sub">${esc(T('wc.sub'))}${both ? esc(T('wc.subBoth')) : ''}</div></div></div>
+        <div class="wc-btns${both ? ' two' : ''}">${tools.map(toolButton).join('')}</div>${tools.map(toolNote).join('')}
+        <div class="wc-safe">${safe}</div>${plugin}
+      </div>`
+  }
+
+  // General: the welcome (nothing connected yet), the sessions and the
+  // quick switches, the alerts, startup and the language, her updates, her
+  // crash reports, connecting (the plugin, the hooks) and what this is.
   function pageGeneral() {
-    return `${pageNow()}
+    return `${showWelcome() ? part('welcome', welcomeBlock()) : ''}${pageNow()}
       ${part('alerts', pageAlerts())}
       ${sec(T('s.startLang'))}<div class="grp">
         ${row(esc(T('settings.startAtLogin')), esc(T('home.pluginStart')), sw('login', snap.loginAtStart))}
@@ -1820,9 +1928,25 @@
   let partToShow = ''
 
   function showPart() {
-    const at = partToShow && body.querySelector(`[data-part="${partToShow}"]`)
+    let name = partToShow
     partToShow = ''
-    if (at) body.scrollTop += at.getBoundingClientRect().top - body.getBoundingClientRect().top
+    if (!name) return
+    // Connecting while the welcome shows: the welcome, at the page's top.
+    if (name === 'connect' && showWelcome()) name = 'welcome'
+    const go = () => {
+      const at = body.querySelector(`[data-part="${name}"]`)
+      if (at) body.scrollTop += at.getBoundingClientRect().top - body.getBoundingClientRect().top
+      return body.scrollTop
+    }
+    // There again as the page is drawn anew in a moment (the default pet put
+    // in place, a snapshot coming), unless scrolled since: it was scrolled
+    // once, before what came after moved it away (the test session, 2026-10-12).
+    let set = go()
+    for (const ms of [250, 800, 1600]) {
+      setTimeout(() => {
+        if (Math.abs(body.scrollTop - set) <= 1) set = go()
+      }, ms)
+    }
   }
 
   function open(next) {
@@ -1954,7 +2078,7 @@
   function copy(text, button) {
     const done = () => {
       button.textContent = T('home.copied')
-      setTimeout(() => (button.textContent = T('home.copy')), 1500)
+      setTimeout(() => (button.textContent = button.dataset.label || T('home.copy')), 1800)
     }
     navigator.clipboard?.writeText(text).then(done, () => {
       const area = document.createElement('textarea')
@@ -2136,19 +2260,50 @@
     if (copyButton) return copy(copyButton.dataset.copy, copyButton)
     const hooks = at('[data-hooks]')
     if (hooks) {
-      return window.pet.settings.hooks(hooks.dataset.hooks).then(got => {
+      const action = hooks.dataset.hooks
+      if (action === 'install') {
+        connecting = 'claude'
+        delete failed.claude
+        draw()
+      }
+      return window.pet.settings.hooks(action).then(got => {
+        connecting = ''
         snap = got.snapshot
+        // Not written: why (the welcome names the file), and the plugin the other way.
+        if (action === 'install' && !got.ok) {
+          failed.claude = { error: got.error || '', kind: got.kind || 'other' }
+          pluginOpen = true
+        }
         draw()
         relayout()
       })
     }
     const codexHooks = at('[data-codex]')
     if (codexHooks) {
-      return window.pet.settings.codexHooks(codexHooks.dataset.codex).then(got => {
+      const action = codexHooks.dataset.codex
+      if (action === 'install') {
+        connecting = 'codex'
+        delete failed.codex
+        draw()
+      }
+      return window.pet.settings.codexHooks(action).then(got => {
+        connecting = ''
         snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.codex = { error: got.error || '', kind: got.kind || 'other' }
         draw()
         relayout()
       })
+    }
+    // The welcome's plugin, folded out or in; its row to the Connect part.
+    if (at('[data-plugin-toggle]')) {
+      pluginOpen = !pluginOpen
+      draw()
+      return relayout()
+    }
+    const goto = at('[data-goto]')
+    if (goto) {
+      partToShow = goto.dataset.goto
+      return showPart()
     }
     const site = at('[data-site]')
     if (site) return window.pet.settings.openSite(site.dataset.site)
