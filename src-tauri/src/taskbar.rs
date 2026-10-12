@@ -442,6 +442,12 @@ mod imp {
         work_bottom()
     }
 
+    // The main display's work area (physical: left, top, right, bottom), for the log.
+    pub fn work_area_rect() -> (i32, i32, i32, i32) {
+        let r = work_area();
+        (r.left, r.top, r.right, r.bottom)
+    }
+
     // The room Windows' own taskbar, put away, keeps along the bottom of the
     // display (physical): the strip goes over it, with no bar of ours (that
     // would stack above it). Waited for a moment: one set to hide itself
@@ -2342,12 +2348,15 @@ mod imp {
     pub fn work_area_bottom() -> i32 {
         0
     }
+    pub fn work_area_rect() -> (i32, i32, i32, i32) {
+        (0, 0, 0, 0)
+    }
     pub fn strip_picture(_mon: (i32, i32, i32, i32)) -> Option<String> {
         None
     }
 }
 
-pub use imp::{explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom};
+pub use imp::{explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom, work_area_rect};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser

@@ -117,6 +117,8 @@
     // picture, { step: go } once Windows' is hidden under it, { step: out }).
     onHandoff: on('taskbar:handoff'),
     onTray: on('taskbar:tray'),
+    // The strip's thickness as it lies on the screen (physical px): { thick }.
+    onStrip: on('taskbar:strip'),
     // The windows' buttons as they change ({ id, title, exe, png, front, min, flash, sessions }).
     onWindows: on('taskbar:windows'),
     // The keyboard as it changes ({ lang, native, caps }).
