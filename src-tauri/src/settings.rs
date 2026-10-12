@@ -172,6 +172,7 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "taskbarClearWhen" => matches!(v.as_str(), Some("mica" | "solid" | "always")),
         "taskbarButtons" => matches!(v.as_str(), Some("icons" | "labels")),
         "taskbarAlign" => matches!(v.as_str(), Some("center" | "left")),
+        "taskbarEdge" => matches!(v.as_str(), Some("bottom" | "top" | "left" | "right")),
         // The taskbar's parts in three runs (island.js tbLayout), each once.
         "taskbarLayout" => v.is_null() || is_taskbar_layout(v),
         // The programs' buttons in the order dragged: their keys (paths).

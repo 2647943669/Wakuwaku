@@ -297,6 +297,10 @@
   // light mode), wherever the strip is not black itself: on the Mica, clear,
   // or light.
   const isCapsule = () => isMica() || isClear() || isLight()
+  // The screen's edge the taskbar is along (taskbarEdge): bottom, as
+  // Windows' own, or top, left, right. Its look turns with it (style.css
+  // tb-top, tb-left, tb-right).
+  const tbEdge = () => (home() === 'taskbar' && ['top', 'left', 'right'].includes(config.taskbarEdge) ? config.taskbarEdge : 'bottom')
   // The compact taskbar island's height: the strip's, or the capsule's.
   const taskCompactH = () => (isCapsule() ? TASKBAR_H - 2 * CAPSULE_Y : TASKBAR_H)
   // In her seat: there is a pet to show, and she is not out on the desktop.
@@ -598,7 +602,7 @@
     } else if (view === 'settings') {
       portrait(SET_HEAD, SET_HEAD_SCALE, 16, 13)
     } else {
-      const top = height - BODY_H - (view === 'ask' ? 10 : 6)
+      const top = tbEdge() === 'top' ? 12 : height - BODY_H - (view === 'ask' ? 10 : 6)
       Object.assign(s, { left: '12px', top: `${top}px`, width: `${BODY_W}px`, height: `${BODY_H}px`, borderRadius: '0px' })
       herSheet.style.transform = `translate(0px, 0px) scale(${BODY_SCALE})`
     }
@@ -685,7 +689,9 @@
             : '0'
           : view === 'settings' || isCapsule()
             ? '22px'
-            : '22px 22px 0 0'
+            : tbEdge() === 'top'
+              ? '0 0 22px 22px'
+              : '22px 22px 0 0'
         : `${height > 60 ? 30 : height / 2}px`
   }
 
@@ -2517,7 +2523,8 @@
       drag.ghost.style.left = `${e.clientX}px`
       drag.ghost.style.top = `${e.clientY}px`
       const strip = barRest.getBoundingClientRect()
-      const off = (!!drag.entry || !!drag.fresh) && (overLibrary(e.clientX, e.clientY) || e.clientY < strip.top - OFF_STRIP_PX)
+      const away = tbEdge() === 'top' ? e.clientY > strip.bottom + OFF_STRIP_PX : e.clientY < strip.top - OFF_STRIP_PX
+      const off = (!!drag.entry || !!drag.fresh) && (overLibrary(e.clientX, e.clientY) || away)
       drag.off = off
       drag.ghost.classList.toggle('off', off)
       drag.ghost.textContent = off && drag.entry ? t(lang, 'taskbar.w.drop', { name: drag.label }) : drag.label
@@ -2559,6 +2566,7 @@
     island.classList.toggle('wants', now.mood === 'waiting')
     seatPanel()
     body.classList.toggle('has-her', isHome())
+    for (const e of ['top', 'left', 'right']) body.classList.toggle(`tb-${e}`, tbEdge() === e)
     body.classList.toggle('compact-her', view === 'compact' || view === 'settings')
     if (spriteUrl) sheetImage(herSheet, spriteUrl)
     fillCompact()
@@ -2730,9 +2738,9 @@
   function stretch(x, y) {
     const r = island.getBoundingClientRect()
     const cx = x
-    // From the top of the screen she can only come down, from the taskbar
-    // only up.
-    const cy = home() === 'taskbar' ? Math.min(y + 30, r.top + 10) : Math.max(y + 30, r.bottom - 10)
+    // From the top of the screen (her island, a top bar) she can only come
+    // down, from a bottom bar only up.
+    const cy = home() === 'taskbar' && tbEdge() === 'bottom' ? Math.min(y + 30, r.top + 10) : Math.max(y + 30, r.bottom - 10)
     const [ax, ay] = edgeNear(r, cx, cy)
     const dist = Math.hypot(cx - ax, cy - ay)
     pull.broken = dist > BREAK_PX

@@ -1117,7 +1117,7 @@ body {
   height: 48px;
   gap: 0;
   background: #000;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(255, 255, 255, 0.12);
 }
 
 /* Its foot on the strip's: taller, it grows up. Above the rest: what opens
@@ -1190,7 +1190,7 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(255, 255, 255, 0.1);
 }
 
 /* On the Mica, and on the light strip, her end is an island of its own: a
@@ -1955,7 +1955,7 @@ body {
    and in front: a white wash, as on Windows' own. */
 .tb-light #island-row {
   background: #eeeeee;
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.08);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(0, 0, 0, 0.08);
 }
 
 .tb-light.tb-mica #island-row {
@@ -1963,7 +1963,7 @@ body {
 }
 
 .tb-light #mica::after {
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(0, 0, 0, 0.06);
 }
 
 .tb-light #bar-rest,
@@ -2333,12 +2333,12 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
 
 .tb-clear.tb-solid #island-row {
   background: #000;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(255, 255, 255, 0.12);
 }
 
 .tb-light.tb-clear.tb-solid #island-row {
   background: #eeeeee;
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.08);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(0, 0, 0, 0.08);
 }
 
 /* Filled in as Mica: its tint under it until the picture comes, as on the
@@ -2362,11 +2362,11 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   content: '';
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(255, 255, 255, 0.1);
 }
 
 .tb-light.tb-clear-mica #mica::after {
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(0, 0, 0, 0.06);
 }
 
 .tb-clear-mica.tb-filled #island-row {
@@ -3232,4 +3232,91 @@ body.isl-right .tblib {
    strip is over it, so it never shows over Windows' strip for a frame. */
 html.handoff-wait body.home-taskbar #island-row {
   visibility: hidden;
+}
+
+/* --- The taskbar along the top (island.js tbEdge; taskbarEdge top, tb-top) ----------
+   The bottom one turned over: the strip at the window's top, the room below
+   it; what grows from her end grows down, the settings stand 8 px below
+   the strip, and the pops open down from it (top: 54px); the strip's
+   hairline on its lower edge, the programs' marks on their top edge. */
+.tb-top {
+  --hair-y: -1px;
+}
+
+.tb-top.home-taskbar #island-row,
+.tb-top.home-taskbar #bar-rest {
+  top: 0;
+  bottom: auto;
+}
+
+.tb-top.home-taskbar #island {
+  top: 0;
+  bottom: auto;
+  transition:
+    width 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
+    height 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
+    border-radius 0.4s ease,
+    left 0.3s ease,
+    right 0.3s ease,
+    top 0.3s ease;
+}
+
+.tb-top.home-taskbar.tb-capsule #island:not([data-view='settings']) {
+  top: 5px;
+  bottom: auto;
+}
+
+.tb-top.home-taskbar #island[data-view='settings'] {
+  top: 56px;
+  bottom: auto;
+}
+
+.tb-top.home-taskbar #island:not([data-view='compact']) {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.tb-top #bar-rest .win::after {
+  top: 2px;
+  bottom: auto;
+}
+
+.tb-top #bar-rest :is(.tfly, .wpop, .wgpop),
+.tb-top .tbtools {
+  top: 54px;
+  bottom: auto;
+}
+
+.tb-top #bar-rest .wpop.rising {
+  animation-name: wpop-drop;
+}
+
+@keyframes wpop-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.tb-top .tbmark {
+  top: 6px;
+  bottom: auto;
+}
+
+.tb-top .tbedit {
+  top: 100px;
+  bottom: auto;
+}
+
+.tb-top .tblib {
+  top: 156px;
+  bottom: auto;
+}
+
+/* The tray's ^ points down from a top bar (open: up). */
+.tb-top #bar-rest .tchev .fi {
+  transform: rotate(180deg);
+}
+
+.tb-top #bar-rest .tchev.open .fi {
+  transform: none;
 }

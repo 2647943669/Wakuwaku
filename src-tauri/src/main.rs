@@ -434,7 +434,7 @@ impl Shared {
 
     pub fn change(self: &Arc<Self>, patch: Value) {
         let Value::Object(patch) = patch else { return };
-        let touches_visibility = ["dnd", "display", "out", "hideInFullscreen"].iter().any(|k| patch.contains_key(*k));
+        let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge"].iter().any(|k| patch.contains_key(*k));
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
         {
             let mut settings = self.settings.lock().unwrap();
@@ -762,7 +762,8 @@ fn taskbar_handoff(what: String) {
     island::handoff_answer(&what);
 }
 
-// Where the page laid her island out on the taskbar: her seat.
+// Where the page laid her island out on the taskbar: her seat, along the
+// strip from its start (x on a bottom or top bar, y on a side bar).
 #[tauri::command]
 async fn island_seat(app: AppHandle, x: f64) {
     island::set_seat(&shared(&app), x);

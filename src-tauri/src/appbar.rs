@@ -1,14 +1,44 @@
 // A bar's room on the screen: registered with Windows as an app bar, as the
 // taskbar is, so the work area loses its height and maximized windows stop
-// at it. The taskbar (display 'taskbar') takes a strip along the bottom,
-// Windows' own being put away (shell.rs, which reads and sets its state
-// here); Edge::Top is kept for a bar along the top. Given back when the bar
-// goes (another home, out of sight, quitting). Windows only.
+// at it. The taskbar (display 'taskbar') takes a strip along an edge of the
+// screen (taskbarEdge: the bottom, as Windows' own, or the top, the left,
+// the right), Windows' own being put away (shell.rs, which reads and sets
+// its state here). Given back when the bar goes (another home, out of
+// sight, quitting). Windows only.
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Edge {
     Top,
     Bottom,
+    Left,
+    Right,
+}
+
+impl Edge {
+    // The setting's word (taskbarEdge); anything else is the bottom.
+    pub fn of(word: &str) -> Edge {
+        match word {
+            "top" => Edge::Top,
+            "left" => Edge::Left,
+            "right" => Edge::Right,
+            _ => Edge::Bottom,
+        }
+    }
+
+    // Along the left or right of the screen: upright.
+    pub fn is_side(self) -> bool {
+        matches!(self, Edge::Left | Edge::Right)
+    }
+
+    // The strip this thick along this edge of a rect (x, y, w, h).
+    pub fn strip(self, mon: (i32, i32, i32, i32), thickness: i32) -> (i32, i32, i32, i32) {
+        match self {
+            Edge::Top => (mon.0, mon.1, mon.2, thickness),
+            Edge::Bottom => (mon.0, mon.1 + mon.3 - thickness, mon.2, thickness),
+            Edge::Left => (mon.0, mon.1, thickness, mon.3),
+            Edge::Right => (mon.0 + mon.2 - thickness, mon.1, thickness, mon.3),
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -45,7 +75,9 @@ mod imp {
     const ABM_SETPOS: u32 = 3;
     const ABM_GETSTATE: u32 = 4;
     const ABM_SETSTATE: u32 = 10;
+    const ABE_LEFT: u32 = 0;
     const ABE_TOP: u32 = 1;
+    const ABE_RIGHT: u32 = 2;
     const ABE_BOTTOM: u32 = 3;
     // What Windows sends a bar about changes, as the message's wParam (the top
     // bar does not listen: it asks again whenever the screens change, see
@@ -65,6 +97,8 @@ mod imp {
         let edge = match edge {
             Edge::Top => ABE_TOP,
             Edge::Bottom => ABE_BOTTOM,
+            Edge::Left => ABE_LEFT,
+            Edge::Right => ABE_RIGHT,
         };
         AppBarData { size: std::mem::size_of::<AppBarData>() as u32, hwnd, callback: CALLBACK, edge, rc: Rect::default(), lparam: 0 }
     }
@@ -85,17 +119,18 @@ mod imp {
     // go, as Windows would grant it now (another bar may be there first).
     fn ask(hwnd: isize, mon: (i32, i32, i32, i32), edge: Edge, thickness: i32) -> AppBarData {
         let mut d = data(hwnd, edge);
-        let (left, right) = (mon.0, mon.0 + mon.2);
-        d.rc = match edge {
-            Edge::Top => Rect { left, top: mon.1, right, bottom: mon.1 + thickness },
-            Edge::Bottom => Rect { left, top: mon.1 + mon.3 - thickness, right, bottom: mon.1 + mon.3 },
-        };
+        let (x, y, w, h) = edge.strip(mon, thickness);
+        d.rc = Rect { left: x, top: y, right: x + w, bottom: y + h };
         // SAFETY: as above.
         unsafe { SHAppBarMessage(ABM_QUERYPOS, &mut d) };
-        // The edge may have moved in past another bar: the thickness stays ours.
+        // The edge may have moved in past another bar: the thickness stays
+        // ours (a side bar's length may be shortened by one along the top or
+        // the bottom).
         match edge {
             Edge::Top => d.rc.bottom = d.rc.top + thickness,
             Edge::Bottom => d.rc.top = d.rc.bottom - thickness,
+            Edge::Left => d.rc.right = d.rc.left + thickness,
+            Edge::Right => d.rc.left = d.rc.right - thickness,
         }
         d
     }
@@ -151,10 +186,7 @@ mod imp {
     }
     pub fn remove(_hwnd: isize) {}
     pub fn place(_hwnd: isize, mon: (i32, i32, i32, i32), edge: Edge, thickness: i32) -> (i32, i32, i32, i32) {
-        match edge {
-            Edge::Top => (mon.0, mon.1, mon.2, thickness),
-            Edge::Bottom => (mon.0, mon.1 + mon.3 - thickness, mon.2, thickness),
-        }
+        edge.strip(mon, thickness)
     }
     pub fn query(hwnd: isize, mon: (i32, i32, i32, i32), edge: Edge, thickness: i32) -> (i32, i32, i32, i32) {
         place(hwnd, mon, edge, thickness)
@@ -177,5 +209,21 @@ mod tests {
     fn the_struct_is_the_size_windows_expects() {
         // APPBARDATA on 64-bit Windows: 48 bytes.
         assert_eq!(std::mem::size_of::<super::imp::AppBarData>(), 48);
+    }
+}
+
+#[cfg(test)]
+mod edge_tests {
+    use super::Edge;
+
+    #[test]
+    fn a_strip_along_each_edge() {
+        let mon = (0, 0, 2560, 1440);
+        assert_eq!(Edge::of("bottom").strip(mon, 72), (0, 1368, 2560, 72));
+        assert_eq!(Edge::of("top").strip(mon, 72), (0, 0, 2560, 72));
+        assert_eq!(Edge::of("left").strip(mon, 72), (0, 0, 72, 1440));
+        assert_eq!(Edge::of("right").strip((-1920, 0, 1920, 1080), 48), (-48, 0, 48, 1080));
+        assert_eq!(Edge::of("nope"), Edge::Bottom);
+        assert!(Edge::Left.is_side() && Edge::Right.is_side() && !Edge::Top.is_side());
     }
 }

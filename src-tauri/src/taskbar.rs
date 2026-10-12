@@ -37,6 +37,7 @@ mod imp {
     use serde_json::{json, Value};
     use tauri::{Emitter, Manager};
 
+    use crate::appbar::Edge;
     use crate::systray::{self, Press};
     use crate::{jump, shell, tasks, wallpaper, Shared};
 
@@ -307,6 +308,8 @@ mod imp {
     static CREATED_MSG: AtomicU32 = AtomicU32::new(0);
     static TICKS: AtomicU32 = AtomicU32::new(0);
     static WORK_BOTTOM: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+    // The screen's edge the strip is along (island.rs, taskbarEdge).
+    static EDGE: Mutex<Edge> = Mutex::new(Edge::Bottom);
     // The strip as granted (physical); since when (tick) the work area has
     // reached into it, and when it was last taken again for that.
     static STRIP: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
@@ -394,11 +397,28 @@ mod imp {
         log(line);
     }
 
-    fn work_bottom() -> i32 {
+    fn work_area() -> Rect {
         let mut r = Rect::default();
         // SAFETY: our own struct, of the size the call writes.
         unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0) };
-        r.bottom
+        r
+    }
+
+    fn work_bottom() -> i32 {
+        work_area().bottom
+    }
+
+    // The edge her strip is along: Windows' own taskbar keeps its room along
+    // the bottom for a bottom strip to lie over, and hides itself (keeping
+    // none) for another edge, where an empty band would be left at the
+    // bottom (shell.rs keep_room); put away again at once if it is up.
+    pub fn set_edge(edge: Edge) {
+        let was = std::mem::replace(&mut *EDGE.lock().unwrap(), edge);
+        shell::keep_room(edge == Edge::Bottom);
+        if was != edge && is_up() {
+            log(&format!("the strip now along the {edge:?}: Windows' kept room {}", if edge == Edge::Bottom { "kept" } else { "let go" }));
+            shell::rehide();
+        }
     }
 
     pub fn is_up() -> bool {
@@ -1337,26 +1357,44 @@ mod imp {
         }
     }
 
-    // The work area's bottom set where the strip starts, as Explorer sets
-    // it for a bar it counts. It does not always count ours: put away in a
-    // moment (its work area free at once, not after its slide), Windows'
-    // taskbar left the work area the whole display, our strip taken or not,
-    // even taken again, even with it set to hide itself afresh (2026-10-10).
-    // Set quietly: told to every window, Explorer set it back at once.
-    fn set_work_bottom(bottom: i32) {
-        let mut r = Rect::default();
-        // SAFETY: our own struct, read and handed back.
-        let ok = unsafe {
-            SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0);
-            r.bottom = bottom;
-            SystemParametersInfoW(SPI_SETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0)
-        };
+    // The work area's side on the strip's edge set where the strip starts,
+    // as Explorer sets it for a bar it counts. It does not always count ours:
+    // put away in a moment (its work area free at once, not after its slide),
+    // Windows' taskbar left the work area the whole display, our strip taken
+    // or not, even taken again, even with it set to hide itself afresh
+    // (2026-10-10). Set quietly: told to every window, Explorer set it back
+    // at once.
+    fn set_work_side(edge: Edge, side: i32) {
+        let mut r = work_area();
+        match edge {
+            Edge::Bottom => r.bottom = side,
+            Edge::Top => r.top = side,
+            Edge::Left => r.left = side,
+            Edge::Right => r.right = side,
+        }
+        // SAFETY: our own struct, handed back.
+        let ok = unsafe { SystemParametersInfoW(SPI_SETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0) };
         let error = std::io::Error::last_os_error();
-        let now = work_bottom();
+        let now = work_area();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(150));
-            log(&format!("work area set: {ok} ({error}); bottom then {now}, 150 ms after {}", work_bottom()));
+            let later = work_area();
+            log(&format!(
+                "work area set: {ok} ({error}); then ({}, {}, {}, {}), 150 ms after ({}, {}, {}, {})",
+                now.left, now.top, now.right, now.bottom, later.left, later.top, later.right, later.bottom
+            ));
         });
+    }
+
+    // Where the work area should stop on the strip's edge (its inner side),
+    // when it reaches into the strip; None while it is clear of it.
+    fn work_lost(edge: Edge, work: &Rect, s: (i32, i32, i32, i32)) -> Option<i32> {
+        match edge {
+            Edge::Bottom => (work.bottom > s.1).then_some(s.1),
+            Edge::Top => (work.top < s.1 + s.3).then_some(s.1 + s.3),
+            Edge::Left => (work.left < s.0 + s.2).then_some(s.0 + s.2),
+            Edge::Right => (work.right > s.0).then_some(s.0),
+        }
     }
 
     // The tray's icons and the buttons as last sent, for a page that has just come up.
@@ -1720,25 +1758,29 @@ mod imp {
             put_away_again("seen by the timer");
         }
         // The work area reaching into the strip: Windows has not counted it.
-        // Its bottom is set where the strip starts (after half a second of
-        // it, at most every two seconds, should something set it back).
-        let bottom = work_bottom();
+        // Its side on the strip's edge is set where the strip starts (after
+        // half a second of it, at most every two seconds, should something
+        // set it back).
+        let work = work_area();
+        let bottom = work.bottom;
         if bottom != WORK_BOTTOM.swap(bottom, Ordering::SeqCst) {
             log(&format!("work area's bottom now {bottom}"));
         }
         let strip = *STRIP.lock().unwrap();
-        let lost = strip.is_some_and(|s| bottom > s.1);
+        let edge = *EDGE.lock().unwrap();
+        let fix = strip.and_then(|s| work_lost(edge, &work, s));
+        let lost = fix.is_some();
         let ticks = TICKS.load(Ordering::SeqCst);
         if !lost {
             LOST_SINCE.store(0, Ordering::SeqCst);
         } else if LOST_SINCE.load(Ordering::SeqCst) == 0 {
             LOST_SINCE.store(ticks.max(1), Ordering::SeqCst);
         } else if ticks >= LOST_SINCE.load(Ordering::SeqCst) + 1 && ticks >= LAST_TAKEN.load(Ordering::SeqCst) + 4 {
-            let top = strip.map_or(bottom, |s| s.1);
-            log(&format!("work area's bottom {bottom} is in the strip ({strip:?}): set to {top}"));
+            let side = fix.unwrap_or(bottom);
+            log(&format!("work area ({}, {}, {}, {}) reaches into the strip ({strip:?}, {edge:?}): its side set to {side}", work.left, work.top, work.right, work.bottom));
             LAST_TAKEN.store(ticks, Ordering::SeqCst);
             LOST_SINCE.store(0, Ordering::SeqCst);
-            set_work_bottom(top);
+            set_work_side(edge, side);
         }
         systray::sweep();
         if systray::keep_first() {
@@ -2235,6 +2277,7 @@ mod imp {
         false
     }
     pub fn handing_back() {}
+    pub fn set_edge(_edge: crate::appbar::Edge) {}
     pub fn take(_sh: &Shared, _strip: (i32, i32, i32, i32)) -> bool {
         true
     }
@@ -2276,7 +2319,7 @@ mod imp {
     }
 }
 
-pub use imp::{explorer_room, give_back, handing_back, is_up, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom};
+pub use imp::{explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser

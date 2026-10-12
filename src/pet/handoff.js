@@ -120,6 +120,18 @@
     return thin(grains)
   }
 
+  // A point in the window clear of the strip, on the screen's side of it
+  // (its edge, style.css tb-top, tb-left, tb-right; the bottom otherwise).
+  function awayFromStrip() {
+    const clear = STRIP_H + 40
+    const c = document.body.classList
+    const r = Math.random
+    if (c.contains('tb-top')) return { x: r() * innerWidth, y: clear + r() * (innerHeight - clear) }
+    if (c.contains('tb-left')) return { x: clear + r() * (innerWidth - clear), y: r() * innerHeight }
+    if (c.contains('tb-right')) return { x: r() * (innerWidth - clear), y: r() * innerHeight }
+    return { x: r() * innerWidth, y: r() * (innerHeight - clear) }
+  }
+
   const thin = list => (list.length <= MOST ? list : list.filter((_, i) => i % Math.ceil(list.length / MOST) === 0))
 
   // Points on her parts, as many as each one's size asks, each with a
@@ -303,8 +315,9 @@
       }
       const to = partsPoints(MOST)
       if (picture) return arrive(settle(crumble(), to))
-      // Nothing to crumble: the dust gathers from above.
-      const from = to.map(() => ({ x: Math.random() * innerWidth, y: Math.random() * (innerHeight - STRIP_H - 40), c: GLINTS[(Math.random() * GLINTS.length) | 0] }))
+      // Nothing to crumble (no picture; a strip along another edge than
+      // Windows' own): the dust gathers from the screen's side of the strip.
+      const from = to.map(() => ({ ...awayFromStrip(), c: GLINTS[(Math.random() * GLINTS.length) | 0] }))
       return arrive(settle(from, to, false))
     }
     if (next === 'out') {

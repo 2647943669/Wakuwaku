@@ -191,11 +191,23 @@ mod imp {
         Ok(())
     }
 
+    // Whether Windows' taskbar, put away, keeps its room along the bottom:
+    // for her strip along the bottom, which lies over it; not for one along
+    // another edge, where it would leave an empty band at the bottom of the
+    // screen (set to hide itself it keeps none; restore gives its own state
+    // back).
+    static KEEP_ROOM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+    pub fn keep_room(keep: bool) {
+        KEEP_ROOM.store(keep, Ordering::SeqCst);
+    }
+
     pub fn rehide() {
         let main = explorer_tray();
         let state = appbar::taskbar_state();
-        if main != 0 && state & appbar::ABS_AUTOHIDE != 0 {
-            appbar::set_taskbar_state(main, state & !appbar::ABS_AUTOHIDE);
+        let want = if KEEP_ROOM.load(Ordering::SeqCst) { state & !appbar::ABS_AUTOHIDE } else { state | appbar::ABS_AUTOHIDE };
+        if main != 0 && want != state {
+            appbar::set_taskbar_state(main, want);
         }
         for h in taskbars() {
             // SAFETY: a window Explorer made; hiding a gone one does nothing.
@@ -342,6 +354,7 @@ mod imp {
         Ok(())
     }
     pub fn rehide() {}
+    pub fn keep_room(_keep: bool) {}
     pub fn room(_mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
         None
     }
@@ -357,7 +370,7 @@ mod imp {
     pub fn guard(_pid: u32, _file: &Path, _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
 }
 
-pub use imp::{explorer_tray, guard, hide, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
+pub use imp::{explorer_tray, guard, hide, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
 
 // The guard's arguments, when this process is one: its pid and file.
 pub fn guard_args(args: &[String]) -> Option<(u32, &Path)> {

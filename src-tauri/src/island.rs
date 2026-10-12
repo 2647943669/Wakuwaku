@@ -19,6 +19,7 @@ use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, Webvie
 
 use crate::pointer::{ClickThrough, Mode};
 use crate::screen::Area;
+use crate::appbar::Edge;
 use crate::{appbar, taskbar, Shared};
 
 // The window without extra room, by home (island.js BASE): the island as
@@ -34,8 +35,13 @@ pub const TASKBAR_H: f64 = 48.0;
 // As high as the settings ever are (they stand above the strip, island.js
 // settingsMax): opening them never moves the window, which would flash.
 const TASKBAR_ROOM: f64 = 640.0;
-// The middle of her portrait at the taskbar's left end.
-const TASKBAR_SEAT_X: f64 = 24.0;
+// Beside a side bar (taskbarEdge left or right): as wide as the settings
+// ever are (the Mail page in two panes, settings.js WIDE_W), their gap off
+// the strip and their shadow, for the same reason.
+const SIDE_ROOM: f64 = 960.0 + 8.0 + 12.0;
+// The middle of her portrait at the taskbar's start (its left end, or a
+// side bar's top), along the strip.
+const TASKBAR_SEAT: f64 = 24.0;
 // The island's top edge in the window, and its compact height.
 const TOP: f64 = 8.0;
 const COMPACT_H: f64 = 36.0;
@@ -69,7 +75,7 @@ pub struct Island {
     // y, w, h), and what it was asked for (the display, the height, the
     // home): asked again only on a change.
     bar: Option<(i32, i32, i32, i32)>,
-    bar_for: Option<((i32, i32, i32, i32), i32, &'static str)>,
+    bar_for: Option<((i32, i32, i32, i32), i32, &'static str, Edge)>,
     // The strip is a bar of ours Windows knows (appbar.rs), not one laid over
     // the room Windows' own taskbar keeps (taskbar.rs explorer_room).
     bar_own: bool,
@@ -84,10 +90,11 @@ pub struct Island {
     pub settings_open: bool,
     // Settings asked for before its page was up: the page they open on.
     pending: Option<String>,
-    // On the taskbar, her seat from the strip's left (logical), where the
-    // page has laid her island out (taskbarLayout: it may be anywhere along
-    // the strip); none told yet: at its left end.
-    seat_x: Option<f64>,
+    // On the taskbar, her seat along the strip from its start (logical: from
+    // its left, or a side bar's top), where the page has laid her island out
+    // (taskbarLayout: it may be anywhere along the strip); none told yet: at
+    // its start.
+    seat_at: Option<f64>,
 }
 
 impl Island {
@@ -95,10 +102,14 @@ impl Island {
         if self.sf > 0.0 { self.sf } else { 1.0 }
     }
 
-    // Physical. The taskbar is as wide as its display.
-    fn size_for(&self, home: &str, area: &Area) -> (i32, i32) {
+    // Physical. The taskbar is as long as its strip (its display, or what
+    // Windows granted of it), with its room beside it: above a bottom bar,
+    // below a top one, inside a side one's.
+    fn size_for(&self, home: &str, area: &Area, edge: Edge) -> (i32, i32) {
         let sf = self.sf();
+        let side = home == "taskbar" && edge.is_side();
         let base = match home {
+            "taskbar" if side => (TASKBAR_H + SIDE_ROOM, self.bar.map_or(area.mon.3, |b| b.3) as f64 / sf),
             "taskbar" => (area.mon.2 as f64 / sf, TASKBAR_H + TASKBAR_ROOM),
             _ => ISLAND,
         };
@@ -106,7 +117,12 @@ impl Island {
             Some((w, h)) => (w.max(base.0), h.max(base.1)),
             None => base,
         };
-        let w = if home == "taskbar" { base.0 } else { w };
+        // The strip's length is the window's; only its room grows.
+        let (w, h) = match home {
+            "taskbar" if side => (w, base.1),
+            "taskbar" => (base.0, h),
+            _ => (w, h),
+        };
         ((w * sf).round() as i32, (h * sf).round() as i32)
     }
 }
@@ -145,6 +161,11 @@ fn set_ignore(sh: &Shared, ignore: Option<bool>) {
     }
 }
 
+// The screen's edge her taskbar is along (taskbarEdge).
+pub fn edge(sh: &Shared) -> Edge {
+    Edge::of(sh.setting("taskbarEdge").as_str().unwrap_or("bottom"))
+}
+
 // The display it is on: where it is, else the primary one.
 fn area(sh: &Shared) -> Option<Area> {
     let screens = sh.screens();
@@ -161,13 +182,21 @@ fn area(sh: &Shared) -> Option<Area> {
 // Where the window goes, by home. Returns the physical rect if it moved.
 fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     let home = sh.home();
+    let edge = edge(sh);
     let area = area(sh)?;
     let mut isl = sh.island.lock().unwrap();
     isl.sf = area.sf;
-    let size = isl.size_for(home, &area);
+    let size = isl.size_for(home, &area, edge);
     let pos = match home {
-        // The window's foot on the strip's, the room above it.
-        "taskbar" => isl.bar.map_or((area.mon.0, area.mon.1 + area.mon.3 - size.1), |b| (b.0, b.1 + b.3 - size.1)),
+        // The window's edge on the strip's outer one, the room inside it.
+        "taskbar" => {
+            let b = isl.bar.unwrap_or_else(|| edge.strip(area.mon, (TASKBAR_H * area.sf).round() as i32));
+            match edge {
+                Edge::Bottom => (b.0, b.1 + b.3 - size.1),
+                Edge::Top | Edge::Left => (b.0, b.1),
+                Edge::Right => (b.0 + b.2 - size.0, b.1),
+            }
+        }
         // The top centre, below a taskbar that sits at the top.
         _ => (area.x + (area.w - size.0) / 2, area.y),
     };
@@ -202,16 +231,16 @@ fn sync_bar(sh: &Shared, keep: bool) {
     }
 }
 
-// The taskbar's strip along the bottom: asked of Windows while the home is
-// the taskbar and keep (up; also while an app full screen hides its window:
-// giving the strip back would move every window), given back otherwise.
-// Asked again only when the display, the height or the home change. It
-// comes with Windows' own put away first and goes with it given back
-// (taskbar.rs).
+// The taskbar's strip along its edge (taskbarEdge): asked of Windows while
+// the home is the taskbar and keep (up; also while an app full screen hides
+// its window: giving the strip back would move every window), given back
+// otherwise. Asked again only when the display, the height, the home or the
+// edge change. It comes with Windows' own put away first and goes with it
+// given back (taskbar.rs).
 fn sync_bar_now(sh: &Shared, keep: bool) {
     let home = sh.home();
     let edge = match home {
-        "taskbar" => Some((appbar::Edge::Bottom, TASKBAR_H)),
+        "taskbar" => Some((edge(sh), TASKBAR_H)),
         _ => None,
     };
     let want = match (keep, edge) {
@@ -225,7 +254,7 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
     if hwnd == 0 {
         return;
     }
-    let ask = want.map(|(a, _, h)| (a.mon, h, home));
+    let ask = want.map(|(a, edge, h)| (a.mon, h, home, edge));
     if held == ask {
         return;
     }
@@ -233,7 +262,7 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
     // taken away only if there is one: over Windows' room there is none, and
     // asking goes to the taskbar's window of the tray, on the taskbar's
     // thread, waited for (quitting, the main thread).
-    if let Some((_, _, was)) = held.filter(|h| Some(h.2) != ask.map(|a| a.2)) {
+    if let Some((_, _, was, _)) = held.filter(|h| Some(h.2) != ask.map(|a| a.2)) {
         if registered {
             appbar::remove(hwnd);
         }
@@ -250,14 +279,18 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
     }
     let Some((area, edge, height)) = want else { return };
     if home == "taskbar" {
-        let strip = (area.mon.0, area.mon.1 + area.mon.3 - height, area.mon.2, height);
+        let strip = edge.strip(area.mon, height);
+        // Windows' own keeps its room along the bottom for a bottom strip,
+        // and none for another edge (taskbar.rs set_edge).
+        taskbar::set_edge(edge);
         // Another copy of her holds it: nothing taken (it waits).
         if !taskbar::take(sh, strip) {
             return;
         }
-        // Laid over the room Windows' own keeps, put away: what it opens
-        // (the Start menu, the notifications) opens above it.
-        if let Some(room) = taskbar::explorer_room(area.mon) {
+        // Along the bottom, laid over the room Windows' own keeps, put away:
+        // what it opens (the Start menu, the notifications) opens above it.
+        // Along another edge, a bar of ours (Windows' opens at the bottom).
+        if let Some(room) = (edge == Edge::Bottom).then(|| taskbar::explorer_room(area.mon)).flatten() {
             let own = {
                 let mut isl = sh.island.lock().unwrap();
                 isl.bar = Some(strip);
@@ -504,7 +537,9 @@ fn handoff_cover(sh: &Arc<Shared>) -> bool {
         return false;
     }
     let Some(area) = area(sh) else { return false };
-    let picture = taskbar::strip_picture(area.mon);
+    // Windows' strip pictured only where hers takes its place: along the
+    // bottom. Along another edge none (the dust gathers from above).
+    let picture = (edge(sh) == Edge::Bottom).then(|| taskbar::strip_picture(area.mon)).flatten();
     let _ = fit(sh);
     let (pos, size, hwnd) = {
         let mut isl = sh.island.lock().unwrap();
@@ -614,9 +649,9 @@ pub fn hover(sh: &Shared, is_over: bool) {
 
 // Her seat on the taskbar as the page has laid her island out (logical px
 // from the strip's left): what she is reached for from, and flies back to.
-pub fn set_seat(sh: &Shared, x: f64) {
-    if x.is_finite() && x >= 0.0 {
-        sh.island.lock().unwrap().seat_x = Some(x);
+pub fn set_seat(sh: &Shared, at: f64) {
+    if at.is_finite() && at >= 0.0 {
+        sh.island.lock().unwrap().seat_at = Some(at);
     }
 }
 
@@ -643,34 +678,45 @@ pub fn set_holding(sh: &Shared, is_holding: bool) {
 
 // Where her home is on the screen, physical, whether it is up or not: what
 // she is reached for from and taken back into. The island: the middle of
-// its lower edge (compact); the taskbar: above her portrait at its left end.
+// its lower edge (compact); the taskbar: her portrait, on the strip's inner
+// edge (above a bottom bar, below a top one, beside a side one).
 pub fn seat(sh: &Shared) -> Option<(i32, i32)> {
     let home = sh.home();
+    let edge = edge(sh);
     let area = area(sh)?;
-    let (bar, seat_x) = {
+    let (bar, seat_at) = {
         let isl = sh.island.lock().unwrap();
-        (isl.bar, isl.seat_x)
+        (isl.bar, isl.seat_at)
     };
     let px = |v: f64| (v * area.sf).round() as i32;
     Some(match home {
         "taskbar" => {
-            let (x, y, _, _) = bar.unwrap_or((area.mon.0, area.mon.1 + area.mon.3 - px(TASKBAR_H), area.mon.2, px(TASKBAR_H)));
-            (x + px(seat_x.unwrap_or(TASKBAR_SEAT_X)), y)
+            let (x, y, w, h) = bar.unwrap_or_else(|| edge.strip(area.mon, px(TASKBAR_H)));
+            let at = px(seat_at.unwrap_or(TASKBAR_SEAT));
+            match edge {
+                Edge::Bottom => (x + at, y),
+                Edge::Top => (x + at, y + h),
+                Edge::Left => (x + w, y + at),
+                Edge::Right => (x, y + at),
+            }
         }
         _ => (area.x + area.w / 2, area.y + px(TOP + COMPACT_H)),
     })
 }
 
 // Where she flies to before her home takes her in: just under the island,
-// just above the taskbar, where the drop can take her.
+// just off the taskbar (inside it), where the drop can take her.
 pub fn landing(sh: &Shared) -> Option<(i32, i32)> {
     let seat = seat(sh)?;
     let sf = area(sh).map_or(1.0, |a| a.sf);
-    let below = match sh.home() {
-        "taskbar" => -70.0,
-        _ => 70.0,
-    };
-    Some((seat.0, seat.1 + (below * sf) as i32))
+    let off = (70.0 * sf) as i32;
+    Some(match (sh.home(), edge(sh)) {
+        ("taskbar", Edge::Bottom) => (seat.0, seat.1 - off),
+        ("taskbar", Edge::Top) => (seat.0, seat.1 + off),
+        ("taskbar", Edge::Left) => (seat.0 + off, seat.1),
+        ("taskbar", Edge::Right) => (seat.0 - off, seat.1),
+        _ => (seat.0, seat.1 + off),
+    })
 }
 
 // She is being moved near her home (point: her middle on the screen,
