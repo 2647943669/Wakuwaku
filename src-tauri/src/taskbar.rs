@@ -1104,11 +1104,29 @@ mod imp {
                     .as_array()
                     .and_then(|all| all.iter().find(|p| p["path"].as_str().is_some_and(|p| p.eq_ignore_ascii_case(path)) && !path.is_empty()).and_then(|p| p["lnk"].as_str().map(str::to_string)))
                     .filter(|l| std::path::Path::new(l).exists());
-                match (id, lnk) {
-                    (Some(id), _) => tasks::launch(&format!("shell:AppsFolder\\{id}")),
-                    (None, Some(lnk)) => tasks::launch(&lnk),
-                    (None, None) => tasks::launch(path),
-                }
+                let target = match (id, lnk) {
+                    (Some(id), _) => format!("shell:AppsFolder\\{id}"),
+                    (None, Some(lnk)) => lnk,
+                    (None, None) => path.to_string(),
+                };
+                // File Explorer opened where it is set to open, by its folder
+                // (no explorer.exe, nor its shortcut, to go through).
+                let explorer = is_explorer(path).then(explorer_opens);
+                // On a thread of its own, with COM, as the shell wants: asked
+                // on the main thread, the shell held it 80 to 400 ms on
+                // Explorer's shortcut alone, and the press seemed to come
+                // before the program (2026-10-12).
+                let log_sh = crate::shared(&sh.app);
+                crate::spawn_named("launch", move || {
+                    tasks::with_com();
+                    let started = Instant::now();
+                    let ok = match explorer {
+                        Some(folder) => tasks::launch(folder) || tasks::launch(&target),
+                        None => tasks::launch(&target),
+                    };
+                    log_sh.log(&format!("taskbar: started {} in {} ms: {ok}", explorer.unwrap_or(&target), started.elapsed().as_millis()));
+                });
+                true
             }
             "pin" | "unpin" => {
                 let mut kept: Vec<Value> = sh.setting("taskbarPinned").as_array().cloned().unwrap_or_default();
@@ -1131,6 +1149,42 @@ mod imp {
         };
         wake_tasks();
         done
+    }
+
+    // Windows' File Explorer, by its file (its pin's shortcut points there).
+    fn is_explorer(path: &str) -> bool {
+        path.rsplit(['\\', '/']).next().is_some_and(|name| name.eq_ignore_ascii_case("explorer.exe"))
+    }
+
+    // Where File Explorer opens, as set in its options (Open File Explorer
+    // to: LaunchTo, 1 This PC, 3 Downloads, else Home), by the folder's own
+    // name: opened by it in about 20 ms, its window up in 300; explorer.exe
+    // in 10 and 400; its shortcut in 80 to 400 and 350 to 700 (2026-10-12).
+    // Home is Windows 11's: where it is not, the launch fails and the
+    // program goes as before.
+    fn explorer_opens() -> &'static str {
+        use winreg::enums::HKEY_CURRENT_USER;
+        let to = winreg::RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced")
+            .and_then(|k| k.get_value::<u32, _>("LaunchTo"))
+            .unwrap_or(2);
+        match to {
+            1 => "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}",
+            3 => "shell:Downloads",
+            _ => "shell:::{f874310e-b6b7-47dc-bc84-b9e6b38f5903}",
+        }
+    }
+
+    #[cfg(test)]
+    mod launch_tests {
+        #[test]
+        fn file_explorer_by_its_file() {
+            assert!(super::is_explorer(r"C:\Windows\explorer.exe"));
+            assert!(super::is_explorer("c:/windows/EXPLORER.EXE"));
+            assert!(!super::is_explorer(r"C:\Program Files\Internet Explorer\iexplore.exe"));
+            assert!(!super::is_explorer(""));
+            assert!(super::explorer_opens().starts_with("shell:"));
+        }
     }
 
     // A press on a window's button: to the front, or minimized; or closed.
@@ -2494,7 +2548,7 @@ pub fn taskbar_thumbs(app: tauri::AppHandle, items: Vec<(i64, f64, f64, f64, f64
 // A program's button: launch (a program kept on the taskbar, not running;
 // or another of its windows), pin, unpin.
 #[tauri::command]
-pub fn taskbar_app(app: tauri::AppHandle, path: String, what: String, id: Option<String>) -> bool {
+pub async fn taskbar_app(app: tauri::AppHandle, path: String, what: String, id: Option<String>) -> bool {
     imp::app(&crate::shared(&app), &what, &path, id.as_deref().filter(|s| !s.is_empty()))
 }
 
