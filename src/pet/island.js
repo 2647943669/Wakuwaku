@@ -281,7 +281,6 @@
   // Her home: the island, or the taskbar.
   const home = () => (config.display === 'taskbar' ? 'taskbar' : 'island')
   // A strip across the screen (the taskbar): the other sessions have tags in it.
-  const isStrip = () => home() === 'taskbar'
   // The taskbar's strip the desktop's picture through (mica.js), neither
   // solid nor clear.
   const isMica = () => isOn() && home() === 'taskbar' && !['black', 'clear'].includes(config.taskbarMaterial)
@@ -413,8 +412,8 @@
       value.style.color = hue()[now.mood]
       key = `s:${now.id || ''}:${now.mood}`
     }
-    // In the bar and the taskbar the other sessions have their own tags.
-    const more = now.others > 0 && !isStrip() ? el('span', 'more', `+${now.others}`) : null
+    // The other sessions, as "+N" (the island's open lines list them).
+    const more = now.others > 0 ? el('span', 'more', `+${now.others}`) : null
     if (more) more.style.color = hue()[second] || hue().working
     // What takes turns, together: it slides in when it is something else.
     const turning = el('span', 'turning')
@@ -712,37 +711,14 @@
 
   // --- The taskbar's right part ---------------------------------------------------
 
-  // The other sessions as tags (a press goes to one's window), a widget, and
-  // the settings, with the Start button before them, the tray's icons and
-  // the clock after. Its left edge stays where the compact island ends, so
-  // what opens from the island grows up over it.
+  // Start and the programs, the monitor, the tray's icons, the clock and the
+  // settings. Its left edge stays where the compact island ends, so what
+  // opens from the island grows up over it. The other sessions have no tags
+  // on it: their windows' buttons go to them, and the island says how they
+  // are (the user's call, 2026-10-12).
   const barRest = document.createElement('div')
   barRest.id = 'bar-rest'
   island.after(barRest)
-
-  function sessionTags() {
-    const detailed = isDetailed()
-    // In the taskbar, a session whose window has a button needs no tag: the
-    // button goes to it, and the island says how it is.
-    const onButtons = new Set(home() === 'taskbar' ? taskWindows.flatMap(a => (a.windows || []).flatMap(w => (w.sessions || []).map(s => s.id))) : [])
-    return Status.othersOf(now.list, now)
-      .filter(x => !onButtons.has(x.id))
-      .map(x => {
-        const tag = el('span', 'tag')
-        // Its session, for its time kept up each second (tickTimes).
-        tag._session = x
-        if (x.jump && x.id) {
-          tag.dataset.jump = x.id
-          tag.title = t(lang, 'jump.hint')
-        }
-        const dot = el('i', 'dot')
-        dot.style.background = stripHue()[x.mood] || stripHue().idle
-        const when = el('span', 'when', Status.time(x))
-        when.style.color = stripHue()[x.mood] || stripHue().idle
-        tag.append(dot, el('span', 'who', Status.nameOf(x, detailed)), el('span', 'what', Status.brief(lang, x, { detailed })), when)
-        return tag
-      })
-  }
 
   // The widget shown, and the monitor, pinned: always there by the settings.
   // In the taskbar only the monitor (before the tray), in two rows as the
@@ -852,7 +828,6 @@
     startButton.classList.add('bounce')
   })
   const windowsBox = el('span', 'wins')
-  const tagsBox = el('span', 'tags')
   const facesBox = el('span', 'faces')
   const trayBox = el('span', 'tray')
   // The keyboard: Caps Lock while it is on, and the input method's script
@@ -927,19 +902,19 @@
   // the island laid over it (placeSlot), growing from it the way there is
   // room (body.isl-right: from its right edge, leftwards). Edited by
   // dragging the parts about on the strip itself (editTaskbar).
-  const TB_PARTS = ['her', 'start', 'apps', 'tags', 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
+  const TB_PARTS = ['her', 'start', 'apps', 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
   const TB_RIGHT = ['monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
   const TB_PRESETS = {
-    win11: { left: ['her'], center: ['start', 'apps', 'tags'], right: TB_RIGHT },
-    left: { left: ['her', 'start', 'apps', 'tags'], center: [], right: TB_RIGHT },
-    herRight: { left: ['start', 'apps', 'tags'], center: [], right: [...TB_RIGHT, 'her'] },
+    win11: { left: ['her'], center: ['start', 'apps'], right: TB_RIGHT },
+    left: { left: ['her', 'start', 'apps'], center: [], right: TB_RIGHT },
+    herRight: { left: ['start', 'apps'], center: [], right: [...TB_RIGHT, 'her'] },
   }
   const herSlot = el('span', 'tslot')
   // The tray's icons and the marks of what uses the microphone, camera or
   // location: one part.
   const trayPart = el('span', 'tpair')
   trayPart.append(trayBox, privBox)
-  const PART_NODES = { her: herSlot, start: startButton, apps: windowsBox, tags: tagsBox, monitor: facesBox, tray: trayPart, keys: keysBox, quick: quickBox, clock: clockBox, gear: taskGear }
+  const PART_NODES = { her: herSlot, start: startButton, apps: windowsBox, monitor: facesBox, tray: trayPart, keys: keysBox, quick: quickBox, clock: clockBox, gear: taskGear }
   for (const [part, node] of Object.entries(PART_NODES)) node.dataset.part = part
   const zones = { left: el('span', 'tzone tz-left'), center: el('span', 'tzone tz-center'), right: el('span', 'tzone tz-right') }
   // While the layout is being edited: the one being made, not yet kept.
@@ -1109,7 +1084,6 @@
     quickBox.title = t(lang, 'taskbar.quick')
     clockBox.title = t(lang, 'taskbar.clock')
     deskEdge.title = t(lang, 'taskbar.desktop')
-    tagsBox.replaceChildren(...sessionTags())
     facesBox.replaceChildren(...widgetFaces())
     drawWindows()
     drawTray()
@@ -1167,7 +1141,7 @@
   // place, jumps rather than slides a long way, and gives a little under a
   // press. Not over what opens above the buttons, nor while a tray icon or
   // a program's button is being dragged.
-  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tclock, .gear, .tag[data-jump]'
+  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tclock, .gear'
   const GLIDE_FAR = 360
   const glide = el('span', 'hdrop')
   let glideOn = null
@@ -1853,7 +1827,6 @@
     taskWindows = Array.isArray(list) ? list : []
     if (isOn() && home() === 'taskbar') {
       drawWindows()
-      tagsBox.replaceChildren(...sessionTags())
       alignApps()
       snapStart()
       drawMica()
@@ -2170,11 +2143,9 @@
     trayOver = null
   })
 
-  // A press on a tag goes to its session; on the gear, the settings.
+  // A press on the gear: the settings.
   barRest.addEventListener('pointerdown', e => {
     if (e.button !== 0) return
-    const tag = e.target.closest('[data-jump]')
-    if (tag) return jumpTo(tag.dataset.jump)
     if (e.target.closest('[data-bar="settings"]')) window.pet.openSettings()
   })
   // The taskbar's own buttons open what Windows' do: Start, and from the
@@ -2621,7 +2592,7 @@
   }
 
   // Each second while something is timed: the times' words alone, put in
-  // place (the compact island's clock, the strip's tags); the island drawn
+  // place (the compact island's clock); the island drawn
   // anew (update) only when a word grew or shrank, as the shape follows the
   // words, or while the island is open, whose lines carry the step's time
   // too. It was drawn anew every second (2026-10-11).
@@ -2634,9 +2605,6 @@
       node.textContent = text
     }
     put(compact.querySelector('[data-live="time"]'), time())
-    for (const tag of tagsBox.children) {
-      if (tag._session) put(tag.querySelector('.when'), Status.time(tag._session))
-    }
     if (resized) update()
   }
 

@@ -1069,56 +1069,6 @@ body {
   display: none;
 }
 
-#bar-rest .tags {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* Another session: its colour, its name, where it is, its clock. */
-#bar-rest .tag {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 300px;
-  padding: 3px 9px;
-  border-radius: 8px;
-  background: #1c1c1e;
-  overflow: hidden;
-}
-
-#bar-rest .tag[data-jump] {
-  cursor: pointer;
-}
-
-#bar-rest .tag[data-jump]:hover {
-  background: #2c2c2e;
-}
-
-#bar-rest .tag .dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-
-#bar-rest .tag .who {
-  flex: none;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #e5e5ea;
-}
-
-#bar-rest .tag .what {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #a1a1a6;
-}
-
-#bar-rest .tag .when,
 #bar-rest .face .v {
   flex: none;
   font-variant-numeric: tabular-nums;
@@ -1287,14 +1237,10 @@ body {
 
 /* Its parts touch, each a 40px-high button with room of its own, so the
    icons and words along it stand evenly apart, as on Windows' own; a little
-   more between the groups (Start and the programs, the sessions' tags, the
-   monitor, the tray and the clock). */
+   more between the groups (Start and the programs, the monitor, the tray
+   and the clock). */
 .home-taskbar #bar-rest .wins {
   margin-left: 2px;
-}
-
-.home-taskbar #bar-rest .tags:not(:empty) {
-  margin-left: 8px;
 }
 
 .home-taskbar #bar-rest .faces:not(:empty) {
@@ -2024,13 +1970,11 @@ body {
 .tb-light #bar-rest .win,
 .tb-light #bar-rest .mon.rows,
 .tb-light #bar-rest .tclock b,
-.tb-light #bar-rest .kbd .ime,
-.tb-light #bar-rest .tag .who {
+.tb-light #bar-rest .kbd .ime {
   color: #1b1b1b;
 }
 
 .tb-light #bar-rest .tclock i,
-.tb-light #bar-rest .tag .what,
 .tb-light #bar-rest .wpop .wx,
 .tb-light #bar-rest .wpop .whead {
   color: #5d5d5d;
@@ -2048,8 +1992,7 @@ body {
 .tb-light #bar-rest .win:hover,
 .tb-light #bar-rest .kbd .ime:hover,
 .tb-light #bar-rest .tchev:hover,
-.tb-light #bar-rest .gear:hover,
-.tb-light #bar-rest .tag[data-jump]:hover {
+.tb-light #bar-rest .gear:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
@@ -2076,10 +2019,6 @@ body {
   background: var(--win-accent, #0067c0);
   color: #fff;
   box-shadow: 0 0 0 1.5px #f3f3f3;
-}
-
-.tb-light #bar-rest .tag {
-  background: rgba(255, 255, 255, 0.6);
 }
 
 .tb-light #bar-rest .wpop,
@@ -2372,8 +2311,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
 .home-taskbar #bar-rest .kbd .ime:hover,
 .home-taskbar #bar-rest .tquick:hover,
 .home-taskbar #bar-rest .tclock:hover,
-.home-taskbar #bar-rest .gear:hover,
-.home-taskbar #bar-rest .tag[data-jump]:hover {
+.home-taskbar #bar-rest .gear:hover {
   background: transparent;
   box-shadow: none;
 }
@@ -2677,8 +2615,8 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   outline-offset: -2px;
 }
 
-/* A part with nothing in it now (no sessions' tags, the monitor not
-   pinned): its name, to be seen and dragged all the same. */
+/* A part with nothing in it now (the monitor not pinned): its name, to be
+   seen and dragged all the same. */
 .tb-editing #bar-rest [data-part]:empty:not(.tslot)::before {
   content: attr(data-label);
   display: flex;

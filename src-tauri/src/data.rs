@@ -117,7 +117,21 @@ pub fn load(dir: &Path) -> Map<String, Value> {
     settings.remove("corner");
     settings.remove("bubble");
     adopt_monitor(&mut settings);
+    drop_part(&mut settings, "tags");
     settings
+}
+
+// A part the taskbar no longer has taken out of a layout kept with it, the
+// rest kept as it was (the sessions' tags, gone from the taskbar on
+// 2026-10-12: settings.rs would turn down the whole layout for it).
+fn drop_part(settings: &mut Map<String, Value>, part: &str) {
+    if let Some(Value::Object(runs)) = settings.get_mut("taskbarLayout") {
+        for run in runs.values_mut() {
+            if let Some(list) = run.as_array_mut() {
+                list.retain(|p| p.as_str() != Some(part));
+            }
+        }
+    }
 }
 
 // CPU · memory, the network and the battery were widgets of their own: now
@@ -270,5 +284,17 @@ mod tests {
         let mut s = settings(json!({ "widgetsOff": ["monitor"] }));
         adopt_monitor(&mut s);
         assert!(!s.contains_key("monitor"));
+    }
+
+    #[test]
+    fn the_sessions_tags_leave_a_kept_layout() {
+        let w = json!({ "id": "wa1", "type": "sep" });
+        let mut s = settings(json!({ "taskbarLayout": { "left": ["her"], "center": ["start", "apps", "tags"], "right": [w, "clock"] } }));
+        drop_part(&mut s, "tags");
+        assert_eq!(s["taskbarLayout"], json!({ "left": ["her"], "center": ["start", "apps"], "right": [w, "clock"] }));
+        // None kept: nothing to do.
+        let mut s = settings(json!({ "taskbarLayout": null }));
+        drop_part(&mut s, "tags");
+        assert_eq!(s["taskbarLayout"], Value::Null);
     }
 }
