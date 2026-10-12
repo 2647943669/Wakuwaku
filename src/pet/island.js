@@ -298,12 +298,6 @@
   // light mode), wherever the strip is not black itself: on the Mica, clear,
   // or light.
   const isCapsule = () => isMica() || isClear() || isLight()
-  // Her island opens off the taskbar (taskbarOpenAway, on unless turned
-  // off): open (its lines, a prompt), it stands above the strip, joined to
-  // her capsule by a neck, clear of Start, the programs and the tray. Off,
-  // it grows out of the capsule over the strip's end, as it always did.
-  const isAwayOn = () => isOn() && home() === 'taskbar' && config.taskbarOpenAway !== false
-  const isAway = () => isAwayOn() && (view === 'expanded' || view === 'ask')
   // The compact taskbar island's height: the strip's, or the capsule's.
   const taskCompactH = () => (isCapsule() ? TASKBAR_H - 2 * CAPSULE_Y : TASKBAR_H)
   // In her seat: there is a pet to show, and she is not out on the desktop.
@@ -585,123 +579,6 @@
     })
   }
 
-  // --- Open off the taskbar: her capsule's stand-in, and the neck ---------------------
-  // While her island is away (isAway), in her slot a stand-in for the
-  // capsule: the compact capsule as it is (its words, the clock going on,
-  // her portrait still), ringed in her mood's colour (as a capsule only);
-  // and a neck between it and the island, as the drop she is pulled out in.
-  // Both answer the pointer as the island does: a press on the stand-in is
-  // one on the capsule, and going from it up to the island never closes it.
-  const SVG_NS = 'http://www.w3.org/2000/svg'
-  const standIn = el('div')
-  standIn.id = 'island-stand'
-  // What the compact capsule's own looks are keyed on (style.css .stand-compact).
-  standIn.dataset.view = 'compact'
-  const neck = document.createElementNS(SVG_NS, 'svg')
-  neck.id = 'island-neck'
-  const neckPath = document.createElementNS(SVG_NS, 'path')
-  neck.append(neckPath)
-  island.after(standIn, neck)
-  let awayWas = false
-  let neckView = ''
-
-  function drawAway() {
-    const away = isAway()
-    body.classList.toggle('tb-away', isAwayOn())
-    body.classList.toggle('isl-away', away)
-    // Its place or shape changed (opened, closed, another view): the neck
-    // follows the island's spring; else, open, drawn once as it stands.
-    if (away !== awayWas || view !== neckView) followNeck(SPRING_MS + 150)
-    else if (away) followNeck(0)
-    if (awayWas && !away) neckSinking = view === 'compact'
-    awayWas = away
-    neckView = view
-    if (!away) return
-    const { width, height } = sizeOf('compact')
-    Object.assign(standIn.style, { width: `${width}px`, height: `${height}px`, borderRadius: isCapsule() ? `${height / 2}px` : '0' })
-    standIn.style.setProperty('--ring', hue()[now.mood] || hue().idle)
-    const copy = compact.cloneNode(true)
-    copy.removeAttribute('id')
-    copy.classList.add('stand-compact')
-    // Drawn anew with every update: what slid in once does not slide again.
-    for (const node of copy.querySelectorAll('.turn')) node.classList.remove('turn')
-    const face = isHome() ? stillHer(TASK_HEAD) : null
-    if (face) {
-      const at = `${(height - TASK_HEAD) / 2}px`
-      Object.assign(face.style, { left: at, top: at })
-    }
-    standIn.replaceChildren(copy, ...(face ? [face] : []))
-  }
-
-  // The neck, drawn each frame from the island and the stand-in as they are
-  // (the island springing up out of the capsule, or sinking back into it),
-  // not on a clock of its own: born as the island's foot leaves the
-  // capsule's top, stretched and pinched the longer it gets, gone as the
-  // foot comes back down. It stands where both outlines are straight, just
-  // past her portrait (the capsule's round end, the island's corner), 1 px
-  // into each over their outlines and the ring, leaving each level with it.
-  // Bare (no capsule's ground to land on), a drop hanging from the island,
-  // its round end 2 px above the ring.
-  const NECK_A = 14
-  let neckSinking = false
-  let neckUntil = 0
-  let neckFrame = 0
-
-  function followNeck(ms) {
-    neckUntil = Math.max(neckUntil, performance.now() + ms)
-    if (!neckFrame) neckFrame = requestAnimationFrame(stepNeck)
-  }
-
-  function stepNeck() {
-    neckFrame = 0
-    const more = performance.now() < neckUntil
-    if (!more) neckSinking = false
-    drawNeck()
-    if (more) neckFrame = requestAnimationFrame(stepNeck)
-  }
-
-  function drawNeck() {
-    const show = isAwayOn() && (isAway() || neckSinking)
-    neckPath.setAttribute('d', show ? neckOf(island.getBoundingClientRect(), standIn.getBoundingClientRect()) : '')
-  }
-
-  function neckOf(I, C) {
-    const g = C.top - I.bottom
-    const bare = body.classList.contains('island-bare') && isCapsule()
-    // Bare, it hangs as far as 6 px above the capsule's top (2 px clear of its ring).
-    const reach = bare ? g - 6 : g
-    if (g < 0.5 || reach < 0.5) return ''
-    const a = NECK_A
-    // Past her portrait and the capsule's round end (the black strip's end is
-    // square: as far in), and past the island's corner while it is narrow.
-    const mid = Math.max(C.left + (isCapsule() ? C.height / 2 : 19) + a + 4, I.left + 22 + a + 2)
-    // Its waist, the longer the thinner.
-    const m = Math.max(0.4 * a, a - 0.85 * g)
-    const S = neck.getBoundingClientRect()
-    const P = (u, t) => `${(mid - a + u - S.left).toFixed(2)} ${(I.bottom + t - S.top).toFixed(2)}`
-    if (bare) {
-      const r = Math.min(m, reach)
-      const t = reach - r
-      const d = a - r
-      return [`M${P(0, -1)}`, `L${P(0, 0)}`, `C${P(0.75 * d, 0)} ${P(d, 0.36 * t)} ${P(d, t)}`, `A${r.toFixed(2)} ${r.toFixed(2)} 0 0 0 ${P(2 * a - d, t)}`, `C${P(2 * a - d, 0.36 * t)} ${P(2 * a - 0.75 * d, 0)} ${P(2 * a, 0)}`, `L${P(2 * a, -1)}`, 'Z'].join(' ')
-    }
-    const d = a - m
-    return [
-      `M${P(0, -1)}`,
-      `L${P(0, 0)}`,
-      `C${P(0.75 * d, 0)} ${P(d, 0.18 * g)} ${P(d, g / 2)}`,
-      `C${P(d, 0.82 * g)} ${P(0.75 * d, g)} ${P(0, g)}`,
-      `L${P(0, g + 1)}`,
-      `L${P(2 * a, g + 1)}`,
-      `L${P(2 * a, g)}`,
-      `C${P(2 * a - 0.75 * d, g)} ${P(a + m, 0.82 * g)} ${P(a + m, g / 2)}`,
-      `C${P(a + m, 0.18 * g)} ${P(2 * a - 0.75 * d, 0)} ${P(2 * a, 0)}`,
-      `L${P(2 * a, -1)}`,
-      'Z',
-    ].join(' ')
-  }
-  window.addEventListener('resize', () => followNeck(0))
-
   // --- Her, in the island -----------------------------------------------------------
 
   // Her shape for the island's: a round portrait ringed in the mood's colour
@@ -772,7 +649,7 @@
     // past its room (the window then grows up too, which flashes: its room
     // is kept as high as the settings ever are, settingsMax).
     if (home() === 'taskbar') {
-      const height = want.height + TASKBAR_SHADE + (view === 'settings' || isAway() ? TASKBAR_H + TASKBAR_GAP : isCapsule() ? CAPSULE_Y : 0)
+      const height = want.height + TASKBAR_SHADE + (view === 'settings' ? TASKBAR_H + TASKBAR_GAP : isCapsule() ? CAPSULE_Y : 0)
       if (height <= TASKBAR_H + TASKBAR_ROOM) return null
       return { width: innerWidth, height }
     }
@@ -807,7 +684,7 @@
           ? isCapsule()
             ? `${height / 2}px`
             : '0'
-          : view === 'settings' || isCapsule() || isAway()
+          : view === 'settings' || isCapsule()
             ? '22px'
             : '22px 22px 0 0'
         : `${height > 60 ? 30 : height / 2}px`
@@ -2716,8 +2593,6 @@
     fillCompact()
     fillExpanded()
     fillBar()
-    // After the capsule's words: its stand-in shows them as they are now.
-    drawAway()
 
     const want = sizeOf(view)
     // Reaching for her keeps the room to reach in.
@@ -3153,8 +3028,7 @@
 
   // --- The pointer ----------------------------------------------------------------
 
-  // Her island, and while it is away its neck and her capsule's stand-in.
-  for (const target of [island, neckPath, standIn]) {
+  for (const target of [island]) {
     target.addEventListener('mouseenter', () => {
       window.pet.hover(true)
       clearTimeout(hoverTimer)
