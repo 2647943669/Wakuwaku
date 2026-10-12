@@ -227,6 +227,7 @@ mod imp {
     const WM_SYSCOMMAND: u32 = 0x0112;
     const SC_MINIMIZE: usize = 0xF020;
     const SC_RESTORE: usize = 0xF120;
+    const SC_CLOSE: usize = 0xF060;
     const ICON_SMALL: usize = 0;
     const ICON_BIG: usize = 1;
     const ICON_SMALL2: usize = 2;
@@ -679,10 +680,14 @@ mod imp {
         brought
     }
 
-    // Asked to close, as its own ✕ does.
+    // Asked to close, as Windows' own taskbar asks (its window menu's Close):
+    // SC_CLOSE, which reaches a window run as administrator (Task Manager)
+    // too, where a WM_CLOSE from here was turned away (UIPI, access denied,
+    // 2026-10-12); the window then closes as from its own ✕. WM_CLOSE only if
+    // SC_CLOSE could not be posted.
     pub fn close(hwnd: isize) -> bool {
-        // SAFETY: a posted message, no pointers.
-        unsafe { PostMessageW(hwnd as Hwnd, WM_CLOSE, 0, 0) != 0 }
+        // SAFETY: posted messages, no pointers.
+        unsafe { PostMessageW(hwnd as Hwnd, WM_SYSCOMMAND, SC_CLOSE, 0) != 0 || PostMessageW(hwnd as Hwnd, WM_CLOSE, 0, 0) != 0 }
     }
 
     const WM_IME_CONTROL: u32 = 0x0283;
