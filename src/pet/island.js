@@ -1877,6 +1877,27 @@
   // drawn again as the windows change); filled in solid, tb-solid. The
   // strip light in Windows' light mode (tb-light), her end a capsule
   // wherever the strip is not black (tb-capsule).
+  // The strip as thick as it lies on the screen (island.rs tell_strip): its
+  // physical px over the scale, a fraction of a CSS px if need be, so its
+  // inner edge is the work area's, where maximized windows stop (a hairline
+  // gap at 175%: zhoupengjie/Wakuwaku#2). 48 until told.
+  let stripThick = 0
+  function setStrip() {
+    if (!stripThick) return
+    document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
+    requestAnimationFrame(() => {
+      const r = island.parentElement.getBoundingClientRect()
+      const dpr = devicePixelRatio || 1
+      console.log(`taskbar: strip in the page ${[r.left, r.top, r.right, r.bottom].map(v => +(v * dpr).toFixed(2)).join(', ')} (x ${dpr}, told ${stripThick} px)`)
+    })
+  }
+  window.pet.onStrip(({ thick } = {}) => {
+    if (!(thick > 0)) return
+    stripThick = thick
+    setStrip()
+  })
+  window.addEventListener('resize', () => stripThick && document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`))
+
   const micaBox = el('div')
   micaBox.id = 'mica'
   island.parentElement.prepend(micaBox)

@@ -95,6 +95,8 @@ pub struct Island {
     // (taskbarLayout: it may be anywhere along the strip); none told yet: at
     // its start.
     seat_at: Option<f64>,
+    // The strip's thickness (physical) the page was last told (tell_strip).
+    strip_told: i32,
 }
 
 impl Island {
@@ -189,14 +191,7 @@ fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     let size = isl.size_for(home, &area, edge);
     let pos = match home {
         // The window's edge on the strip's outer one, the room inside it.
-        "taskbar" => {
-            let b = isl.bar.unwrap_or_else(|| edge.strip(area.mon, (TASKBAR_H * area.sf).round() as i32));
-            match edge {
-                Edge::Bottom => (b.0, b.1 + b.3 - size.1),
-                Edge::Top | Edge::Left => (b.0, b.1),
-                Edge::Right => (b.0 + b.2 - size.0, b.1),
-            }
-        }
+        "taskbar" => window_at(edge, isl.bar.unwrap_or_else(|| edge.strip(area.mon, (TASKBAR_H * area.sf).round() as i32)), size),
         // The top centre, below a taskbar that sits at the top.
         _ => (area.x + (area.w - size.0) / 2, area.y),
     };
@@ -206,6 +201,50 @@ fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     isl.pos = pos;
     isl.size = size;
     Some((pos, size))
+}
+
+// The taskbar's window (physical) for its strip along an edge: its outer
+// edge on the strip's, the room inside it.
+fn window_at(edge: Edge, b: (i32, i32, i32, i32), size: (i32, i32)) -> (i32, i32) {
+    match edge {
+        Edge::Bottom => (b.0, b.1 + b.3 - size.1),
+        Edge::Top | Edge::Left => (b.0, b.1),
+        Edge::Right => (b.0 + b.2 - size.0, b.1),
+    }
+}
+
+// The strip's thickness across it (physical), as it lies: what the page
+// draws it as (its CSS px times the scale), so that its inner edge is the
+// work area's, at any scale (175% left a hairline gap: zhoupengjie/Wakuwaku#2).
+fn thickness(edge: Edge, b: (i32, i32, i32, i32)) -> i32 {
+    if edge.is_side() { b.2 } else { b.3 }
+}
+
+// The page told the strip's thickness when it changes (or anew once it is
+// ready), and a line for the log with all that sets where its inner edge
+// lies: Windows' room, the strip, the work area, the window.
+pub fn tell_strip(sh: &Shared, again: bool) {
+    if sh.home() != "taskbar" {
+        return;
+    }
+    let edge = edge(sh);
+    let (bar, pos, size, sf, told) = {
+        let isl = sh.island.lock().unwrap();
+        (isl.bar, isl.pos, isl.size, isl.sf(), isl.strip_told)
+    };
+    let Some(b) = bar else { return };
+    let thick = thickness(edge, b);
+    if thick == told && !again {
+        return;
+    }
+    sh.island.lock().unwrap().strip_told = thick;
+    let room = (edge == Edge::Bottom).then(|| area(sh).and_then(|a| crate::shell::room(a.mon))).flatten();
+    sh.log(&format!(
+        "taskbar: strip {b:?} along the {edge:?}, {thick} px ({} at {sf}); Windows' room {room:?}; work area {:?}; window at {pos:?} {size:?}",
+        thick as f64 / sf,
+        taskbar::work_area_rect()
+    ));
+    let _ = sh.app.emit_to("island", "taskbar:strip", json!({ "thick": thick }));
 }
 
 // One at a time: two at once took the taskbar twice (two tray threads, one
@@ -289,8 +328,14 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
         }
         // Along the bottom, laid over the room Windows' own keeps, put away:
         // what it opens (the Start menu, the notifications) opens above it.
-        // Along another edge, a bar of ours (Windows' opens at the bottom).
+        // Its top and height are that room's (the work area stops there),
+        // not ours worked out at this scale, when they differ by its
+        // rounding (a pixel or two: one a pixel taller left a hairline gap
+        // above the strip, zhoupengjie/Wakuwaku#2); a room of another size
+        // (Windows 10's, 40 px) leaves ours as it is. Along another edge, a
+        // bar of ours (Windows' opens at the bottom).
         if let Some(room) = (edge == Edge::Bottom).then(|| taskbar::explorer_room(area.mon)).flatten() {
+            let strip = if (room.3 - height).abs() <= 2 { (area.mon.0, room.1, area.mon.2, room.3) } else { strip };
             let own = {
                 let mut isl = sh.island.lock().unwrap();
                 isl.bar = Some(strip);
@@ -351,7 +396,9 @@ pub fn take_strip_again(sh: &Shared) {
 
 fn place(sh: &Shared) {
     sync_bar(sh, true);
-    let Some((pos, size)) = fit(sh) else { return };
+    let fitted = fit(sh);
+    tell_strip(sh, false);
+    let Some((pos, size)) = fitted else { return };
     if let Some(win) = window(sh) {
         let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
         let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
@@ -433,6 +480,7 @@ pub fn ready(sh: &Arc<Shared>) {
     };
     sh.redraw();
     taskbar::resend(sh);
+    tell_strip(sh, true);
     sh.greet();
     // Taking the taskbar over: Windows' own laid over ours first, put away
     // under it, then turned to dust that settles into ours.
@@ -889,4 +937,40 @@ pub fn where_(sh: &Shared) -> Value {
         "settingsOpen": isl.settings_open,
         "bar": isl.bar.map(|b| json!([b.0, b.1, b.2, b.3])),
     })
+}
+
+#[cfg(test)]
+mod strip_tests {
+    use super::{thickness, window_at, Edge, SIDE_ROOM, TASKBAR_H, TASKBAR_ROOM};
+
+    // At every scale, a strip as Windows grants it (its room, a pixel more
+    // or less than ours as it rounds, or our own bar's): the window's outer
+    // edge on the strip's, and the page's strip (its CSS px times the scale)
+    // exactly as thick, so its inner edge is the work area's.
+    #[test]
+    fn the_strip_and_the_window_meet_at_any_scale() {
+        let mon = (0, 0, 3840, 2160);
+        for sf in [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 1.37] {
+            let ours = (TASKBAR_H * sf).round() as i32;
+            for edge in [Edge::Bottom, Edge::Top, Edge::Left, Edge::Right] {
+                for t in [ours - 1, ours, ours + 1] {
+                    let b = edge.strip(mon, t);
+                    let size = if edge.is_side() { (((TASKBAR_H + SIDE_ROOM) * sf).round() as i32, mon.3) } else { (mon.2, ((TASKBAR_H + TASKBAR_ROOM) * sf).round() as i32) };
+                    let (x, y) = window_at(edge, b, size);
+                    // The window's outer edge on the strip's, the strip inside it.
+                    match edge {
+                        Edge::Bottom => assert_eq!(y + size.1, b.1 + b.3, "{sf} {edge:?} {t}"),
+                        Edge::Top => assert_eq!(y, b.1, "{sf} {edge:?} {t}"),
+                        Edge::Left => assert_eq!(x, b.0, "{sf} {edge:?} {t}"),
+                        Edge::Right => assert_eq!(x + size.0, b.0 + b.2, "{sf} {edge:?} {t}"),
+                    }
+                    assert!(x <= b.0 && y <= b.1 && x + size.0 >= b.0 + b.2 && y + size.1 >= b.1 + b.3, "{sf} {edge:?} {t}");
+                    // The page's strip: thick / scale CSS px, back to exactly thick.
+                    let thick = thickness(edge, b);
+                    assert_eq!(thick, t);
+                    assert_eq!(((thick as f64 / sf) * sf).round() as i32, t, "{sf} {edge:?} {t}");
+                }
+            }
+        }
+    }
 }
