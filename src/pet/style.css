@@ -490,7 +490,7 @@ body {
     border-radius 0.4s ease;
 }
 
-#island-compact,
+:is(#island-compact, .stand-compact),
 #island-expanded {
   position: absolute;
   top: 0;
@@ -510,14 +510,14 @@ body {
 
 /* Three places (island.js fillCompact): her at the left, the words in the
    middle cut short, the value at the right edge; as wide as set. */
-#island-compact {
+:is(#island-compact, .stand-compact) {
   height: 36px;
   gap: 10px;
   padding: 0 16px 0 7px;
   font-size: 13px;
 }
 
-#island-compact .clock {
+:is(#island-compact, .stand-compact) .clock {
   flex: none;
   max-width: 60%;
   overflow: hidden;
@@ -526,7 +526,7 @@ body {
 }
 
 /* What takes turns (words, "+N", value) as one, its width what is left. */
-#island-compact .turning {
+:is(#island-compact, .stand-compact) .turning {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -535,7 +535,7 @@ body {
 }
 
 /* Another widget's turn, another session: it slides in. */
-#island-compact .turning.turn {
+:is(#island-compact, .stand-compact) .turning.turn {
   animation: compact-turn 0.32s ease both;
 }
 
@@ -547,7 +547,7 @@ body {
 }
 
 /* The monitor pinned: its readings at the island's right end, past a line. */
-#island-compact .pinned {
+:is(#island-compact, .stand-compact) .pinned {
   flex: none;
   display: flex;
   align-items: center;
@@ -556,11 +556,11 @@ body {
   font-size: 12.5px;
 }
 
-#island-compact.bare {
+:is(#island-compact, .stand-compact).bare {
   padding-right: 7px;
 }
 
-.has-her #island-compact {
+.has-her :is(#island-compact, .stand-compact) {
   padding-left: 40px;
 }
 
@@ -582,14 +582,14 @@ body {
 }
 
 /* The shape now: its content comes in once the old one has gone. */
-[data-view='compact'] #island-compact,
+[data-view='compact'] :is(#island-compact, .stand-compact),
 [data-view='expanded'] #island-expanded {
   opacity: 1;
   transform: none;
   transition-delay: 0.12s;
 }
 
-#island-compact .label {
+:is(#island-compact, .stand-compact) .label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -765,7 +765,7 @@ body {
   color: #8e8e93;
 }
 
-#island .portrait {
+:is(#island, #island-stand) .portrait {
   flex: none;
   border-radius: 50%;
   background-color: #1c1c1e;
@@ -815,7 +815,7 @@ body {
 }
 
 /* A widget in the compact island: icon and label, the value where the clock goes. */
-#island-compact .wlabel {
+:is(#island-compact, .stand-compact) .wlabel {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -887,16 +887,16 @@ body {
 }
 
 .tb-light #bar-rest,
-.isl-light #island {
+.isl-light :is(#island, #island-stand) {
   --cell-ink: #1b1b1b;
   --cell-high: #c25400;
 }
 
-#island-compact .wparts {
+:is(#island-compact, .stand-compact) .wparts {
   gap: 0;
 }
 
-#island-compact .wlabel .wicon {
+:is(#island-compact, .stand-compact) .wlabel .wicon {
   flex: none;
 }
 
@@ -948,7 +948,7 @@ body {
 }
 
 /* Other sessions busy too: "+N" before the clock. */
-#island-compact .more {
+:is(#island-compact, .stand-compact) .more {
   flex: none;
   margin-right: -4px;
   padding: 1px 6px;
@@ -1203,11 +1203,11 @@ body {
     0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.home-taskbar #island-compact {
+.home-taskbar :is(#island-compact, .stand-compact) {
   height: 48px;
 }
 
-.home-taskbar.has-her #island-compact {
+.home-taskbar.has-her :is(#island-compact, .stand-compact) {
   padding-left: 46px;
 }
 
@@ -1262,11 +1262,11 @@ body {
     0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.home-taskbar.tb-capsule #island-compact {
+.home-taskbar.tb-capsule :is(#island-compact, .stand-compact) {
   height: 38px;
 }
 
-.home-taskbar.tb-capsule.has-her #island-compact {
+.home-taskbar.tb-capsule.has-her :is(#island-compact, .stand-compact) {
   padding-left: 41px;
 }
 
@@ -1333,6 +1333,8 @@ body {
    screen's edge. Only while it is on: any translate, 0px too, makes a
    stacking context and a frame for what is fixed inside. */
 .oled-shift #island,
+.oled-shift #island-stand,
+.oled-shift #island-neck,
 .oled-shift #bar-rest {
   translate: var(--oled-x) var(--oled-y);
 }
@@ -2124,7 +2126,7 @@ body {
 
 /* Its words dark on a light ground (island.js inkLight: as Windows' mode, or as
    its own ground when the settings give it one). */
-.isl-light #island {
+.isl-light :is(#island, #island-stand) {
   color: #1b1b1b;
 }
 
@@ -2144,16 +2146,16 @@ body {
   background: #fbfbfb;
 }
 
-.isl-light #island-compact .label,
+.isl-light :is(#island-compact, .stand-compact) .label,
 .isl-light #island-expanded .reply {
   color: #3a3a3a;
 }
 
-.isl-light #island-compact .pinned {
+.isl-light :is(#island-compact, .stand-compact) .pinned {
   border-left-color: rgba(0, 0, 0, 0.12);
 }
 
-.isl-light #island-compact .more {
+.isl-light :is(#island-compact, .stand-compact) .more {
   background: rgba(0, 0, 0, 0.06);
 }
 
@@ -2187,8 +2189,8 @@ body {
   border-top-color: rgba(0, 0, 0, 0.08);
 }
 
-.isl-light #island .portrait,
-.isl-light #island .still-her {
+.isl-light :is(#island, #island-stand) .portrait,
+.isl-light :is(#island, #island-stand) .still-her {
   background-color: #e8e8e8;
 }
 
@@ -3294,4 +3296,140 @@ body.isl-right .tblib {
    strip is over it, so it never shows over Windows' strip for a frame. */
 html.handoff-wait body.home-taskbar #island-row {
   visibility: hidden;
+}
+
+/* --- Open off the taskbar (island.js isAway; the setting taskbarOpenAway) ------------
+   Her island open (its lines, a prompt) stands TASKBAR_GAP above the strip,
+   level with the settings, clear of Start, the programs and the tray, and
+   joined to her capsule by a neck as the drop she is pulled out in is: in her
+   slot a stand-in for the capsule (as it is, her portrait still), ringed in
+   her mood's colour while the island is away. Opening, the island lifts as
+   it grows and the neck stretches up out of the capsule; closing, the neck
+   snaps back first, then the island sinks into the capsule, the stand-in
+   fading as it comes. Only with the setting on (tb-away): off, as before. */
+#island-stand,
+#island-neck {
+  display: none;
+}
+
+.tb-away.home-taskbar #island-stand {
+  display: block;
+  position: absolute;
+  left: var(--isl-x, 0px);
+  bottom: 0;
+  z-index: 2;
+  overflow: hidden;
+  background: #000;
+  color: #f5f5f7;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease 0.32s,
+    box-shadow 0.2s ease;
+}
+
+.tb-away.home-taskbar.tb-capsule #island-stand {
+  left: var(--isl-x, 6px);
+  bottom: 5px;
+  background: var(--i-bg);
+  box-shadow: var(--i-edge);
+}
+
+body.isl-right.tb-away.home-taskbar #island-stand {
+  left: auto;
+  right: var(--isl-x, 0px);
+}
+
+.island-bare.tb-away.home-taskbar.tb-capsule #island-stand {
+  background: transparent;
+  box-shadow: none;
+}
+
+#island-stand .still-her {
+  position: absolute;
+}
+
+.isl-away.home-taskbar #island-stand {
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    opacity 0.3s ease,
+    box-shadow 0.3s ease;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 0 3px color-mix(in srgb, var(--ring, #5e9bff) 35%, transparent);
+}
+
+.isl-away.home-taskbar.tb-capsule #island-stand {
+  box-shadow:
+    0 0 0 1px var(--i-line),
+    0 0 0 3px color-mix(in srgb, var(--ring, #5e9bff) 35%, transparent);
+}
+
+/* The neck: as wide as her portrait at either end, pinched between; from
+   inside the capsule's top to inside the island's foot (island.js sets its
+   height and foot), over both outlines; no edge, no blur. */
+.tb-away.home-taskbar #island-neck {
+  display: block;
+  position: absolute;
+  left: calc(var(--seat-x, 25px) - 17px);
+  width: 34px;
+  z-index: 3;
+  overflow: visible;
+  pointer-events: none;
+  transform: scaleY(0);
+  transform-origin: 50% 100%;
+  transition: transform 0.15s ease-in;
+}
+
+.isl-away.home-taskbar #island-neck {
+  transform: none;
+  pointer-events: auto;
+  transition: transform 0.3s cubic-bezier(0.3, 1.3, 0.5, 1) 0.08s;
+}
+
+#island-neck path {
+  fill: #000;
+}
+
+.tb-capsule #island-neck path {
+  fill: var(--i-bg);
+}
+
+/* Lifted off the strip: rounded all round, its shadow and edge as the
+   settings' (on the Mica and the light strip it has them already). */
+.tb-away.home-taskbar #island {
+  transition:
+    width 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
+    height 0.56s cubic-bezier(0.3, 1.45, 0.5, 1),
+    border-radius 0.4s ease,
+    left 0.3s ease,
+    right 0.3s ease,
+    bottom 0.56s cubic-bezier(0.3, 1.45, 0.5, 1);
+}
+
+.isl-away.home-taskbar #island:is([data-view='expanded'], [data-view='ask']) {
+  bottom: 56px;
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Coming back down: the neck first. */
+.isl-sinking.home-taskbar #island {
+  transition-delay: 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-away.home-taskbar #island-neck,
+  .isl-away.home-taskbar #island-neck {
+    transform: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .isl-away.home-taskbar #island-neck {
+    opacity: 1;
+  }
 }

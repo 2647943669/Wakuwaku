@@ -60,6 +60,10 @@ fn defaults() -> Map<String, Value> {
         // middle of the screen or after her end (island.js alignApps).
         "taskbarButtons": "icons",
         "taskbarAlign": "center",
+        // Her island opens off the taskbar, joined to her capsule by a neck,
+        // clear of its buttons; off, it grows out of the capsule over the
+        // strip's end (island.js isAway).
+        "taskbarOpenAway": true,
         // OLED's guard, on unless turned off: the island's and the taskbar's
         // icons and words a screen pixel off by turns (island.js oledShift).
         "oledShift": true,

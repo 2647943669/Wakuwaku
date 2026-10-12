@@ -298,6 +298,12 @@
   // light mode), wherever the strip is not black itself: on the Mica, clear,
   // or light.
   const isCapsule = () => isMica() || isClear() || isLight()
+  // Her island opens off the taskbar (taskbarOpenAway, on unless turned
+  // off): open (its lines, a prompt), it stands above the strip, joined to
+  // her capsule by a neck, clear of Start, the programs and the tray. Off,
+  // it grows out of the capsule over the strip's end, as it always did.
+  const isAwayOn = () => isOn() && home() === 'taskbar' && config.taskbarOpenAway !== false
+  const isAway = () => isAwayOn() && (view === 'expanded' || view === 'ask')
   // The compact taskbar island's height: the strip's, or the capsule's.
   const taskCompactH = () => (isCapsule() ? TASKBAR_H - 2 * CAPSULE_Y : TASKBAR_H)
   // In her seat: there is a pet to show, and she is not out on the desktop.
@@ -579,6 +585,67 @@
     })
   }
 
+  // --- Open off the taskbar: her capsule's stand-in, and the neck ---------------------
+  // While her island is away (isAway), in her slot a stand-in for the
+  // capsule: the compact capsule as it is (its words, the clock going on,
+  // her portrait still), ringed in her mood's colour; and a neck from inside
+  // its top to inside the island's foot, on her seat, pinched between, as the
+  // drop she is pulled out in. Both answer the pointer as the island does: a
+  // press on the stand-in is one on the capsule, and going from it up to the
+  // island never closes it.
+  const SVG_NS = 'http://www.w3.org/2000/svg'
+  const NECK_W = 34
+  const standIn = el('div')
+  standIn.id = 'island-stand'
+  // What the compact capsule's own looks are keyed on (style.css .stand-compact).
+  standIn.dataset.view = 'compact'
+  const neck = document.createElementNS(SVG_NS, 'svg')
+  neck.id = 'island-neck'
+  neck.setAttribute('preserveAspectRatio', 'none')
+  const neckPath = document.createElementNS(SVG_NS, 'path')
+  neck.append(neckPath)
+  island.after(standIn, neck)
+  let awayWas = false
+  let sinkTimer
+
+  function drawAway() {
+    const away = isAway()
+    body.classList.toggle('tb-away', isAwayOn())
+    body.classList.toggle('isl-away', away)
+    // Coming back down into the capsule: the neck snaps back first.
+    if (awayWas && !away && view === 'compact') {
+      clearTimeout(sinkTimer)
+      body.classList.add('isl-sinking')
+      sinkTimer = setTimeout(() => body.classList.remove('isl-sinking'), SPRING_MS + 150)
+    } else if (away) {
+      clearTimeout(sinkTimer)
+      body.classList.remove('isl-sinking')
+    }
+    awayWas = away
+    if (!away) return
+    const { width, height } = sizeOf('compact')
+    Object.assign(standIn.style, { width: `${width}px`, height: `${height}px`, borderRadius: isCapsule() ? `${height / 2}px` : '0' })
+    standIn.style.setProperty('--ring', hue()[now.mood] || hue().idle)
+    const copy = compact.cloneNode(true)
+    copy.removeAttribute('id')
+    copy.classList.add('stand-compact')
+    // Drawn anew with every update: what slid in once does not slide again.
+    for (const node of copy.querySelectorAll('.turn')) node.classList.remove('turn')
+    const face = isHome() ? stillHer(TASK_HEAD) : null
+    if (face) {
+      const at = `${(height - TASK_HEAD) / 2}px`
+      Object.assign(face.style, { left: at, top: at })
+    }
+    standIn.replaceChildren(copy, ...(face ? [face] : []))
+    // From 4 px inside the capsule's top to 4 px inside the island's foot.
+    const top = (isCapsule() ? CAPSULE_Y : 0) + height
+    const h = TASKBAR_H + TASKBAR_GAP - top + 8
+    Object.assign(neck.style, { bottom: `${top - 4}px`, height: `${h}px` })
+    neck.setAttribute('viewBox', `0 0 ${NECK_W} ${h}`)
+    const w = NECK_W
+    neckPath.setAttribute('d', `M0 0 C ${w * 0.3} ${h * 0.45}, ${w * 0.3} ${h * 0.55}, 0 ${h} L ${w} ${h} C ${w * 0.7} ${h * 0.55}, ${w * 0.7} ${h * 0.45}, ${w} 0 Z`)
+  }
+
   // --- Her, in the island -----------------------------------------------------------
 
   // Her shape for the island's: a round portrait ringed in the mood's colour
@@ -649,7 +716,7 @@
     // past its room (the window then grows up too, which flashes: its room
     // is kept as high as the settings ever are, settingsMax).
     if (home() === 'taskbar') {
-      const height = want.height + TASKBAR_SHADE + (view === 'settings' ? TASKBAR_H + TASKBAR_GAP : isCapsule() ? CAPSULE_Y : 0)
+      const height = want.height + TASKBAR_SHADE + (view === 'settings' || isAway() ? TASKBAR_H + TASKBAR_GAP : isCapsule() ? CAPSULE_Y : 0)
       if (height <= TASKBAR_H + TASKBAR_ROOM) return null
       return { width: innerWidth, height }
     }
@@ -684,7 +751,7 @@
           ? isCapsule()
             ? `${height / 2}px`
             : '0'
-          : view === 'settings' || isCapsule()
+          : view === 'settings' || isCapsule() || isAway()
             ? '22px'
             : '22px 22px 0 0'
         : `${height > 60 ? 30 : height / 2}px`
@@ -1074,6 +1141,8 @@
     body.classList.toggle('isl-right', atRight)
     document.documentElement.style.setProperty('--isl-x', `${onPixels(atRight ? innerWidth - (r.right - shifted - pad) : left)}px`)
     const seat = Math.round(left + taskCompactH() / 2)
+    // The neck stands on it (drawAway).
+    document.documentElement.style.setProperty('--seat-x', `${seat}px`)
     if (seat !== seatSent) {
       seatSent = seat
       window.pet.seat(seat)
@@ -2593,6 +2662,8 @@
     fillCompact()
     fillExpanded()
     fillBar()
+    // After the capsule's words: its stand-in shows them as they are now.
+    drawAway()
 
     const want = sizeOf(view)
     // Reaching for her keeps the room to reach in.
@@ -3028,7 +3099,8 @@
 
   // --- The pointer ----------------------------------------------------------------
 
-  for (const target of [island]) {
+  // Her island, and while it is away its neck and her capsule's stand-in.
+  for (const target of [island, neck, standIn]) {
     target.addEventListener('mouseenter', () => {
       window.pet.hover(true)
       clearTimeout(hoverTimer)
