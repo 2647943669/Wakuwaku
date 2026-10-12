@@ -43,8 +43,13 @@
 
   // Windows' strip, as its picture shows it (the display's whole width in its
   // pixels, as tall as Windows' strip is: not always hers), laid over where
-  // it is, at the window's foot; resolves once it is on the screen (two
-  // frames drawn, or a moment: no frames come while the window is hidden).
+  // it is, at the window's foot; resolves once it is on the screen: two
+  // frames drawn. Not a moment after whatever came of them: on a first run
+  // (the settings opening, the Mica's picture being drawn) the frames came
+  // later than 120 ms, Windows' was put away first, and the bare desktop
+  // showed under the strip for two or three frames (2026-10-13). 600 ms at
+  // most, as no frames come while the window is hidden (the program waits
+  // 800 for its answer anyway).
   async function cover(url, size) {
     const mine = ++step
     drop()
@@ -59,7 +64,8 @@
     picture.width = img.naturalWidth
     picture.height = img.naturalHeight
     picture.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0)
-    await Promise.race([new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))), wait(120)])
+    const drawn = await Promise.race([new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true)))), wait(600).then(() => false)])
+    if (!drawn) console.log('handoff: the picture laid, no frame drawn in 600 ms')
   }
 
   // The page as big as its window ([w, h], physical) by now, or half a
