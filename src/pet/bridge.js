@@ -107,7 +107,15 @@
       app: (path, what, id) => invoke('taskbar_app', { path: String(path), what: String(what), id: id ? String(id) : null }).catch(() => false),
       // Room for windows' live pictures in the page: [[window, x, y, w, h]], or none.
       thumbs: items => send('taskbar_thumbs', { items }),
+      // The handover with Windows' own taskbar (handoff.js): its picture is
+      // over it (covered), hers is bare for Windows' to show under it (bare),
+      // the dust has settled (done). Out of the queue: the program may be
+      // waiting on it inside an earlier call (pet_ready waits for covered).
+      handoff: what => invoke('taskbar_handoff', { what: String(what) }).catch(() => {}),
     },
+    // The handover's steps ({ step: in, picture } with Windows' strip as a
+    // picture, { step: go } once Windows' is hidden under it, { step: out }).
+    onHandoff: on('taskbar:handoff'),
     onTray: on('taskbar:tray'),
     // The windows' buttons as they change ({ id, title, exe, png, front, min, flash, sessions }).
     onWindows: on('taskbar:windows'),

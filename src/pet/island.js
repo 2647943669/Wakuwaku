@@ -1943,6 +1943,36 @@
     else img.addEventListener('load', look, { once: true })
   }
 
+  // Starting, the tray kept as wide as it was last time until as many icons
+  // are back (the programs add theirs one by one once the tray is ours,
+  // seconds after the rest is drawn), or a few seconds: what is left of it
+  // never jumps leftwards as the last ones come. Kept here, as it is, while
+  // on the taskbar.
+  const TRAY_KEPT = 'trayWidth'
+  let trayHold = null
+  try {
+    const kept = JSON.parse(localStorage.getItem(TRAY_KEPT) || 'null')
+    if (kept?.w > 0 && kept.w < 2000 && kept.n > 0) trayHold = kept
+  } catch {}
+  let trayKept = ''
+  function holdTray() {
+    if (trayHold && (trayIcons.length >= trayHold.n || performance.now() > 8000)) trayHold = null
+    trayBox.style.minWidth = trayHold ? `${trayHold.w}px` : ''
+    trayBox.style.justifyContent = trayHold ? 'flex-end' : ''
+    if (trayHold) return
+    requestAnimationFrame(() => {
+      if (home() !== 'taskbar' || !trayIcons.length) return
+      const w = Math.round(trayBox.getBoundingClientRect().width)
+      const kept = JSON.stringify({ w, n: trayIcons.length })
+      if (w <= 0 || kept === trayKept) return
+      trayKept = kept
+      try {
+        localStorage.setItem(TRAY_KEPT, kept)
+      } catch {}
+    })
+  }
+  setTimeout(holdTray, 8100)
+
   function drawTray() {
     const icons = orderedTray()
     const folded = icons.filter(i => !isOut(i))
@@ -1957,6 +1987,7 @@
       flyout.hidden = !trayOpen
       if (trayBox.firstChild !== flyout) trayBox.replaceChildren(flyout, chevron, outBox)
     }
+    holdTray()
     requestAnimationFrame(sendTrayRects)
   }
 

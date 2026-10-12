@@ -3284,3 +3284,10 @@ body.isl-right .tblib {
 .tb-light .tbghost.off {
   background: #f6d5d5;
 }
+
+/* --- The handover with Windows' taskbar (handoff.js) -------------------------------
+   Hers out of sight from the page's start until the picture of Windows'
+   strip is over it, so it never shows over Windows' strip for a frame. */
+html.handoff-wait body.home-taskbar #island-row {
+  visibility: hidden;
+}
