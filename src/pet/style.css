@@ -3356,11 +3356,12 @@ body.isl-right.tb-away.home-taskbar #island-stand {
   transition:
     opacity 0.3s ease,
     box-shadow 0.3s ease;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 0 0 3px color-mix(in srgb, var(--ring, #5e9bff) 35%, transparent);
 }
 
+/* Ringed only as a capsule: on the black strip the stand-in is the strip's
+   square end, as the compact one is, and a ring round it read as a rule
+   down through the strip; island, neck and strip are one black piece there,
+   her portrait's own ring carrying the colour. */
 .isl-away.home-taskbar.tb-capsule #island-stand {
   box-shadow:
     0 0 0 1px var(--i-line),
