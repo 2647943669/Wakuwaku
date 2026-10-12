@@ -1491,10 +1491,9 @@
     acts.append(button('remove', t(lang, 'taskbar.w.remove')))
     wgPop.replaceChildren(head, ...rows, acts)
     wgPop.hidden = false
-    const r = node.getBoundingClientRect()
-    const base = barRest.getBoundingClientRect()
-    const left = r.left - base.left + r.width / 2 - wgPop.offsetWidth / 2
-    wgPop.style.left = `${Math.max(4, Math.min(left, barRest.offsetWidth - wgPop.offsetWidth - 4))}px`
+    const at = besideOrOver(node, wgPop, isSide() ? 8 : 4)
+    wgPop.style.left = at.left === undefined ? '' : `${at.left}px`
+    wgPop.style.top = at.top === undefined ? '' : `${at.top}px`
   }
 
   // Off the taskbar, and kept so.
@@ -1568,7 +1567,7 @@
     // Another program's windows taking the place of the last's (the pointer
     // gone along the buttons): where the list was and how big, to slide from.
     const isList = popFor.kind === 'list'
-    const from = isList && !pop.hidden && pop.classList.contains('list') && popShown && popShown !== app.app ? { left: pop.offsetLeft, width: pop.offsetWidth, height: pop.offsetHeight } : null
+    const from = isList && !pop.hidden && pop.classList.contains('list') && popShown && popShown !== app.app ? { [isSide() ? 'top' : 'left']: isSide() ? pop.offsetTop : pop.offsetLeft, width: pop.offsetWidth, height: pop.offsetHeight } : null
     const opening = pop.hidden
     // Drawn again only when what it shows changed: a card replaced under a
     // press is never clicked (the windows' list comes again often).
@@ -1583,14 +1582,15 @@
     popShown = app.app
     // Mid-slide, the list keeps going where it was going.
     if (popMoving && !from) return
-    // Over its button, kept within the screen, at its own size.
+    // Over its button (beside it on a side bar, 6 px off the bar), kept
+    // within the screen, at its own size.
     pop.classList.remove('sliding', 'rising')
     pop.style.width = ''
     pop.style.height = ''
-    const left = button.offsetLeft + button.offsetWidth / 2 - pop.offsetWidth / 2
-    const to = { left: Math.max(4, Math.min(left, barRest.offsetWidth - pop.offsetWidth - 4)), width: pop.offsetWidth, height: pop.offsetHeight }
+    const to = { ...besideOrOver(button, pop, isSide() ? 8 : 4), width: pop.offsetWidth, height: pop.offsetHeight }
     if (from) return slidePop(from, to)
-    pop.style.left = `${to.left}px`
+    pop.style.left = to.left === undefined ? '' : `${to.left}px`
+    pop.style.top = to.top === undefined ? '' : `${to.top}px`
     if (opening && isList) return risePop()
     requestAnimationFrame(sendThumbs)
   }
@@ -1624,11 +1624,23 @@
     }, ms)
   }
 
+  // Where a pop goes in the bar (its px): centred over a node along the bar,
+  // or beside it on a side bar (its place there by style.css), kept this
+  // far from the bar's ends.
+  function besideOrOver(node, popNode, keep) {
+    const r = node.getBoundingClientRect()
+    const base = barRest.getBoundingClientRect()
+    if (isSide()) return { top: Math.round(Math.max(keep, Math.min(r.top - base.top + r.height / 2 - popNode.offsetHeight / 2, barRest.offsetHeight - popNode.offsetHeight - keep))) }
+    return { left: Math.round(Math.max(keep, Math.min(r.left - base.left + r.width / 2 - popNode.offsetWidth / 2, barRest.offsetWidth - popNode.offsetWidth - keep))) }
+  }
+
   function slidePop(from, to) {
     holdThumbs()
-    pop.style.setProperty('--come', `${to.left > from.left ? 16 : -16}px`)
+    // Along the bar: across a bottom or top one, up and down a side one.
+    const key = 'top' in to ? 'top' : 'left'
+    pop.style.setProperty('--come', `${to[key] > from[key] ? 16 : -16}px`)
     pop.classList.add('sliding')
-    const box = b => ({ left: `${b.left}px`, width: `${b.width}px`, height: `${b.height}px` })
+    const box = b => ({ [key]: `${b[key]}px`, width: `${b.width}px`, height: `${b.height}px` })
     Object.assign(pop.style, box(to))
     pop.getAnimations().forEach(a => a.id === 'slide' && a.cancel())
     const slide = pop.animate([box(from), box(to)], { duration: POP_SLIDE_MS, easing: 'cubic-bezier(0.3, 1.2, 0.5, 1)' })
@@ -2081,6 +2093,7 @@
   function openTray(open) {
     if (trayOpen === open) return
     trayOpen = open
+    trayBox.classList.toggle('upper', isSide() && trayBox.getBoundingClientRect().top < innerHeight / 2)
     drawTray()
     watchPresses()
   }
@@ -2513,7 +2526,9 @@
     tools.replaceChildren(...items)
     if (!tools.isConnected) document.body.append(tools)
     const r = node.getBoundingClientRect()
-    tools.style.left = `${Math.round(Math.max(4, Math.min(r.left + r.width / 2 - tools.offsetWidth / 2, innerWidth - tools.offsetWidth - 4)))}px`
+    // Over it, or beside a side bar (its place there by style.css).
+    tools.style.left = isSide() ? '' : `${Math.round(Math.max(4, Math.min(r.left + r.width / 2 - tools.offsetWidth / 2, innerWidth - tools.offsetWidth - 4)))}px`
+    tools.style.top = isSide() ? `${Math.round(Math.max(8, Math.min(r.top + r.height / 2 - tools.offsetHeight / 2, innerHeight - tools.offsetHeight - 8)))}px` : ''
   }
 
   tools.addEventListener('click', e => {

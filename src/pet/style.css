@@ -3816,3 +3816,87 @@ html.handoff-wait body.home-taskbar #island-row {
   height: auto;
   margin: 0;
 }
+
+/* --- What opens from a side bar (island.js besideOrOver) ----------------------------
+   Beside the bar, 6 px off its inner edge, centred along it on what it
+   opens from and kept 8 px from the screen's ends: the windows' list and
+   menu, a widget's card, a widget's tools; the tray's folded icons from its
+   ^ up (down from it in the bar's upper half). Moving from one button to
+   the next it slides along the bar; it comes in from the bar's side. */
+.tb-side #bar-rest :is(.wpop, .wgpop) {
+  bottom: auto;
+}
+
+.tb-left #bar-rest :is(.wpop, .wgpop) {
+  left: 54px;
+}
+
+.tb-right #bar-rest :is(.wpop, .wgpop) {
+  left: auto;
+  right: 54px;
+}
+
+.tb-side #bar-rest .wpop.sliding .wcard {
+  animation-name: wcard-in-along;
+}
+
+@keyframes wcard-in-along {
+  from {
+    opacity: 0;
+    transform: translateY(var(--come, 0px));
+  }
+}
+
+.tb-left #bar-rest .wpop.rising {
+  animation-name: wpop-from-left;
+}
+
+.tb-right #bar-rest .wpop.rising {
+  animation-name: wpop-from-right;
+}
+
+@keyframes wpop-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes wpop-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.tb-side #bar-rest .tfly {
+  top: auto;
+  bottom: calc(100% - 24px);
+}
+
+.tb-side #bar-rest .tray.upper .tfly {
+  top: 0;
+  bottom: auto;
+}
+
+.tb-left #bar-rest .tfly {
+  left: 50px;
+}
+
+.tb-right #bar-rest .tfly {
+  left: auto;
+  right: 50px;
+}
+
+.tb-side .tbtools {
+  bottom: auto;
+}
+
+.tb-left .tbtools {
+  left: 54px;
+}
+
+.tb-right .tbtools {
+  left: auto;
+  right: 54px;
+}
