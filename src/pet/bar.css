@@ -22,16 +22,39 @@ body {
   padding: 0 0 0 4px;
 }
 
-/* The ground, by material: black (the line along its inner edge), Mica's
-   tint, or none (clear: the words haloed so they read on any desktop). */
+/* The ground, by material: black (the line along its inner edge), Mica
+   (this display's wallpaper blurred and tinted, mica.js, under the strip's
+   parts; Mica's own tint until it comes), or none (clear: the words haloed
+   so they read on any desktop). */
 .b-black #bar {
   background: #000;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
+#mica {
+  display: none;
+}
+
+.b-mica #mica {
+  display: block;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #202020;
+}
+
+#mica canvas {
+  position: absolute;
+  transition: opacity 0.4s ease;
+}
+
+.b-light.b-mica #mica {
+  background: #f3f3f3;
+}
+
 .b-mica #bar {
-  background: rgba(32, 32, 32, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .b-light.b-black #bar {
@@ -40,7 +63,6 @@ body {
 }
 
 .b-light.b-mica #bar {
-  background: rgba(243, 243, 243, 0.92);
   box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.06);
 }
 
