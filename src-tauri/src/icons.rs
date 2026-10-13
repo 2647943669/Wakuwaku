@@ -482,20 +482,30 @@ fn keep(data: &Path, saved: &Value) -> std::io::Result<()> {
     std::fs::write(file(data), saved.to_string())
 }
 
-// The icons once the desktop has done laying them: read until two reads
-// 300 ms apart are alike, so long at most. It lays them more than once
-// as the work area moves under it (Windows' taskbar sliding back, her
-// strip along the bottom): put back before it was done, they were moved
-// again, a place on the grid off (the test session, 2026-10-13).
+// The icons once the desktop has done laying them: read every 200 ms until
+// they have kept still for STILL, so long at most. It lays them more than
+// once as the work area moves under it (Windows' taskbar sliding back, her
+// strip along the bottom), and only some while after it is told: read too
+// soon, they had not moved yet, their places on the left were kept as the
+// ones before her, and given back every icon was taken for one the person
+// dragged and put back on the left (the test session, 2026-10-13: Explorer
+// had put them back itself 968 ms after).
+#[cfg(windows)]
+const STILL: Duration = Duration::from_millis(1200);
+
 #[cfg(windows)]
 fn settled(d: &imp::Desktop, most: Duration) -> Vec<Item> {
     let t = Instant::now();
     let mut last = d.items();
+    let mut since = Instant::now();
     loop {
-        std::thread::sleep(Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(200));
         let now = d.items();
         let same = now.len() == last.len() && now.iter().zip(&last).all(|(a, b)| a.name == b.name && a.at == b.at);
-        if same || t.elapsed() >= most {
+        if !same {
+            since = Instant::now();
+        }
+        if (same && since.elapsed() >= STILL) || t.elapsed() >= most {
             return now;
         }
         last = now;
@@ -536,7 +546,7 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str) -> Vec<
             json!({ "auto": d.auto_arrange(), "items": places(&before) })
         });
         let told = d.tell(d.top);
-        let mut items = settled(&d, Duration::from_secs(3));
+        let mut items = settled(&d, Duration::from_secs(5));
         let spacing = d.spacing();
         let out: Vec<(&Item, Point)> = items.iter().filter(|i| under(i.at, spacing, strip)).map(|i| (i, out_of(i.at, spacing, strip, edge))).collect();
         let (n_out, put) = (out.len(), !out.is_empty() && d.place(&out));
@@ -601,16 +611,19 @@ pub fn given_back(data: &Path) -> Vec<String> {
     with_com(|| {
         let Some(d) = desktop() else { return vec!["icons: no desktop to tell; the places kept for later".to_string()] };
         let told = d.tell(d.top);
-        let items = settled(&d, Duration::from_secs(3));
+        let items = settled(&d, Duration::from_secs(5));
         let auto = d.auto_arrange();
         let spacing = d.spacing();
         let target = |i: &Item| -> Option<Point> {
             let was = place_of(&saved["items"], &i.name);
             let now = place_of(&saved["now"], &i.name);
             let after = place_of(&saved["after"], &i.name);
+            // Moved by the person while she was there (a place on the grid
+            // or more from where the desktop had laid it): there.
+            let far = |a: Point, b: Point| (a.x - b.x).abs() >= spacing.x || (a.y - b.y).abs() >= spacing.y;
             match (now, after) {
-                // Moved by the person while she was there: there.
-                (Some(n), a) if a != Some(n) => Some(n),
+                (Some(n), Some(a)) if far(n, a) => Some(n),
+                (Some(n), None) => Some(n),
                 (Some(_), _) => was,
                 // Nothing held: where it was, if the desktop's own move away.
                 (None, _) => was.filter(|w| (w.x - i.at.x).abs() < spacing.x && (w.y - i.at.y).abs() < spacing.y),
