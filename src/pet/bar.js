@@ -73,8 +73,12 @@
     }
   }
 
-  // A button for each program, as the main taskbar's: its icon, a mark under
-  // it while running (longer in the accent for the one in front), its windows' titles in its tip.
+  // A button for each program, as the main taskbar's icons (island.js
+  // drawWindows): its icon, a mark under it while running (longer in the
+  // accent for the one in front), how many windows at its corner when more
+  // than one. Its name in its tip only while it does not run: running, its
+  // windows are listed when the pointer rests on it, and a tip stood over
+  // the list's corner (the test session, 2026-10-13).
   function drawWindows() {
     const list = state.windows || []
     wins.replaceChildren(
@@ -85,15 +89,24 @@
         b.classList.toggle('run', windows.length > 0)
         b.classList.toggle('front', windows.some(w => w.front))
         b.classList.toggle('flash', windows.some(w => w.flash))
-        b.title = [app.name, ...windows.map(w => w.title)].filter(Boolean).join('\n')
+        if (!windows.length) b.title = app.name || ''
         const img = el('img')
         img.src = app.png || ''
         img.alt = ''
         b.append(img)
+        if (windows.length > 1) b.append(el('span', 'count', String(windows.length)))
         return b
       }),
     )
   }
+
+  // Start and the programs centred on the whole strip: as much room before
+  // them as the clock and the sliver take after (bar.css #lead).
+  const end = document.getElementById('end')
+  new ResizeObserver(() => {
+    body.style.setProperty('--end-w', `${end.offsetWidth}px`)
+    body.style.setProperty('--end-h', `${end.offsetHeight}px`)
+  }).observe(end)
 
   // --- Her capsule, while a prompt waits ---------------------------------------
   // As her island on the main taskbar draws itself (island.js placeHer,
