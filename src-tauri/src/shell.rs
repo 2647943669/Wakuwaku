@@ -27,7 +27,6 @@ mod imp {
     use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Mutex;
 
     use serde_json::{json, Value};
 
@@ -165,11 +164,11 @@ mod imp {
         list
     }
 
-    // Whether one of Explorer's taskbars shows where hers should alone (those
-    // on the other displays are meant to).
+    // Whether one of Explorer's taskbars shows, on any display: hers is the
+    // taskbar while she is up, and the displays without hers have none.
     pub fn visible() -> bool {
         // SAFETY: windows Explorer made; a gone one reads as not visible.
-        taskbars().into_iter().any(|h| on_home(h) && unsafe { IsWindowVisible(h as Hwnd) } != 0)
+        taskbars().into_iter().any(|h| unsafe { IsWindowVisible(h as Hwnd) } != 0)
     }
 
     pub fn taskbar_created() -> u32 {
@@ -211,54 +210,56 @@ mod imp {
     // for her strip along the bottom, which lies over it; not for one along
     // another edge, where it would leave an empty band at the bottom of the
     // screen (set to hide itself it keeps none; restore gives its own state
-    // back), unless it shows on another display (rehide).
+    // back). On the displays without a strip of hers the band it keeps is
+    // taken back (bars.rs keep_work).
     static KEEP_ROOM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
     pub fn keep_room(keep: bool) {
         KEEP_ROOM.store(keep, Ordering::SeqCst);
     }
 
+    // Windows' taskbar put away on every display: hers is the taskbar while
+    // she is up, on her display alone or on all of them (taskbarDisplays). A
+    // display without hers has none at all, as with Windows' own "show my
+    // taskbar on all displays" off: Windows' own was left to show there
+    // (#4), but her taskbar on the main display alone is to mean no other
+    // taskbar anywhere (the user, 2026-10-13).
     pub fn rehide() {
         let main = explorer_tray();
         let state = appbar::taskbar_state();
-        // Kept too while Windows' own shows on another display (her strip on
-        // hers alone): set to hide itself, it hid there as well, Windows
-        // setting it for all of them, and that display had no taskbar to be
-        // seen (the test session, 2026-10-13). The band it then keeps along
-        // the foot of hers, her strip along another edge, is taken back
-        // (taskbar.rs tick, band_left).
-        let keep = KEEP_ROOM.load(Ordering::SeqCst) || taskbars().into_iter().any(|h| !on_home(h));
-        let want = if keep { state & !appbar::ABS_AUTOHIDE } else { state | appbar::ABS_AUTOHIDE };
+        let want = if KEEP_ROOM.load(Ordering::SeqCst) { state & !appbar::ABS_AUTOHIDE } else { state | appbar::ABS_AUTOHIDE };
         if main != 0 && want != state {
             appbar::set_taskbar_state(main, want);
         }
         for h in taskbars() {
-            // SAFETY: a window Explorer made; hiding or showing a gone one does nothing.
-            unsafe { ShowWindow(h as Hwnd, if on_home(h) { SW_HIDE } else { SW_SHOWNA }) };
+            // SAFETY: a window Explorer made; hiding a gone one does nothing.
+            unsafe { ShowWindow(h as Hwnd, SW_HIDE) };
         }
     }
 
-    // The display her strip is on (x, y, w, h): Windows' taskbar there is put
-    // away, those on the other displays are left to show (taskbar.rs sets it
-    // as the strip moves). Put away on every display, a second display had no
-    // taskbar at all (the user, 2026-10-13). None: on every display (her
-    // strip's not known yet).
-    static HOME: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
-
-    pub fn home_display(mon: Option<(i32, i32, i32, i32)>) {
-        *HOME.lock().unwrap() = mon;
-    }
-
-    // Whether a taskbar of Explorer's is on her strip's display.
-    fn on_home(h: isize) -> bool {
-        let Some(home) = *HOME.lock().unwrap() else { return true };
-        let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
-        // SAFETY: our own struct, of the size the call writes; a gone window gives the nearest display.
-        if unsafe { GetMonitorInfoW(MonitorFromWindow(h as Hwnd, MONITOR_DEFAULTTONEAREST), &mut info) } == 0 {
-            return true;
+    // Each taskbar of Explorer's shown again given its room: the work area of
+    // its display stops at it, and the windows maximized there are laid on
+    // that (appbar.rs refit_maximized). While she was up the room was taken
+    // back where no strip of hers lay over it (bars.rs keep_work), and as it
+    // shows again its work area need not be worked out anew. One hiding
+    // itself (slid off the screen) has none.
+    fn rooms_back() {
+        for h in taskbars() {
+            let mut r = Rect::default();
+            let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+            // SAFETY: our own structs, of the sizes the calls write; a gone window fails them.
+            let ok = unsafe { GetWindowRect(h as Hwnd, &mut r) != 0 && GetMonitorInfoW(MonitorFromWindow(h as Hwnd, MONITOR_DEFAULTTONEAREST), &mut info) != 0 };
+            let m = &info.monitor;
+            let mon = (m.left, m.top, m.right - m.left, m.bottom - m.top);
+            let along_foot = r.bottom == m.bottom && r.left <= m.left && r.right >= m.right && r.top > m.top + mon.3 / 2;
+            let Some(work) = appbar::work_of(mon).filter(|_| ok && along_foot) else { continue };
+            if work.1 + work.3 > r.top {
+                let to = appbar::Edge::Bottom.with_side(work, r.top);
+                if appbar::set_work(to) {
+                    appbar::refit_maximized(work, to);
+                }
+            }
         }
-        let m = &info.monitor;
-        (m.left, m.top, m.right - m.left, m.bottom - m.top) == home
     }
 
     // The room a taskbar of Explorer's keeps along the bottom of a display
@@ -295,6 +296,7 @@ mod imp {
             // SAFETY: as in rehide().
             unsafe { ShowWindow(h as Hwnd, SW_SHOWNA) };
         }
+        rooms_back();
     }
 
     // Its state set back and shown, and the file gone; false (the file kept)
@@ -310,6 +312,7 @@ mod imp {
             // SAFETY: as in rehide().
             unsafe { ShowWindow(h as Hwnd, SW_SHOWNA) };
         }
+        rooms_back();
         std::fs::remove_file(file).is_ok()
     }
 
@@ -403,7 +406,6 @@ mod imp {
     }
     pub fn rehide() {}
     pub fn keep_room(_keep: bool) {}
-    pub fn home_display(_mon: Option<(i32, i32, i32, i32)>) {}
     pub fn room(_mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
         None
     }
@@ -419,7 +421,7 @@ mod imp {
     pub fn guard(_pid: u32, _file: &Path, _ended: impl FnOnce(), _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
 }
 
-pub use imp::{explorer_tray, guard, hide, home_display, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
+pub use imp::{explorer_tray, guard, hide, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
 
 // The guard's arguments, when this process is one: its pid and file.
 pub fn guard_args(args: &[String]) -> Option<(u32, &Path)> {

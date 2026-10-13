@@ -1366,13 +1366,6 @@ mod imp {
     // there too, for those who ask the taskbar's window where it is.
     pub fn strip_moved(strip: (i32, i32, i32, i32)) {
         *STRIP.lock().unwrap() = Some(strip);
-        // Windows' taskbar put away on this display only; on the others it
-        // shows (shell.rs home_display), unless hers are there too (bars.rs).
-        if is_up() {
-            let all = sh().is_some_and(|sh| crate::bars::wanted(&sh));
-            shell::home_display(if all { None } else { Some(monitor_of(strip).0) });
-            shell::rehide();
-        }
         // Along another edge than the bottom (taken there, or moved there):
         // the work area made the display less the strip, at once. The self-heal only ever moves the
         // strip's own side, and the room the last edge took was kept: from
@@ -1397,11 +1390,10 @@ mod imp {
             // Back along the bottom: the work area the display less the room
             // Windows' own keeps there (or the whole of it, that room not back
             // yet), the side the last edge took given back. Windows' own made
-            // it so itself as it took its room back, but kept all along (it
-            // shows on another display: shell.rs rehide) it had nothing to
-            // take, and the left's 60 px stayed (the test session,
-            // 2026-10-13). By the room, not the strip: the strip told first
-            // may still be the last edge's.
+            // it so itself as it took its room back, unless it had kept the
+            // room all along, and then the left's 60 px stayed (the test
+            // session, 2026-10-13). By the room, not the strip: the strip told
+            // first may still be the last edge's.
             let ((x, y, w, h), _) = monitor_of(strip);
             let foot = shell::room((x, y, w, h)).map_or(y + h, |r| r.1);
             log(&format!("the strip back along the Bottom: work area made ({x}, {y}, {}, {foot})", x + w));
@@ -1578,16 +1570,6 @@ mod imp {
                 now.left, now.top, now.right, now.bottom, later.left, later.top, later.right, later.bottom
             ));
         });
-    }
-
-    // Where the work area's foot should be on her strip's display while the
-    // strip is along another edge and Windows' own, put away, keeps its room
-    // along the foot (shell.rs rehide: it shows on another display); None
-    // while it does not stop at that room.
-    fn band_left(work: &Rect, mon: (i32, i32, i32, i32)) -> Option<i32> {
-        let foot = mon.1 + mon.3;
-        let room = shell::room(mon)?;
-        (work.bottom == room.1 && work.bottom < foot).then_some(foot)
     }
 
     // Where the work area should stop on the strip's edge (its inner side),
@@ -1980,15 +1962,11 @@ mod imp {
         let strip = *STRIP.lock().unwrap();
         let edge = *EDGE.lock().unwrap();
         let fix = strip.and_then(|s| work_lost(edge, &work, s));
-        // Along another edge, the band Windows' own leaves along the foot of
-        // hers while it keeps its room (it shows on another display:
-        // shell.rs rehide): taken back to the display's foot.
-        let mon = strip.filter(|_| edge != Edge::Bottom).map(|s| monitor_of(s).0);
-        let band = mon.and_then(|m| band_left(&work, m));
         // A side an earlier strip of hers held in, kept by Explorer: given back (appbar.rs stale_sides).
+        let mon = strip.filter(|_| edge != Edge::Bottom).map(|s| monitor_of(s).0);
         let xywh = (work.left, work.top, work.right - work.left, work.bottom - work.top);
         let stale = strip.zip(mon).map(|(s, m)| edge.stale_sides(xywh, s, m)).unwrap_or_default();
-        let lost = fix.is_some() || band.is_some() || !stale.is_empty();
+        let lost = fix.is_some() || !stale.is_empty();
         let ticks = TICKS.load(Ordering::SeqCst);
         if !lost {
             LOST_SINCE.store(0, Ordering::SeqCst);
@@ -2004,16 +1982,13 @@ mod imp {
                     icons_out(strip, edge);
                 }
             }
-            if let Some(foot) = band {
-                log(&format!("work area ({}, {}, {}, {}) stops at Windows' kept room, the strip along the {edge:?}: its foot set to {foot}", work.left, work.top, work.right, work.bottom));
-                set_work_side(Edge::Bottom, foot);
-            }
             for (side, at) in stale {
                 log(&format!("work area ({}, {}, {}, {}) held in along the {side:?} as by a strip of hers before, the strip along the {edge:?}: that side set to {at}", work.left, work.top, work.right, work.bottom));
                 set_work_side(side, at);
             }
         }
-        // Hers on the other displays keep theirs clear of their strips too (bars.rs).
+        // The other displays' work areas: clear of her strips there, and
+        // whole where there is none (bars.rs).
         if let Some(sh) = sh() {
             crate::bars::keep_work(&sh);
         }

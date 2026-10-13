@@ -1871,7 +1871,7 @@
       </div>`
   }
 
-  // Her taskbar on the main display alone (Windows' own on the others), or
+  // Her taskbar on the main display alone (no taskbar on the others), or
   // on all of them (bars.rs); with one display, shown greyed (the appearance
   // session's spec, as Windows' own "show my taskbar on all displays").
   function displaysRow() {
