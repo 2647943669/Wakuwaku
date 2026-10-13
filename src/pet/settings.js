@@ -1997,6 +1997,9 @@
     if (!isOpen) return
     console.log('settings close:', why)
     isOpen = false
+    // The welcome opened again only for this time: "not now" said since
+    // (the island's 不用提醒), the next open shows it folded (the test session).
+    welcomeOpen = false
     clearInterval(clockTimer)
     for (const timer of thumbTimers) clearTimeout(timer)
     thumbTimers = []
