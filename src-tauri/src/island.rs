@@ -334,6 +334,13 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
     let Some((area, edge, height)) = want else { return };
     if home == "taskbar" {
         let strip = edge.strip(area.mon, height);
+        // The desktop's icons where they are, before anything of a strip along
+        // another edge than the bottom moves them (icons.rs keep_before).
+        if edge != Edge::Bottom {
+            for line in crate::icons::keep_before_within(&sh.dir, std::time::Duration::from_millis(1500)) {
+                sh.log(&line);
+            }
+        }
         // Windows' own keeps its room along the bottom for a bottom strip,
         // and none for another edge (taskbar.rs set_edge).
         taskbar::set_edge(edge);

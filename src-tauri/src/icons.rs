@@ -574,7 +574,8 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
                     }
                     saved
                 }
-                None => json!({ "auto": d.auto_arrange(), "items": places(&d.items()), "moved": [] }),
+                // Not kept before (keep_before): kept now, maybe already for the strip.
+                None => json!({ "auto": d.auto_arrange(), "items": places(&d.items()), "moved": [], "late": true }),
             };
             let fresh = saved.get("after").is_none() && saved["moved"].as_array().is_some_and(Vec::is_empty);
             if let Err(e) = keep(data, &saved) {
@@ -583,7 +584,7 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
             format!(
                 "icons: the desktop told of the work area along the {edge} ({}){}",
                 if d.tell(d.top) { "answered" } else { "no answer" },
-                if fresh { "; places kept" } else { "" }
+                if fresh { "; places kept late, maybe already moved for the strip" } else { "" }
             )
         });
         log(line);
@@ -629,6 +630,44 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
             }
         }
     });
+}
+
+// The places before her strip goes along the top, the left or the right,
+// before anything of it moves them (island.rs sync_bar_now, before Windows'
+// own is put away, her app bar asked for, the work area set: each of those
+// may have the desktop lay them anew, and read after it the places kept
+// were already those for the strip, given back a strip's width off; the test
+// session, 2026-10-13). Once: those from before her.
+#[cfg(windows)]
+pub fn keep_before(data: &Path) -> Vec<String> {
+    let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+    if kept(data).is_some() {
+        return Vec::new();
+    }
+    with_com(|| {
+        let Some(d) = desktop() else { return vec!["icons: no desktop to look at before the strip".to_string()] };
+        let items = d.items();
+        let saved = json!({ "auto": d.auto_arrange(), "items": places(&items), "moved": [] });
+        match keep(data, &saved) {
+            Ok(()) => vec![format!("icons: {} places kept before the strip moves them", items.len())],
+            Err(e) => vec![format!("icons: places not written ({e})")],
+        }
+    })
+}
+
+#[cfg(not(windows))]
+pub fn keep_before(_data: &Path) -> Vec<String> {
+    Vec::new()
+}
+
+// keep_before, waited for a moment at most (the strip is taken on).
+pub fn keep_before_within(data: &Path, most: std::time::Duration) -> Vec<String> {
+    let data = data.to_path_buf();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(keep_before(&data));
+    });
+    rx.recv_timeout(most).unwrap_or_else(|_| vec![format!("icons: places before the strip not read within {} ms", most.as_millis())])
 }
 
 // Just before the work area is given back (the bottom again, another home,
@@ -759,8 +798,8 @@ pub fn given_back(data: &Path) -> Vec<String> {
         let found: Vec<String> = wanted
             .iter()
             .map(|(name, at, t)| {
-                let after = place_of(&saved["after"], name).map_or("none".to_string(), |a| format!("{},{}", a.x, a.y));
-                format!("{},{}→{},{} after {after}", at.x, at.y, t.x, t.y)
+                let at_ = |list: &str| place_of(&saved[list], name).map_or("none".to_string(), |a| format!("{},{}", a.x, a.y));
+                format!("{},{}→{},{} was {} after {}", at.x, at.y, t.x, t.y, at_("items"), at_("after"))
             })
             .collect();
         let w = imp::work_area();
