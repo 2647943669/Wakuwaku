@@ -203,16 +203,22 @@ mod imp {
         unsafe { EnumWindows(collect_maximized, &mut found as *mut Vec<isize> as isize) };
         // SAFETY: a plain query.
         let display = unsafe { MonitorFromPoint(Point { x: now.0 + now.2 / 2, y: now.1 + now.3 / 2 }, MONITOR_DEFAULTTONEAREST) };
+        let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+        // SAFETY: our own struct, of the size the call writes.
+        if unsafe { GetMonitorInfoW(display, &mut info) } == 0 {
+            return 0;
+        }
+        let m = &info.monitor;
+        let whole = (m.left, m.top, m.right - m.left, m.bottom - m.top);
         let mut moved = 0;
         for h in found {
             let mut r = Rect::default();
             // SAFETY: plain queries into our own struct; a gone window fails them.
             let ok = unsafe { MonitorFromWindow(h as Hwnd, MONITOR_DEFAULTTONEAREST) == display && GetWindowRect(h as Hwnd, &mut r) != 0 };
             let at = (r.left, r.top, r.right - r.left, r.bottom - r.top);
-            if !ok || super::lies_over(at, now) || !super::lies_over(at, was) {
+            let Some(to) = super::refit(at, was, now, whole).filter(|_| ok) else {
                 continue;
-            }
-            let to = super::moved_with(at, was, now);
+            };
             // SAFETY: another program's window moved, not activated; one we may not move (run as administrator) refuses.
             if unsafe { SetWindowPos(h as Hwnd, 0, to.0, to.1, to.2, to.3, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER) } != 0 {
                 moved += 1;
@@ -385,6 +391,21 @@ fn lies_over(r: (i32, i32, i32, i32), work: (i32, i32, i32, i32)) -> bool {
     past(work.0 - r.0) && past(work.1 - r.1) && past((r.0 + r.2) - (work.0 + work.2)) && past((r.1 + r.3) - (work.1 + work.3))
 }
 
+// Where a maximized window at `at` goes as its display's work area moves
+// from `was` to `now`: each side as far as the work area's, if it lay over
+// the old one and not yet over the new; None to leave it be. One over all of
+// its display (`whole`) is full screen, not laid on a work area: a borderless
+// app's full screen, a video's, a browser's F11 may keep the maximized state,
+// and over a work area that was the whole display (Windows' own set to hide
+// itself, or the work area put back so by Explorer while her strip is along
+// a side) it was squeezed into the new one, full screen no more.
+fn refit(at: (i32, i32, i32, i32), was: (i32, i32, i32, i32), now: (i32, i32, i32, i32), whole: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
+    if at == whole || lies_over(at, now) || !lies_over(at, was) {
+        return None;
+    }
+    Some(moved_with(at, was, now))
+}
+
 // A rect with each side moved as far as the work area's side moved.
 fn moved_with(r: (i32, i32, i32, i32), was: (i32, i32, i32, i32), now: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
     let l = r.0 + (now.0 - was.0);
@@ -477,5 +498,25 @@ mod edge_tests {
         assert!(lies_over(to, now));
         // A window laid otherwise (restored, half the screen) is not over either.
         assert!(!lies_over((2560, -149, 1280, 800), was));
+    }
+
+    #[test]
+    fn a_full_screen_window_is_left_be() {
+        use super::refit;
+        let mon = (0, 0, 2560, 1440);
+        // Windows' own set to hide itself: the work area the whole display,
+        // her strip then along the bottom.
+        let (was, now) = (mon, (0, 0, 2560, 1380));
+        // Maximized with its frame past the edges: laid on the new one.
+        assert_eq!(refit((-9, -9, 2578, 1458), was, now, mon), Some((-9, -9, 2578, 1398)));
+        // Full screen and maximized (F11 from a maximized browser, a
+        // borderless app's full screen): over all of the display, left be.
+        assert_eq!(refit(mon, was, now, mon), None);
+        // As it was before: from Windows' room to the strip along the left.
+        let (was, now) = ((0, 0, 2560, 1380), (60, 0, 2500, 1440));
+        assert_eq!(refit((-9, -9, 2578, 1398), was, now, mon), Some((51, -9, 2518, 1458)));
+        assert_eq!(refit(mon, was, now, mon), None);
+        // Already over the new one: left be.
+        assert_eq!(refit((51, -9, 2518, 1458), was, now, mon), None);
     }
 }
