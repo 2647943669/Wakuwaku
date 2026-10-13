@@ -33,6 +33,7 @@
 mod appbar;
 mod asks;
 mod audio;
+mod bars;
 mod connection;
 mod crash;
 mod data;
@@ -461,7 +462,7 @@ impl Shared {
 
     pub fn change(self: &Arc<Self>, patch: Value) {
         let Value::Object(patch) = patch else { return };
-        let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge"].iter().any(|k| patch.contains_key(*k));
+        let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge", "taskbarDisplays"].iter().any(|k| patch.contains_key(*k));
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
         {
             let mut settings = self.settings.lock().unwrap();
@@ -473,6 +474,8 @@ impl Shared {
         if touches_visibility {
             self.apply_visibility();
         }
+        // Her taskbar on the other displays: its material, its buttons' alignment, her language (bars.rs).
+        bars::refresh(self);
         if touches_top {
             island::keep_on_top(self);
         }
@@ -490,7 +493,13 @@ impl Shared {
         static CHANGED: Mutex<Option<Instant>> = Mutex::new(None);
         let watching = fullscreen::AVAILABLE && (self.flag("hideInFullscreen") || self.home() == "taskbar");
         let own = self.own.lock().unwrap().clone();
-        let is_full = if watching { fullscreen::check(&own, &self.displays()) } else { Some(false) };
+        let cover = if watching { fullscreen::covering(&own) } else { Some(None) };
+        // Her taskbar on the other displays steps aside on its own display alone.
+        if let Some(cover) = cover {
+            bars::full_screen(self, cover);
+        }
+        let on = self.displays();
+        let is_full = cover.map(|c| c.is_some_and(|mon| on.is_empty() || on.contains(&mon)));
         let how = match asked {
             Some(at) => format!("event, {} ms after", at.elapsed().as_millis()),
             None => "timer".to_string(),
@@ -1176,6 +1185,7 @@ fn main() {
             settings::settings_hooks,
             settings::settings_codex_hooks,
             settings::settings_agy_hooks,
+            bars::bar_ready,
             settings::settings_fetch,
             settings::settings_gallery,
             settings::settings_open_site,

@@ -1008,6 +1008,8 @@ mod imp {
                                 "max": fills_strip(t.hwnd),
                                 "flash": flashing.contains(&t.hwnd),
                                 "sessions": marks.get(&t.hwnd).cloned().unwrap_or_default(),
+                                // The display it is on: its button on that display's taskbar (bars.rs).
+                                "mon": display_of(t.hwnd),
                             })
                         })
                         .collect();
@@ -1046,8 +1048,29 @@ mod imp {
         let mut sent = SENT_WINDOWS.lock().unwrap();
         if *sent != list {
             *sent = list.clone();
-            let _ = sh.app.emit_to("island", "taskbar:windows", list);
+            drop(sent);
+            let _ = sh.app.emit_to("island", "taskbar:windows", crate::bars::for_main(sh, &list));
+            crate::bars::refresh(sh);
         }
+    }
+
+    // The display a window is on (x, y, w, h).
+    fn display_of(hwnd: isize) -> [i32; 4] {
+        let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+        // SAFETY: our own struct, of the size the call writes; a gone window gives the nearest display.
+        unsafe { GetMonitorInfoW(MonitorFromWindow(hwnd as Hwnd, MONITOR_DEFAULTTONEAREST), &mut info) };
+        let m = &info.monitor;
+        [m.left, m.top, m.right - m.left, m.bottom - m.top]
+    }
+
+    // The buttons as last made, each window with its display (bars.rs).
+    pub fn windows_now() -> Value {
+        SENT_WINDOWS.lock().unwrap().clone()
+    }
+
+    // Windows' look as last sent: light or dark, the accent (bars.rs).
+    pub fn look_value() -> Value {
+        LOOK.lock().unwrap().clone()
     }
 
     // The live pictures' window as the cards round it are: dark, or light in
@@ -1341,9 +1364,10 @@ mod imp {
     pub fn strip_moved(strip: (i32, i32, i32, i32)) {
         *STRIP.lock().unwrap() = Some(strip);
         // Windows' taskbar put away on this display only; on the others it
-        // shows (shell.rs home_display).
+        // shows (shell.rs home_display), unless hers are there too (bars.rs).
         if is_up() {
-            shell::home_display(Some(monitor_of(strip).0));
+            let all = sh().is_some_and(|sh| crate::bars::wanted(&sh));
+            shell::home_display(if all { None } else { Some(monitor_of(strip).0) });
             shell::rehide();
         }
         // Along another edge than the bottom (taken there, or moved there):
@@ -1456,6 +1480,7 @@ mod imp {
             let _ = sh.app.emit_to("island", "taskbar:look", look);
         }
         drop(sent);
+        crate::bars::refresh(&sh);
         let Some(strip) = *STRIP.lock().unwrap() else { return };
         let (mon, sf) = monitor_of(strip);
         let Some(paper) = wallpaper::read(mon) else { return };
@@ -1553,7 +1578,7 @@ mod imp {
         }
         let windows = SENT_WINDOWS.lock().unwrap().clone();
         if !windows.is_null() {
-            let _ = sh.app.emit_to("island", "taskbar:windows", windows);
+            let _ = sh.app.emit_to("island", "taskbar:windows", crate::bars::for_main(sh, &windows));
         }
         let keys = SENT_KEYS.lock().unwrap().clone();
         if !keys.is_null() {
@@ -2447,6 +2472,12 @@ mod imp {
     pub fn resend(_sh: &Shared) {}
     pub fn wake() {}
     pub fn look_now() {}
+    pub fn look_value() -> serde_json::Value {
+        serde_json::Value::Null
+    }
+    pub fn windows_now() -> serde_json::Value {
+        serde_json::Value::Null
+    }
     pub fn press(_sh: &Shared, _key: u64, _press: &str, _home_hwnd: isize) -> bool {
         false
     }
@@ -2476,7 +2507,7 @@ mod imp {
     }
 }
 
-pub use imp::{explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, note, resend, strip_moved, strip_picture, take, waiting, wake, work_area_bottom, work_area_rect};
+pub use imp::{explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, look_value, note, resend, strip_moved, strip_picture, take, waiting, wake, windows_now, work_area_bottom, work_area_rect};
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser

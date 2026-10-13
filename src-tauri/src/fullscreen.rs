@@ -111,38 +111,46 @@ mod imp {
 
     // None: the foreground window is one of ours (keep what was decided).
     pub fn check(own: &[isize], on: &[(i32, i32, i32, i32)]) -> Option<bool> {
+        covering(own).map(|c| c.is_some_and(|mon| on.is_empty() || on.contains(&mon)))
+    }
+
+    // The display an app full screen covers (x, y, w, h): Some(None) when
+    // none does; None, the foreground window one of ours (keep what was
+    // decided). Her taskbar on the other displays steps aside on its own
+    // display alone (bars.rs).
+    pub fn covering(own: &[isize]) -> Option<Option<(i32, i32, i32, i32)>> {
         // SAFETY: plain user32 calls; the buffers and structs are ours and sized.
         unsafe {
             let hwnd = GetForegroundWindow();
             if hwnd.is_null() {
-                return Some(false);
+                return Some(None);
             }
             if own.contains(&(hwnd as isize)) {
                 return None;
             }
             if IsWindowVisible(hwnd) == 0 {
-                return Some(false);
+                return Some(None);
             }
             let mut name = [0u16; 256];
             let n = GetClassNameW(hwnd, name.as_mut_ptr(), 256).max(0) as usize;
             if SKIP_CLASSES.contains(&String::from_utf16_lossy(&name[..n]).as_str()) {
-                return Some(false);
+                return Some(None);
             }
             if GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CAPTION != 0 {
-                return Some(false);
+                return Some(None);
             }
             let mut rect = Rect::default();
             if GetWindowRect(hwnd, &mut rect) == 0 {
-                return Some(false);
+                return Some(None);
             }
             let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
             if GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mut info) == 0 {
-                return Some(false);
+                return Some(None);
             }
             let m = &info.monitor;
             let mon = (m.left, m.top, m.right - m.left, m.bottom - m.top);
             let covers = rect.left <= m.left && rect.top <= m.top && rect.right >= m.right && rect.bottom >= m.bottom;
-            Some(covers && (on.is_empty() || on.contains(&mon)) && !SKIP_PROGRAMS.contains(&program_of(hwnd).as_str()))
+            Some((covers && !SKIP_PROGRAMS.contains(&program_of(hwnd).as_str())).then_some(mon))
         }
     }
 
@@ -189,6 +197,10 @@ mod imp {
         Some(false)
     }
 
+    pub fn covering(_own: &[isize]) -> Option<Option<(i32, i32, i32, i32)>> {
+        Some(None)
+    }
+
     pub fn front() -> String {
         String::new()
     }
@@ -196,4 +208,4 @@ mod imp {
     pub const AVAILABLE: bool = false;
 }
 
-pub use imp::{check, front, AVAILABLE};
+pub use imp::{check, covering, front, AVAILABLE};

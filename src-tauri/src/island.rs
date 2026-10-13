@@ -394,6 +394,8 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
 // Windows' own taskbar back, for the taskbar's). Waited for, so it is back
 // before she goes (should it take too long, the guard gives it back).
 pub fn release_bar(sh: &Shared) {
+    // Her taskbar on the other displays goes first (bars.rs).
+    crate::bars::close_all(sh);
     let t = std::time::Instant::now();
     while SYNCING.load(Ordering::SeqCst) && t.elapsed() < std::time::Duration::from_secs(5) {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -561,6 +563,8 @@ pub fn apply_visibility(sh: &Arc<Shared>) {
     if let Some(win) = window(sh) {
         let _ = if want { win.show() } else { win.hide() };
     }
+    // Her taskbar on the other displays, as the settings say (bars.rs).
+    crate::bars::sync(sh);
 }
 
 // --- The handover with Windows' taskbar (handoff.js) ----------------------------------
@@ -674,6 +678,8 @@ pub fn handoff_out(sh: &Shared) {
 // reaches over its own strip, was pushed up into the work area by the strip's
 // height (2026-10-10, as a game went full screen and back).
 pub fn keep_on_screen(sh: &Shared) {
+    // A display come or gone: her taskbar on the others too (bars.rs).
+    crate::bars::sync(&crate::shared(&sh.app));
     let (is_up, pos, size) = {
         let isl = sh.island.lock().unwrap();
         (isl.shown && !isl.holding && !isl.reaching, isl.pos, isl.size)
