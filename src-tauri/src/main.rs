@@ -1352,9 +1352,12 @@ fn main() {
                 });
             }
             // Never set up: the settings, where Claude Code or Codex gets
-            // connected (every start until one is: closing them is not
-            // setting up, island.rs settings_closed).
-            if !connection::look_connected(port) && !sh.flag("onboarded") {
+            // connected, once (welcomeOpened). Every start until one was
+            // connected was too much for one who keeps her as a pet only,
+            // with no way to stop it (the user, 2026-10-13); nor once "not
+            // now" was said (connectHintOff, the welcome's or the island's).
+            if !connection::look_connected(port) && !sh.flag("onboarded") && !sh.flag("welcomeOpened") && !sh.flag("connectHintOff") {
+                sh.change(json!({ "welcomeOpened": true }));
                 island::open_settings(&sh, Some("connect"));
             }
             Ok(())

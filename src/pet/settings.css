@@ -2106,6 +2106,21 @@
   gap: 10px;
 }
 
+/* "Not now": quiet, at the card's foot (as the island's 不用提醒). */
+#island-settings .wc-later {
+  align-self: flex-end;
+  margin-top: -4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--g5);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 #island-settings .wc-err {
   display: flex;
   flex-direction: column;

@@ -1719,6 +1719,11 @@
   // Why each could not be written: { error, kind } (locked, invalid, other).
   const failed = {}
   let pluginOpen = false
+  // "Not now" said (connectHintOff: the welcome's 以后再说, the island's
+  // 不用提醒) and nothing connected: the welcome folded to one row at the
+  // page's top; opened again by its 去连接, or by asking for connecting.
+  let welcomeOpen = false
+  const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !claudeIn() && !codexIn()
   const TOOL = { claude: 'Claude Code', codex: 'Codex' }
   const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
   const claudeIn = () => snap.connection !== 'none'
@@ -1780,6 +1785,9 @@
   }
 
   function welcomeBlock() {
+    if (welcomeFolded()) {
+      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.idle}"></span><div class="grow d">${esc(T('hint.title'))}</div><span class="link" data-welcome-open>${esc(T('hint.go'))} ›</span></div></div>`
+    }
     const tools = toolsHere()
     const seen = tools.filter(tool => toolState(tool) === 'seen')
     // Connected: one row, this once; one on this computer not written yet
@@ -1809,10 +1817,12 @@
         ? `<div class="wc-div"></div>
         <button class="wc-plug${pluginOpen ? ' open' : ''}" data-plugin-toggle><span class="fi chev">\uE76C</span><span>${esc(T('wc.plug'))}</span><span class="d">${esc(T('wc.plugNote'))}</span></button>${plugBody}`
         : ''
+    // Nothing connected: "not now" at its foot (as the island's 不用提醒).
+    const later = !claudeIn() && !codexIn() ? `<button class="wc-later" data-welcome-later>${esc(T('wc.later'))}</button>` : ''
     return `<div class="wcard" style="${accentButton()}">
         <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(title)}</div><div class="wc-sub">${esc(T('wc.sub'))}${both ? esc(T('wc.subBoth')) : ''}</div></div></div>
         <div class="wc-btns${both ? ' two' : ''}">${tools.map(toolButton).join('')}</div>${tools.map(toolNote).join('')}
-        <div class="wc-safe">${safe}</div>${plugin}
+        <div class="wc-safe">${safe}</div>${plugin}${later}
       </div>`
   }
 
@@ -1950,6 +1960,8 @@
   }
 
   function open(next) {
+    // Asked for connecting: the welcome open, folded or not.
+    if (next === 'connect') welcomeOpen = true
     if (PART_OF[next]) {
       tab = PART_OF[next]
       partToShow = next
@@ -2293,6 +2305,18 @@
         draw()
         relayout()
       })
+    }
+    // The welcome folded ("not now", the island's hint put away too), or
+    // opened again from its row.
+    if (at('[data-welcome-later]')) {
+      welcomeOpen = false
+      patch({ connectHintOff: true })
+      return relayout()
+    }
+    if (at('[data-welcome-open]')) {
+      welcomeOpen = true
+      draw()
+      return relayout()
     }
     // The welcome's plugin, folded out or in; its row to the Connect part.
     if (at('[data-plugin-toggle]')) {
