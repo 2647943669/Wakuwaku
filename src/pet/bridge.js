@@ -76,6 +76,8 @@
     onLanded: on('island:landed'),
     // The prompt waiting asked for from her taskbar on another display (bars.rs).
     onLookHere: on('island:look-here'),
+    // Up over an app full screen for the prompts alone ({ on }, island.rs over_full): her island only.
+    onOverFull: on('island:over-full'),
     // The settings in the island (settings.js): open them here or from
     // anywhere else (the tray, her double-click), what they show, what they change.
     onSettings: on('island:settings'),

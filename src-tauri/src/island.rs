@@ -91,6 +91,8 @@ pub struct Island {
     // Risen for the prompts waiting (asked from her taskbar on another
     // display while an app full screen hid it): it goes once they are answered.
     pub for_asks: bool,
+    // The page told it is up over an app full screen for them alone (over_full).
+    over_full: bool,
     // Settings asked for before its page was up: the page they open on.
     pending: Option<String>,
     // On the taskbar, her seat along the strip from its start (logical: from
@@ -523,6 +525,39 @@ pub fn ready(sh: &Arc<Shared>) {
 }
 
 pub fn apply_visibility(sh: &Arc<Shared>) {
+    // Told before it shows, so the strip never shows over the full screen;
+    // told it is over once it has gone (or, the full screen gone, stays up).
+    let over = over_full(sh);
+    let told = sh.island.lock().unwrap().over_full;
+    if over && !told {
+        tell_over_full(sh, true);
+    }
+    show_or_hide(sh);
+    if !over && told {
+        tell_over_full(sh, false);
+    }
+}
+
+// Up over an app full screen for the prompts alone (show_asks), her taskbar
+// the home: the page shows her island and what opens from it, not the strip
+// under them (style.css over-full), and the pointer goes through there to
+// what is full screen. The whole taskbar, the tray and the clock, came up
+// over the video with them (the test session, 2026-10-13). Not with the
+// settings open: they stand on the strip.
+fn over_full(sh: &Shared) -> bool {
+    sh.home() == "taskbar" && sh.is_fullscreen() && {
+        let isl = sh.island.lock().unwrap();
+        isl.for_asks && !isl.temp && !isl.settings_open
+    }
+}
+
+fn tell_over_full(sh: &Shared, on: bool) {
+    sh.island.lock().unwrap().over_full = on;
+    let _ = sh.app.emit_to("island", "island:over-full", json!({ "on": on }));
+    sh.log(&format!("island: {}", if on { "over the full screen for the prompts alone, the strip unseen" } else { "the strip seen again" }));
+}
+
+fn show_or_hide(sh: &Arc<Shared>) {
     // Another copy of her holding the taskbar: this one waits, its window
     // not shown over the other's.
     if sh.home() == "taskbar" {

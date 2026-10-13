@@ -4057,3 +4057,18 @@ body.hinting #island[data-view='compact'] .hint-dot {
     opacity: 0;
   }
 }
+
+/* Up over an app full screen for the prompts alone (island.rs over_full):
+   her island and its panel, nothing of the strip under them, its ground,
+   Mica or line, nor its parts; the pointer goes through there to what is
+   full screen (the parts take it only while under it). Over every ground
+   the strip may have (tb-clear-mica, tb-solid, tb-light…). */
+.over-full #island-row {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.over-full #mica,
+.over-full #bar-rest {
+  visibility: hidden;
+}

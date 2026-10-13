@@ -360,14 +360,15 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
         n
     }
 
-    // Any other hook event: drop the asks it shows were settled in the terminal.
-    pub fn seen(&mut self, e: &Value) -> bool {
+    // Any other hook event: drop the asks it shows were settled in the
+    // terminal. Which ones (for the log).
+    pub fn seen(&mut self, e: &Value) -> Vec<u64> {
         let session = s(e, "session_id");
         if session.is_empty() {
-            return false;
+            return Vec::new();
         }
         let name = s(e, "hook_event_name");
-        let mut changed = false;
+        let mut settled = Vec::new();
         while let Some(i) = self.list.iter().position(|a| {
             a.view["session"] == session && {
                 let is_same_call = (name == "PostToolUse" || name == "PostToolUseFailure")
@@ -377,20 +378,20 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
                 is_same_call || MOVED_ON.contains(&name)
             }
         }) {
+            settled.push(self.list[i].id);
             self.finish(i, Some(json!({})));
-            changed = true;
         }
-        changed
+        settled
     }
 
-    // Those whose time is up go to the terminal.
-    pub fn expire(&mut self, now: u64) -> bool {
-        let mut changed = false;
+    // Those whose time is up go to the terminal. Which ones (for the log).
+    pub fn expire(&mut self, now: u64) -> Vec<u64> {
+        let mut gone = Vec::new();
         while let Some(i) = self.list.iter().position(|a| a.deadline <= now) {
+            gone.push(self.list[i].id);
             self.finish(i, Some(json!({})));
-            changed = true;
         }
-        changed
+        gone
     }
 
     pub fn views(&self) -> Value {
@@ -478,12 +479,13 @@ mod tests {
         let id = asks.add(permission(), reply(&got), 0, 1000).ok().unwrap();
         assert_eq!(asks.views()[0]["id"], id);
         // The same call finishing: answered in the terminal.
-        assert!(asks.seen(&json!({ "hook_event_name": "PostToolUse", "session_id": "s", "tool_name": "Bash", "tool_input": { "command": "npm test" } })));
+        assert_eq!(asks.seen(&json!({ "hook_event_name": "PostToolUse", "session_id": "s", "tool_name": "Bash", "tool_input": { "command": "npm test" } })), vec![id]);
         assert_eq!(got.borrow().as_slice(), &[Some(json!({}))]);
 
-        asks.add(permission(), reply(&got), 0, 1000).ok().unwrap();
-        assert!(!asks.expire(999));
-        assert!(asks.expire(1000));
+        let id = asks.add(permission(), reply(&got), 0, 1000).ok().unwrap();
+        assert!(asks.expire(999).is_empty());
+        // Its time up: which one went, for the log.
+        assert_eq!(asks.expire(1000), vec![id]);
         assert!(asks.is_empty());
         assert!(asks.add(json!({ "hook_event_name": "Stop" }), reply(&got), 0, 1000).is_err());
     }
@@ -518,8 +520,8 @@ mod tests {
         let mut asks: Asks<Box<dyn FnOnce(Option<Value>)>> = Asks::default();
         let sink = got.clone();
         asks.add(codex_permission("Bash", "rm x"), Box::new(move |v| sink.borrow_mut().push(v)), 0, 1000).ok().unwrap();
-        assert!(!asks.seen(&json!({ "hook_event_name": "PreToolUse", "session_id": "c", "tool_name": "Bash" })));
-        assert!(asks.seen(&json!({ "hook_event_name": "Interrupt", "session_id": "c", "agent": "codex" })));
+        assert!(asks.seen(&json!({ "hook_event_name": "PreToolUse", "session_id": "c", "tool_name": "Bash" })).is_empty());
+        assert_eq!(asks.seen(&json!({ "hook_event_name": "Interrupt", "session_id": "c", "agent": "codex" })).len(), 1);
         assert_eq!(got.borrow().as_slice(), &[Some(json!({}))]);
     }
 }
