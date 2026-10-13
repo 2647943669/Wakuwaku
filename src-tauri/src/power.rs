@@ -26,7 +26,11 @@ mod imp {
     const VERSION: u32 = 1;
     const EXECUTION_SPEED: u32 = 0x1;
     const PROCESS_POWER_THROTTLING: i32 = 4;
-    const THREAD_POWER_THROTTLING: i32 = 2;
+    // ThreadPowerThrottling, after ThreadMemoryPriority,
+    // ThreadAbsoluteCpuPriority and ThreadDynamicCodePolicy (2: as that, the
+    // call failed for its size, and no thread of hers was ever easy on the
+    // power; 2026-10-13).
+    const THREAD_POWER_THROTTLING: i32 = 3;
 
     #[repr(C)]
     struct LastInput {
