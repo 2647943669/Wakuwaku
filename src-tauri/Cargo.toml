@@ -56,6 +56,12 @@ winreg = "0.56.0"
 webview2-com = "0.39"
 windows-core = "0.62"
 
+[target."cfg(target_os = \"macos\")".dependencies]
+# The island over the menu bar, round the notch (notch.rs): the window's level
+# and the screen's notch; both already in the tree, under Tauri.
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+
 [target."cfg(unix)".dependencies]
 # The local time off Windows (widgets.rs local_now: localtime_r); already in
 # the tree, under Tauri.

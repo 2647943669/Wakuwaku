@@ -50,6 +50,7 @@ mod icons;
 mod island;
 mod jump;
 mod mail;
+mod notch;
 mod notify;
 mod paper;
 mod pet;

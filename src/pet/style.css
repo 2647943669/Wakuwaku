@@ -309,6 +309,26 @@ body {
   padding-top: 8px;
 }
 
+/* On a Mac it hangs from the screen's top edge over the menu bar, as tall as
+   the band there (island.js screenTop): black on the black notch, no ring. */
+.island.at-top #island-bar {
+  padding-top: 0;
+}
+
+.at-top #island {
+  box-shadow: none;
+}
+
+.at-top #island-compact {
+  height: var(--top-h, 36px);
+}
+
+/* Round a notch the words would sit under it: her and the clock only. */
+.notched #island-compact .label,
+.notched #island-compact .more {
+  visibility: hidden;
+}
+
 #island-row {
   position: relative;
   z-index: 2;
