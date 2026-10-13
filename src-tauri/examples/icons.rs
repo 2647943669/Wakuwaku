@@ -15,6 +15,7 @@
 //                               right): the work area set quietly to the
 //                               display less it, then icons::strip_taken with
 //                               <dir> as her data folder
+//   icons hold <dir>            icons::hold: where they are, before giving back
 //   icons back <l> <t> <r> <b> <dir>
 //                               as given back: the work area set quietly,
 //                               then icons::given_back
@@ -111,6 +112,12 @@ fn main() {
             // SAFETY: our own struct; set without telling any window.
             unsafe { SystemParametersInfoW(0x2F, 0, &mut r as *mut icons::Rect as *mut std::ffi::c_void, 0) };
             for line in icons::strip_taken(std::path::Path::new(&args[7]), strip, edge) {
+                println!("{line}");
+            }
+            out(&icons::describe());
+        }
+        Some("hold") => {
+            for line in icons::hold(std::path::Path::new(&args[2])) {
                 println!("{line}");
             }
             out(&icons::describe());

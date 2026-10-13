@@ -1063,7 +1063,7 @@ fn main() {
     if let Some((pid, file)) = shell::guard_args(&args) {
         let data = file.parent().map(PathBuf::from).unwrap_or_default();
         let after = data.clone();
-        shell::guard(pid, file, move |code, started| crash::after_exit(&after, pid, code, started));
+        shell::guard(pid, file, || drop(icons::hold(&data)), move |code, started| crash::after_exit(&after, pid, code, started));
         // Her desktop's icons as they were, should she have left them moved (icons.rs).
         icons::given_back(&data);
         return;

@@ -300,11 +300,12 @@ mod imp {
         ok
     }
 
-    // The guard's whole life: wait for her to end, then give the taskbar back
-    // if she did not (trying for a minute, in case Explorer is restarting),
-    // and meanwhile `after` (main.rs: whether she crashed, crash.rs) with
-    // her exit code and when she started (ms since 1970).
-    pub fn guard(pid: u32, file: &Path, after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {
+    // The guard's whole life: wait for her to end, then `ended` (main.rs:
+    // the desktop's icons where they are, icons.rs), then give the taskbar
+    // back if she did not (trying for a minute, in case Explorer is
+    // restarting), and meanwhile `after` (main.rs: whether she crashed,
+    // crash.rs) with her exit code and when she started (ms since 1970).
+    pub fn guard(pid: u32, file: &Path, ended: impl FnOnce(), after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {
         // When she started, as ms since 1970.
         let started = started(pid).map(|t| (t / 10_000).saturating_sub(11_644_473_600_000));
         let mut code = None;
@@ -320,6 +321,7 @@ mod imp {
                 CloseHandle(process);
             }
         }
+        ended();
         let meanwhile = std::thread::spawn(move || after(code, started));
         for _ in 0..30 {
             if !file.exists() || restore(file) {
@@ -367,7 +369,7 @@ mod imp {
     pub fn spawn_guard(_file: &Path) -> bool {
         false
     }
-    pub fn guard(_pid: u32, _file: &Path, _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
+    pub fn guard(_pid: u32, _file: &Path, _ended: impl FnOnce(), _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
 }
 
 pub use imp::{explorer_tray, guard, hide, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};

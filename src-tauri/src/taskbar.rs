@@ -415,6 +415,16 @@ mod imp {
     // none) for another edge, where an empty band would be left at the
     // bottom (shell.rs keep_room); put away again at once if it is up.
     pub fn set_edge(edge: Edge) {
+        // Back to the bottom from another edge: the desktop's icons where
+        // they are, before Windows' taskbar takes its room back and the
+        // desktop moves them (icons.rs hold).
+        if edge == Edge::Bottom && *EDGE.lock().unwrap() != Edge::Bottom && is_up() {
+            if let Some(sh) = sh() {
+                for line in crate::icons::hold_within(&sh.dir, Duration::from_secs(2)) {
+                    sh.log(&line);
+                }
+            }
+        }
         let was = std::mem::replace(&mut *EDGE.lock().unwrap(), edge);
         shell::keep_room(edge == Edge::Bottom);
         if was != edge && is_up() {
@@ -684,7 +694,7 @@ mod imp {
         }
         // The desktop's icons as they were (icons.rs), the work area whole
         // again; a moment at most. Taken again, the work area is made anew.
-        for line in crate::icons::given_back_within(&sh.dir, Duration::from_secs(3)) {
+        for line in crate::icons::given_back_within(&sh.dir, Duration::from_secs(8)) {
             sh.log(&line);
         }
         *WORK_EDGE.lock().unwrap() = None;
@@ -2549,7 +2559,7 @@ pub fn recover(sh: &Shared) {
     }
     // The desktop's icons left moved by such a run (icons.rs): as they were,
     // before this one takes the strip (and keeps their places anew).
-    for line in crate::icons::given_back_within(&sh.dir, std::time::Duration::from_secs(3)) {
+    for line in crate::icons::given_back_within(&sh.dir, std::time::Duration::from_secs(8)) {
         sh.log(&line);
     }
 }

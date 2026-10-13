@@ -17,12 +17,13 @@
 //
 // So, the strip taken or its work area set again (strip_taken): the icons'
 // places kept first (icons.json in her data, once: those from before her,
-// whatever runs and edges come between), the desktop told, and any still
-// under the strip moved out by the strip's width. Given back (the bottom
-// again, quitting, the guard after she was killed, a file left at start:
-// given_back): the desktop told again, and, placed by hand, each back where
-// it was kept if it is less than a place on the grid from it (moved by the
-// desktop, or by her); one the person moved further meanwhile stays.
+// whatever runs and edges come between), the desktop told, any still under
+// the strip moved out by the strip's width, and where they then are kept
+// too. Just before the work area is given back (the bottom again, another
+// home, quitting, the guard as she is gone: hold), where they are kept
+// again. Given back (given_back; a file left at start too): once the work
+// area and the desktop keep still, those placed by hand put back where
+// they were, or where the person put them while she was there.
 //
 // Uses only Windows and serde_json: examples/icons.rs builds it on its own.
 
@@ -437,9 +438,8 @@ pub use imp::{describe, desktop, with_com, Item, Point, Rect};
 #[cfg(windows)]
 static BUSY: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-// How long the desktop is given to lay its icons once told.
 #[cfg(windows)]
-const LAID: std::time::Duration = std::time::Duration::from_millis(400);
+use std::time::{Duration, Instant};
 
 // Whether an icon's place on the grid (its top-left, a place across and
 // down) reaches under the strip (x, y, w, h).
@@ -465,105 +465,211 @@ fn places(items: &[Item]) -> Value {
     Value::Array(items.iter().map(|i| json!({ "name": i.name, "x": i.at.x, "y": i.at.y })).collect())
 }
 
+// One icon's place in a list kept (places), by its name.
+#[cfg(windows)]
+fn place_of(list: &Value, name: &str) -> Option<Point> {
+    let p = list.as_array()?.iter().find(|p| p["name"].as_str() == Some(name))?;
+    Some(Point { x: p["x"].as_i64()? as i32, y: p["y"].as_i64()? as i32 })
+}
+
 #[cfg(windows)]
 fn kept(data: &Path) -> Option<Value> {
     std::fs::read_to_string(file(data)).ok().and_then(|t| serde_json::from_str(&t).ok())
 }
 
+#[cfg(windows)]
+fn keep(data: &Path, saved: &Value) -> std::io::Result<()> {
+    std::fs::write(file(data), saved.to_string())
+}
+
+// The icons once the desktop has done laying them: read until two reads
+// 300 ms apart are alike, so long at most. It lays them more than once
+// as the work area moves under it (Windows' taskbar sliding back, her
+// strip along the bottom): put back before it was done, they were moved
+// again, a place on the grid off (the test session, 2026-10-13).
+#[cfg(windows)]
+fn settled(d: &imp::Desktop, most: Duration) -> Vec<Item> {
+    let t = Instant::now();
+    let mut last = d.items();
+    loop {
+        std::thread::sleep(Duration::from_millis(300));
+        let now = d.items();
+        let same = now.len() == last.len() && now.iter().zip(&last).all(|(a, b)| a.name == b.name && a.at == b.at);
+        if same || t.elapsed() >= most {
+            return now;
+        }
+        last = now;
+    }
+}
+
+// The work area once it keeps still (the same for 600 ms), so long at most.
+#[cfg(windows)]
+fn work_settled(most: Duration) {
+    let t = Instant::now();
+    let key = || {
+        let r = imp::work_area();
+        (r.left, r.top, r.right, r.bottom)
+    };
+    let (mut last, mut since) = (key(), Instant::now());
+    while t.elapsed() < most && since.elapsed() < Duration::from_millis(600) {
+        std::thread::sleep(Duration::from_millis(100));
+        let now = key();
+        if now != last {
+            (last, since) = (now, Instant::now());
+        }
+    }
+}
+
 // Her strip along an edge (top, left, right; bottom when its work area was
 // set again), the work area set: the places kept (once), the desktop told,
-// any icon still under the strip moved out. Lines for the log.
+// any icon still under the strip moved out, and where they then are kept
+// too (after: one the person moves later is told by it). Lines for the log.
 #[cfg(windows)]
 pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str) -> Vec<String> {
     let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
     with_com(|| {
         let Some(d) = desktop() else { return vec!["icons: no desktop to tell".to_string()] };
         let mut notes = Vec::new();
-        if kept(data).is_none() {
-            let items = d.items();
-            let saved = json!({ "auto": d.auto_arrange(), "items": places(&items) });
-            let wrote = std::fs::write(file(data), saved.to_string());
-            notes.push(format!("icons: {} places kept{}", items.len(), wrote.err().map(|e| format!(" (not written: {e})")).unwrap_or_default()));
-        }
         let before = d.items();
+        let mut saved = kept(data).unwrap_or_else(|| {
+            notes.push(format!("icons: {} places kept", before.len()));
+            json!({ "auto": d.auto_arrange(), "items": places(&before) })
+        });
         let told = d.tell(d.top);
-        std::thread::sleep(LAID);
+        let mut items = settled(&d, Duration::from_secs(3));
         let spacing = d.spacing();
-        let items = d.items();
-        let moved = items.iter().filter(|i| before.iter().any(|b| b.name == i.name && b.at != i.at)).count();
         let out: Vec<(&Item, Point)> = items.iter().filter(|i| under(i.at, spacing, strip)).map(|i| (i, out_of(i.at, spacing, strip, edge))).collect();
-        let put = !out.is_empty() && d.place(&out);
+        let (n_out, put) = (out.len(), !out.is_empty() && d.place(&out));
+        if n_out > 0 {
+            items = settled(&d, Duration::from_secs(2));
+        }
+        let moved = items.iter().filter(|i| before.iter().any(|b| b.name == i.name && b.at != i.at)).count();
+        saved["after"] = places(&items);
+        if let Some(m) = saved.as_object_mut() {
+            m.remove("now");
+        }
+        if let Err(e) = keep(data, &saved) {
+            notes.push(format!("icons: places not written ({e})"));
+        }
         notes.push(format!(
-            "icons: the desktop told of the work area along the {edge} ({}): {moved} of {} moved by it (arranged by itself: {}), {} still under the strip{}",
+            "icons: the desktop told of the work area along the {edge} ({}): {moved} of {} moved by it (arranged by itself: {}), {n_out} still under the strip{}",
             if told { "answered" } else { "no answer" },
             items.len(),
             d.auto_arrange(),
-            out.len(),
-            if out.is_empty() { String::new() } else { format!(", moved out: {put}") }
+            if n_out == 0 { String::new() } else { format!(", moved out: {put}") }
         ));
         notes
     })
 }
 
+// Just before the work area is given back (the bottom again, another home,
+// quitting, the guard as she is gone): where the icons are now, kept
+// (now), before the desktop moves them for the whole display: one the
+// person moved meanwhile is put back there, not where it was before her
+// (moved by the desktop, (900, 600) came out (822, 576): the test session).
+#[cfg(windows)]
+pub fn hold(data: &Path) -> Vec<String> {
+    let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut saved) = kept(data) else { return Vec::new() };
+    with_com(|| {
+        let Some(d) = desktop() else { return vec!["icons: no desktop to look at before giving back".to_string()] };
+        let items = d.items();
+        saved["now"] = places(&items);
+        match keep(data, &saved) {
+            Ok(()) => vec![format!("icons: {} places held before giving back", items.len())],
+            Err(e) => vec![format!("icons: places held not written ({e})")],
+        }
+    })
+}
+
 // The work area the display's again (her strip at the bottom, given back,
-// gone): the desktop told, and those placed by hand put back where they
-// were kept, if less than a place on the grid from it; the places forgotten.
-// Nothing when none were kept. Lines for the log.
+// gone): once it keeps still, the desktop told, and once it is done laying
+// them, the icons it does not arrange itself put back: where they were
+// before her, or, moved by the person while she was there (now not after),
+// where the person put them; looked at again and put back once more if
+// moved since. Without places held (now): those less than a place on the
+// grid from where they were, as one the desktop moved. The places forgotten
+// then. Nothing when none were kept. Lines for the log.
 #[cfg(windows)]
 pub fn given_back(data: &Path) -> Vec<String> {
     let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
     let Some(saved) = kept(data) else { return Vec::new() };
+    work_settled(Duration::from_secs(5));
     with_com(|| {
         let Some(d) = desktop() else { return vec!["icons: no desktop to tell; the places kept for later".to_string()] };
         let told = d.tell(d.top);
-        std::thread::sleep(LAID);
-        // Told again: Explorer may set the work area itself just after (its
-        // taskbar shown again), and tell or not.
-        d.tell(d.top);
-        std::thread::sleep(LAID);
+        let items = settled(&d, Duration::from_secs(3));
         let auto = d.auto_arrange();
         let spacing = d.spacing();
-        let items = d.items();
-        let back: Vec<(&Item, Point)> = if auto {
-            Vec::new()
-        } else {
-            items
-                .iter()
-                .filter_map(|i| {
-                    let was = saved["items"].as_array()?.iter().find(|s| s["name"].as_str() == Some(i.name.as_str()))?;
-                    let to = Point { x: was["x"].as_i64()? as i32, y: was["y"].as_i64()? as i32 };
-                    (to != i.at && (to.x - i.at.x).abs() < spacing.x && (to.y - i.at.y).abs() < spacing.y).then_some((i, to))
-                })
-                .collect()
+        let target = |i: &Item| -> Option<Point> {
+            let was = place_of(&saved["items"], &i.name);
+            let now = place_of(&saved["now"], &i.name);
+            let after = place_of(&saved["after"], &i.name);
+            match (now, after) {
+                // Moved by the person while she was there: there.
+                (Some(n), a) if a != Some(n) => Some(n),
+                (Some(_), _) => was,
+                // Nothing held: where it was, if the desktop's own move away.
+                (None, _) => was.filter(|w| (w.x - i.at.x).abs() < spacing.x && (w.y - i.at.y).abs() < spacing.y),
+            }
         };
-        let put = back.is_empty() || d.place(&back);
+        let back = |items: &[Item]| -> (usize, bool) {
+            let moves: Vec<(&Item, Point)> = items.iter().filter_map(|i| target(i).filter(|t| *t != i.at).map(|t| (i, t))).collect();
+            (moves.len(), moves.is_empty() || d.place(&moves))
+        };
+        let (mut n, mut put, mut again) = (0, true, 0);
+        if !auto {
+            (n, put) = back(&items);
+            if n > 0 {
+                // Looked at again: moved since, put back once more.
+                let later = settled(&d, Duration::from_secs(2));
+                (again, _) = back(&later);
+            }
+        }
         let _ = std::fs::remove_file(file(data));
         vec![format!(
-            "icons: the desktop told the work area is whole again ({}): arranged by itself: {auto}, {} of {} put back where they were{}",
+            "icons: the desktop told the work area is whole again ({}): arranged by itself: {auto}, {n} of {} put back{}{}",
             if told { "answered" } else { "no answer" },
-            back.len(),
             items.len(),
-            if put { "" } else { " (refused)" }
+            if put { "" } else { " (refused)" },
+            if again > 0 { format!(", {again} again after the desktop moved them") } else { String::new() }
         )]
     })
 }
 
-// given_back, waited for so long at most (quitting, starting): lines for
-// the log, or one saying it was not waited for.
-pub fn given_back_within(data: &Path, within: std::time::Duration) -> Vec<String> {
+// hold and given_back, waited for so long at most (quitting, starting,
+// a thread that must go on): lines for the log, or one saying it was not
+// waited for. Nothing when no places were kept. (Not for examples/icons.rs.)
+#[allow(dead_code)]
+fn within(data: &Path, most: std::time::Duration, f: fn(&Path) -> Vec<String>) -> Vec<String> {
     if !file(data).exists() {
         return Vec::new();
     }
     let data = data.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(given_back(&data));
+        let _ = tx.send(f(&data));
     });
-    rx.recv_timeout(within).unwrap_or_else(|_| vec![format!("icons: not given back within {} ms", within.as_millis())])
+    rx.recv_timeout(most).unwrap_or_else(|_| vec![format!("icons: not done within {} ms", most.as_millis())])
+}
+
+#[allow(dead_code)]
+pub fn given_back_within(data: &Path, most: std::time::Duration) -> Vec<String> {
+    within(data, most, given_back)
+}
+
+#[allow(dead_code)]
+pub fn hold_within(data: &Path, most: std::time::Duration) -> Vec<String> {
+    within(data, most, hold)
 }
 
 #[cfg(not(windows))]
 pub fn strip_taken(_data: &Path, _strip: (i32, i32, i32, i32), _edge: &str) -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(not(windows))]
+pub fn hold(_data: &Path) -> Vec<String> {
     Vec::new()
 }
 
