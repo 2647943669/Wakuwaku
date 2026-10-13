@@ -1,0 +1,279 @@
+/* Her taskbar on another display (bar.js): as the main one looks (style.css
+   #bar-rest), Start and the programs centred or at the start, the clock and
+   the desktop's sliver at the end; along a side, in a column. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font: 12px 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+  color: #fff;
+  user-select: none;
+  cursor: default;
+}
+
+#bar {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 0 0 4px;
+}
+
+/* The ground, by material: black (the line along its inner edge), Mica's
+   tint, or none (clear: the words haloed so they read on any desktop). */
+.b-black #bar {
+  background: #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.b-mica #bar {
+  background: rgba(32, 32, 32, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.b-light.b-black #bar {
+  background: #eeeeee;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.b-light.b-mica #bar {
+  background: rgba(243, 243, 243, 0.92);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.06);
+}
+
+.b-light {
+  color: #1b1b1b;
+}
+
+.b-clear #bar {
+  text-shadow:
+    0 0 1px rgba(0, 0, 0, 0.95),
+    0 0 2px rgba(0, 0, 0, 0.8),
+    0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.b-clear #bar img,
+.b-clear .start svg {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.b-light.b-clear #bar {
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 1),
+    0 0 2px rgba(255, 255, 255, 0.9),
+    0 1px 4px rgba(255, 255, 255, 0.65);
+}
+
+.b-light.b-clear #bar img,
+.b-light.b-clear .start svg {
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95)) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.6));
+}
+
+/* Start and the programs: in the middle, or at the start (taskbarAlign left). */
+#apps {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.b-start #apps {
+  justify-content: flex-start;
+}
+
+#wins {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.start,
+.win,
+.clock {
+  border-radius: 6px;
+}
+
+.start {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.start .s0 {
+  stop-color: #77f3ff;
+}
+
+.start .s1 {
+  stop-color: #0c9eff;
+}
+
+.b-light .start .s0 {
+  stop-color: #4bcffe;
+}
+
+.b-light .start .s1 {
+  stop-color: #0179d4;
+}
+
+.win {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 40px;
+  cursor: pointer;
+}
+
+.win img {
+  width: 24px;
+  height: 24px;
+}
+
+/* Under the pointer and the one in front: a light wash, as on the main one. */
+.start:hover,
+.win:hover,
+.clock:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.win.front {
+  background: rgba(255, 255, 255, 0.17);
+}
+
+.b-light .start:hover,
+.b-light .win:hover,
+.b-light .clock:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.b-light .win.front {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* Running: a mark under it; longer in the accent for the one in front. */
+.win.run::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: #8e8e93;
+  transform: translateX(-50%);
+  transition:
+    width 0.2s ease,
+    background 0.2s ease;
+}
+
+.win.front::after {
+  width: 18px;
+  background: var(--accent, #5e9bff);
+}
+
+/* Asking for attention: orange, as on the main one. */
+.win.flash {
+  background: rgba(255, 179, 64, 0.38);
+}
+
+#end {
+  flex: none;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+}
+
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  height: 40px;
+  padding: 0 10px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.clock b {
+  font-weight: 400;
+}
+
+.clock i {
+  font-style: normal;
+}
+
+/* The desktop's sliver at the very end, as Windows' own. */
+.desk {
+  width: 8px;
+  align-self: stretch;
+  margin-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+}
+
+.b-light .desk {
+  border-left-color: rgba(0, 0, 0, 0.12);
+}
+
+/* Along a side: a column, Start and the programs at the top (or the middle),
+   the clock at the foot, the sliver below it. */
+.b-side #bar {
+  flex-direction: column;
+  padding: 4px 0 0;
+}
+
+.b-side #apps {
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.b-side #wins {
+  flex-direction: column;
+}
+
+.b-side #end {
+  flex-direction: column;
+  align-self: stretch;
+  align-items: stretch;
+}
+
+.b-side .clock {
+  align-items: center;
+  padding: 4px 0;
+  height: auto;
+}
+
+.b-side .desk {
+  width: auto;
+  height: 8px;
+  margin: 4px 0 0;
+  border-left: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.b-left #bar,
+.b-right #bar {
+  box-shadow: none;
+}
+
+.b-top.b-black #bar,
+.b-top.b-mica #bar {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+}

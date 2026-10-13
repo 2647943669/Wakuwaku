@@ -79,6 +79,9 @@ fn defaults() -> Map<String, Value> {
         // Mica or solid while a window is maximized or full screen on its
         // display (mica, solid), or clear always.
         "taskbarMaterial": "clear",
+        // Her taskbar on the main display alone (Windows' own on the others)
+        // or on all of them (bars.rs).
+        "taskbarDisplays": "main",
         "taskbarClearWhen": "mica",
         // Its programs' buttons: icons alone or with their titles; in the
         // middle of the screen or after her end (island.js alignApps).

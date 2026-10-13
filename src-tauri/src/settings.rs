@@ -68,6 +68,9 @@ pub fn snapshot(sh: &Shared) -> Value {
             "backup": connection::backup_of(&connection::agy_hooks_file()).exists(),
             "seen": sh.agy_seen.load(Ordering::SeqCst) > 0,
         },
+        // How many displays there are: her taskbar on all of them is offered
+        // only with more than one (Look, taskbarDisplays).
+        "displayCount": sh.screens().areas.len(),
         "loginAtStart": connection::is_open_at_login(),
         // Windows' own mode and accent colour (settings_win_look sets them).
         "winLook": { "light": win_light, "accent": crate::theme::current_accent().or(win_accent.map(|a| a.base)) },
@@ -198,6 +201,7 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "taskbarButtons" => matches!(v.as_str(), Some("icons" | "labels")),
         "taskbarAlign" => matches!(v.as_str(), Some("center" | "left")),
         "taskbarEdge" => matches!(v.as_str(), Some("bottom" | "top" | "left" | "right")),
+        "taskbarDisplays" => matches!(v.as_str(), Some("main" | "all")),
         // The taskbar's parts in three runs (island.js tbLayout), each once.
         "taskbarLayout" => v.is_null() || is_taskbar_layout(v),
         // The programs' buttons in the order dragged: their keys (paths).
