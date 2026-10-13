@@ -187,6 +187,18 @@ impl Shared {
     }
 
     // Another app is full screen (watched while the setting asks, or the taskbar is her home).
+    // The displays she is on (x, y, w, h): her island's or taskbar's, and
+    // hers while she is out. An app full screen on another is none of hers.
+    pub fn displays(&self) -> Vec<(i32, i32, i32, i32)> {
+        let mut on: Vec<(i32, i32, i32, i32)> = island::display(self).into_iter().collect();
+        if let Some(mon) = pet::is_shown(self).then(|| pet::display(self)).flatten() {
+            if !on.contains(&mon) {
+                on.push(mon);
+            }
+        }
+        on
+    }
+
     pub fn is_fullscreen(&self) -> bool {
         self.by_fullscreen.load(Ordering::SeqCst)
     }
@@ -478,7 +490,7 @@ impl Shared {
         static CHANGED: Mutex<Option<Instant>> = Mutex::new(None);
         let watching = fullscreen::AVAILABLE && (self.flag("hideInFullscreen") || self.home() == "taskbar");
         let own = self.own.lock().unwrap().clone();
-        let is_full = if watching { fullscreen::check(&own) } else { Some(false) };
+        let is_full = if watching { fullscreen::check(&own, &self.displays()) } else { Some(false) };
         let how = match asked {
             Some(at) => format!("event, {} ms after", at.elapsed().as_millis()),
             None => "timer".to_string(),
@@ -494,6 +506,7 @@ impl Shared {
         *CHANGED.lock().unwrap() = Some(Instant::now());
         let is_full = is_full == Some(true);
         let which = if is_full { format!(", {}", fullscreen::front()) } else { String::new() };
+        let which = format!("{which}; hers on {:?}", self.displays());
         self.log(&format!("another app full screen: {is_full}{which} ({how})"));
         let t = Instant::now();
         self.apply_visibility();
@@ -1242,6 +1255,7 @@ fn main() {
             });
             app.manage(sh.clone());
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
+            sh.log(&format!("displays: {}", sh.screens().describe()));
             taskbar::recover(&sh);
 
             pet::create(&sh)?;
@@ -1255,7 +1269,7 @@ fn main() {
             // shows: the taskbar takes its strip only once it can show (one
             // taken with its window hidden keeps no room).
             if fullscreen::AVAILABLE && (sh.flag("hideInFullscreen") || sh.home() == "taskbar") {
-                sh.by_fullscreen.store(fullscreen::check(&[]) == Some(true), Ordering::SeqCst);
+                sh.by_fullscreen.store(fullscreen::check(&[], &sh.displays()) == Some(true), Ordering::SeqCst);
             }
             island::apply_visibility(&sh);
             tray::create(&sh)?;

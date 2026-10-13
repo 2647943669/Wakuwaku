@@ -27,6 +27,7 @@ mod imp {
     use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
 
     use serde_json::{json, Value};
 
@@ -52,6 +53,8 @@ mod imp {
         fn ShowWindow(hwnd: Hwnd, cmd: i32) -> i32;
         fn RegisterWindowMessageW(name: *const u16) -> u32;
         fn GetWindowRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
+        fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> *mut c_void;
+        fn GetMonitorInfoW(monitor: *mut c_void, info: *mut MonitorInfo) -> i32;
     }
 
     #[repr(C)]
@@ -62,6 +65,17 @@ mod imp {
         right: i32,
         bottom: i32,
     }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct MonitorInfo {
+        size: u32,
+        monitor: Rect,
+        work: Rect,
+        flags: u32,
+    }
+
+    const MONITOR_DEFAULTTONEAREST: u32 = 2;
 
     #[link(name = "kernel32")]
     extern "system" {
@@ -151,9 +165,11 @@ mod imp {
         list
     }
 
+    // Whether one of Explorer's taskbars shows where hers should alone (those
+    // on the other displays are meant to).
     pub fn visible() -> bool {
         // SAFETY: windows Explorer made; a gone one reads as not visible.
-        taskbars().into_iter().any(|h| unsafe { IsWindowVisible(h as Hwnd) } != 0)
+        taskbars().into_iter().any(|h| on_home(h) && unsafe { IsWindowVisible(h as Hwnd) } != 0)
     }
 
     pub fn taskbar_created() -> u32 {
@@ -210,9 +226,32 @@ mod imp {
             appbar::set_taskbar_state(main, want);
         }
         for h in taskbars() {
-            // SAFETY: a window Explorer made; hiding a gone one does nothing.
-            unsafe { ShowWindow(h as Hwnd, SW_HIDE) };
+            // SAFETY: a window Explorer made; hiding or showing a gone one does nothing.
+            unsafe { ShowWindow(h as Hwnd, if on_home(h) { SW_HIDE } else { SW_SHOWNA }) };
         }
+    }
+
+    // The display her strip is on (x, y, w, h): Windows' taskbar there is put
+    // away, those on the other displays are left to show (taskbar.rs sets it
+    // as the strip moves). Put away on every display, a second display had no
+    // taskbar at all (the user, 2026-10-13). None: on every display (her
+    // strip's not known yet).
+    static HOME: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
+
+    pub fn home_display(mon: Option<(i32, i32, i32, i32)>) {
+        *HOME.lock().unwrap() = mon;
+    }
+
+    // Whether a taskbar of Explorer's is on her strip's display.
+    fn on_home(h: isize) -> bool {
+        let Some(home) = *HOME.lock().unwrap() else { return true };
+        let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+        // SAFETY: our own struct, of the size the call writes; a gone window gives the nearest display.
+        if unsafe { GetMonitorInfoW(MonitorFromWindow(h as Hwnd, MONITOR_DEFAULTTONEAREST), &mut info) } == 0 {
+            return true;
+        }
+        let m = &info.monitor;
+        (m.left, m.top, m.right - m.left, m.bottom - m.top) == home
     }
 
     // The room a taskbar of Explorer's keeps along the bottom of a display
@@ -357,6 +396,7 @@ mod imp {
     }
     pub fn rehide() {}
     pub fn keep_room(_keep: bool) {}
+    pub fn home_display(_mon: Option<(i32, i32, i32, i32)>) {}
     pub fn room(_mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
         None
     }
@@ -372,7 +412,7 @@ mod imp {
     pub fn guard(_pid: u32, _file: &Path, _ended: impl FnOnce(), _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
 }
 
-pub use imp::{explorer_tray, guard, hide, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
+pub use imp::{explorer_tray, guard, hide, home_display, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
 
 // The guard's arguments, when this process is one: its pid and file.
 pub fn guard_args(args: &[String]) -> Option<(u32, &Path)> {

@@ -182,6 +182,11 @@ fn area(sh: &Shared) -> Option<Area> {
     }
 }
 
+// The display it is on (x, y, w, h), as area finds it.
+pub fn display(sh: &Shared) -> Option<(i32, i32, i32, i32)> {
+    area(sh).map(|a| a.mon)
+}
+
 // Where the window goes, by home. Returns the physical rect if it moved.
 fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     let home = sh.home();

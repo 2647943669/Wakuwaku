@@ -1340,6 +1340,12 @@ mod imp {
     // there too, for those who ask the taskbar's window where it is.
     pub fn strip_moved(strip: (i32, i32, i32, i32)) {
         *STRIP.lock().unwrap() = Some(strip);
+        // Windows' taskbar put away on this display only; on the others it
+        // shows (shell.rs home_display).
+        if is_up() {
+            shell::home_display(Some(monitor_of(strip).0));
+            shell::rehide();
+        }
         // Along another edge than the bottom (taken there, or moved there):
         // the work area made the display less the strip, at once. The self-heal only ever moves the
         // strip's own side, and the room the last edge took was kept: from
