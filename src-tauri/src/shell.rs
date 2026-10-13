@@ -211,7 +211,7 @@ mod imp {
     // for her strip along the bottom, which lies over it; not for one along
     // another edge, where it would leave an empty band at the bottom of the
     // screen (set to hide itself it keeps none; restore gives its own state
-    // back).
+    // back), unless it shows on another display (rehide).
     static KEEP_ROOM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
     pub fn keep_room(keep: bool) {
@@ -221,7 +221,14 @@ mod imp {
     pub fn rehide() {
         let main = explorer_tray();
         let state = appbar::taskbar_state();
-        let want = if KEEP_ROOM.load(Ordering::SeqCst) { state & !appbar::ABS_AUTOHIDE } else { state | appbar::ABS_AUTOHIDE };
+        // Kept too while Windows' own shows on another display (her strip on
+        // hers alone): set to hide itself, it hid there as well, Windows
+        // setting it for all of them, and that display had no taskbar to be
+        // seen (the test session, 2026-10-13). The band it then keeps along
+        // the foot of hers, her strip along another edge, is taken back
+        // (taskbar.rs tick, band_left).
+        let keep = KEEP_ROOM.load(Ordering::SeqCst) || taskbars().into_iter().any(|h| !on_home(h));
+        let want = if keep { state & !appbar::ABS_AUTOHIDE } else { state | appbar::ABS_AUTOHIDE };
         if main != 0 && want != state {
             appbar::set_taskbar_state(main, want);
         }

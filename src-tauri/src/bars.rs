@@ -12,6 +12,7 @@
 // app full screen on a display hides that display's alone.
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -37,6 +38,10 @@ struct Bar {
     // Its display's wallpaper, for its Mica (read_papers): as the main
     // strip's (taskbar.rs look_at_desktop), from its own strip's corner.
     paper: Value,
+    // The work area's side on its edge as last set clear of the strip, and
+    // when (keep_work); given back as it goes (give_work).
+    work_side: Option<i32>,
+    work_at: Option<Instant>,
 }
 
 static BARS: Mutex<Vec<Bar>> = Mutex::new(Vec::new());
@@ -69,7 +74,7 @@ pub fn sync(sh: &Arc<Shared>) {
         bars.retain(|b| {
             let keep = want.iter().any(|a| a.mon == b.mon && a.sf == b.sf) && b.edge == edge;
             if !keep {
-                gone.push((b.label.clone(), b.hwnd));
+                gone.push(Gone::of(b));
             }
             keep
         });
@@ -77,15 +82,15 @@ pub fn sync(sh: &Arc<Shared>) {
         for a in &want {
             if !bars.iter().any(|b| b.mon == a.mon) {
                 let label = format!("bar-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-                bars.push(Bar { label: label.clone(), mon: a.mon, sf: a.sf, edge, hwnd: 0, strip: None, ready: false, hidden: false, sent: Value::Null, paper: Value::Null });
+                bars.push(Bar { label: label.clone(), mon: a.mon, sf: a.sf, edge, hwnd: 0, strip: None, ready: false, hidden: false, sent: Value::Null, paper: Value::Null, work_side: None, work_at: None });
                 made.push((label, *a));
             }
         }
         let moved = gone.len() + made.len() > 0;
         (gone, made, moved)
     };
-    for (label, hwnd) in gone {
-        close(sh, &label, hwnd);
+    for g in gone {
+        close(sh, g);
     }
     for (label, area) in made {
         create(sh, label, area, edge);
@@ -110,21 +115,99 @@ pub fn sync(sh: &Arc<Shared>) {
 // Every one of them gone (quitting, another home): their app bars given back first.
 pub fn close_all(sh: &Shared) {
     hide_pop(sh);
-    let all: Vec<(String, isize)> = BARS.lock().unwrap().drain(..).map(|b| (b.label, b.hwnd)).collect();
-    for (label, hwnd) in all {
-        close(sh, &label, hwnd);
+    let all: Vec<Gone> = BARS.lock().unwrap().drain(..).map(|b| Gone::of(&b)).collect();
+    for g in all {
+        close(sh, g);
     }
     *ALL_ON.lock().unwrap() = None;
 }
 
-fn close(sh: &Shared, label: &str, hwnd: isize) {
-    if hwnd != 0 {
-        appbar::remove(hwnd);
+// One going: what closing it needs, taken out of the list first.
+struct Gone {
+    label: String,
+    hwnd: isize,
+    mon: Mon,
+    edge: Edge,
+    work_side: Option<i32>,
+}
+
+impl Gone {
+    fn of(b: &Bar) -> Gone {
+        Gone { label: b.label.clone(), hwnd: b.hwnd, mon: b.mon, edge: b.edge, work_side: b.work_side }
     }
-    if let Some(win) = window(sh, label) {
+}
+
+fn close(sh: &Shared, g: Gone) {
+    if g.hwnd != 0 {
+        appbar::remove(g.hwnd);
+    }
+    if let Some(win) = window(sh, &g.label) {
         let _ = win.destroy();
     }
-    sh.log(&format!("bars: {label} gone"));
+    if let Some(side) = g.work_side {
+        give_work(sh, &g.label, g.mon, g.edge, side);
+    }
+    sh.log(&format!("bars: {} gone", g.label));
+}
+
+// The work area on its display kept clear of its strip, as hers is on hers
+// (taskbar.rs tick): Windows does not count the app bar, and a window
+// maximized on a display at 175% lay 84 px under a strip along its left,
+// the work area the whole display (the test session, 2026-10-13). Along
+// the bottom the room Windows' own keeps there mostly does it already. Its
+// side on the strip's edge set where the strip starts: at once for a new
+// one, then at most every two seconds should something set it back
+// (Explorer, as app bars come and go).
+pub fn keep_work(sh: &Shared) {
+    let now = Instant::now();
+    let due: Vec<(String, Mon, Edge, Mon)> = {
+        let mut bars = BARS.lock().unwrap();
+        bars.iter_mut()
+            .filter_map(|b| {
+                let strip = b.strip?;
+                if b.work_at.is_some_and(|at| now.duration_since(at) < Duration::from_secs(2)) {
+                    return None;
+                }
+                let work = appbar::work_of(b.mon)?;
+                if !b.edge.reaches(work, strip) {
+                    return None;
+                }
+                b.work_side = Some(b.edge.inner(strip));
+                b.work_at = Some(now);
+                Some((b.label.clone(), work, b.edge, strip))
+            })
+            .collect()
+    };
+    for (label, work, edge, strip) in due {
+        let to = edge.with_side(work, edge.inner(strip));
+        let ok = appbar::set_work(to);
+        sh.log(&format!("bars: {label}'s display's work area {work:?} reaches into its strip {strip:?}: made {to:?} ({ok})"));
+    }
+}
+
+// Given back as it goes: the work area's side where it was set for the
+// strip moved back to the display's edge, along the bottom to where the
+// room Windows' own keeps there starts (shell.rs room), unless it hides
+// itself, keeping none (it is found there still while it slides away: a
+// bottom strip going as hers moved to the left left the band at the foot,
+// the test session, 2026-10-13); left as it is if something else has set
+// it since (Explorer, counting again).
+fn give_work(sh: &Shared, label: &str, mon: Mon, edge: Edge, side: i32) {
+    let Some(work) = appbar::work_of(mon) else { return };
+    if edge.side_of(work) != side {
+        return;
+    }
+    let hides = appbar::taskbar_state() & appbar::ABS_AUTOHIDE != 0;
+    let back = match edge {
+        Edge::Bottom if hides => mon.1 + mon.3,
+        Edge::Bottom => crate::shell::room(mon).map_or(mon.1 + mon.3, |r| r.1),
+        Edge::Top => mon.1,
+        Edge::Left => mon.0,
+        Edge::Right => mon.0 + mon.2,
+    };
+    let to = edge.with_side(work, back);
+    let ok = appbar::set_work(to);
+    sh.log(&format!("bars: {label}'s display's work area given back: {work:?} made {to:?} ({ok})"));
 }
 
 // Its window made off the main thread (a menu click may be what asks, and
@@ -178,7 +261,7 @@ fn create(sh: &Arc<Shared>, label: String, area: Area, edge: Edge) {
         };
         // Taken away again while it was being made.
         if gone {
-            return close(&sh, &label, hwnd);
+            return close(&sh, Gone { label, hwnd, mon: area.mon, edge, work_side: None });
         }
         let _ = win.show();
         let laid = match (win.outer_position(), win.outer_size()) {
@@ -186,6 +269,8 @@ fn create(sh: &Arc<Shared>, label: String, area: Area, edge: Edge) {
             _ => "?".into(),
         };
         sh.log(&format!("bars: {label} on {:?} at {}%, strip {granted:?} along the {edge:?}, window {laid}", area.mon, (area.sf * 100.0).round()));
+        // The work area there clear of it at once, not at the next look.
+        keep_work(&sh);
     });
 }
 

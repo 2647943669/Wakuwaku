@@ -126,6 +126,18 @@ body {
   justify-content: flex-start;
 }
 
+/* Centred on the whole strip, as the main one's are (island.js alignApps),
+   not on what the clock leaves: as much room before them as the clock and
+   the sliver take after (bar.js, --end-w, --end-h). */
+#lead {
+  flex: none;
+  width: var(--end-w, 0px);
+}
+
+.b-start #lead {
+  display: none;
+}
+
 #wins {
   display: flex;
   align-items: center;
@@ -232,6 +244,35 @@ body {
   background: rgba(255, 179, 64, 0.38);
 }
 
+/* How many windows, at the icon's corner, as the main one's icons
+   (style.css #bar-rest.icons .count); none along a side. */
+.win .count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--accent, #5e9bff);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  text-shadow: none;
+  box-shadow: 0 0 0 1.5px #000;
+}
+
+.b-light .win .count {
+  box-shadow: 0 0 0 1.5px #f3f3f3;
+}
+
+.b-side .win .count {
+  display: none;
+}
+
 #end {
   flex: none;
   display: flex;
@@ -272,16 +313,21 @@ body {
   border-left-color: rgba(0, 0, 0, 0.12);
 }
 
-/* Along a side: a column, Start and the programs at the top (or the middle),
+/* Along a side: a column, Start and the programs in the middle of the
+   screen's height (or at the top, taskbarAlign left), as the main one's,
    the clock at the foot, the sliver below it. */
 .b-side #bar {
   flex-direction: column;
   padding: 4px 0 0;
 }
 
+.b-side #lead {
+  width: auto;
+  height: var(--end-h, 0px);
+}
+
 .b-side #apps {
   flex-direction: column;
-  justify-content: flex-start;
 }
 
 .b-side #wins {
