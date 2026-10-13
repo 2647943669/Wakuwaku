@@ -621,10 +621,17 @@ pub fn given_back(data: &Path) -> Vec<String> {
         // the real flow the desktop took the places given a strip's width
         // further than it tells them (60 px, or a place on the grid where it
         // keeps them to it: 16 became 109; the test session, 2026-10-13), and
-        // put back the same way again it did the same.
+        // put back the same way again it did the same. Kept to a grid that
+        // moved meanwhile, one can not come where it was (16 was between its
+        // places, 48 and -45): the nearest it came to is kept, and the
+        // asking stops, not swinging from one side to the other.
         let wanted: Vec<(String, Point)> = if auto { Vec::new() } else { items.iter().filter_map(|i| target(i).filter(|t| *t != i.at).map(|t| (i.name.clone(), t))).collect() };
+        let found: Vec<String> = wanted.iter().filter_map(|(name, t)| items.iter().find(|i| &i.name == name).map(|i| format!("{},{}→{},{}", i.at.x, i.at.y, t.x, t.y))).collect();
         let mut ask = wanted.clone();
+        // Per icon: how far off it came out at best, and what was asked for it.
+        let mut best: Vec<Option<(i32, Point)>> = vec![None; wanted.len()];
         let (mut put, mut rounds) = (true, Vec::new());
+        let dist = |a: Point, b: Point| (a.x - b.x).abs() + (a.y - b.y).abs();
         for _ in 0..3 {
             if ask.is_empty() {
                 break;
@@ -633,26 +640,45 @@ pub fn given_back(data: &Path) -> Vec<String> {
             let moves: Vec<(&Item, Point)> = ask.iter().filter_map(|(name, p)| now.iter().find(|i| &i.name == name).map(|i| (i, *p))).collect();
             put &= d.place(&moves);
             let after = settled(&d, Duration::from_secs(2));
-            let mut off = Vec::new();
-            for ((name, want), (_, asked)) in wanted.iter().zip(ask.iter_mut()) {
-                if let Some(i) = after.iter().find(|i| &i.name == name) {
-                    let (dx, dy) = (i.at.x - want.x, i.at.y - want.y);
-                    if (dx, dy) != (0, 0) {
-                        off.push(format!("{dx:+},{dy:+}"));
-                        *asked = Point { x: asked.x - dx, y: asked.y - dy };
-                    }
+            let (mut off, mut worse) = (Vec::new(), false);
+            for (k, ((name, want), (_, asked))) in wanted.iter().zip(ask.iter_mut()).enumerate() {
+                let Some(i) = after.iter().find(|i| &i.name == name) else { continue };
+                let (dx, dy) = (i.at.x - want.x, i.at.y - want.y);
+                let far = dist(i.at, *want);
+                match best[k] {
+                    Some((b, _)) if far >= b => worse |= far > 0,
+                    _ => best[k] = Some((far, *asked)),
+                }
+                if far > 0 {
+                    off.push(format!("{dx:+},{dy:+}"));
+                    *asked = Point { x: asked.x - dx, y: asked.y - dy };
                 }
             }
             let done = off.is_empty();
             rounds.push(if done { "there".to_string() } else { format!("off {}", off.join(" ")) });
-            if done {
+            if done || worse {
                 break;
             }
+        }
+        // Not come nearer: asked once more as when it came nearest.
+        let last = d.items();
+        let nearest: Vec<(&Item, Point)> = wanted
+            .iter()
+            .zip(&best)
+            .filter_map(|((name, want), b)| {
+                let (far, asked) = (*b)?;
+                let i = last.iter().find(|i| &i.name == name)?;
+                (dist(i.at, *want) > far).then_some((i, asked))
+            })
+            .collect();
+        if !nearest.is_empty() {
+            put &= d.place(&nearest);
+            rounds.push(format!("{} as near as it came", nearest.len()));
         }
         let w = imp::work_area();
         let _ = std::fs::remove_file(file(data));
         vec![format!(
-            "icons: the desktop told the work area is whole again ({}; work area ({}, {}, {}, {})): arranged by itself: {auto}, {} of {} put back{}{}",
+            "icons: the desktop told the work area is whole again ({}; work area ({}, {}, {}, {})): arranged by itself: {auto}, {} of {} put back{}{}{}",
             if told { "answered" } else { "no answer" },
             w.left,
             w.top,
@@ -660,6 +686,7 @@ pub fn given_back(data: &Path) -> Vec<String> {
             w.bottom,
             wanted.len(),
             items.len(),
+            if found.is_empty() { String::new() } else { format!(" (found {})", found.join(" ")) },
             if put { "" } else { " (refused)" },
             if rounds.is_empty() { String::new() } else { format!(": {}", rounds.join(", then ")) }
         )]
