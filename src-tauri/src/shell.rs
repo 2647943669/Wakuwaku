@@ -326,12 +326,18 @@ mod imp {
         restore(file)
     }
 
-    // Once per process: the guard, outside her process tree and her job.
+    // Once per process: the guard, outside her process tree and her job: as
+    // if opened from Explorer (detach.rs); else broken away from her job,
+    // should it let it; else in it (and gone with her should it end them).
     pub fn spawn_guard(file: &Path) -> bool {
         if GUARDED.swap(true, Ordering::SeqCst) {
             return true;
         }
         let Ok(exe) = std::env::current_exe() else { return false };
+        let pid = std::process::id().to_string();
+        if crate::detach::spawn(&exe, &[super::GUARD_ARG, &pid, &file.to_string_lossy()]) {
+            return true;
+        }
         let spawn = |flags: u32| {
             std::process::Command::new(&exe)
                 .arg(super::GUARD_ARG)

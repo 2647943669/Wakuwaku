@@ -936,6 +936,15 @@ body {
   color: #e5e5ea;
 }
 
+/* Under the pointer, lit as a session's line is: a press opens its settings. */
+#island-expanded .wrow {
+  transition: background 0.12s ease;
+}
+
+#island-expanded .wrow:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
 #island-expanded .wrow .wl {
   flex: 1;
   min-width: 0;
@@ -1411,6 +1420,72 @@ body {
   position: absolute;
   left: 0;
   top: 0;
+}
+
+/* The battery (island.js showBattery): none on a desktop. In Windows' own
+   battery font (.sysbatt), as its taskbar draws it: the outline, and the
+   level's fill over it; its percentage beside it, in the size of Windows'
+   captions. */
+#bar-rest .tquick .bat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+#bar-rest .tquick .bat[hidden],
+#bar-rest .tquick .bat .pct[hidden] {
+  display: none;
+}
+
+#bar-rest .tquick .bat .glyph {
+  position: relative;
+}
+
+#bar-rest .tquick .bat .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+#bar-rest .tquick .bat.sysbatt .fi {
+  font-family: 'SysBatt Fluent Icons';
+}
+
+/* The fill green while charging, yellow with the energy saver on, red when
+   critically low: Windows' own colors for them, on the dark strip and on
+   the light. */
+#bar-rest .tquick .bat[data-tint='green'] .fill {
+  color: #9fd89f;
+}
+
+#bar-rest .tquick .bat[data-tint='yellow'] .fill {
+  color: #eaa300;
+}
+
+#bar-rest .tquick .bat[data-tint='red'] .fill {
+  color: #d92c2c;
+}
+
+.tb-light #bar-rest .tquick .bat[data-tint='green'] .fill {
+  color: #107c10;
+}
+
+.tb-light #bar-rest .tquick .bat[data-tint='red'] .fill {
+  color: #c50f1f;
+}
+
+/* A pixel up, as Windows' sits by the battery's middle. */
+#bar-rest .tquick .bat .pct {
+  position: relative;
+  top: -1px;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  color: #fff;
+}
+
+.tb-light #bar-rest .tquick .bat .pct {
+  color: #1b1b1b;
 }
 
 /* What is using the microphone, the camera, the location (island.js showPrivacy). */
@@ -2134,6 +2209,10 @@ body {
 .isl-light #island-expanded .others,
 .isl-light #island-expanded .wlist {
   border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.isl-light #island-expanded .wrow:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .isl-light #island .portrait,
@@ -3566,6 +3645,12 @@ html.handoff-wait body.home-taskbar #island-row {
   height: auto;
   padding: 8px 0;
   gap: 8px;
+}
+
+/* The battery's percentage under it, as on Windows' own along a side. */
+.tb-side #bar-rest .tquick .bat {
+  flex-direction: column;
+  gap: 0;
 }
 
 /* The clock: its time over a short date (no year), in the middle. */

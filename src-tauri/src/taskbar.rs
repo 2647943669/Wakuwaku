@@ -365,6 +365,9 @@ mod imp {
     // The IME's mark and the volume read at the next look, not the next
     // second: the input method was just switched from our button.
     static KEYS_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    // The keys' thread woken from its nap (keys_loop): asked to stop, the
+    // IME button pressed, the quiet over.
+    static KEYS_WAKE: (Mutex<bool>, std::sync::Condvar) = (Mutex::new(false), std::sync::Condvar::new());
     static SENT_KEYS: Mutex<Value> = Mutex::new(Value::Null);
     // Windows' own record of the tray icons it keeps out (windows_kept), read once.
     static KEPT: Mutex<Option<Vec<(String, Option<u32>, bool)>>> = Mutex::new(None);
@@ -598,9 +601,9 @@ mod imp {
     }
 
     // The keyboard (tasks::keys) and the volume (audio.rs) looked at four
-    // times a second; the network's way out (the quick settings' button) and
-    // what is using the microphone, camera or location (tasks::in_use) every
-    // two; sent when any of it changes.
+    // times a second; the network's way out and the battery (the quick
+    // settings' button) and what is using the microphone, camera or
+    // location (tasks::in_use) every two; sent when any of it changes.
     // The language and Caps Lock (answered in this process) four times a
     // second; the IME's mode (asked of its window) and the volume (asked of
     // Windows' audio service) once a second, and at once when another
@@ -613,7 +616,7 @@ mod imp {
         let mut speakers = crate::audio::Reader::new();
         let mut sent = Value::Null;
         let using = || Value::Object(tasks::in_use().into_iter().map(|(what, names)| (what.to_string(), json!(names))).collect());
-        let (mut net, mut used) = (tasks::net(), using());
+        let (mut net, mut used, mut battery) = (tasks::net(), using(), crate::widgets::battery_state());
         let (mut native, mut volume, mut front, mut shift_was) = (None, None, 0isize, false);
         let mut looks = 0u32;
         while !TASKS_STOP.load(Ordering::SeqCst) {
@@ -621,6 +624,7 @@ mod imp {
             if looks % 8 == 0 {
                 net = tasks::net();
                 used = using();
+                battery = crate::widgets::battery_state();
             }
             let keys = tasks::keys_cheap();
             let now_front = tasks::front();
@@ -634,23 +638,28 @@ mod imp {
                 native = tasks::ime_native();
                 volume = speakers.read().map(|(level, muted)| json!([level, muted]));
             }
-            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "net": net, "use": used, "volume": volume });
+            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "net": net, "use": used, "volume": volume, "battery": battery });
             if now != sent {
                 let _ = sh.app.emit_to("island", "taskbar:keys", now.clone());
                 *SENT_KEYS.lock().unwrap() = now.clone();
                 sent = now;
             }
-            // Quiet (nobody at the keyboard): every two seconds; woken
-            // within a twentieth when asked to stop (give_back), when the
-            // IME button is pressed (KEYS_NOW), or when the quiet ends.
-            let quiet = sh.is_quiet();
-            let nap = if quiet { 2000 } else { 250 };
-            let mut slept = 0;
-            while slept < nap && !TASKS_STOP.load(Ordering::SeqCst) && !KEYS_NOW.load(Ordering::SeqCst) && (!quiet || sh.is_quiet()) {
-                std::thread::sleep(Duration::from_millis(50));
-                slept += 50;
-            }
+            // Quiet (nobody at the keyboard): every two seconds; woken at
+            // once when asked to stop (give_back), when the IME button is
+            // pressed (KEYS_NOW), or when the quiet ends (wake). It looked
+            // every twentieth whether it was: 20 wakes a second (#14).
+            let nap = Duration::from_millis(if sh.is_quiet() { 2000 } else { 250 });
+            let (woken, cv) = &KEYS_WAKE;
+            let guard = woken.lock().unwrap();
+            let (mut guard, _) = cv.wait_timeout_while(guard, nap, |w| !*w && !TASKS_STOP.load(Ordering::SeqCst)).unwrap();
+            *guard = false;
         }
+    }
+
+    fn wake_keys() {
+        let (woken, cv) = &KEYS_WAKE;
+        *woken.lock().unwrap() = true;
+        cv.notify_one();
     }
 
     // A thread asked to stop, waited for two seconds at most: on the way out
@@ -681,6 +690,7 @@ mod imp {
             }
         }
         if let Some(thread) = KEYS.lock().unwrap().take() {
+            wake_keys();
             stop_within("the keys' thread", thread);
         }
         let host = HOST.lock().unwrap().take();
@@ -726,9 +736,11 @@ mod imp {
         cv.notify_one();
     }
 
-    // From outside: the quiet over (main.rs check_quiet), the buttons looked at now.
+    // From outside: the quiet over (main.rs check_quiet), the buttons and
+    // the keys looked at now.
     pub fn wake() {
         wake_tasks();
+        wake_keys();
     }
 
     // The buttons' list kept: made again when windows change (a moment
@@ -1677,6 +1689,7 @@ mod imp {
         if what == "ime" {
             let done = tasks::toggle_native();
             KEYS_NOW.store(true, Ordering::SeqCst);
+            wake_keys();
             return done;
         }
         // A press on what shows the microphone, camera or location in use:
@@ -1942,9 +1955,17 @@ mod imp {
     }
 
     fn tick() {
+        // Quiet (nobody at the computer): what follows every two seconds,
+        // not every half (each look woke this thread some ten times, twenty
+        // a second all night: #14). The clock keeps its pace.
+        let at = TICKS.load(Ordering::SeqCst);
+        if at % 4 != 0 && sh().is_some_and(|sh| sh.is_quiet()) {
+            TICKS.fetch_add(1, Ordering::SeqCst);
+            return;
+        }
         // Another copy holding it too (both took it at once): every two
         // seconds, the younger lets go.
-        if TICKS.load(Ordering::SeqCst) % 4 == 0 && !waiting() {
+        if at % 4 == 0 && !waiting() {
             yield_to_elder();
         }
         if shell::visible() {
@@ -2007,8 +2028,9 @@ mod imp {
         }
         // Windows' mode, accent and wallpaper: told when they change
         // (WM_SETTINGCHANGE and the rest below); looked at anyway every
-        // half minute, should a change come unannounced.
-        if ticks % 60 == 0 {
+        // half minute, should a change come unannounced (by the tick it
+        // began on: one quiet looks at).
+        if at % 60 == 0 {
             send_look();
         }
     }
@@ -2660,6 +2682,13 @@ pub fn taskbar_tray(app: tauri::AppHandle, key: u64, press: String) -> bool {
 #[tauri::command]
 pub fn taskbar_open(what: String) -> bool {
     imp::open(&what)
+}
+
+// Windows' own battery font, for the page to draw the battery as Windows'
+// taskbar does (island.js); empty where Windows has none.
+#[tauri::command]
+pub fn taskbar_battery_font() -> tauri::ipc::Response {
+    tauri::ipc::Response::new(crate::widgets::battery_font())
 }
 
 // A press on a window's button (press: to the front or minimized; close).

@@ -201,7 +201,7 @@ pub fn create(sh: &Shared) -> tauri::Result<()> {
     let win = WebviewWindowBuilder::new(&sh.app, "pet", WebviewUrl::App("pet/index.html?role=pet".into()))
         .title("wakuwaku")
         .inner_size(size.0 as f64 / sf, size.1 as f64 / sf)
-        .additional_browser_args(crate::BROWSER_ARGS)
+        .additional_browser_args(crate::browser_args(sh))
         .data_directory(crate::webview_dir(sh))
         .transparent(true)
         .decorations(false)
@@ -233,6 +233,13 @@ pub fn ready(sh: &Shared) {
     sh.log("pet: page ready");
     sh.win.lock().unwrap().ready = true;
     sh.redraw();
+    // Her window made hidden, its page was not: put away with it while she
+    // is home (as she starts, mostly; apply_visibility has nothing to change).
+    if !is_shown(sh) {
+        if let Some(win) = window(sh) {
+            hide_window(&win);
+        }
+    }
     apply_visibility(sh);
 }
 
@@ -252,13 +259,24 @@ pub fn apply_visibility(sh: &Shared) {
     }
     if let Some(win) = window(sh) {
         if want {
+            let _ = win.as_ref().show();
             sh.show_window(&win);
-            // Hidden, her page heard no updates (main.rs to_pages).
+            // Hidden, her page heard no updates (main.rs to_pages): the
+            // whole state now, whether quiet with it.
             sh.send_to_pet();
         } else {
-            let _ = win.hide();
+            hide_window(&win);
         }
     }
+}
+
+// Her window put away, and its page with it (WebView2's IsVisible): with
+// the window alone hidden, the page went on playing her clips and walking
+// her about unseen, its timers never throttled (#14: half her renderer's and
+// most of her GPU process's time while she was home).
+fn hide_window(win: &WebviewWindow) {
+    let _ = win.hide();
+    let _ = win.as_ref().hide();
 }
 
 // Her window on the screen now. Asked from anywhere (main.rs to_pages),
@@ -722,7 +740,7 @@ pub fn hide_now(sh: &Shared) {
     }
     set_ignore(sh, Some(true));
     if let Some(win) = window(sh) {
-        let _ = win.hide();
+        hide_window(&win);
     }
 }
 

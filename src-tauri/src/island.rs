@@ -454,7 +454,7 @@ fn create(sh: &Arc<Shared>) {
         let built = WebviewWindowBuilder::new(&sh.app, "island", WebviewUrl::App("pet/index.html?role=island".into()))
             .title("wakuwaku island")
             .inner_size(size.0 as f64 / sf, size.1 as f64 / sf)
-            .additional_browser_args(crate::BROWSER_ARGS)
+            .additional_browser_args(crate::browser_args(&sh))
             .data_directory(crate::webview_dir(&sh))
             .transparent(true)
             .decorations(false)

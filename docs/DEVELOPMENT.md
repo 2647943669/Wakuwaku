@@ -41,6 +41,8 @@ src-tauri/
     connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json（安装 / 移除 / 状态）、开机自启
     fetch.rs              codex-pets.net：解析地址、下载宠物、图库
     fullscreen.rs         别的程序是否全屏（user32）
+    power.rs              省电：后台线程一直、整个进程和 WebView2 的进程在静默时交给效率核（EcoQoS），静默时页面内存设为低；多久没碰键盘鼠标
+    gpu.rs                她那块屏由哪块显卡输出（D3DKMT），WebView2 就在那块上渲染
     focus.rs              前台窗口：设置拿走键盘前记下，收起时还回去
     jump.rs               点会话就到它的窗口：会话的进程链、找窗口、叫到前面、桌面版的会话链接
     widgets.rs            岛上的插件（第一层）：脚本发来的、内置的（今天、今天的 token、监控），什么时候冒头
@@ -54,6 +56,7 @@ src-tauri/
     events.rs             Claude Code 的 hook 事件 → 消息；会话名（session_title 或会话记录）、项目名（git 仓库名）
     events_codex.rs       Codex 的 hook 事件 → 消息（步骤、任务、回复、项目名的说法用 events.rs 的）
     data.rs               数据目录、设置读写、已下载的宠物和 Codex 的宠物
+    detach.rs             以资源管理器为父进程启动她（hook 拉起、更新、守护进程），不落在启动者的作业里；启动时自查
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
   capabilities/           页面能用的 Tauri 权限：两个窗口都要列进去
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
@@ -99,7 +102,7 @@ cd .. && node --test "test/*.test.js"   # 页面的单元测试
 
 ## hook 怎么送到宠物
 
-除 `SessionStart` 外的事件都是 HTTP hook（`type: "http"`，POST 到 `/hook?from=wakuwaku`），不开进程；`/hook` 一般立刻回 `{}`，只有 `PermissionRequest` 会挂起，等面板上的回答。**Claude Code 不对 `SessionStart` 运行 HTTP hook**，所以写入 settings.json 的方式给它配了一条后台命令（`async: true`）：程序本身加 `--wakuwaku-ensure-running`。它从 stdin 读事件，端口上有 wakuwaku 应答就把事件转过去（打招呼、登记会话），没有就以独立进程（`DETACHED_PROCESS`）启动一份宠物，然后马上退出。**用户主动退出后不启动**：右键菜单（托盘或任务栏）的「退出」在数据文件夹写一个 `quit-by-choice` 标记（`data.rs` 的 `mark_quit`），`--wakuwaku-ensure-running` 和 Codex 的 `SessionStart` 看到它就不启动（`may_start`）；不然退出后马上又会被拉起来（`resume`、`/clear`、自动压缩也会触发 `SessionStart`）。她每次真正启动（手动打开、开机自启、更新后重启、崩溃后被拉起）都会清掉它（`main()` 拿到端口后 `clear_quit`）。崩溃不留标记，会话照旧把她拉起来。HTTP 的 `/quit` 不算主动退出、不留标记：它是给脚本和换新版本用的（换完会自己启动新的），有人 /quit 之后没再启动，会话把她拉起来也说得过去。
+除 `SessionStart` 外的事件都是 HTTP hook（`type: "http"`，POST 到 `/hook?from=wakuwaku`），不开进程；`/hook` 一般立刻回 `{}`，只有 `PermissionRequest` 会挂起，等面板上的回答。**Claude Code 不对 `SessionStart` 运行 HTTP hook**，所以写入 settings.json 的方式给它配了一条后台命令（`async: true`）：程序本身加 `--wakuwaku-ensure-running`。它从 stdin 读事件，端口上有 wakuwaku 应答就把事件转过去（打招呼、登记会话），没有就以独立进程启动一份宠物，然后马上退出。**启动时以资源管理器为父进程**（`detach.rs` 的 `spawn`：`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` 设成桌面窗口所在的进程，`DETACHED_PROCESS`，不继承任何句柄），和在桌面上双击打开一样落在资源管理器的作业里。hook 是在 agent 的作业里运行的，Claude 桌面版这类应用的作业在应用退出时会结束里面所有进程，而且不让脱离：从桌面版的会话里拉起的她，连同任务栏守护进程，在桌面版更新时被一起结束，Windows 的任务栏一直藏着，直到她再次启动（用户 2026-10-13）。资源管理器不在时退回原来的做法。她启动时也自查（`detach::should_leave`）：在某个作业里、父进程又不是资源管理器（旧版的 hook、终端、别的应用里启动），就照上面的办法重新启动自己，带上 `--wakuwaku-out-of-job` 防止反复，这一份退出；从源码运行时不做。更新后启动新版、崩溃后重启（`updates.rs` 的 `start_new`）、任务栏守护进程（`shell.rs` 的 `spawn_guard`）也都这样启动。**用户主动退出后不启动**：右键菜单（托盘或任务栏）的「退出」在数据文件夹写一个 `quit-by-choice` 标记（`data.rs` 的 `mark_quit`），`--wakuwaku-ensure-running` 和 Codex 的 `SessionStart` 看到它就不启动（`may_start`）；不然退出后马上又会被拉起来（`resume`、`/clear`、自动压缩也会触发 `SessionStart`）。她每次真正启动（手动打开、开机自启、更新后重启、崩溃后被拉起）都会清掉它（`main()` 拿到端口后 `clear_quit`）。崩溃不留标记，会话照旧把她拉起来。HTTP 的 `/quit` 不算主动退出、不留标记：它是给脚本和换新版本用的（换完会自己启动新的），有人 /quit 之后没再启动，会话把她拉起来也说得过去。
 
 `connection.rs` 的 `status_of()` 判断我们的条目：`ok`、`httpOnly`（没有启动命令）、`missing`、`partial`（缺事件）、`stale`（端口不对、指向另一份程序，或者是旧版本）。识别"是我们的"靠 URL 里的 `from=wakuwaku`、参数里的 `--wakuwaku-ensure-running`，以及改名前的 `claude-pets` 两个记号和更早的 `claude-hook.js`。写之前把原文件备份到 `settings.json.wakuwaku.bak`（只备份一次）。
 
@@ -341,7 +344,7 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
   - **自动排列开**的用户：只通知桌面，不动任何图标。
   - **不做任何事**：只在底边、从没离开过底边的用户，没有 `icons.json`。
   - **调试**：`examples/icons.rs`：`list` 看现状；`take <边> x y w h <目录>`、`hold <目录>`、`back l t r b <目录>` 不开宠物也能把整个流程在真实桌面上走一遍；`auto` / `snap` 切换自动排列和对齐网格，试完记得切回去。
-- **任务栏布局**（设置 `taskbarLayout`，`island.js` 的 `tbLayout`）：任务栏的部件分成左、中、右三段，像 KDE 的面板：`her`（灵动岛）、`start`、`apps`（程序按钮）、`monitor`、`tray`（托盘和麦克风/摄像头/定位的标记）、`keys`（输入法）、`quick`（网络和音量）、`clock`、`gear`；每个部件只出现一次，缺了的放回默认位置；任务栏上没有会话标签（用户 2026-10-12 定的：其他会话的状态只在灵动岛里看，胶囊上写「+N」，它们的窗口按钮照旧能跳过去），以前存过的 `tags` 读设置时去掉（`data.rs` 的 `drop_part`，不然 `settings.rs` 会整个布局都不认），页面的 `layoutOf` 也丢掉不认识的部件；「显示桌面」那条窄边永远在最右边。左段从左端排起，中段用左外边距挪到屏幕正中（`alignApps`，挤了就往左让，滑过去后重新放窗口列表、灵动岛、托盘图标位置），右段排到右端。灵动岛在条带里占一个空位（`.tslot`，宽度跟着收起的岛变），岛本身绝对定位叠在空位上（`placeSlot`，CSS 变量 `--isl-x`；别叫 `placeHer`，那是把她画进岛里的函数，同名的后一个会盖掉前一个）；空位在屏幕右半边时岛按右边定位（`body.isl-right`），展开、确认面板、设置都从右边往左上长；她的座位（拉她出来、飞回来的位置）由页面算好告诉 Rust（`island_seat`，`island.rs` 的 `seat_x`）。没有存过布局的老配置按 `taskbarAlign`（`center` / `left`）对应到预设。设置「外观」页的「布局」一行有三个预设（Windows 11、全部靠左、胶囊在右）和「拖动编辑…」；任务栏右键菜单也有「编辑任务栏布局」（`taskbar:edit`）。编辑时（`editTaskbar`，`body.tb-editing`）每个部件描蓝框，三段显示成浅蓝的框（空的一段也是可以放的框），空的部件显示名字；按下拖动时部件本身的点击、右键都被拦下，灵动岛让鼠标穿透到下面的空位、跟着空位被拖；鼠标下有部件名字的标签，插入位置有一条蓝线，松手立刻重排；任务栏上方的工具栏「添加部件 / 恢复默认 / 取消 / 完成」，完成才写进设置。
+- **任务栏布局**（设置 `taskbarLayout`，`island.js` 的 `tbLayout`）：任务栏的部件分成左、中、右三段，像 KDE 的面板：`her`（灵动岛）、`start`、`apps`（程序按钮）、`monitor`、`tray`（托盘和麦克风/摄像头/定位的标记）、`keys`（输入法）、`quick`（网络、音量和电池：电池只在有电池的电脑上显示，`widgets::battery_state` 每 2 秒随网络一起读；画法照 Windows 自己的任务栏：用 Windows 自带的电池字体 SysBatt Fluent Icons（`Sysbatt.ttf`，在 `SystemApps\MicrosoftWindows.Client.Core_cw5n1h2txyewy\SystemTray\Assets`，`taskbar_battery_font` 读出来交给页面用 `FontFace` 载入，不随程序发布），一层外框（普通 F8D0；充电时带闪电 F8DB；接着电源没在充电时带插头 F8E4，比如笔记本的电池保养停在 80%）上面叠一层填充，按十分之一向上取整（普通的 F8D1–F8DA；闪电、插头那两套的 3–10 档挖掉了闪电、插头的位置，1、2 档够不着，用普通的），填充颜色是 Windows 的 `OmniAccent*OverlayForeground`：充电时绿（深色 #9FD89F、浅色 #107C10），电池供电时节能模式黄（#EAA300）、电量严重不足红（#D92C2C / #C50F1F）；Windows 设置里「电池百分比」打开（`IsBatteryPercentageEnabled`）时旁边显示百分比，12px；没有这个字体（Windows 11 之前）时退回 Segoe 的电池字形，按电量分 11 档，接着电源用充电那套、节能模式用节能那套）、`clock`、`gear`；每个部件只出现一次，缺了的放回默认位置；任务栏上没有会话标签（用户 2026-10-12 定的：其他会话的状态只在灵动岛里看，胶囊上写「+N」，它们的窗口按钮照旧能跳过去），以前存过的 `tags` 读设置时去掉（`data.rs` 的 `drop_part`，不然 `settings.rs` 会整个布局都不认），页面的 `layoutOf` 也丢掉不认识的部件；「显示桌面」那条窄边永远在最右边。左段从左端排起，中段用左外边距挪到屏幕正中（`alignApps`，挤了就往左让，滑过去后重新放窗口列表、灵动岛、托盘图标位置），右段排到右端。灵动岛在条带里占一个空位（`.tslot`，宽度跟着收起的岛变），岛本身绝对定位叠在空位上（`placeSlot`，CSS 变量 `--isl-x`；别叫 `placeHer`，那是把她画进岛里的函数，同名的后一个会盖掉前一个）；空位在屏幕右半边时岛按右边定位（`body.isl-right`），展开、确认面板、设置都从右边往左上长；她的座位（拉她出来、飞回来的位置）由页面算好告诉 Rust（`island_seat`，`island.rs` 的 `seat_x`）。没有存过布局的老配置按 `taskbarAlign`（`center` / `left`）对应到预设。设置「外观」页的「布局」一行有三个预设（Windows 11、全部靠左、胶囊在右）和「拖动编辑…」；任务栏右键菜单也有「编辑任务栏布局」（`taskbar:edit`）。编辑时（`editTaskbar`，`body.tb-editing`）每个部件描蓝框，三段显示成浅蓝的框（空的一段也是可以放的框），空的部件显示名字；按下拖动时部件本身的点击、右键都被拦下，灵动岛让鼠标穿透到下面的空位、跟着空位被拖；鼠标下有部件名字的标签，插入位置有一条蓝线，松手立刻重排；任务栏上方的工具栏「添加部件 / 恢复默认 / 取消 / 完成」，完成才写进设置。
 - **任务栏上的部件**（`taskbarLayout` 三段里除了部件名，还可以是对象 `{ id, type, of, size, name, icon }`，`widgets.js` 的 `isEntry` 和 `settings.rs` 的 `is_taskbar_widget` 同样检查）：`type` 是 `widget`（`of` 是一个 widget 的 id：内置的、邮箱的 `inbox-…`、别人脚本的）、`plugin`（`of` 是她跑的插件，显示它发来的所有 widget，几个就每 5 秒轮一个，比如几只股票）、或者间隔：`flex`（占满所在一段的空处；有它时那一段 `flex: 1`、中段不再居中、`.grow` 藏起来）、`gap`（16px）、`sep`（竖线）。`id` 是 `w` 加最多 15 个小写字母数字，`size` 是 `S`（图标和数值）或 `M`（数值在上、名字在下，像时钟的时间和日期），`name`、`icon` 是放上去时记下的，数据没了（插件停了、邮箱删了）还能显示名字。最多 32 个，每个只出现一次（`layoutOf`）。页面上每个部件一个节点（`entryNodes`，按 id 留着），`drawEntries` 画：没数据的变灰写「暂无数据」；鼠标经过和别的按钮一样亮（`GLIDE_ON`）。放在任务栏上的 widget 不再在岛上轮流（`takeWidgets`，`shownOn`）。点一下或右键弹出它的卡片（`.wgpop`，和窗口列表一样在按钮上方、点别处关掉）：每个 widget 的标题和数值、来自哪里，按钮「设置」（插件的打开「插件」页并展开它，`Settings.openPlugin`）、「打开邮件」、「移除」。编辑时「添加部件」打开部件库（`.tblib`，在灵动岛的另一边，`settings_get` 拿全部 widget 和插件）：分类（全部、内置、插件、邮件、脚本、布局），一个部件一张卡，已经在任务栏上的变暗，缺必填设置的插件（`missing`，不管开没开）写「要先在插件页填写设置」；拖到任务栏上看蓝线放，点一下放到右段最前面。任务栏上的插件没有数据时，页面最多 30 秒问一次 `settings_get`（`askPlugins`，完成编辑后马上问一次），缺设置的写「需要设置」，卡片里写「要先在插件页填写设置」。任务栏上的部件点一下选中，上方出小工具条：小 / 中 / 移除；拖回部件库、或往上拖离任务栏 90px 以上松手就移除（标签变红）。完成时放上去的插件没在跑的顺便打开（`plugins.<id>.on`）。设置页选预设只换部件名的位置，部件留在原来那段（`withParts`；左、中段排在后面，右段排在前面，不会跑到时钟后面）；判断是哪个预设也只看部件名（`partsAlone`）。
 - **启动程序**（`taskbar.rs` 的 `app`、`taskbar_app`）：点固定的程序（没在运行）、右键「新窗口」，都在单独的线程里先初始化 COM 再调 `ShellExecuteW`，命令本身是异步的，不在主线程上等（以前在主线程上，光解析资源管理器的 .lnk 就卡 80–413 ms，按下去像是先播动画、过一会儿程序才出来）。按下时页面马上有反馈（高亮往下压），松开才启动，和原生任务栏一样。资源管理器（路径是 `explorer.exe`，固定项的快捷方式也指向它）按它自己的设置「打开文件资源管理器时打开」（`HKCU…ExplorerAdvanced` 的 `LaunchTo`：1 此电脑，3 下载，2 或没有是主文件夹）直接打开那个文件夹（`shell:::{20D04FE0-…}`、`shell:Downloads`、`shell:::{f874310e-…}`），不经过 explorer.exe 和它的快捷方式；打不开（Windows 10 没有「主文件夹」）就照旧。同一台机器上量的（2026-10-12，各 3 次，从调用到资源管理器窗口出现）：.lnk 调用 80–413 ms、窗口 351–711 ms；`explorer.exe` 调用 7–20 ms、窗口 388–427 ms；主文件夹 `shell:::{f874310e-…}` 调用约 20 ms、窗口 304–361 ms；此电脑约 20 ms、290–316 ms。
 - **窗口按钮**（`tasks.rs`）：可见、没被藏到别的虚拟桌面（DWM cloaked）、没有所有者、不是工具窗口（或标了 `WS_EX_APPWINDOW`）、有标题的顶层窗口；按程序路径合并（商店应用取里面那个进程的），固定的程序（设置 `taskbarPinned`）排在前面。窗口有变化时（WinEvent 钩子）在单独的线程里重算，闪烁提醒来自 shell hook（`HSHELL_FLASH`）。会话所在的窗口（`jump::window_for`，3 秒一次）随窗口一起发给页面：这些会话不再在条带上另放标签（按钮就能去，状态看灵动岛），按钮上也不标点。缩略图是 DWM thumbnail。按钮上的图标和 Windows 任务栏取的一样：先按窗口说的应用身份（AppUserModelID，`tasks::app_id`，商店应用的外框一出现就带着）向系统的「应用」文件夹要这个应用的图标（`taskbar.rs` 的 `app_png`，`IShellItemImageFactory`，比如「设置」的灰齿轮蓝圆点，从启动的第一刻起）；没有应用身份的程序用它本身的图标（文件的图标：资源管理器的每个窗口都显示文件资源管理器的图标），只有程序只是宿主（商店应用、Windows 自带应用、Java、Python，`taskbar.rs` 的 `hosts`）或没有自己的图标（和 Windows 给 .exe 的默认图标一样）时才用窗口的图标；窗口列表里每个窗口仍是自己的图标。图标按 24px 画（先取大图标，小图标放大会糊），设置 `taskbarButtons`：`icons`（默认，44px 的方块，没有标题和数量，鼠标停住列出窗口；没在运行的固定程序悬停显示名字）或 `labels`（图标加标题）。布局见下一条「任务栏布局」。
@@ -378,7 +381,7 @@ mail/smtp.rs       SMTP：自己写的一个小客户端（EHLO、STARTTLS、AUT
 - **检查**：同时问两边，都带 User-Agent、不带 token：GitHub 是 `GET https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest`，404（还没有发布）当作没有。Gitee **不用它的 API**：不登录时每个 IP 只有大约 60 次，用完后一个多小时都返回 403（Rate Limit Exceeded），国内很多人共用一个出口 IP；它的 `releases/latest` 还是"最后编辑的那个"，JSON 里也没有 `draft`、`html_url`、`size`、`digest`。所以改读仓库的 tag，和 `git clone` 一样（`GET https://gitee.com/zhoupengjie/Wakuwaku.git/info/refs?service=git-upload-pack`，pkt-line 格式），取版本最高的 tag（`v` 加数字开头；名字里有 `-` 的算预发布，跳过：只看 tag 分不出 Gitee 上的预发布，所以 Gitee 上的预发布 tag 必须带 `-`）。再按 Gitee 存放附件的固定地址取这个 tag 的 `…/releases/download/<tag>/<exe>.sha256`（`sha256sum` 的格式，也接受只有十六进制）：取得到就说明这一版在 Gitee 上已经发好（脚本先传 exe 再传 `.sha256`），exe 地址和发布页地址（`…/releases/tag/<tag>`）也按固定格式拼；404 说明这个 tag 在 Gitee 上还没有发布，Gitee 这边就当作没有。两边取版本高的；两边版本一样时，校验值优先用 GitHub 的 `digest`，两边都给了却不一样就不装（`mismatch`）。只有一边答不上来时只记日志；两边都答不上来才算检查失败。启动 20 秒后一次，之后每天一次（线程每 10 分钟看一眼是否到期；失败的话一小时后再试，只记日志）。草稿、预发布不算；`tag_name` 去掉 `v` 后和 `CARGO_PKG_VERSION` 按数字逐段比（0.10.0 > 0.9.0，带 `-` 后缀的预发布排在同号正式版前面）。设置 `autoUpdateCheck`（默认开）关掉就不再自己检查；「现在检查」随时可点。
 - **先从哪边下载**：设置 `updateFrom`：`auto`（默认）在中国先 Gitee、其他地方先 GitHub；也可以设成 `gitee` / `github`。"在中国"是 Windows 的时区为 `China Standard Time`，或系统语言是 `zh-CN` / `zh-Hans…`（只算一次）。先下的那边失败（下载出错或校验不对）就换另一边，界面上写着正在从哪边下载。发布页（「查看说明」）也打开先下载那一边的。
 - **提示**：每个新版本在岛上提示一次（`updateTold` 记着提示过的版本；她不在视线里或有会话在等你时，等下一次 10 分钟的检查再提示），点一下打开设置「通用」页的「软件更新」那一节。
-- **更新**（只在用户点「更新」后）：下载附件 `wakuwaku-v<版本>-windows-x64.exe`（下载地址必须在 `https://github.com/zhoupengjie/Wakuwaku/` 或 `https://gitee.com/zhoupengjie/Wakuwaku/` 下；Gitee 的会跳转到 `foruda.gitee.com`）到数据文件夹的 `update-v<版本>.exe.part`，边下边算 SHA-256，和上面定下的校验值比；没有校验值就中止，对不上就删掉临时文件、换另一边，都不行就中止，界面上说明。有确认请求在等用户时先等它处理完。然后把正在运行的 exe 改名为 `<原名>.old.exe`（运行中的 exe 可以改名不能删），新 exe 放到原路径（保留用户的文件名），用 `--after-update <旧 pid>` 启动新 exe（脱离她的进程树和作业，和任务栏守护进程一样），旧的走 `Shared::quit` 正常退出、交还任务栏。新 exe 在绑定端口之前先等旧进程退出（最多一分钟），否则端口被占时它只会唤醒旧的然后自己退出。新版运行一分钟后删掉 `.old.exe`（旧版的任务栏守护进程可能还开着它，删不掉就隔 10 秒再试几次）。新版启动失败时，旧 exe 被换回原名。
+- **更新**（只在用户点「更新」后）：下载附件 `wakuwaku-v<版本>-windows-x64.exe`（下载地址必须在 `https://github.com/zhoupengjie/Wakuwaku/` 或 `https://gitee.com/zhoupengjie/Wakuwaku/` 下；Gitee 的会跳转到 `foruda.gitee.com`）到数据文件夹的 `update-v<版本>.exe.part`，边下边算 SHA-256，和上面定下的校验值比；没有校验值就中止，对不上就删掉临时文件、换另一边，都不行就中止，界面上说明。有确认请求在等用户时先等它处理完。然后把正在运行的 exe 改名为 `<原名>.old.exe`（运行中的 exe 可以改名不能删），新 exe 放到原路径（保留用户的文件名），用 `--after-update <旧 pid>` 启动新 exe（以资源管理器为父进程，脱离她的进程树和作业，和任务栏守护进程一样：`detach.rs`），旧的走 `Shared::quit` 正常退出、交还任务栏。新 exe 在绑定端口之前先等旧进程退出（最多一分钟），否则端口被占时它只会唤醒旧的然后自己退出。新版运行一分钟后删掉 `.old.exe`（旧版的任务栏守护进程可能还开着它，删不掉就隔 10 秒再试几次）。新版启动失败时，旧 exe 被换回原名。
 - **手动换回旧版**：新版起不来、`.old.exe` 还在时：结束 wakuwaku 进程，删掉新的 exe，把 `<原名>.old.exe` 改回 `<原名>.exe`。
 - **测试**：环境变量 `WAKUWAKU_UPDATE_URL` 当作 GitHub latest release 的 JSON 地址，`WAKUWAKU_UPDATE_GITEE_URL` 当作 Gitee 仓库的地址（读 `<地址>.git/info/refs` 和 `<地址>/releases/download/…`；给了其中一个时只问给了的那边，下载地址也不限于 GitHub 和 Gitee），`WAKUWAKU_UPDATE_FORCE=1` 让源码树里的调试版也检查、更新。日志都以 `update:` 开头。`node test/fake-release.js --exe <新版 exe> --version <版本>` 同时扮演这两边（端口 47390，`/mode?…=1` 在运行中切换各种故障，见文件开头）。
 - **发布到 Gitee**：先在 GitHub 照常发布，再把 tag 推到 Gitee，然后运行 `scripts/gitee-release.ps1 -Version <版本>`（私人令牌放在环境变量 `GITEE_TOKEN`，需要 `projects` 权限；令牌放在请求头 `Authorization: token …` 里，放在 multipart 表单的 `access_token` 字段里时上传附件会被拒绝，返回 40001）。脚本从 GitHub 发布下载 exe，按 GitHub 的 `digest` 校验后，在 Gitee 建同名发布（说明照抄 GitHub 的），先传 exe、再传 `<exe>.sha256`，最后像更新器那样（不登录、不用 API）从 Gitee 下载回来再校验一遍。不带令牌运行时什么也不写，只做最后的校验。从国外往 Gitee 上传大约每秒 25 KB，7 MB 的 exe 要几分钟。Gitee 每个附件不超过 100 MB，每个仓库的附件总共不超过 1 GB，满了就删掉旧版本的附件。
@@ -446,8 +449,32 @@ Codex pet v2 图集为 1536×2288，8 列 × 11 行，每格 192×208。v1 是 1
 
 CPU 主要花在 GPU 进程和渲染进程上，两边几乎一样（页面是同一个）。Windows 上 WebView2 本身就是 Chromium，所以内存和 CPU 跟 Electron 持平，省下来的是安装包体积。
 
+### 省下来的（#13、#14）
+
+- **她回家后桌宠的页面也收起来**（`pet.rs` 的 `hide_window`）：只藏窗口时，WebView2 仍当页面可见（`document.hidden` 为假），`pet.js` 照样按节拍画她、闲逛时还请 Rust 挪一个看不见的窗口；桌宠窗口又关了后台节流。现在连 WebView 一起藏（`Webview::hide`，即 `SetIsVisible(false)`），窗口建好时页面也先藏起来；`pet.js` 在 `document.hidden` 时不画、不闲逛，显示时整份状态（含 `quiet`）随 `pet:update` 补上。
+- **轮询改成等待**：任务栏键盘线程（`keys_loop`）的小睡和监控线程都改成条件变量，有事（要停、按了输入法按钮、静默开始或结束、设置改了）才叫醒；岛上她的头像那个 60 ms 的定时器只在有头像要播时才开。
+- **静默时**：WebView2 的浏览器、GPU、渲染和工具进程也设 EcoQoS（只动执行速度那一位，Chromium 自己设的计时器精度保留），各页面的内存目标设为低（`SetMemoryUsageTargetLevel`），回来时设回；任务栏线程每 2 秒才做一轮自愈检查（每轮约 10 次唤醒）。
+- **线程和进程**：Tauri 的异步运行时只开 2 个工作线程（默认每个逻辑核一个）；网络服务并进浏览器进程（`NetworkServiceInProcess2`），少一个进程、约 40 MB；存储服务已经没有对应开关，仍是单独的进程。
+- **显卡**：WebView2 默认在 Windows 给它的「省电」显卡（核显）上渲染，不管她的屏是哪块显卡输出；她那块屏在独显上时，每一帧都要从核显拷到独显，核显忙（比如 Chrome 在放视频）时她的动画就掉帧。现在启动时用 `D3DKMTOpenAdapterFromGdiDisplayName` 查出她那块屏（家所在的屏，启动时是主屏）的显卡，确认它能渲染（远程桌面的虚拟显示器、间接显示器不算），用 `--use-adapter-luid=<高位>,<低位>`（十进制）交给 WebView2；屏在核显上就用核显，不会为她叫醒独显。只在启动时定，换屏、插拔显示器后要重启她才跟着变。
+- **没改**：任务栏线程钩着「位置变了」（`EVENT_OBJECT_LOCATIONCHANGE`），鼠标指针每动一下都会叫醒它（装了 1000 Hz 鼠标时每秒上千次，回调第一行就丢掉），只按进程过滤也躲不开（指针的事件算在指针下面那个程序头上）。换成轮询的话，窗口最大化时条带变实、前台窗口全屏时让开都会晚最多半秒，所以留着。
+
+在 Intel Core Ultra 9 386H + RTX 5090 Laptop 上实测（调试模式，有会话在跑，没人碰键盘鼠标）：
+
+| | 改之前 | 改之后 |
+| --- | --- | --- |
+| 有人在、不碰她：整树 CPU | 60.1 ms/s | 48.4 ms/s |
+| 有人在、不碰她：唤醒 | 849 次/秒 | 697 次/秒 |
+| 隐藏的桌宠页面 5 秒画了几帧 | 11 | 0 |
+| 主进程线程数 | 51 | 37 |
+| 静默：唤醒 | 301 次/秒 | 159 次/秒 |
+| 静默：工作集 | 549 MB | 171 MB |
+| 渲染所在的显卡 | 核显（屏在独显上，#13 测的） | 独显（输出她那块屏的） |
+
 ## 踩过的坑
 
+- **藏窗口不等于藏页面**：`WebviewWindow::hide` 只藏窗口，WebView2 照样当页面可见，定时器和动画都在跑；要连 WebView 一起藏（`win.as_ref().hide()`，即 `SetIsVisible(false)`），`document.hidden` 才是真。
+- **线程的 EcoQoS 是第 3 类**：`SetThreadInformation` 的 `ThreadPowerThrottling` 是 3（0、1、2 是内存优先级、绝对优先级、动态代码策略）；写成 2 时调用因为大小不对失败（ERROR_BAD_LENGTH），返回值没人看，她的线程一直都不是 EcoQoS。
+- **`--use-adapter-luid` 的格式**：Chromium（`ui/gl/gl_display.cc`）读的是 `<高位>,<低位>`，都按十进制；读不出来 GPU 进程就起不来。
 - **右键菜单一闪就没**：muda 弹菜单前调用 `SetForegroundWindow`，不能获得焦点的窗口做不到，菜单立刻关掉。弹菜单前临时让窗口可获得焦点（`main.rs` 的 `pet_menu`）。
 - **页面的 CSP**：精灵图走 `http://asset.localhost`，IPC 走 `http://ipc.localhost`，图库图片来自 `https://codex-pets.net`，都要在 `index.html` 的 CSP 里放行；否则 IPC 会退回 postMessage，图也加载不出来。
 - **监听要先注册好**：`listen()` 本身也是一次 IPC，是异步的。bridge 等所有监听注册完再发 `pet_ready`，Rust 收到后才开始推状态。

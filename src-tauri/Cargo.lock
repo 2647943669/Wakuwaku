@@ -4240,6 +4240,7 @@ dependencies = [
  "tauri-build",
  "tauri-winrt-notification",
  "tiny_http",
+ "tokio",
  "ureq",
  "webview2-com",
  "windows-core",
