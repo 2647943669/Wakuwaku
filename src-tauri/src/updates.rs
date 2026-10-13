@@ -655,25 +655,15 @@ fn replace(part: &Path) -> Result<PathBuf, String> {
     Ok(exe)
 }
 
-// Started on its own (out of her process tree and job, as the taskbar's
-// guard), to wait for her.
+// Started on its own (out of her process tree and any job, as if opened
+// from Explorer: detach.rs), to wait for her.
 fn start_new(exe: &Path) -> Result<(), String> {
-    let mut command = std::process::Command::new(exe);
-    command.arg(AFTER_UPDATE).arg(std::process::id().to_string());
-    command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
-        let flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
-        if command.creation_flags(flags | CREATE_BREAKAWAY_FROM_JOB).spawn().is_ok() {
-            return Ok(());
-        }
-        command.creation_flags(flags);
+    let pid = std::process::id().to_string();
+    if crate::detach::spawn(exe, &[AFTER_UPDATE, &pid]) {
+        Ok(())
+    } else {
+        Err(format!("{} would not start ({})", exe.display(), std::io::Error::last_os_error()))
     }
-    command.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 // Her own exe started again, to wait for her to end (crash.rs: WebView2's

@@ -37,6 +37,7 @@ mod bars;
 mod connection;
 mod crash;
 mod data;
+mod detach;
 mod events;
 mod events_agy;
 mod events_codex;
@@ -924,90 +925,10 @@ fn read_event() -> Option<Value> {
 }
 
 // Start her, detached so she outlives the hook and the session (she greets on
-// her own). On Windows she inherits no handle at all: a hook's process holds
-// the ones its agent left inheritable, its output pipes among them, and
-// whoever reads those to the end (Codex, or what runs Codex) would wait on
-// her for good. std's Command always lets a child inherit, so CreateProcessW.
-#[cfg(windows)]
-fn start_detached() {
-    use std::os::windows::ffi::OsStrExt;
-
-    #[repr(C)]
-    struct StartupInfo {
-        cb: u32,
-        reserved: *mut u16,
-        desktop: *mut u16,
-        title: *mut u16,
-        x: u32,
-        y: u32,
-        x_size: u32,
-        y_size: u32,
-        x_chars: u32,
-        y_chars: u32,
-        fill: u32,
-        flags: u32,
-        show: u16,
-        reserved2_len: u16,
-        reserved2: *mut u8,
-        stdin: isize,
-        stdout: isize,
-        stderr: isize,
-    }
-    #[repr(C)]
-    struct ProcessInfo {
-        process: isize,
-        thread: isize,
-        process_id: u32,
-        thread_id: u32,
-    }
-    #[link(name = "kernel32")]
-    extern "system" {
-        #[allow(clippy::too_many_arguments)]
-        fn CreateProcessW(
-            app: *const u16,
-            command_line: *mut u16,
-            process_attrs: *const u8,
-            thread_attrs: *const u8,
-            inherit_handles: i32,
-            flags: u32,
-            env: *const u8,
-            dir: *const u16,
-            startup: *const StartupInfo,
-            info: *mut ProcessInfo,
-        ) -> i32;
-        fn CloseHandle(handle: isize) -> i32;
-    }
-
-    let Ok(exe) = std::env::current_exe() else { return };
-    let wide = |s: &std::ffi::OsStr| s.encode_wide().chain(Some(0)).collect::<Vec<u16>>();
-    let app = wide(exe.as_os_str());
-    let mut command_line = wide(std::ffi::OsStr::new(&format!("\"{}\"", exe.display())));
-    // Her own folder, not the hook's (the project's): she would hold on to it.
-    let dir = exe.parent().map(|d| wide(d.as_os_str()));
-    // SAFETY: plain Win32 structs, zero is a valid start for both.
-    let mut startup: StartupInfo = unsafe { std::mem::zeroed() };
-    startup.cb = std::mem::size_of::<StartupInfo>() as u32;
-    let mut info: ProcessInfo = unsafe { std::mem::zeroed() };
-    // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP; no handles inherited (0).
-    let flags = 0x0000_0008 | 0x0000_0200;
-    let null = std::ptr::null();
-    // SAFETY: every pointer is valid for the call or null where Win32 allows it.
-    let dir = dir.as_ref().map_or(std::ptr::null(), |d| d.as_ptr());
-    let ok = unsafe { CreateProcessW(app.as_ptr(), command_line.as_mut_ptr(), null, null, 0, flags, null, dir, &startup, &mut info) };
-    if ok != 0 {
-        unsafe {
-            CloseHandle(info.thread);
-            CloseHandle(info.process);
-        }
-    }
-}
-
-#[cfg(not(windows))]
+// her own), out of its agent's job and inheriting no handle (detach.rs).
 fn start_detached() {
     let Ok(exe) = std::env::current_exe() else { return };
-    let mut command = std::process::Command::new(exe);
-    command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-    let _ = command.spawn();
+    detach::spawn(&exe, &[]);
 }
 
 // If no pet answers on the port, start one (unless the person quit her:
@@ -1144,6 +1065,19 @@ fn main() {
     }
     if let Some(at) = args.iter().position(|a| a == connection::AGY_FLAG) {
         return agy_hook(port, args.get(at + 1).map_or("", String::as_str));
+    }
+
+    // In the job of whoever started her (a hook of an older her, a terminal,
+    // an app's shell), which may end her as it closes: started again as if
+    // opened from Explorer, once, and this copy goes (detach.rs). Not run
+    // from the source tree (cargo run waits on this copy).
+    if !args.iter().any(|a| a == detach::FLAG) && !data::from_source() && detach::should_leave() {
+        let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).chain([detach::FLAG]).collect();
+        if let Ok(exe) = std::env::current_exe() {
+            if detach::spawn(&exe, &rest) {
+                return;
+            }
+        }
     }
 
     // Started by an update: the one it replaces waited for, so this one

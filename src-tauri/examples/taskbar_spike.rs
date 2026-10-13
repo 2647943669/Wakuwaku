@@ -20,6 +20,9 @@
 // Uses src/appbar.rs and src/shell.rs as the pet will.
 #[path = "../src/appbar.rs"]
 mod appbar;
+#[path = "../src/detach.rs"]
+#[allow(dead_code)]
+mod detach;
 #[path = "../src/shell.rs"]
 mod shell;
 #[path = "../src/systray.rs"]
