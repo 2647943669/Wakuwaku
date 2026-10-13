@@ -155,15 +155,71 @@ mod imp {
         y: i32,
     }
 
+    type Hwnd = *mut c_void;
+
     #[link(name = "user32")]
     extern "system" {
         fn MonitorFromPoint(pt: Point, flags: u32) -> *mut c_void;
         fn GetMonitorInfoW(monitor: *mut c_void, info: *mut MonitorInfo) -> i32;
         fn SystemParametersInfoW(action: u32, param: u32, pv: *mut c_void, flags: u32) -> i32;
+        fn EnumWindows(each: extern "system" fn(Hwnd, isize) -> i32, param: isize) -> i32;
+        fn IsWindowVisible(hwnd: Hwnd) -> i32;
+        fn IsZoomed(hwnd: Hwnd) -> i32;
+        fn GetWindowRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
+        fn SetWindowPos(hwnd: Hwnd, after: isize, x: i32, y: i32, w: i32, h: i32, flags: u32) -> i32;
+        fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> *mut c_void;
     }
 
     const MONITOR_DEFAULTTONEAREST: u32 = 2;
     const SPI_SETWORKAREA: u32 = 0x2F;
+    const SWP_NOZORDER: u32 = 0x4;
+    const SWP_NOACTIVATE: u32 = 0x10;
+    const SWP_NOOWNERZORDER: u32 = 0x200;
+
+    extern "system" fn collect_maximized(hwnd: Hwnd, param: isize) -> i32 {
+        // SAFETY: param is the Vec refit_maximized passed, alive for the
+        // enumeration; plain queries about a window Windows handed us.
+        unsafe {
+            if IsWindowVisible(hwnd) != 0 && IsZoomed(hwnd) != 0 {
+                (*(param as *mut Vec<isize>)).push(hwnd as isize);
+            }
+        }
+        1
+    }
+
+    // The windows maximized on a display laid on its work area as it now is:
+    // set quietly, the work area moves none of them, and one maximized
+    // before her strip went along the left of a display lay under it (the
+    // test session, 2026-10-13). Each one lying over the work area as it
+    // was (its frame past the edges, as Windows lays a maximized window)
+    // has each side moved as far as the work area's moved; one already
+    // over the new one, or laid otherwise, is left be. How many were moved.
+    pub fn refit_maximized(was: (i32, i32, i32, i32), now: (i32, i32, i32, i32)) -> usize {
+        if was == now {
+            return 0;
+        }
+        let mut found: Vec<isize> = Vec::new();
+        // SAFETY: the callback only pushes onto the Vec, which outlives the call.
+        unsafe { EnumWindows(collect_maximized, &mut found as *mut Vec<isize> as isize) };
+        // SAFETY: a plain query.
+        let display = unsafe { MonitorFromPoint(Point { x: now.0 + now.2 / 2, y: now.1 + now.3 / 2 }, MONITOR_DEFAULTTONEAREST) };
+        let mut moved = 0;
+        for h in found {
+            let mut r = Rect::default();
+            // SAFETY: plain queries into our own struct; a gone window fails them.
+            let ok = unsafe { MonitorFromWindow(h as Hwnd, MONITOR_DEFAULTTONEAREST) == display && GetWindowRect(h as Hwnd, &mut r) != 0 };
+            let at = (r.left, r.top, r.right - r.left, r.bottom - r.top);
+            if !ok || super::lies_over(at, now) || !super::lies_over(at, was) {
+                continue;
+            }
+            let to = super::moved_with(at, was, now);
+            // SAFETY: another program's window moved, not activated; one we may not move (run as administrator) refuses.
+            if unsafe { SetWindowPos(h as Hwnd, 0, to.0, to.1, to.2, to.3, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER) } != 0 {
+                moved += 1;
+            }
+        }
+        moved
+    }
 
     // A display's work area (x, y, w, h, physical), the display by its rect.
     pub fn work_of(mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
@@ -316,13 +372,33 @@ mod imp {
     pub fn set_work(_r: (i32, i32, i32, i32)) -> bool {
         false
     }
+    pub fn refit_maximized(_was: (i32, i32, i32, i32), _now: (i32, i32, i32, i32)) -> usize {
+        0
+    }
+}
+
+// Whether a window's rect (x, y, w, h) lies over a work area as a maximized
+// one does: past each of its edges by its frame, no more (40 px at most:
+// 12 at 175%).
+fn lies_over(r: (i32, i32, i32, i32), work: (i32, i32, i32, i32)) -> bool {
+    let past = |d: i32| (0..=40).contains(&d);
+    past(work.0 - r.0) && past(work.1 - r.1) && past((r.0 + r.2) - (work.0 + work.2)) && past((r.1 + r.3) - (work.1 + work.3))
+}
+
+// A rect with each side moved as far as the work area's side moved.
+fn moved_with(r: (i32, i32, i32, i32), was: (i32, i32, i32, i32), now: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
+    let l = r.0 + (now.0 - was.0);
+    let t = r.1 + (now.1 - was.1);
+    let rt = r.0 + r.2 + ((now.0 + now.2) - (was.0 + was.2));
+    let b = r.1 + r.3 + ((now.1 + now.3) - (was.1 + was.3));
+    (l, t, rt - l, b - t)
 }
 
 // What a window that hears Windows about its bar uses (examples/taskbar_spike.rs
 // does; her home's window, a webview's, does not hear it).
 #[allow(unused_imports)]
 pub use imp::{query, ABN_FULLSCREENAPP, ABN_POSCHANGED, ABN_STATECHANGE, CALLBACK};
-pub use imp::{place, register, remove, set_taskbar_state, set_work, taskbar_state, work_of, ABS_AUTOHIDE};
+pub use imp::{place, refit_maximized, register, remove, set_taskbar_state, set_work, taskbar_state, work_of, ABS_AUTOHIDE};
 
 #[cfg(all(test, windows, target_pointer_width = "64"))]
 mod tests {
@@ -384,5 +460,22 @@ mod edge_tests {
         assert_eq!(Edge::Top.stale_sides((60, 60, 2500, 1380), Edge::Top.strip(mon, 60), mon), vec![(Edge::Left, 0)]);
         // Along the bottom, none (the room there is Windows' own).
         assert!(Edge::Bottom.stale_sides((60, 0, 2500, 1380), Edge::Bottom.strip(mon, 60), mon).is_empty());
+    }
+
+    #[test]
+    fn a_maximized_window_moved_with_the_work_area() {
+        use super::{lies_over, moved_with};
+        // Maximized on the display at 175%, its frame 12 px past each edge of the work area.
+        let was = (2560, -149, 2560, 1516);
+        let win = (2548, -161, 2584, 1540);
+        assert!(lies_over(win, was));
+        // The strip along the left, the work area 84 px less there and the whole height.
+        let now = (2644, -149, 2476, 1600);
+        assert!(!lies_over(win, now));
+        let to = moved_with(win, was, now);
+        assert_eq!(to, (2632, -161, 2500, 1624));
+        assert!(lies_over(to, now));
+        // A window laid otherwise (restored, half the screen) is not over either.
+        assert!(!lies_over((2560, -149, 1280, 800), was));
     }
 }
