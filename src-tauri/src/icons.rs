@@ -489,9 +489,9 @@ fn keep(data: &Path, saved: &Value) -> std::io::Result<()> {
 }
 
 // The icons once the desktop has done laying them: read every 200 ms until
-// they have kept still for 1.2 s, so long at most.
+// they have kept still so long (still), so long at most.
 #[cfg(windows)]
-fn settled(d: &imp::Desktop, most: Duration) -> Vec<Item> {
+fn settled(d: &imp::Desktop, still: Duration, most: Duration) -> Vec<Item> {
     let t = Instant::now();
     let mut last = d.items();
     let mut since = Instant::now();
@@ -502,7 +502,7 @@ fn settled(d: &imp::Desktop, most: Duration) -> Vec<Item> {
         if !same {
             since = Instant::now();
         }
-        if (same && since.elapsed() >= Duration::from_millis(1200)) || t.elapsed() >= most {
+        if (same && since.elapsed() >= still) || t.elapsed() >= most {
             return now;
         }
         last = now;
@@ -544,7 +544,7 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
             let kept_now = kept(data).is_some();
             if !kept_now {
                 let items = d.items();
-                let saved = json!({ "auto": d.auto_arrange(), "items": places(&items), "moved": [] });
+                let saved = json!({ "auto": d.auto_arrange(), "items": places(&items) });
                 if let Err(e) = keep(data, &saved) {
                     return format!("icons: places not written ({e})");
                 }
@@ -572,23 +572,20 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
                 let spacing = d.spacing();
                 let items = d.items();
                 let out: Vec<(&Item, Point)> = items.iter().filter(|i| under(i.at, spacing, strip)).map(|i| (i, out_of(i.at, spacing, strip, &edge))).collect();
-                if out.is_empty() {
-                    return None;
-                }
-                let put = d.place(&out);
-                if let Some(moved) = saved["moved"].as_array_mut() {
-                    for (i, to) in &out {
-                        // Where it was moved to (the last time).
-                        if !moved.iter().any(|m| m["name"].as_str() == Some(i.name.as_str())) {
-                            moved.push(json!({ "name": i.name, "x": to.x, "y": to.y }));
-                        } else if let Some(m) = moved.iter_mut().find(|m| m["name"].as_str() == Some(i.name.as_str())) {
-                            m["x"] = json!(to.x);
-                            m["y"] = json!(to.y);
-                        }
-                    }
-                }
+                let put = !out.is_empty() && d.place(&out);
+                // Where they are now that the desktop laid them for the strip
+                // (and those under it moved out): one held elsewhere when
+                // given back was moved by the person.
+                let after: Vec<Value> = items
+                    .iter()
+                    .map(|i| {
+                        let at = out.iter().find(|(o, _)| o.name == i.name).map_or(i.at, |(_, to)| *to);
+                        json!({ "name": i.name, "x": at.x, "y": at.y })
+                    })
+                    .collect();
+                saved["after"] = Value::Array(after);
                 let _ = keep(&data, &saved);
-                Some(format!("icons: {} still under the strip {} s after, moved out: {put}", out.len(), at.as_secs()))
+                (!out.is_empty()).then(|| format!("icons: {} still under the strip {} s after, moved out: {put}", out.len(), at.as_secs()))
             });
             if let Some(line) = line {
                 log(line);
@@ -621,25 +618,27 @@ pub fn hold(data: &Path) -> Vec<String> {
 // What an icon the desktop does not arrange itself is put back to, given
 // back, from where the desktop laid it (at): none when it is where it was
 // before her (within half a place on the grid: the desktop puts them back
-// itself, and moved there again it came out a place off); moved out from
-// under the strip by her and untouched since (now where moved), where it
-// was; else, held (now), where the person left it; nothing held, left be.
+// itself, and moved there again it came out a place off); moved by the
+// person while she was there (held just before giving back, now, half a
+// place or more from where the desktop had laid it for the strip, after),
+// where they left it; else where it was. One the desktop laid elsewhere
+// for a while as it put them back was taken for one the person moved,
+// with the place it had then held: put there, placed freely it stayed a
+// strip's width off, more each time (the test session, 2026-10-13). One
+// that came while she was there: where it was left.
 #[cfg(windows)]
 fn back_to(name: &str, at: Point, saved: &Value, spacing: Point) -> Option<Point> {
     let near = |a: Point, b: Point| (a.x - b.x).abs() * 2 < spacing.x && (a.y - b.y).abs() * 2 < spacing.y;
-    let was = place_of(&saved["items"], name);
-    if was.is_some_and(|w| near(at, w)) {
-        return None;
-    }
     let now = place_of(&saved["now"], name);
-    let moved = place_of(&saved["moved"], name);
-    let to = match (now, moved) {
-        (Some(n), Some(m)) if near(n, m) => was,
-        (Some(n), _) => Some(n),
-        (None, Some(_)) => was,
-        (None, None) => None,
+    let to = match place_of(&saved["items"], name) {
+        Some(was) if near(at, was) => return None,
+        Some(was) => match (now, place_of(&saved["after"], name)) {
+            (Some(n), Some(a)) if !near(n, a) => n,
+            _ => was,
+        },
+        None => now?,
     };
-    to.filter(|t| *t != at)
+    (to != at).then_some(to)
 }
 
 // The work area the display's again (her strip at the bottom, given back,
@@ -653,11 +652,13 @@ pub fn given_back(data: &Path) -> Vec<String> {
     ROUND.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
     let Some(saved) = kept(data) else { return Vec::new() };
-    work_settled(Duration::from_secs(5));
+    work_settled(Duration::from_secs(3));
     with_com(|| {
         let Some(d) = desktop() else { return vec!["icons: no desktop to tell; the places kept for later".to_string()] };
         let told = d.tell(d.top);
-        let items = settled(&d, Duration::from_secs(5));
+        // Still for 2.5 s: putting them back, the desktop paused 1.2 s
+        // between its moves (16, 77, 109, 16: the test session's traces).
+        let items = settled(&d, Duration::from_millis(2500), Duration::from_secs(6));
         let auto = d.auto_arrange();
         let spacing = d.spacing();
         let wanted: Vec<(String, Point, Point)> = if auto { Vec::new() } else { items.iter().filter_map(|i| back_to(&i.name, i.at, &saved, spacing).map(|t| (i.name.clone(), i.at, t))).collect() };
@@ -671,7 +672,7 @@ pub fn given_back(data: &Path) -> Vec<String> {
             let now = d.items();
             let moves: Vec<(&Item, Point)> = ask.iter().filter_map(|(name, p)| now.iter().find(|i| &i.name == name).map(|i| (i, *p))).collect();
             put &= d.place(&moves);
-            let after = settled(&d, Duration::from_secs(2));
+            let after = settled(&d, Duration::from_millis(1200), Duration::from_secs(2));
             let mut off = Vec::new();
             for ((name, _, want), (_, asked)) in wanted.iter().zip(ask.iter_mut()) {
                 if let Some(i) = after.iter().find(|i| &i.name == name) {
@@ -760,22 +761,23 @@ mod tests {
         let p = |x, y| Point { x, y };
         let saved = json!({
             "items": [{ "name": "bin", "x": 16, "y": 2 }, { "name": "app", "x": 16, "y": 124 }, { "name": "doc", "x": 300, "y": 400 }],
-            "moved": [{ "name": "bin", "x": 60, "y": 2 }],
-            "now": [{ "name": "bin", "x": 60, "y": 2 }, { "name": "app", "x": 77, "y": 129 }, { "name": "doc", "x": 900, "y": 600 }, { "name": "new", "x": 500, "y": 500 }],
+            "after": [{ "name": "bin", "x": 77, "y": 0 }, { "name": "app", "x": 77, "y": 127 }, { "name": "doc", "x": 367, "y": 400 }],
+            "now": [{ "name": "bin", "x": 77, "y": 0 }, { "name": "app", "x": 77, "y": 127 }, { "name": "doc", "x": 900, "y": 600 }, { "name": "new", "x": 500, "y": 500 }],
         });
         // Put back by the desktop itself: left be.
         assert_eq!(back_to("app", p(16, 124), &saved, grid), None);
         assert_eq!(back_to("app", p(20, 120), &saved, grid), None);
-        // Moved out by her, untouched since: back where it was.
+        // Laid elsewhere by the desktop for a while, held there, not moved by the person: where it was.
+        assert_eq!(back_to("bin", p(77, 0), &saved, grid), Some(p(16, 2)));
         assert_eq!(back_to("bin", p(109, 2), &saved, grid), Some(p(16, 2)));
         // Dragged by the person meanwhile: where they left it.
         assert_eq!(back_to("doc", p(822, 576), &saved, grid), Some(p(900, 600)));
         assert_eq!(back_to("doc", p(900, 600), &saved, grid), None);
         // One that came while she was there: where it was left.
         assert_eq!(back_to("new", p(470, 480), &saved, grid), Some(p(500, 500)));
-        // Nothing held: left be.
-        let bare = json!({ "items": [{ "name": "bin", "x": 16, "y": 2 }] });
-        assert_eq!(back_to("bin", p(109, 2), &bare, grid), None);
+        // Nothing seen after the strip was taken (given back at once): where it was.
+        let early = json!({ "items": [{ "name": "bin", "x": 16, "y": 2 }], "now": [{ "name": "bin", "x": 77, "y": 0 }] });
+        assert_eq!(back_to("bin", p(77, 0), &early, grid), Some(p(16, 2)));
     }
 
     #[test]

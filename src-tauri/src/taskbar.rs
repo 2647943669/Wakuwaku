@@ -694,7 +694,7 @@ mod imp {
         }
         // The desktop's icons as they were (icons.rs), the work area whole
         // again; a moment at most. Taken again, the work area is made anew.
-        for line in crate::icons::given_back_within(&sh.dir, Duration::from_secs(8)) {
+        for line in crate::icons::given_back_within(&sh.dir, Duration::from_secs(12)) {
             sh.log(&line);
         }
         *WORK_EDGE.lock().unwrap() = None;
