@@ -693,9 +693,16 @@ mod imp {
             sh.log(&format!("taskbar: Windows' given back: {}", shell::restore(&file)));
         }
         // The desktop's icons as they were (icons.rs), the work area whole
-        // again; a moment at most. Taken again, the work area is made anew.
-        for line in crate::icons::given_back_within(&sh.dir, Duration::from_secs(12)) {
-            sh.log(&line);
+        // again, not waited for: it takes some seconds, the desktop putting
+        // them back first. Quitting, she is gone before then, and her guard
+        // does it (main.rs). Taken again, the work area is made anew.
+        if crate::icons::file(&sh.dir).exists() {
+            let (dir, log) = (sh.dir.clone(), crate::shared(&sh.app));
+            std::thread::spawn(move || {
+                for line in crate::icons::given_back(&dir) {
+                    log.log(&line);
+                }
+            });
         }
         *WORK_EDGE.lock().unwrap() = None;
         *SENT.lock().unwrap() = Value::Null;
