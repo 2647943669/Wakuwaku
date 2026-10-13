@@ -1235,6 +1235,10 @@ fn main() {
         ])
         .on_menu_event(|app, event| tray::on_menu(&shared(app), event.id().as_ref()))
         .setup(move |app| {
+            // On macOS she is an accessory, as a menu-bar app is: no Dock icon,
+            // and the menu bar is never hers, even while her settings are open.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let mut settings = data::load(&dir);
             // Her pet gone: the first one there is.
             let found = data::pets(&dir);
