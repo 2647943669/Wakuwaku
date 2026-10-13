@@ -835,6 +835,11 @@ mod imp {
         ["startmenuexperiencehost.exe", "searchhost.exe", "shellexperiencehost.exe", "shellhost.exe"].contains(&name.as_str())
     }
 
+    // Windows' search, in front (taskbar.rs open: pressed again, it closes).
+    pub fn is_search(hwnd: isize) -> bool {
+        file_name(&path_of(pid_of(hwnd as Hwnd))).eq_ignore_ascii_case("searchhost.exe")
+    }
+
     // The window in front's input method between its own script and plain letters.
     pub fn toggle_native() -> bool {
         let (_, ime) = front_ime();
@@ -875,6 +880,9 @@ mod imp {
         "other"
     }
     pub fn is_shell_flyout(_hwnd: isize) -> bool {
+        false
+    }
+    pub fn is_search(_hwnd: isize) -> bool {
         false
     }
     pub fn covered(_hwnd: isize, _own: &[isize]) -> bool {
@@ -936,7 +944,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
 
 #[cfg(test)]
 mod tests {

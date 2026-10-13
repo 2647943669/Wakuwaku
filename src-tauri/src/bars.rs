@@ -215,6 +215,12 @@ pub fn bar_asks(app: tauri::AppHandle) {
     }
 }
 
+// One of them up on a display no app full screen covers: her capsule there
+// shows the prompts waiting (main.rs asks_seen).
+pub fn any_shown() -> bool {
+    BARS.lock().unwrap().iter().any(|b| b.ready && !b.hidden && b.strip.is_some())
+}
+
 // An app full screen covering a display (or none): that display's taskbar
 // steps aside, the others come back.
 pub fn full_screen(sh: &Shared, cover: Option<Mon>) {
