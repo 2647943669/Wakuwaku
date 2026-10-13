@@ -1413,6 +1413,11 @@ body {
   top: 0;
 }
 
+/* The battery (island.js showBattery): none on a desktop. */
+#bar-rest .tquick .bat[hidden] {
+  display: none;
+}
+
 /* What is using the microphone, the camera, the location (island.js showPrivacy). */
 #bar-rest .tpriv {
   flex: none;

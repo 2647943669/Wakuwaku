@@ -598,9 +598,9 @@ mod imp {
     }
 
     // The keyboard (tasks::keys) and the volume (audio.rs) looked at four
-    // times a second; the network's way out (the quick settings' button) and
-    // what is using the microphone, camera or location (tasks::in_use) every
-    // two; sent when any of it changes.
+    // times a second; the network's way out and the battery (the quick
+    // settings' button) and what is using the microphone, camera or
+    // location (tasks::in_use) every two; sent when any of it changes.
     // The language and Caps Lock (answered in this process) four times a
     // second; the IME's mode (asked of its window) and the volume (asked of
     // Windows' audio service) once a second, and at once when another
@@ -613,7 +613,7 @@ mod imp {
         let mut speakers = crate::audio::Reader::new();
         let mut sent = Value::Null;
         let using = || Value::Object(tasks::in_use().into_iter().map(|(what, names)| (what.to_string(), json!(names))).collect());
-        let (mut net, mut used) = (tasks::net(), using());
+        let (mut net, mut used, mut battery) = (tasks::net(), using(), crate::widgets::battery_state());
         let (mut native, mut volume, mut front, mut shift_was) = (None, None, 0isize, false);
         let mut looks = 0u32;
         while !TASKS_STOP.load(Ordering::SeqCst) {
@@ -621,6 +621,7 @@ mod imp {
             if looks % 8 == 0 {
                 net = tasks::net();
                 used = using();
+                battery = crate::widgets::battery_state();
             }
             let keys = tasks::keys_cheap();
             let now_front = tasks::front();
@@ -634,7 +635,7 @@ mod imp {
                 native = tasks::ime_native();
                 volume = speakers.read().map(|(level, muted)| json!([level, muted]));
             }
-            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "net": net, "use": used, "volume": volume });
+            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "net": net, "use": used, "volume": volume, "battery": battery });
             if now != sent {
                 let _ = sh.app.emit_to("island", "taskbar:keys", now.clone());
                 *SENT_KEYS.lock().unwrap() = now.clone();

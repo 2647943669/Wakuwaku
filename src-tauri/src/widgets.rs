@@ -370,6 +370,20 @@ mod sys {
         fn GetIfTable(table: *mut u8, size: *mut u32, order: i32) -> u32;
     }
 
+    // The battery as Windows' quick settings show it: (percent, plugged in,
+    // charging, the battery saver on, seconds left if known), or None
+    // without a battery. Its state unknown (255), the level still counts.
+    pub fn power() -> Option<(u8, bool, bool, bool, Option<u32>)> {
+        let mut p = PowerStatus::default();
+        // SAFETY: fills our own struct.
+        if unsafe { GetSystemPowerStatus(&mut p) } == 0 || (p.battery_flag != 255 && p.battery_flag & 128 != 0) || p.percent > 100 {
+            return None;
+        }
+        let plugged = p.ac_line == 1;
+        let charging = p.battery_flag != 255 && p.battery_flag & 8 != 0;
+        Some((p.percent, plugged, charging, p.saver & 1 != 0, (p.life_secs != u32::MAX && !plugged).then_some(p.life_secs)))
+    }
+
     // (percent, charging, seconds left if known), or None without a battery.
     pub fn battery() -> Option<(u8, bool, Option<u32>)> {
         let mut p = PowerStatus::default();
@@ -451,8 +465,23 @@ mod sys {
     pub fn battery() -> Option<(u8, bool, Option<u32>)> {
         None
     }
+    pub fn power() -> Option<(u8, bool, bool, bool, Option<u32>)> {
+        None
+    }
     pub fn network_bytes() -> Option<(u64, u64)> {
         None
+    }
+}
+
+// The battery for the taskbar's quick settings, beside the network and the
+// volume as Windows' own shows it there on a laptop (taskbar.rs keys_loop,
+// island.js showBattery): its level, plugged in, charging, the battery saver
+// on, the seconds left when Windows knows them; null without a battery (a
+// desktop), and none is shown.
+pub fn battery_state() -> Value {
+    match sys::power() {
+        Some((percent, plugged, charging, saver, left)) => json!({ "percent": percent, "plugged": plugged, "charging": charging, "saver": saver, "left": left }),
+        None => Value::Null,
     }
 }
 

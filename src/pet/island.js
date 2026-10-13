@@ -948,7 +948,17 @@
   const volBack = el('span', 'back', '')
   const volFront = el('span', 'front', '')
   volMark.append(volBack, volFront)
-  quickBox.append(netMark, volMark)
+  // The battery after them, as Windows' own taskbar has it on a laptop (none
+  // on a desktop): its level in tenths, Segoe's glyphs for each; while
+  // plugged in, the charging ones; the battery saver on, the saver's.
+  const batMark = el('span', 'fi bat')
+  batMark.hidden = true
+  const BATTERY = {
+    level: ['', '', '', '', '', '', '', '', '', '', ''],
+    charging: ['', '', '', '', '', '', '', '', '', '', ''],
+    saver: ['', '', '', '', '', '', '', '', '', '', ''],
+  }
+  quickBox.append(netMark, volMark, batMark)
   function showNet(kind) {
     netMark.textContent = NET[kind] || NET.other
   }
@@ -960,6 +970,19 @@
     volBack.textContent = muted ? volFront.textContent : ''
     volBack.hidden = !!muted
     volMark.title = level == null ? '' : muted ? t(lang, 'taskbar.muted') : t(lang, 'taskbar.volume', { n: level })
+  }
+  // { percent, plugged, charging, saver, left (s) } (widgets.rs battery_state), or none.
+  function showBattery(b) {
+    batMark.hidden = !b
+    if (!b) return
+    const tenth = Math.max(0, Math.min(10, Math.floor(b.percent / 10)))
+    const glyphs = b.charging || b.plugged ? BATTERY.charging : b.saver ? BATTERY.saver : BATTERY.level
+    batMark.textContent = glyphs[tenth]
+    const n = b.percent
+    const left = Number.isFinite(b.left) ? Math.round(b.left / 60) : null
+    const time = left == null ? '' : left >= 60 ? t(lang, 'taskbar.hm', { h: Math.floor(left / 60), m: left % 60 }) : t(lang, 'taskbar.m', { m: left })
+    const said = b.charging ? t(lang, 'taskbar.batteryCharging', { n }) : b.plugged ? t(lang, 'taskbar.batteryPlugged', { n }) : time ? t(lang, 'taskbar.batteryLeft', { n, time }) : t(lang, 'taskbar.battery', { n })
+    batMark.title = b.saver ? `${said}\n${t(lang, 'taskbar.batterySaver')}` : said
   }
   // What is using the microphone, the camera, the location, as Windows'
   // taskbar shows it before the input method; a press, its privacy settings.
@@ -1910,6 +1933,7 @@
     showNet(keys?.net)
     showPrivacy(keys?.use)
     showVolume(keys?.volume)
+    showBattery(keys?.battery)
   })
 
   // --- The taskbar's look: Mica, light or dark, Windows' accent -------------------------
