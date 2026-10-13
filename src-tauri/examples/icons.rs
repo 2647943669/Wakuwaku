@@ -111,9 +111,9 @@ fn main() {
             }
             // SAFETY: our own struct; set without telling any window.
             unsafe { SystemParametersInfoW(0x2F, 0, &mut r as *mut icons::Rect as *mut std::ffi::c_void, 0) };
-            for line in icons::strip_taken(std::path::Path::new(&args[7]), strip, edge) {
-                println!("{line}");
-            }
+            icons::strip_taken(std::path::Path::new(&args[7]), strip, edge, |line| println!("{line}"));
+            // Its looks 3 s and 8 s after.
+            std::thread::sleep(std::time::Duration::from_secs(9));
             out(&icons::describe());
         }
         Some("hold") => {

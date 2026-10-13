@@ -1479,9 +1479,8 @@ mod imp {
     fn icons_out(strip: (i32, i32, i32, i32), edge: Edge) {
         let Some(sh) = sh() else { return };
         std::thread::spawn(move || {
-            for line in crate::icons::strip_taken(&sh.dir, strip, edge.word()) {
-                sh.log(&line);
-            }
+            let log = sh.clone();
+            crate::icons::strip_taken(&sh.dir, strip, edge.word(), move |line| log.log(&line));
         });
     }
 
@@ -2558,9 +2557,15 @@ pub fn recover(sh: &Shared) {
         sh.log("taskbar: Windows' taskbar was left put away: given back");
     }
     // The desktop's icons left moved by such a run (icons.rs): as they were,
-    // before this one takes the strip (and keeps their places anew).
-    for line in crate::icons::given_back_within(&sh.dir, std::time::Duration::from_secs(8)) {
-        sh.log(&line);
+    // before this one takes the strip (and keeps their places anew); not
+    // waited for, the start goes on (icons.rs keeps them one at a time).
+    if crate::icons::file(&sh.dir).exists() {
+        let (dir, log) = (sh.dir.clone(), crate::shared(&sh.app));
+        std::thread::spawn(move || {
+            for line in crate::icons::given_back(&dir) {
+                log.log(&line);
+            }
+        });
     }
 }
 
