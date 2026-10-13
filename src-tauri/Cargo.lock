@@ -4227,6 +4227,7 @@ version = "0.2.8"
 dependencies = [
  "base64 0.22.1",
  "io-imap",
+ "libc",
  "mail-builder",
  "mail-parser",
  "native-tls",

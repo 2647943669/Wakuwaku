@@ -55,3 +55,8 @@ winreg = "0.56.0"
 # already in the tree, under Tauri.
 webview2-com = "0.39"
 windows-core = "0.62"
+
+[target."cfg(unix)".dependencies]
+# The local time off Windows (widgets.rs local_now: localtime_r); already in
+# the tree, under Tauri.
+libc = "0.2"
