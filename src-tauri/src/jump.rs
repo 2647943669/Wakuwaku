@@ -234,6 +234,28 @@ mod imp {
         }
     }
 
+    // Whether something listens on 127.0.0.1:port (or every address) now, as
+    // Windows' table of them says: a hook's way to know she is up without
+    // trying her port, which Windows gives up on only after 2 s when no one
+    // listens. Can't tell: true (try).
+    pub fn is_listening(port: u16) -> bool {
+        const TCP_TABLE_BASIC_LISTENER: u32 = 0;
+        let mut size = 0u32;
+        // SAFETY: first asking the size, then filling a buffer of that size.
+        unsafe {
+            GetExtendedTcpTable(std::ptr::null_mut(), &mut size, 0, AF_INET, TCP_TABLE_BASIC_LISTENER, 0);
+            let mut table = vec![0u32; size as usize / 4 + 64];
+            size = (table.len() * 4) as u32;
+            if GetExtendedTcpTable(table.as_mut_ptr().cast(), &mut size, 0, AF_INET, TCP_TABLE_BASIC_LISTENER, 0) != 0 {
+                return true;
+            }
+            // { count, then rows of state, local address, local port, remote address, remote port }
+            let count = table[0] as usize;
+            let local = |addr: u32| addr == 0 || addr == u32::from_ne_bytes([127, 0, 0, 1]);
+            table[1..].chunks_exact(5).take(count).any(|row| u16::from_be(row[2] as u16) == port && local(row[1]))
+        }
+    }
+
     struct Window {
         hwnd: isize,
         pid: u32,
@@ -483,6 +505,9 @@ mod imp {
     pub fn client_of(_client_port: u16, _server_port: u16) -> Option<u32> {
         None
     }
+    pub fn is_listening(_port: u16) -> bool {
+        true
+    }
     pub fn window_of(_chain: &Chain, _hints: &[&str], _needs_own: bool) -> Option<isize> {
         None
     }
@@ -506,7 +531,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, hook_chain, still_running, still_there, windows_for};
+pub use imp::{chain_of, client_of, hook_chain, is_listening, still_running, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {
@@ -569,6 +594,31 @@ mod tests {
     }
 
     #[cfg(windows)]
+    #[test]
+    fn a_port_listened_on_is_seen() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(is_listening(port));
+        drop(listener);
+        assert!(!cfg!(windows) || !is_listening(port));
+    }
+
+    // How long a hook's look at where it runs takes (cargo test -- --ignored --nocapture).
+    #[test]
+    #[ignore]
+    fn how_long_a_hook_chain_takes() {
+        let t = std::time::Instant::now();
+        for _ in 0..20 {
+            let _ = hook_chain();
+        }
+        println!("hook_chain: {:?} each", t.elapsed() / 20);
+        let t = std::time::Instant::now();
+        for _ in 0..20 {
+            let _ = is_listening(47213);
+        }
+        println!("is_listening: {:?} each", t.elapsed() / 20);
+    }
+
     #[test]
     fn a_connection_names_its_client() {
         let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

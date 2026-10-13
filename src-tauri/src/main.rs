@@ -993,49 +993,77 @@ fn ensure_running(port: u16) {
 // for the model. SessionStart starts her when she is not up (unless the
 // person quit her: data.rs mark_quit). Whatever
 // happens, leave with 0, so Codex never shows a failed hook.
+// An event handed to her port with no answer waited for (none is needed):
+// the request written whole and the connection closed at once. False when
+// she is not up: no one listens there (asked of Windows' table in a moment:
+// a connection tried would take it 2 s to give up on, and the agent waits
+// on its hook meanwhile). Up but not yet answering (her first second or two:
+// her port is held at once, answered once she is set up), it waits in her
+// port's queue till she is, and nothing is lost.
+fn post_and_go(port: u16, agent: &str, event: &Value) -> bool {
+    if !jump::is_listening(port) {
+        return false;
+    }
+    let to = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = std::net::TcpStream::connect_timeout(&to, Duration::from_millis(100)) else { return false };
+    let body = event.to_string();
+    let head = format!(
+        "POST /hook?from=wakuwaku&agent={agent} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let sent = stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(body.as_bytes())).is_ok();
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    sent
+}
+
+// Codex's hook (connection::CODEX_FLAG): the event handed to her port, with
+// where the Codex session runs (the processes above this one, for going to
+// its window from the pet, jump.rs). A prompt waits for her answer, which is
+// printed for Codex; any other event is handed on and let go (post_and_go).
+// Its session starting with her not up starts her, unless the person quit
+// her (data.rs mark_quit).
 fn codex_hook(port: u16) {
     let Some(mut event) = read_event() else { return };
-    // Where the Codex session runs (the processes above this one), for going
-    // to its window from the pet (jump.rs).
     if let Some(fields) = event.as_object_mut() {
         fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
     }
     let name = event["hook_event_name"].as_str().unwrap_or("").to_string();
-    let is_prompt = name == "PermissionRequest";
-    // A prompt waits for the person, just under the hook's own timeout.
-    let wait = if is_prompt { Duration::from_secs(connection::CODEX_PROMPT_TIMEOUT - 5) } else { Duration::from_secs(3) };
-    let agent = ureq::Agent::config_builder().timeout_global(Some(wait)).build().new_agent();
-    match agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=codex")).send_json(&event) {
-        Ok(mut res) if is_prompt => {
-            let body = res.body_mut().read_to_string().unwrap_or_default();
-            if serde_json::from_str::<Value>(&body).is_ok_and(|v| v.get("hookSpecificOutput").is_some()) {
-                let mut out = std::io::stdout();
-                let _ = out.write_all(body.as_bytes());
-                let _ = out.flush();
-            }
+    if name != "PermissionRequest" {
+        if !post_and_go(port, "codex", &event) && name == "SessionStart" && data::may_start(&data::folder()) {
+            start_detached();
         }
-        Ok(_) | Err(ureq::Error::StatusCode(_)) => {}
-        // Not if the person quit her (data.rs mark_quit).
-        Err(_) if name == "SessionStart" && data::may_start(&data::folder()) => start_detached(),
-        Err(_) => {}
+        return;
+    }
+    // A prompt waits for the person, just under the hook's own timeout.
+    let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(connection::CODEX_PROMPT_TIMEOUT - 5))).build().new_agent();
+    if let Ok(mut res) = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=codex")).send_json(&event) {
+        let body = res.body_mut().read_to_string().unwrap_or_default();
+        if serde_json::from_str::<Value>(&body).is_ok_and(|v| v.get("hookSpecificOutput").is_some()) {
+            let mut out = std::io::stdout();
+            let _ = out.write_all(body.as_bytes());
+            let _ = out.flush();
+        }
     }
 }
 
 // Antigravity's hook (connection::AGY_FLAG and the event's name, which its
 // payload does not carry): its answer printed first, whatever comes after
 // (a hook that fails or answers nothing breaks agy's turn: connection.rs),
-// then the event handed to her port with its name and where the session
-// runs (jump.rs), in a moment at most: agy waits on each hook. Its session
-// starting with her not up starts her, as Codex's does.
+// then the event handed to her port with its name and let go (post_and_go:
+// agy waits on each hook, and her answer is nothing to it). Quit by the
+// person, she is not up: nothing tried. Its session starting with her not
+// up starts her, as Codex's does. Where the session runs only as it starts
+// or a turn begins (kept till then; some 10 ms: most of a hook is its
+// process starting, some 50 to 80 ms).
 fn agy_hook(port: u16, name: &str) {
     let answer = if name == "Stop" { r#"{"decision":"allow"}"# } else { "{}" };
     let mut out = std::io::stdout();
     let _ = out.write_all(answer.as_bytes());
     let _ = out.flush();
     let Some(mut event) = read_event() else { return };
-    // Where the session runs only as it starts or a turn begins (it is kept
-    // till then): looking it up is most of a hook's time, and agy waits on
-    // each one.
+    if !data::may_start(&data::folder()) {
+        return;
+    }
     let turn = name == "SessionStart" || (name == "PreInvocation" && event.get("invocationNum").and_then(Value::as_u64) == Some(0));
     if let Some(fields) = event.as_object_mut() {
         fields.insert("hook_event_name".into(), json!(name));
@@ -1043,19 +1071,8 @@ fn agy_hook(port: u16, name: &str) {
             fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
         }
     }
-    // Connected in a moment or not at all: with her not up, Windows tries a
-    // closed port of its own for 2 s, and agy waited that long on each hook
-    // (a port of hers answers at once). Answered in half a second or let go:
-    // she holds her port from her first moment but answers only once she is
-    // set up, a second or two later, and agy waited 1.5 s on each hook
-    // meanwhile (3.8 s more for a session that started her: the test
-    // session); up, a hook takes some 50 ms.
-    let agent = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_millis(100))).timeout_global(Some(Duration::from_millis(500))).build().new_agent();
-    match agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=agy")).send_json(&event) {
-        Ok(_) | Err(ureq::Error::StatusCode(_)) => {}
-        // Not if the person quit her (data.rs mark_quit).
-        Err(_) if name == "SessionStart" && data::may_start(&data::folder()) => start_detached(),
-        Err(_) => {}
+    if !post_and_go(port, "agy", &event) && name == "SessionStart" {
+        start_detached();
     }
 }
 
@@ -1450,4 +1467,33 @@ fn end_now() -> ! {
         unsafe { TerminateProcess(GetCurrentProcess(), 0) };
     }
     std::process::exit(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Handed on and let go while her port is held but not yet answered (her
+    // first second or two): the event waits in its queue, whole, and is read
+    // once she answers; then as she answers at once.
+    #[test]
+    fn an_event_let_go_is_read_whole_later() {
+        let server = tiny_http::Server::http(("127.0.0.1", 0)).unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        let event = json!({ "hook_event_name": "Stop", "conversationId": "c", "text": "x".repeat(20_000) });
+        let t = std::time::Instant::now();
+        assert!(post_and_go(port, "agy", &event));
+        assert!(t.elapsed() < Duration::from_millis(200), "let go at once");
+        std::thread::sleep(Duration::from_millis(300));
+        let mut req = server.recv_timeout(Duration::from_secs(2)).unwrap().expect("a request");
+        assert_eq!(req.url(), "/hook?from=wakuwaku&agent=agy");
+        let mut body = String::new();
+        std::io::Read::read_to_string(req.as_reader(), &mut body).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), event);
+        // Her answer goes nowhere, harmlessly.
+        let _ = req.respond(tiny_http::Response::from_string("{}"));
+        // No one there: nothing tried.
+        drop(server);
+        assert!(!post_and_go(port, "agy", &event));
+    }
 }
