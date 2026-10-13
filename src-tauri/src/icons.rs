@@ -574,7 +574,8 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
                     }
                     saved
                 }
-                None => json!({ "auto": d.auto_arrange(), "items": places(&d.items()), "moved": [] }),
+                // Not kept before (keep_before): kept now, maybe already for the strip.
+                None => json!({ "auto": d.auto_arrange(), "items": places(&d.items()), "moved": [], "late": true }),
             };
             let fresh = saved.get("after").is_none() && saved["moved"].as_array().is_some_and(Vec::is_empty);
             if let Err(e) = keep(data, &saved) {
@@ -583,7 +584,7 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
             format!(
                 "icons: the desktop told of the work area along the {edge} ({}){}",
                 if d.tell(d.top) { "answered" } else { "no answer" },
-                if fresh { "; places kept" } else { "" }
+                if fresh { "; places kept late, maybe already moved for the strip" } else { "" }
             )
         });
         log(line);
@@ -631,6 +632,44 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
     });
 }
 
+// The places before her strip goes along the top, the left or the right,
+// before anything of it moves them (island.rs sync_bar_now, before Windows'
+// own is put away, her app bar asked for, the work area set: each of those
+// may have the desktop lay them anew, and read after it the places kept
+// were already those for the strip, given back a strip's width off; the test
+// session, 2026-10-13). Once: those from before her.
+#[cfg(windows)]
+pub fn keep_before(data: &Path) -> Vec<String> {
+    let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+    if kept(data).is_some() {
+        return Vec::new();
+    }
+    with_com(|| {
+        let Some(d) = desktop() else { return vec!["icons: no desktop to look at before the strip".to_string()] };
+        let items = d.items();
+        let saved = json!({ "auto": d.auto_arrange(), "items": places(&items), "moved": [] });
+        match keep(data, &saved) {
+            Ok(()) => vec![format!("icons: {} places kept before the strip moves them", items.len())],
+            Err(e) => vec![format!("icons: places not written ({e})")],
+        }
+    })
+}
+
+#[cfg(not(windows))]
+pub fn keep_before(_data: &Path) -> Vec<String> {
+    Vec::new()
+}
+
+// keep_before, waited for a moment at most (the strip is taken on).
+pub fn keep_before_within(data: &Path, most: std::time::Duration) -> Vec<String> {
+    let data = data.to_path_buf();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(keep_before(&data));
+    });
+    rx.recv_timeout(most).unwrap_or_else(|_| vec![format!("icons: places before the strip not read within {} ms", most.as_millis())])
+}
+
 // Just before the work area is given back (the bottom again, another home,
 // quitting, the guard as she is gone): where the icons are now (now),
 // before the desktop moves them for the whole display, so one the person
@@ -658,37 +697,36 @@ pub fn hold(data: &Path) -> Vec<String> {
 }
 
 // What an icon the desktop does not arrange itself is put back to, once it
-// has put them back as it does (given_back): none when it is where it was
-// before her (within half a place on the grid); one the person moved while
-// she was there (held just before giving back, now, half a place or more
-// from where the desktop had laid it for the strip, after), where they left
-// it; one she moved out from under the strip (moved), where it was; any
-// other, none: the desktop puts them back itself, over some seconds, and
-// put back while it still moved them they came out a strip's width off,
-// more each time (the test session, 2026-10-13). One that came while she
-// was there and was moved by the person: where they left it.
+// has put them back as it does and keeps still (given_back): none when it
+// is where it was before her, within a few px (the desktop puts most back
+// itself, a px or two off); one the person moved while she was there (held
+// just before giving back, now, half a place on the grid or more from where
+// the desktop had laid it for the strip, after), where they left it; any
+// other, where it was: placed freely, one mid-screen came out a strip's
+// height lower after quitting from the side (900,600 then 900,625), and the
+// desktop left it so. An after still where it was says only that the
+// desktop had not moved it yet when looked at (it is slow taking the strip
+// too), not where it laid it: taken for that, every icon looked dragged,
+// and put back where it was held, drifted a strip's width each round trip
+// (the test session, 2026-10-13). One that came while she was there and was
+// moved by the person: where they left it.
 #[cfg(windows)]
 fn back_to(name: &str, at: Point, saved: &Value, spacing: Point) -> Option<Point> {
+    let same = |a: Point, b: Point| (a.x - b.x).abs() <= 4 && (a.y - b.y).abs() <= 4;
     let near = |a: Point, b: Point| (a.x - b.x).abs() * 2 < spacing.x && (a.y - b.y).abs() * 2 < spacing.y;
     let was = place_of(&saved["items"], name);
-    if was.is_some_and(|w| near(at, w)) {
+    if was.is_some_and(|w| same(at, w)) {
         return None;
     }
     let now = place_of(&saved["now"], name);
-    let dragged = match (now, place_of(&saved["after"], name)) {
+    let after = place_of(&saved["after"], name).filter(|a| !was.is_some_and(|w| same(*a, w)));
+    let dragged = match (now, after) {
         (Some(n), Some(a)) => !near(n, a),
         (Some(n), None) => was.is_none() && !near(n, at),
         _ => false,
     };
-    let ours = saved["moved"].as_array().is_some_and(|m| m.iter().any(|m| m.as_str() == Some(name)));
-    let to = if dragged {
-        now
-    } else if ours {
-        was
-    } else {
-        None
-    };
-    to.filter(|t| *t != at)
+    let to = if dragged { now } else { was };
+    to.filter(|t| !same(*t, at))
 }
 
 // The work area the display's again (her strip at the bottom, given back,
@@ -757,7 +795,13 @@ pub fn given_back(data: &Path) -> Vec<String> {
         if round_now() != round {
             return stopped();
         }
-        let found: Vec<String> = wanted.iter().map(|(_, at, t)| format!("{},{}→{},{}", at.x, at.y, t.x, t.y)).collect();
+        let found: Vec<String> = wanted
+            .iter()
+            .map(|(name, at, t)| {
+                let at_ = |list: &str| place_of(&saved[list], name).map_or("none".to_string(), |a| format!("{},{}", a.x, a.y));
+                format!("{},{}→{},{} was {} after {}", at.x, at.y, t.x, t.y, at_("items"), at_("after"))
+            })
+            .collect();
         let w = imp::work_area();
         if stamp() == written {
             let _ = std::fs::remove_file(file(data));
@@ -835,23 +879,28 @@ mod tests {
         let grid = Point { x: 93, y: 122 };
         let p = |x, y| Point { x, y };
         let saved = json!({
-            "items": [{ "name": "bin", "x": 16, "y": 2 }, { "name": "app", "x": 16, "y": 124 }, { "name": "doc", "x": 300, "y": 400 }, { "name": "edge", "x": 2480, "y": 600 }],
-            "moved": ["edge"],
-            "after": [{ "name": "bin", "x": 77, "y": 0 }, { "name": "app", "x": 77, "y": 127 }, { "name": "doc", "x": 367, "y": 400 }, { "name": "edge", "x": 2405, "y": 600 }],
-            "now": [{ "name": "bin", "x": 77, "y": 0 }, { "name": "app", "x": 77, "y": 127 }, { "name": "doc", "x": 900, "y": 600 }, { "name": "edge", "x": 2405, "y": 600 }, { "name": "new", "x": 500, "y": 500 }],
+            "items": [{ "name": "bin", "x": 16, "y": 2 }, { "name": "app", "x": 900, "y": 600 }, { "name": "doc", "x": 300, "y": 400 }, { "name": "edge", "x": 2480, "y": 600 }],
+            "after": [{ "name": "bin", "x": 77, "y": 0 }, { "name": "app", "x": 980, "y": 625 }, { "name": "doc", "x": 367, "y": 400 }, { "name": "edge", "x": 2405, "y": 600 }],
+            "now": [{ "name": "bin", "x": 77, "y": 0 }, { "name": "app", "x": 980, "y": 625 }, { "name": "doc", "x": 1200, "y": 800 }, { "name": "edge", "x": 2405, "y": 600 }, { "name": "new", "x": 500, "y": 500 }],
         });
-        // Put back by the desktop itself: left be.
-        assert_eq!(back_to("app", p(16, 124), &saved, grid), None);
-        // Still elsewhere, not moved by the person nor by her: the desktop's to put back.
-        assert_eq!(back_to("bin", p(77, 0), &saved, grid), None);
-        // Dragged by the person meanwhile: where they left it.
-        assert_eq!(back_to("doc", p(822, 576), &saved, grid), Some(p(900, 600)));
-        assert_eq!(back_to("doc", p(900, 600), &saved, grid), None);
+        // Put back by the desktop itself, a px or two off: left be.
+        assert_eq!(back_to("bin", p(16, 0), &saved, grid), None);
+        // Left a strip's height lower after quitting from the side: where it was.
+        assert_eq!(back_to("app", p(900, 625), &saved, grid), Some(p(900, 600)));
+        // Still where the desktop laid it for the strip, not moved by the person: where it was.
+        assert_eq!(back_to("bin", p(77, 0), &saved, grid), Some(p(16, 2)));
         // Moved out from under the strip by her: where it was.
-        assert_eq!(back_to("edge", p(2400, 600), &saved, grid), Some(p(2480, 600)));
+        assert_eq!(back_to("edge", p(2405, 600), &saved, grid), Some(p(2480, 600)));
+        // Dragged by the person meanwhile: where they left it.
+        assert_eq!(back_to("doc", p(1100, 780), &saved, grid), Some(p(1200, 800)));
+        assert_eq!(back_to("doc", p(1200, 800), &saved, grid), None);
         // One that came while she was there, moved since: where it was left.
         assert_eq!(back_to("new", p(400, 450), &saved, grid), Some(p(500, 500)));
-        assert_eq!(back_to("new", p(500, 500), &saved, grid), None);
+        // Looked at too soon on the side (after still where it was): not taken
+        // for dragged, but put back where it was (this drifted, 01c1b00).
+        let early = json!({ "items": [{ "name": "bin", "x": 16, "y": 2 }], "after": [{ "name": "bin", "x": 16, "y": 2 }], "now": [{ "name": "bin", "x": 77, "y": 0 }] });
+        assert_eq!(back_to("bin", p(77, 0), &early, grid), Some(p(16, 2)));
+        assert_eq!(back_to("bin", p(16, 0), &early, grid), None);
     }
 
     #[test]

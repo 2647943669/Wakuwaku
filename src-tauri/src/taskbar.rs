@@ -1678,6 +1678,11 @@ mod imp {
         if let Some(page) = page {
             return tasks::launch(page);
         }
+        // Search pressed again while it is open: closed, as Windows' own
+        // search button does (Win+S again left it open: the test session).
+        if what == "search" && tasks::is_search(tasks::front()) {
+            return close_flyout();
+        }
         let keys: &[u16] = match what {
             "start" => &[VK_LWIN],
             "search" => &[VK_LWIN, b'S' as u16],
