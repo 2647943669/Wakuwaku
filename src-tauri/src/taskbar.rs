@@ -1356,6 +1356,8 @@ mod imp {
         if let Some(sh) = sh() {
             let ((ox, oy), sf) = crate::island::origin(&sh);
             let _ = sh.app.emit_to("island", "taskbar:press", json!({ "x": (x - ox) as f64 / sf, "y": (y - oy) as f64 / sf }));
+            // A list or menu open over her taskbar on another display.
+            crate::bars::pressed(&sh, (x, y));
         }
     }
 
@@ -2643,7 +2645,20 @@ pub fn taskbar_windows(ids: Vec<i64>) -> bool {
 // presses told to it (taskbar:press).
 #[tauri::command]
 pub fn taskbar_watch_presses(on: bool) {
-    imp::watch_presses(on);
+    watch_presses(WATCH_ISLAND, on);
+}
+
+// Who wants the presses watched: her island's page, her taskbar on another
+// display (bars.rs); watched while either does, one's "no more" not ending
+// the other's.
+pub const WATCH_ISLAND: u8 = 1;
+pub const WATCH_BARS: u8 = 2;
+static WATCHING: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+pub fn watch_presses(who: u8, on: bool) {
+    use std::sync::atomic::Ordering;
+    let was = if on { WATCHING.fetch_or(who, Ordering::SeqCst) | who } else { WATCHING.fetch_and(!who, Ordering::SeqCst) & !who };
+    imp::watch_presses(was != 0);
 }
 
 // Where the page left room for windows' live pictures (window, x, y, w, h
@@ -2654,6 +2669,24 @@ pub fn taskbar_thumbs(app: tauri::AppHandle, items: Vec<(i64, f64, f64, f64, f64
     let ((ox, oy), sf) = crate::island::origin(&sh);
     let px = |v: f64| (v * sf).round() as i32;
     let items = items.into_iter().map(|(h, x, y, w, ht)| (h as isize, (ox + px(x), oy + px(y), px(w), px(ht)))).collect();
+    thumbs(WATCH_ISLAND, items);
+}
+
+// The live pictures (one window of their own for all of them) for her
+// island's list or for one on another display's taskbar (bars.rs), on the
+// screen, physical: whose they are now, so that one's closing does not take
+// away the other's just opened.
+static THUMBS_FOR: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+pub fn thumbs(who: u8, items: Vec<(isize, (i32, i32, i32, i32))>) {
+    use std::sync::atomic::Ordering;
+    if items.is_empty() {
+        if THUMBS_FOR.compare_exchange(who, 0, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+            return;
+        }
+    } else {
+        THUMBS_FOR.store(who, Ordering::SeqCst);
+    }
     imp::thumbs(items);
 }
 

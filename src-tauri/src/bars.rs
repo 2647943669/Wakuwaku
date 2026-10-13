@@ -89,6 +89,8 @@ pub fn sync(sh: &Arc<Shared>) {
     }
     if moved {
         sh.log(&format!("bars: {} on the other displays", BARS.lock().unwrap().len()));
+        // A list open over one gone goes with it.
+        send_pop(sh);
     }
     // Windows' own on the others: put away while hers are there, shown again
     // once they are not.
@@ -104,6 +106,7 @@ pub fn sync(sh: &Arc<Shared>) {
 
 // Every one of them gone (quitting, another home): their app bars given back first.
 pub fn close_all(sh: &Shared) {
+    hide_pop(sh);
     let all: Vec<(String, isize)> = BARS.lock().unwrap().drain(..).map(|b| (b.label, b.hwnd)).collect();
     for (label, hwnd) in all {
         close(sh, &label, hwnd);
@@ -232,6 +235,207 @@ pub fn full_screen(sh: &Shared, cover: Option<Mon>) {
             let _ = if hide { win.hide() } else { win.show() };
         }
         sh.log(&format!("bars: {label} {}", if hide { "stepped aside (an app full screen there)" } else { "back" }));
+        // A list open over one stepped aside goes with it.
+        if hide {
+            send_pop(sh);
+        }
+    }
+}
+
+// --- A program's windows or what can be done with it, over its button -----------------
+// As on her own taskbar (island.js openPop): the pointer resting on a
+// running program's button, its windows, each a card with its live picture
+// (Windows draws them, taskbar.rs thumbs); a right press, its menu (another
+// window, keep it on the taskbar or no longer, close). A strip there is too
+// thin to hold them: one window of their own (barpop: pet/barpop.html),
+// made the first time, laid against the strip over the button, for any of
+// them. It goes once the pointer has left the button and it a moment
+// (barpop.js), at a press anywhere else, or when its program goes.
+const POP: &str = "barpop";
+
+struct Pop {
+    // The strip it is for, list or menu, the program, its button there (the
+    // strip's own px), and where the window is once laid (physical).
+    bar: String,
+    kind: String,
+    key: String,
+    at: (f64, f64, f64, f64),
+    rect: Option<Mon>,
+}
+
+static OPEN: Mutex<Option<Pop>> = Mutex::new(None);
+static POP_MADE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static POP_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+// A strip's display, scale, edge and rect, by its window's label.
+fn bar_of(label: &str) -> Option<(Mon, f64, Edge, Mon)> {
+    BARS.lock().unwrap().iter().find(|b| b.label == label && !b.hidden).and_then(|b| b.strip.map(|s| (b.mon, b.sf, b.edge, s)))
+}
+
+// From a strip's page: the windows (list) or the menu of a program, its
+// button at (x, y, w, h) in the page's px.
+#[tauri::command]
+pub fn bar_pop(app: tauri::AppHandle, window: WebviewWindow, kind: String, key: String, at: (f64, f64, f64, f64)) {
+    let sh = crate::shared(&app);
+    if bar_of(window.label()).is_none() {
+        return;
+    }
+    *OPEN.lock().unwrap() = Some(Pop { bar: window.label().to_string(), kind, key, at, rect: None });
+    if !POP_MADE.swap(true, Ordering::SeqCst) {
+        return make_pop(&sh);
+    }
+    send_pop(&sh);
+}
+
+// The pointer on a strip's buttons or off them (bar.js), for the list to
+// stay while it goes from one to the other (barpop.js).
+#[tauri::command]
+pub fn bar_pop_over(app: tauri::AppHandle, window: WebviewWindow, over: bool) {
+    let open = OPEN.lock().unwrap().as_ref().is_some_and(|p| p.bar == window.label());
+    if open {
+        let _ = app.emit_to(POP, "barpop:bar", json!({ "over": over }));
+    }
+}
+
+fn make_pop(sh: &Arc<Shared>) {
+    let sh = sh.clone();
+    std::thread::spawn(move || {
+        let built = WebviewWindowBuilder::new(&sh.app, POP, WebviewUrl::App("pet/barpop.html".into()))
+            .title("wakuwaku bar list")
+            .inner_size(420.0, 300.0)
+            .additional_browser_args(crate::BROWSER_ARGS)
+            .data_directory(crate::webview_dir(&sh))
+            .transparent(true)
+            .decorations(false)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .skip_taskbar(true)
+            .shadow(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(true)
+            .focusable(false)
+            .focused(false)
+            .visible(false)
+            .build();
+        match built {
+            Ok(win) => {
+                #[cfg(windows)]
+                crate::tasks::no_transitions(win.hwnd().map(|h| h.0 as isize).unwrap_or(0));
+                sh.own_window(&win);
+            }
+            Err(err) => {
+                POP_MADE.store(false, Ordering::SeqCst);
+                sh.log(&format!("bars: the list's window not made: {err}"));
+            }
+        }
+    });
+}
+
+// Its page has its listeners up.
+#[tauri::command]
+pub fn barpop_ready(app: tauri::AppHandle) {
+    POP_READY.store(true, Ordering::SeqCst);
+    send_pop(&crate::shared(&app));
+}
+
+// What the open one shows, told its page (again as the windows change): the
+// program as that strip shows it, and the look; gone with its program, or
+// with its last window for a list.
+fn send_pop(sh: &Shared) {
+    if !POP_READY.load(Ordering::SeqCst) {
+        return;
+    }
+    let Some((bar, kind, key)) = OPEN.lock().unwrap().as_ref().map(|p| (p.bar.clone(), p.kind.clone(), p.key.clone())) else { return };
+    let Some((mon, _, edge, _)) = bar_of(&bar) else { return hide_pop(sh) };
+    let all = buttons_for(&taskbar::windows_now(), mon, false, spread());
+    let app = all.as_array().into_iter().flatten().find(|a| a["app"].as_str() == Some(key.as_str())).cloned();
+    let Some(app) = app.filter(|a| kind == "menu" || a["windows"].as_array().is_some_and(|w| !w.is_empty())) else { return hide_pop(sh) };
+    let _ = sh.app.emit_to(
+        POP,
+        "barpop:show",
+        json!({ "kind": kind, "app": app, "edge": edge.word(), "look": taskbar::look_value(), "lang": sh.lang() }),
+    );
+}
+
+// Its page laid out (w, h: its px, with room for its shadow away from the
+// strip): the window laid against the strip over the button, and shown.
+#[tauri::command]
+pub fn barpop_place(app: tauri::AppHandle, w: f64, h: f64) {
+    let sh = crate::shared(&app);
+    let Some((bar, at)) = OPEN.lock().unwrap().as_ref().map(|p| (p.bar.clone(), p.at)) else { return };
+    let Some((mon, sf, edge, strip)) = bar_of(&bar) else { return hide_pop(&sh) };
+    let px = |v: f64| (v * sf).round() as i32;
+    let button = (strip.0 + px(at.0), strip.1 + px(at.1), px(at.2), px(at.3));
+    let rect = pop_rect(edge, strip, mon, button, (px(w), px(h)));
+    let Some(win) = sh.app.get_webview_window(POP) else { return };
+    // Its place first: moved to a display of another scale, the window is
+    // given a size for that one, which this then replaces.
+    let _ = win.set_position(PhysicalPosition::new(rect.0, rect.1));
+    let _ = win.set_size(PhysicalSize::new(rect.2.max(1) as u32, rect.3.max(1) as u32));
+    let _ = win.set_position(PhysicalPosition::new(rect.0, rect.1));
+    let _ = win.show();
+    if let Some(p) = OPEN.lock().unwrap().as_mut() {
+        p.rect = Some(rect);
+    }
+    taskbar::watch_presses(taskbar::WATCH_BARS, true);
+}
+
+// Where the list goes (physical): against the strip on the screen's side,
+// centred on the button along it, within its display.
+fn pop_rect(edge: Edge, strip: Mon, mon: Mon, button: Mon, (w, h): (i32, i32)) -> Mon {
+    let along_x = (button.0 + button.2 / 2 - w / 2).clamp(mon.0, (mon.0 + mon.2 - w).max(mon.0));
+    let along_y = (button.1 + button.3 / 2 - h / 2).clamp(mon.1, (mon.1 + mon.3 - h).max(mon.1));
+    match edge {
+        Edge::Bottom => (along_x, strip.1 - h, w, h),
+        Edge::Top => (along_x, strip.1 + strip.3, w, h),
+        Edge::Left => (strip.0 + strip.2, along_y, w, h),
+        Edge::Right => (strip.0 - w, along_y, w, h),
+    }
+}
+
+// Its live pictures where its cards left room for them (window, x, y, w, h
+// in its px); none, taken away.
+#[tauri::command]
+pub fn barpop_thumbs(items: Vec<(i64, f64, f64, f64, f64)>) {
+    let Some((bar, rect)) = OPEN.lock().unwrap().as_ref().and_then(|p| p.rect.map(|r| (p.bar.clone(), r))) else {
+        return taskbar::thumbs(taskbar::WATCH_BARS, Vec::new());
+    };
+    let Some((_, sf, _, _)) = bar_of(&bar) else { return };
+    let px = |v: f64| (v * sf).round() as i32;
+    let items = items.into_iter().map(|(h, x, y, w, ht)| (h as isize, (rect.0 + px(x), rect.1 + px(y), px(w), px(ht)))).collect();
+    taskbar::thumbs(taskbar::WATCH_BARS, items);
+}
+
+// Its page done with it (the pointer gone, a card or an item pressed).
+#[tauri::command]
+pub fn barpop_hide(app: tauri::AppHandle) {
+    hide_pop(&crate::shared(&app));
+}
+
+fn hide_pop(sh: &Shared) {
+    let Some(was) = OPEN.lock().unwrap().take() else { return };
+    taskbar::thumbs(taskbar::WATCH_BARS, Vec::new());
+    taskbar::watch_presses(taskbar::WATCH_BARS, false);
+    if let Some(win) = sh.app.get_webview_window(POP) {
+        let _ = win.hide();
+    }
+    let _ = sh.app.emit_to(POP, "barpop:gone", json!({}));
+    let _ = sh.app.emit_to(was.bar.as_str(), "bar:pop-gone", json!({}));
+}
+
+// A press anywhere (taskbar.rs press hook): off the list and off its strip,
+// it goes, as Windows' own; on the strip, its page has the press.
+pub fn pressed(sh: &Shared, (x, y): (i32, i32)) {
+    let inside = |r: Mon| x >= r.0 && y >= r.1 && x < r.0 + r.2 && y < r.1 + r.3;
+    let away = {
+        let open = OPEN.lock().unwrap();
+        let Some(p) = open.as_ref() else { return };
+        let strip = bar_of(&p.bar).map(|b| b.3);
+        !p.rect.is_some_and(inside) && !strip.is_some_and(inside)
+    };
+    if away {
+        hide_pop(sh);
     }
 }
 
@@ -320,6 +524,10 @@ pub fn refresh(sh: &Shared) {
             let _ = sh.app.emit_to(label.as_str(), "bar:state", state);
         }
     }
+    // A list open: its program's windows as they are now.
+    if OPEN.lock().unwrap().is_some() {
+        send_pop(sh);
+    }
 }
 
 #[cfg(test)]
@@ -346,6 +554,24 @@ mod tests {
         // Only where open (2): the main its own and the pinned; the other its own.
         assert_eq!(ids(&buttons_for(&all, main, true, 2)), vec![("chrome".to_string(), vec![1]), ("notes".to_string(), vec![])]);
         assert_eq!(ids(&buttons_for(&all, other, false, 2)), vec![("chrome".to_string(), vec![2]), ("code".to_string(), vec![3])]);
+    }
+
+    #[test]
+    fn the_list_against_the_strip_over_its_button() {
+        // A display right of the main one, 150% (its strip 72 px thick).
+        let mon = (2560, 0, 1920, 1080);
+        let bottom = (2560, 1008, 1920, 72);
+        let button = (3400, 1014, 66, 60);
+        // Along the bottom: on the strip, centred on the button.
+        assert_eq!(pop_rect(Edge::Bottom, bottom, mon, button, (400, 300)), (3233, 708, 400, 300));
+        // Near the display's ends: kept on it.
+        assert_eq!(pop_rect(Edge::Bottom, bottom, mon, (2570, 1014, 66, 60), (400, 300)), (2560, 708, 400, 300));
+        assert_eq!(pop_rect(Edge::Bottom, bottom, mon, (4400, 1014, 66, 60), (400, 300)), (4080, 708, 400, 300));
+        // Along the top: under it.
+        assert_eq!(pop_rect(Edge::Top, (2560, 0, 1920, 72), mon, (3400, 6, 66, 60), (400, 300)), (3233, 72, 400, 300));
+        // Along a side: beside it, centred on the button up and down.
+        assert_eq!(pop_rect(Edge::Left, (2560, 0, 72, 1080), mon, (2566, 500, 60, 66), (300, 200)), (2632, 433, 300, 200));
+        assert_eq!(pop_rect(Edge::Right, (4408, 0, 72, 1080), mon, (4414, 500, 60, 66), (300, 200)), (4108, 433, 300, 200));
     }
 
     #[test]

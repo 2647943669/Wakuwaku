@@ -173,6 +173,7 @@
   // running starts, one window to the front or minimized, several in turn.
   document.addEventListener('click', e => {
     // Her capsule: the prompt shown in her island on the main display (bars.rs bar_asks).
+    closePop()
     if (e.target.closest('#her')) return invoke('bar_asks').catch(() => {})
     const what = e.target.closest('[data-bar]')?.dataset.bar
     if (what) return invoke('taskbar_open', { what })
@@ -185,6 +186,47 @@
     invoke('taskbar_windows', { ids: windows.map(w => Number(w.id)) }).catch(() => {})
   })
   document.addEventListener('contextmenu', e => e.preventDefault())
+
+  // Over a program's button, as on the main taskbar (island.js openPop): the
+  // pointer resting on a running one, its windows; a right press, its menu.
+  // In a window of their own over the strip (bars.rs bar_pop, barpop.js),
+  // which goes once the pointer has left both a moment (told it here,
+  // bar_pop_over) or at a press elsewhere. { app, kind } while open.
+  let popFor = null
+  let popTimer
+  const call = (cmd, args) => invoke(cmd, args).catch(() => {})
+  function openPop(node, kind) {
+    const b = node.getBoundingClientRect()
+    popFor = { app: node.dataset.app, kind }
+    call('bar_pop', { kind, key: node.dataset.app, at: [b.left, b.top, b.width, b.height] })
+  }
+  function closePop() {
+    clearTimeout(popTimer)
+    if (!popFor) return
+    popFor = null
+    call('barpop_hide')
+  }
+  wins.addEventListener('mouseover', e => {
+    const node = e.target.closest('[data-app]')
+    clearTimeout(popTimer)
+    const app = node && (state.windows || []).find(a => a.app === node.dataset.app)
+    if (!app || popFor?.kind === 'menu' || popFor?.app === app.app || !(app.windows || []).length) return
+    popTimer = setTimeout(() => openPop(node, 'list'), popFor ? 0 : 500)
+  })
+  wins.addEventListener('mouseenter', () => call('bar_pop_over', { over: true }))
+  wins.addEventListener('mouseleave', () => {
+    clearTimeout(popTimer)
+    call('bar_pop_over', { over: false })
+  })
+  wins.addEventListener('contextmenu', e => {
+    const node = e.target.closest('[data-app]')
+    if (!node) return
+    e.preventDefault()
+    clearTimeout(popTimer)
+    openPop(node, 'menu')
+  })
+  // Gone by itself (the pointer away, a press elsewhere, its program gone).
+  listen('bar:pop-gone', () => (popFor = null), { target })
 
   setInterval(tickClock, 5000)
   addEventListener('resize', () => {
