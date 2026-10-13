@@ -329,6 +329,14 @@ body {
   visibility: hidden;
 }
 
+/* The clock (or a widget's value) within the right ear (island.js EAR),
+   never under the notch. */
+.notched #island-compact .clock {
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #island-row {
   position: relative;
   z-index: 2;
