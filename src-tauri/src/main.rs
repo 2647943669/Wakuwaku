@@ -318,9 +318,18 @@ impl Shared {
 
     // The prompts waiting changed.
     pub fn push_asks(&self) {
-        let views = self.asks.lock().unwrap().views();
+        let (views, none) = {
+            let asks = self.asks.lock().unwrap();
+            (asks.views(), asks.is_empty())
+        };
         self.to_pages("pet:asks", views);
         self.push_settings();
+        // Her taskbar on the other displays says how many wait (bars.rs);
+        // her island risen for them goes once they are answered.
+        bars::refresh(self);
+        if none {
+            island::asks_answered(&shared(&self.app));
+        }
     }
 
     // The open settings follow what happens, a few times a second at most.
@@ -1186,6 +1195,7 @@ fn main() {
             settings::settings_codex_hooks,
             settings::settings_agy_hooks,
             bars::bar_ready,
+            bars::bar_asks,
             settings::settings_fetch,
             settings::settings_gallery,
             settings::settings_open_site,

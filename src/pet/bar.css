@@ -277,3 +277,163 @@ body {
 .b-top.b-mica #bar {
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
 }
+
+/* --- Her capsule while a prompt waits (bar.js drawHer) ------------------------------
+   Where hers is on the main strip, at its start (6 px in, 5 px off its foot):
+   her portrait ringed in the waiting colour, then the words and a small ›,
+   all in it; its ground, blur and edge her island's (--h-bg, --h-blur,
+   --h-edge), none when bare. Along a side, upright: the portrait and the
+   number under it. It comes in with a short fade. */
+#her {
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 14px 0 4px;
+  border-radius: 19px;
+  background: var(--h-bg);
+  -webkit-backdrop-filter: var(--h-blur);
+  backdrop-filter: var(--h-blur);
+  box-shadow: var(--h-edge);
+  color: var(--ring);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-shadow: none;
+  cursor: pointer;
+  animation: her-in 0.22s ease-out;
+}
+
+#her[hidden] {
+  display: none;
+}
+
+@keyframes her-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+#her.bare {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+#her.bare:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.b-light #her.bare:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Bare on the clear strip: its words haloed as the strip's are. */
+.b-clear #her.bare {
+  text-shadow:
+    0 0 1px rgba(0, 0, 0, 0.95),
+    0 0 2px rgba(0, 0, 0, 0.8),
+    0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.b-light.b-clear #her.bare {
+  text-shadow:
+    0 0 1px rgba(255, 255, 255, 1),
+    0 0 2px rgba(255, 255, 255, 0.9),
+    0 1px 4px rgba(255, 255, 255, 0.65);
+}
+
+#her .face {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+#her .face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--ring);
+}
+
+#her .sheet {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 192px;
+  height: 208px;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+#her .film {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1536px;
+  height: 2288px;
+  background-repeat: no-repeat;
+  will-change: transform;
+}
+
+#her .chev {
+  margin-left: -3px;
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 9px;
+  font-weight: normal;
+}
+
+/* Start and the buttons laid from the start make room for it. */
+.b-her.b-start:not(.b-side) #apps {
+  padding-left: calc(var(--her-w, 0px) + 6px);
+}
+
+.b-side #her {
+  left: 5px;
+  top: 6px;
+  flex-direction: column;
+  gap: 2px;
+  width: 38px;
+  height: auto;
+  padding: 4px 0 6px;
+  font-size: 11px;
+}
+
+.b-side #her .chev {
+  display: none;
+}
+
+.b-her.b-side #apps {
+  padding-top: calc(var(--her-h, 0px) + 6px);
+}
+
+/* On the light strip, a soft shadow under it too, as hers on the main one. */
+.b-light #her:not(.bare) {
+  box-shadow:
+    var(--h-edge),
+    0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* With Windows' animation effects off: it fades in, no growing. */
+@media (prefers-reduced-motion: reduce) {
+  #her {
+    animation-name: her-fade;
+  }
+}
+
+@keyframes her-fade {
+  from {
+    opacity: 0;
+  }
+}

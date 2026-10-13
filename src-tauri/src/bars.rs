@@ -3,7 +3,9 @@
 // its app bar along the same edge as hers, with Start, the windows there and
 // the clock; her capsule, the tray and the widgets stay on hers, as Windows'
 // own keeps its tray on the main display (the appearance session's spec,
-// 2026-10-13). Which windows show on which follows Windows' own setting for
+// 2026-10-13), but for a prompt waiting: then her capsule comes at the
+// start of each, "waiting for your approval · N", a press showing it in her
+// island. Which windows show on which follows Windows' own setting for
 // taskbars on several displays (MMTaskbarMode). The main display only (the
 // default): Windows' own taskbar on the others (shell.rs home_display).
 // Not while her home is the island, nor while her taskbar is not up; an
@@ -189,6 +191,27 @@ pub fn bar_ready(app: tauri::AppHandle, window: WebviewWindow) {
     refresh(&sh);
 }
 
+// The prompts waiting, for her capsule there (the appearance session's spec,
+// 2026-10-13): how many, and "answer" when the one shown first is a
+// question, "approve" otherwise (a permission, a plan); none when none wait.
+fn waiting(views: &Value) -> Value {
+    let list = views.as_array().map(Vec::as_slice).unwrap_or_default();
+    match list.first() {
+        Some(first) => json!({ "n": list.len(), "kind": if first["kind"] == "question" { "answer" } else { "approve" } }),
+        None => Value::Null,
+    }
+}
+
+// Her capsule there pressed: the prompt shown in her island on the main
+// display, as a press on hers (island.rs show_asks).
+#[tauri::command]
+pub fn bar_asks(app: tauri::AppHandle) {
+    let sh = crate::shared(&app);
+    if !sh.asks.lock().unwrap().is_empty() {
+        island::show_asks(&sh);
+    }
+}
+
 // An app full screen covering a display (or none): that display's taskbar
 // steps aside, the others come back.
 pub fn full_screen(sh: &Shared, cover: Option<Mon>) {
@@ -262,7 +285,8 @@ pub fn for_main(sh: &Shared, all: &Value) -> Value {
 
 // Each page told what to show, if it changed: the windows on its display,
 // the look of hers (edge, its buttons' alignment, the material, light or
-// dark and the accent), her language.
+// dark and the accent, her island's look), her language; the prompts
+// waiting and her sheet, for her capsule.
 pub fn refresh(sh: &Shared) {
     let bars: Vec<(String, Mon, f64, Value)> = BARS.lock().unwrap().iter().filter(|b| b.ready).map(|b| (b.label.clone(), b.mon, b.sf, b.sent.clone())).collect();
     if bars.is_empty() {
@@ -272,15 +296,22 @@ pub fn refresh(sh: &Shared) {
     let look = taskbar::look_value();
     let spread = spread();
     let edge = island::edge(sh);
+    let asks = waiting(&sh.asks.lock().unwrap().views());
+    let pet = sh.setting("pet");
+    let sprite = crate::data::pets(&sh.dir).into_iter().find(|p| Some(p.id.as_str()) == pet.as_str());
     for (label, mon, sf, sent) in bars {
         let state = json!({
             "edge": edge.word(),
             "align": sh.setting("taskbarAlign"),
             "material": sh.setting("taskbarMaterial"),
             "look": look,
+            "islandLook": sh.setting("islandLook"),
             "lang": sh.lang(),
             "sf": sf,
             "windows": buttons_for(&all, mon, false, spread),
+            "asks": asks,
+            "sprite": sprite.as_ref().map(|p| crate::data::asset_url(&p.sheet)),
+            "spriteVersion": sprite.as_ref().map_or(2, |p| p.version),
         });
         if state != sent {
             if let Some(b) = BARS.lock().unwrap().iter_mut().find(|b| b.label == label) {
@@ -315,5 +346,13 @@ mod tests {
         // Only where open (2): the main its own and the pinned; the other its own.
         assert_eq!(ids(&buttons_for(&all, main, true, 2)), vec![("chrome".to_string(), vec![1]), ("notes".to_string(), vec![])]);
         assert_eq!(ids(&buttons_for(&all, other, false, 2)), vec![("chrome".to_string(), vec![2]), ("code".to_string(), vec![3])]);
+    }
+
+    #[test]
+    fn how_many_wait_and_for_what() {
+        assert_eq!(waiting(&json!([])), Value::Null);
+        assert_eq!(waiting(&json!([{ "kind": "permission" }, { "kind": "question" }])), json!({ "n": 2, "kind": "approve" }));
+        assert_eq!(waiting(&json!([{ "kind": "plan" }])), json!({ "n": 1, "kind": "approve" }));
+        assert_eq!(waiting(&json!([{ "kind": "question" }, { "kind": "permission" }])), json!({ "n": 2, "kind": "answer" }));
     }
 }

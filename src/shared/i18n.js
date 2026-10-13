@@ -297,6 +297,9 @@
       's.displaysAllNote': '每块屏都换成她的任务栏；副屏上放开始、那块屏的窗口和时钟。窗口按钮怎么分，跟 Windows 设置里「在多个显示器上显示任务栏应用」走。',
       's.displaysMainNote': '她的任务栏只在主屏，其他屏幕用 Windows 自己的任务栏。',
       's.displaysOne': '现在只接了一块屏幕',
+      // Her capsule on another display's taskbar while a prompt waits (bar.js).
+      'bar.approve': '在等你批准 · {n}',
+      'bar.answer': '在等你回答 · {n}',
       's.taskbarEdgeNote': '放在屏幕哪一边。开始菜单、搜索、快速设置和通知中心是 Windows 自己的面板，仍然从屏幕底部弹出。',
       's.edge.bottom': '底部',
       's.edge.top': '顶部',
@@ -1126,6 +1129,8 @@
       's.displaysAllNote': "Every display gets her taskbar; the others carry Start, their own windows and the clock. Which windows show where follows Windows' 'Show my taskbar apps on' setting.",
       's.displaysMainNote': "Her taskbar only on the main display; the others keep Windows' own.",
       's.displaysOne': 'Only one display is connected',
+      'bar.approve': 'Waiting for your approval · {n}',
+      'bar.answer': 'Waiting for your answer · {n}',
       's.taskbarEdgeNote': "Which edge of the screen it sits on. Start, search, quick settings and the notification centre are Windows' own, and still open at the bottom of the screen.",
       's.edge.bottom': 'Bottom',
       's.edge.top': 'Top',

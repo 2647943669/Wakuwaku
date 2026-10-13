@@ -2,11 +2,15 @@
 // windows on this display (as Windows' own setting for several displays
 // says) and the clock, at the end the sliver that shows the desktop. Her
 // capsule, the tray and the widgets are on the main display's alone (the
-// appearance session's spec, 2026-10-13). What it shows comes as bar:state
+// appearance session's spec, 2026-10-13), but for a prompt waiting: then her
+// capsule comes at its start, "waiting for your approval · N", a press
+// showing the prompt in her island there. What it shows comes as bar:state
 // (bars.rs refresh); a press asks what the main taskbar's would (taskbar.rs).
 ;(function () {
   const { invoke } = window.__TAURI__.core
   const { listen } = window.__TAURI__.event
+  const { t } = window.I18n
+  const { CELL_W, CELL_H, CLIPS } = window.Sprite
   // For this window alone: listen() by itself hears what is sent to any (bridge.js).
   const LABEL = window.__TAURI_INTERNALS__?.metadata?.currentWebview?.label || window.__TAURI__.webviewWindow?.getCurrentWebviewWindow?.()?.label || ''
   const target = { kind: 'WebviewWindow', label: LABEL }
@@ -76,6 +80,78 @@
     )
   }
 
+  // --- Her capsule, while a prompt waits ---------------------------------------
+  // As her island on the main taskbar draws itself (island.js placeHer,
+  // drawIslandLook): her round portrait playing her waiting clip, ringed in
+  // the waiting colour, and the words in it; its ground her island's, as the
+  // settings have it for Windows' mode (islandLook: bg, op, blur, edge,
+  // bare), Windows' flyout grey by default; bare, none, its words haloed as
+  // the clear strip's are; on the black strip, none either (it is black).
+  const her = document.getElementById('her')
+  const film = her.querySelector('.film')
+  const sheet = her.querySelector('.sheet')
+  const words = her.querySelector('.words')
+  const WAITING = { dark: '#ffb340', light: '#b25e00' }
+  const FACE = 30
+  const PER_PX = 0.00875
+  let frames = 0
+
+  // A colour's relative lightness (WCAG), 0 to 1 (island.js lightness).
+  function lightness(rgb) {
+    const [r, g, b] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255].map(v => {
+      v /= 255
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+
+  function drawHer() {
+    const asks = state.asks
+    const on = !!asks && asks.n > 0
+    if (her.hidden === on) her.hidden = !on
+    body.classList.toggle('b-her', on)
+    if (!on) {
+      clearInterval(frames)
+      frames = 0
+      return
+    }
+    const mode = isLight() ? 'light' : 'dark'
+    const capsule = isLight() || state.material !== 'black'
+    const mine = (capsule && state.islandLook?.[mode]) || {}
+    const bare = !capsule || (mine.bare ?? mode === 'dark') === true
+    const bg = /^#[0-9a-f]{6}$/i.test(mine.bg || '') ? parseInt(mine.bg.slice(1), 16) : null
+    const op = Number.isFinite(mine.op) ? Math.min(100, Math.max(20, mine.op)) / 100 : 1
+    const blur = Number.isFinite(mine.blur) ? Math.min(60, Math.max(0, mine.blur)) : 0
+    const inkLight = bare || bg === null ? isLight() : lightness(bg) > 0.35
+    const ring = WAITING[inkLight ? 'light' : 'dark']
+    her.classList.toggle('bare', bare)
+    her.classList.toggle('ink-light', inkLight)
+    her.style.setProperty('--ring', ring)
+    her.style.setProperty('--h-bg', bg === null ? (isLight() ? '#f3f3f3' : '#2c2c2c') : `rgba(${(bg >> 16) & 255}, ${(bg >> 8) & 255}, ${bg & 255}, ${op})`)
+    her.style.setProperty('--h-blur', blur ? `blur(${blur}px) saturate(1.25)` : 'none')
+    const line = inkLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)'
+    const edge = { ring: `0 0 0 1.5px ${ring}, 0 0 12px color-mix(in srgb, ${ring} 35%, transparent)`, none: '0 0 0 0 transparent' }[mine.edge]
+    her.style.setProperty('--h-edge', edge || `0 0 0 1px ${line}`)
+    const said = t(state.lang, asks.kind === 'answer' ? 'bar.answer' : 'bar.approve', { n: asks.n })
+    // Along a side, upright: her portrait and the number; the words in its tip.
+    words.textContent = isSide() ? String(asks.n) : said
+    her.title = said
+    // Her sheet, scaled to the portrait and centred on her face.
+    const scale = FACE * PER_PX
+    film.style.backgroundImage = state.sprite ? `url("${state.sprite}")` : ''
+    film.style.height = `${state.spriteVersion === 1 ? 1872 : 2288}px`
+    sheet.style.transform = `translate(${-(CELL_W * scale - FACE) / 2}px, -2px) scale(${scale})`
+    const clip = CLIPS.waiting
+    const show = () => {
+      if (!document.hidden) film.style.transform = `translate3d(${-(Math.floor(Date.now() / clip.ms) % clip.frames) * CELL_W}px, ${-clip.row * CELL_H}px, 0)`
+    }
+    show()
+    if (!frames) frames = setInterval(show, clip.ms)
+    // Room for it before Start and the buttons laid from the start.
+    body.style.setProperty('--her-w', `${her.offsetWidth}px`)
+    body.style.setProperty('--her-h', `${her.offsetHeight}px`)
+  }
+
   function draw() {
     const edge = state.edge || 'bottom'
     for (const e of ['bottom', 'top', 'left', 'right']) body.classList.toggle(`b-${e}`, e === edge)
@@ -89,12 +165,15 @@
     drawStart()
     drawWindows()
     tickClock()
+    drawHer()
   }
 
   // Presses: Start and the clock open what Windows' do, the sliver shows the
   // desktop; a program's button as on the main taskbar (island.js): one not
   // running starts, one window to the front or minimized, several in turn.
   document.addEventListener('click', e => {
+    // Her capsule: the prompt shown in her island on the main display (bars.rs bar_asks).
+    if (e.target.closest('#her')) return invoke('bar_asks').catch(() => {})
     const what = e.target.closest('[data-bar]')?.dataset.bar
     if (what) return invoke('taskbar_open', { what })
     const key = e.target.closest('[data-app]')?.dataset.app
