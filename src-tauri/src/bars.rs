@@ -34,6 +34,9 @@ struct Bar {
     hidden: bool,
     // What its page was last told.
     sent: Value,
+    // Its display's wallpaper, for its Mica (read_papers): as the main
+    // strip's (taskbar.rs look_at_desktop), from its own strip's corner.
+    paper: Value,
 }
 
 static BARS: Mutex<Vec<Bar>> = Mutex::new(Vec::new());
@@ -74,7 +77,7 @@ pub fn sync(sh: &Arc<Shared>) {
         for a in &want {
             if !bars.iter().any(|b| b.mon == a.mon) {
                 let label = format!("bar-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-                bars.push(Bar { label: label.clone(), mon: a.mon, sf: a.sf, edge, hwnd: 0, strip: None, ready: false, hidden: false, sent: Value::Null });
+                bars.push(Bar { label: label.clone(), mon: a.mon, sf: a.sf, edge, hwnd: 0, strip: None, ready: false, hidden: false, sent: Value::Null, paper: Value::Null });
                 made.push((label, *a));
             }
         }
@@ -183,15 +186,64 @@ fn create(sh: &Arc<Shared>, label: String, area: Area, edge: Edge) {
     });
 }
 
-// Its page has its listeners up: told what to show.
+// Its page has its listeners up: told what to show; its display's
+// wallpaper read for it (off this thread, with the desktop's look).
 #[tauri::command]
 pub fn bar_ready(app: tauri::AppHandle, window: WebviewWindow) {
     let sh = crate::shared(&app);
-    if let Some(b) = BARS.lock().unwrap().iter_mut().find(|b| b.label == window.label()) {
-        b.ready = true;
-        b.sent = Value::Null;
-    }
+    let new = match BARS.lock().unwrap().iter_mut().find(|b| b.label == window.label()) {
+        Some(b) => {
+            b.ready = true;
+            b.sent = Value::Null;
+            b.paper.is_null()
+        }
+        None => false,
+    };
     refresh(&sh);
+    if new {
+        taskbar::look_now();
+    }
+}
+
+// Each one's display's wallpaper, for its Mica: which picture Windows shows
+// there and how it lays it (wallpaper.rs, each display's own), where that
+// display and all of them are from the strip's corner, in its px; told
+// with the rest (refresh). With the desktop's look (taskbar.rs
+// look_at_desktop: as it changes, and every half minute), off the main thread.
+pub fn read_papers(sh: &Shared) {
+    let bars: Vec<(String, Mon, f64)> = BARS.lock().unwrap().iter().filter_map(|b| b.strip.map(|s| (b.label.clone(), s, b.sf))).collect();
+    if bars.is_empty() {
+        return refresh(sh);
+    }
+    let areas = sh.screens().areas;
+    let left = areas.iter().map(|a| a.mon.0).min().unwrap_or(0);
+    let top = areas.iter().map(|a| a.mon.1).min().unwrap_or(0);
+    let right = areas.iter().map(|a| a.mon.0 + a.mon.2).max().unwrap_or(0);
+    let bottom = areas.iter().map(|a| a.mon.1 + a.mon.3).max().unwrap_or(0);
+    let screen = (left, top, right - left, bottom - top);
+    for (label, strip, sf) in bars {
+        let Some(mon) = BARS.lock().unwrap().iter().find(|b| b.label == label).map(|b| b.mon) else { continue };
+        let Some(paper) = crate::wallpaper::read(mon) else { continue };
+        if let Some(file) = &paper.file {
+            let _ = sh.app.asset_protocol_scope().allow_file(file);
+        }
+        let now = paper_from(&paper, strip, mon, screen, sf);
+        if let Some(b) = BARS.lock().unwrap().iter_mut().find(|b| b.label == label) {
+            if b.paper != now {
+                sh.log(&format!("bars: {label} wallpaper {:?}, {}, {}", paper.file, paper.position, paper.color));
+                b.paper = now;
+            }
+        }
+    }
+    refresh(sh);
+}
+
+// A display's wallpaper for a strip's page (mica.js place): the display and
+// all of them from the strip's corner, in its px.
+fn paper_from(paper: &crate::wallpaper::Paper, strip: Mon, mon: Mon, screen: Mon, sf: f64) -> Value {
+    let rel = |(x, y, w, h): Mon| json!([(x - strip.0) as f64 / sf, (y - strip.1) as f64 / sf, w as f64 / sf, h as f64 / sf]);
+    let url = paper.file.as_ref().map(|f| format!("{}?v={}", crate::data::asset_url(f), paper.stamp));
+    json!({ "url": url, "position": paper.position, "color": paper.color, "mon": rel(mon), "screen": rel(screen), "sf": sf })
 }
 
 // The prompts waiting, for her capsule there (the appearance session's spec,
@@ -492,7 +544,7 @@ pub fn for_main(sh: &Shared, all: &Value) -> Value {
 // dark and the accent, her island's look), her language; the prompts
 // waiting and her sheet, for her capsule.
 pub fn refresh(sh: &Shared) {
-    let bars: Vec<(String, Mon, f64, Value)> = BARS.lock().unwrap().iter().filter(|b| b.ready).map(|b| (b.label.clone(), b.mon, b.sf, b.sent.clone())).collect();
+    let bars: Vec<(String, Mon, f64, Value, Value)> = BARS.lock().unwrap().iter().filter(|b| b.ready).map(|b| (b.label.clone(), b.mon, b.sf, b.sent.clone(), b.paper.clone())).collect();
     if bars.is_empty() {
         return;
     }
@@ -503,7 +555,7 @@ pub fn refresh(sh: &Shared) {
     let asks = waiting(&sh.asks.lock().unwrap().views());
     let pet = sh.setting("pet");
     let sprite = crate::data::pets(&sh.dir).into_iter().find(|p| Some(p.id.as_str()) == pet.as_str());
-    for (label, mon, sf, sent) in bars {
+    for (label, mon, sf, sent, paper) in bars {
         let state = json!({
             "edge": edge.word(),
             "align": sh.setting("taskbarAlign"),
@@ -516,6 +568,7 @@ pub fn refresh(sh: &Shared) {
             "asks": asks,
             "sprite": sprite.as_ref().map(|p| crate::data::asset_url(&p.sheet)),
             "spriteVersion": sprite.as_ref().map_or(2, |p| p.version),
+            "paper": paper,
         });
         if state != sent {
             if let Some(b) = BARS.lock().unwrap().iter_mut().find(|b| b.label == label) {

@@ -166,6 +166,16 @@
     drawWindows()
     tickClock()
     drawHer()
+    drawMica()
+  }
+
+  // Mica: this display's own wallpaper under the strip, blurred and tinted
+  // as the main strip's (mica.js; bars.rs read_papers sends where it lies);
+  // its tint (style.css) until the picture comes.
+  const mica = window.Mica.mount(document.getElementById('mica'))
+  function drawMica() {
+    if (state.material === 'mica' && state.paper) mica.set(state.paper, innerWidth, innerHeight, isLight() ? 'light' : 'dark')
+    else if (state.material !== 'mica') mica.clear()
   }
 
   // Presses: Start and the clock open what Windows' do, the sliver shows the
@@ -232,6 +242,7 @@
   addEventListener('resize', () => {
     startScale = 0
     drawStart()
+    drawMica()
   })
   listen('bar:state', e => {
     state = e.payload || state
