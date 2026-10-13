@@ -1557,12 +1557,19 @@ mod imp {
     }
 
     fn set_work_area(mut r: Rect) {
+        let was = work_area();
         // SAFETY: our own struct, handed back.
         let ok = unsafe { SystemParametersInfoW(SPI_SETWORKAREA, 0, &mut r as *mut Rect as *mut c_void, 0) } != 0;
         // Why, only when it failed: a call that worked leaves an old error
         // there (it read "access denied" after a set that took).
         let error = if ok { String::new() } else { format!(" ({})", std::io::Error::last_os_error()) };
         let now = work_area();
+        // The windows maximized there laid on it anew: set quietly, it moves none (appbar.rs).
+        let xywh = |r: &Rect| (r.left, r.top, r.right - r.left, r.bottom - r.top);
+        let moved = if ok { crate::appbar::refit_maximized(xywh(&was), xywh(&now)) } else { 0 };
+        if moved > 0 {
+            log(&format!("{moved} maximized window(s) laid on the work area anew"));
+        }
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(150));
             let later = work_area();

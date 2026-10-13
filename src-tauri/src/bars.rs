@@ -181,7 +181,9 @@ pub fn keep_work(sh: &Shared) {
     for (label, work, edge, strip) in due {
         let to = edge.with_side(work, edge.inner(strip));
         let ok = appbar::set_work(to);
-        sh.log(&format!("bars: {label}'s display's work area {work:?} reaches into its strip {strip:?}: made {to:?} ({ok})"));
+        // The windows maximized there laid on it anew: set quietly, it moves none.
+        let moved = if ok { appbar::refit_maximized(work, to) } else { 0 };
+        sh.log(&format!("bars: {label}'s display's work area {work:?} reaches into its strip {strip:?}: made {to:?} ({ok}), {moved} maximized window(s) laid on it anew"));
     }
 }
 
@@ -207,7 +209,8 @@ fn give_work(sh: &Shared, label: &str, mon: Mon, edge: Edge, side: i32) {
     };
     let to = edge.with_side(work, back);
     let ok = appbar::set_work(to);
-    sh.log(&format!("bars: {label}'s display's work area given back: {work:?} made {to:?} ({ok})"));
+    let moved = if ok { appbar::refit_maximized(work, to) } else { 0 };
+    sh.log(&format!("bars: {label}'s display's work area given back: {work:?} made {to:?} ({ok}), {moved} maximized window(s) laid on it anew"));
 }
 
 // Its window made off the main thread (a menu click may be what asks, and
