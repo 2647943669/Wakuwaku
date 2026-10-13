@@ -29,15 +29,21 @@
   }
   const isSide = () => state.edge === 'left' || state.edge === 'right'
   const isLight = () => state.look?.mode === 'light'
+  // How a clear strip fills in (taskbarClearWhen), as island.js reads it: as
+  // Mica (the default) or solid, or never.
+  const clearWhen = () => (['solid', 'always'].includes(state.clearWhen) ? state.clearWhen : 'mica')
   // Its ground: the material; clear, while a window is maximized or full
-  // screen on this display (bars.rs fills) it fills in as Mica (the
-  // default) or solid, unless it is to stay clear always (taskbarClearWhen),
-  // as hers does on hers (island.js isFilled).
+  // screen on this display (bars.rs fills) it fills in as Mica or solid,
+  // unless it is to stay clear always, as hers does on hers (island.js isFilled).
   const ground = () => {
     const material = state.material || 'clear'
-    if (material !== 'clear' || !state.filled || state.clearWhen === 'always') return material
-    return state.clearWhen === 'solid' ? 'black' : 'mica'
+    if (material !== 'clear' || !state.filled || clearWhen() === 'always') return material
+    return clearWhen() === 'solid' ? 'black' : 'mica'
   }
+  // Clear, filling in as Mica: its Mica drawn all along, unseen till then,
+  // so that it fades in and out whole as hers does (style.css tb-clear-mica),
+  // not its tint at once and the picture after.
+  const clearMica = () => (state.material || 'clear') === 'clear' && clearWhen() === 'mica'
 
   // The Start mark, drawn on the screen's own pixels (as the main taskbar's, island.js drawStartMark).
   let startScale = 0
@@ -167,6 +173,7 @@
     body.classList.toggle('b-side', isSide())
     body.classList.toggle('b-light', isLight())
     for (const m of ['clear', 'black', 'mica']) body.classList.toggle(`b-${m}`, ground() === m)
+    body.classList.toggle('b-clear-mica', clearMica())
     body.classList.toggle('b-start', state.align === 'left')
     const accent = state.look?.accent
     if (accent) body.style.setProperty('--accent', isLight() ? accent.dark || accent.base : accent.light || accent.base)
@@ -183,8 +190,9 @@
   // its tint (style.css) until the picture comes.
   const mica = window.Mica.mount(document.getElementById('mica'))
   function drawMica() {
-    if (ground() === 'mica' && state.paper) mica.set(state.paper, innerWidth, innerHeight, isLight() ? 'light' : 'dark')
-    else if (ground() !== 'mica') mica.clear()
+    const under = ground() === 'mica' || clearMica()
+    if (under && state.paper) mica.set(state.paper, innerWidth, innerHeight, isLight() ? 'light' : 'dark')
+    else if (!under) mica.clear()
   }
 
   // Presses: Start and the clock open what Windows' do, the sliver shows the
