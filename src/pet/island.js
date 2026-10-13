@@ -3315,6 +3315,9 @@
     island.classList.add('look-here')
   })
   island.addEventListener('animationend', e => e.animationName.startsWith('look-here') && island.classList.remove('look-here'))
+  // Risen over an app full screen for the prompts alone: her island and its
+  // panel, not the strip under them (style.css over-full).
+  window.pet.onOverFull(({ on } = {}) => body.classList.toggle('over-full', on === true))
 
   // panel.js tells the island when its prompt changes.
   // The most the settings may be high: above the taskbar, its room (the
