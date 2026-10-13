@@ -29,6 +29,15 @@
   }
   const isSide = () => state.edge === 'left' || state.edge === 'right'
   const isLight = () => state.look?.mode === 'light'
+  // Its ground: the material; clear, while a window is maximized or full
+  // screen on this display (bars.rs fills) it fills in as Mica (the
+  // default) or solid, unless it is to stay clear always (taskbarClearWhen),
+  // as hers does on hers (island.js isFilled).
+  const ground = () => {
+    const material = state.material || 'clear'
+    if (material !== 'clear' || !state.filled || state.clearWhen === 'always') return material
+    return state.clearWhen === 'solid' ? 'black' : 'mica'
+  }
 
   // The Start mark, drawn on the screen's own pixels (as the main taskbar's, island.js drawStartMark).
   let startScale = 0
@@ -157,7 +166,7 @@
     for (const e of ['bottom', 'top', 'left', 'right']) body.classList.toggle(`b-${e}`, e === edge)
     body.classList.toggle('b-side', isSide())
     body.classList.toggle('b-light', isLight())
-    for (const m of ['clear', 'black', 'mica']) body.classList.toggle(`b-${m}`, (state.material || 'clear') === m)
+    for (const m of ['clear', 'black', 'mica']) body.classList.toggle(`b-${m}`, ground() === m)
     body.classList.toggle('b-start', state.align === 'left')
     const accent = state.look?.accent
     if (accent) body.style.setProperty('--accent', isLight() ? accent.dark || accent.base : accent.light || accent.base)
@@ -174,8 +183,8 @@
   // its tint (style.css) until the picture comes.
   const mica = window.Mica.mount(document.getElementById('mica'))
   function drawMica() {
-    if (state.material === 'mica' && state.paper) mica.set(state.paper, innerWidth, innerHeight, isLight() ? 'light' : 'dark')
-    else if (state.material !== 'mica') mica.clear()
+    if (ground() === 'mica' && state.paper) mica.set(state.paper, innerWidth, innerHeight, isLight() ? 'light' : 'dark')
+    else if (ground() !== 'mica') mica.clear()
   }
 
   // Presses: Start and the clock open what Windows' do, the sliver shows the

@@ -20,6 +20,8 @@ body {
   align-items: center;
   box-sizing: border-box;
   padding: 0 0 0 4px;
+  /* Clear filling in as solid, and back (bar.js ground), a short fade as hers. */
+  transition: background-color 0.3s ease;
 }
 
 /* The ground, by material: black (the line along its inner edge), Mica
