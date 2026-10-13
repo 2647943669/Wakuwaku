@@ -24,7 +24,7 @@ pub struct Keys {
     pub caps: bool,
 }
 
-// The clear taskbar (taskbar.rs fills_strip): a window maximized on the strip's display.
+// The clear taskbar (taskbar.rs fills_display): a window maximized on its display.
 pub use imp::maximized;
 
 #[cfg(windows)]

@@ -269,8 +269,8 @@ mod imp {
     const EVENT_SYSTEM_FOREGROUND: u32 = 0x0003;
     // What changes the buttons: a window made, shown, hidden, gone (0x8001
     // to 0x8003), cloaked or not (another desktop), brought to the front,
-    // minimized or restored; moved or sized, for one over the strip's
-    // display or no longer (fills_strip; on_event lets only those through).
+    // minimized or restored; moved or sized, for one over a display or no
+    // longer (fills_display; on_event lets only those through).
     // Not renamed (0x800C): that event comes for every object of every
     // program (a hundred a second, nearly all thrown away here, 2026-10-11);
     // a window's title changing comes by the shell hook (HSHELL_REDRAW).
@@ -377,8 +377,9 @@ mod imp {
     static LOOK_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     // Windows' Start menu open, as told to the page last (start_seen).
     static START_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    // The windows over the strip's display, as last seen moving (on_event).
-    static OVER: Mutex<Vec<isize>> = Mutex::new(Vec::new());
+    // The windows over a display (fills_display), each with that display, as
+    // last seen moving (on_event).
+    static OVER: Mutex<Vec<(isize, isize)>> = Mutex::new(Vec::new());
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -864,14 +865,12 @@ mod imp {
         fn GetWindowRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
     }
 
-    // Over the strip's display: maximized on it, or full screen there (all
-    // of the display, as a game or a video has it; one minimized lies far
-    // off), in front or behind another. The clear strip is not clear then
-    // (island.js isFilled).
-    fn fills_strip(hwnd: isize) -> bool {
-        if !on_strip(hwnd) {
-            return false;
-        }
+    // Over its display: maximized on it, or full screen there (all of the
+    // display, as a game or a video has it; one minimized lies far off), in
+    // front or behind another. The clear strip on that display is not clear
+    // then: hers (island.js isFilled, by "max", on the strip's display) and
+    // those on the others (bar.js, by "fills" and the window's "mon").
+    fn fills_display(hwnd: isize) -> bool {
         if tasks::maximized(hwnd) {
             return true;
         }
@@ -999,13 +998,15 @@ mod imp {
                                 Some(app) if hosted || png.is_empty() => app.clone(),
                                 _ => png,
                             };
+                            let fills = fills_display(t.hwnd);
                             json!({
                                 "id": t.hwnd,
                                 "title": t.title,
                                 "png": png,
                                 "front": t.hwnd == front,
                                 "min": t.min,
-                                "max": fills_strip(t.hwnd),
+                                "max": fills && on_strip(t.hwnd),
+                                "fills": fills,
                                 "flash": flashing.contains(&t.hwnd),
                                 "sessions": marks.get(&t.hwnd).cloned().unwrap_or_default(),
                                 // The display it is on: its button on that display's taskbar (bars.rs).
@@ -1827,20 +1828,22 @@ mod imp {
         if event == EVENT_SYSTEM_FOREGROUND || (event == EVENT_OBJECT_LOCATIONCHANGE && tasks::front() == hwnd as isize) {
             crate::fullscreen::ask();
         }
-        // Moved or sized: only a window over the strip's display, or no
-        // longer, changes the buttons (the strip clear but for one,
-        // island.js); every move of every window comes here.
+        // Moved or sized: only a window over a display, or no longer, or
+        // over another one now, changes the buttons (a clear strip filled
+        // in while one is over its display: hers, island.js; the others',
+        // bar.js); every move of every window comes here.
         if event == EVENT_OBJECT_LOCATIONCHANGE {
             let h = hwnd as isize;
-            let now = fills_strip(h);
+            // SAFETY: a plain query; a gone window gives the nearest display.
+            let now = fills_display(h).then(|| unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) } as isize);
             let mut over = OVER.lock().unwrap();
-            if now == over.contains(&h) {
+            let was = over.iter().find(|(w, _)| *w == h).map(|(_, m)| *m);
+            if now == was {
                 return;
             }
-            if now {
-                over.push(h);
-            } else {
-                over.retain(|z| *z != h);
+            over.retain(|(w, _)| *w != h);
+            if let Some(m) = now {
+                over.push((h, m));
             }
         }
         if event == EVENT_SYSTEM_FOREGROUND {

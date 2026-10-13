@@ -558,10 +558,22 @@ pub fn for_main(sh: &Shared, all: &Value) -> Value {
     }
 }
 
+// A window maximized or full screen on this display, not minimized
+// (taskbar.rs fills_display), whichever taskbar has its button: a clear
+// strip here fills in then, as Mica or solid (taskbarClearWhen), as hers
+// does on hers (island.js isFilled).
+fn fills(all: &Value, mon: Mon) -> bool {
+    all.as_array().into_iter().flatten().flat_map(|a| a["windows"].as_array().into_iter().flatten()).any(|w| {
+        w["fills"].as_bool() == Some(true)
+            && w["min"].as_bool() != Some(true)
+            && w["mon"].as_array().is_some_and(|m| m.iter().filter_map(Value::as_i64).map(|v| v as i32).eq([mon.0, mon.1, mon.2, mon.3]))
+    })
+}
+
 // Each page told what to show, if it changed: the windows on its display,
-// the look of hers (edge, its buttons' alignment, the material, light or
-// dark and the accent, her island's look), her language; the prompts
-// waiting and her sheet, for her capsule.
+// the look of hers (edge, its buttons' alignment, the material and when a
+// clear one fills in, light or dark and the accent, her island's look), her
+// language; the prompts waiting and her sheet, for her capsule.
 pub fn refresh(sh: &Shared) {
     let bars: Vec<(String, Mon, f64, Value, Value)> = BARS.lock().unwrap().iter().filter(|b| b.ready).map(|b| (b.label.clone(), b.mon, b.sf, b.sent.clone(), b.paper.clone())).collect();
     if bars.is_empty() {
@@ -579,6 +591,8 @@ pub fn refresh(sh: &Shared) {
             "edge": edge.word(),
             "align": sh.setting("taskbarAlign"),
             "material": sh.setting("taskbarMaterial"),
+            "clearWhen": sh.setting("taskbarClearWhen"),
+            "filled": fills(&all, mon),
             "look": look,
             "islandLook": sh.setting("islandLook"),
             "lang": sh.lang(),
@@ -626,6 +640,22 @@ mod tests {
         // Only where open (2): the main its own and the pinned; the other its own.
         assert_eq!(ids(&buttons_for(&all, main, true, 2)), vec![("chrome".to_string(), vec![1]), ("notes".to_string(), vec![])]);
         assert_eq!(ids(&buttons_for(&all, other, false, 2)), vec![("chrome".to_string(), vec![2]), ("code".to_string(), vec![3])]);
+    }
+
+    #[test]
+    fn a_strip_fills_in_for_a_window_over_its_own_display() {
+        let main = (0, 0, 2560, 1440);
+        let other = (2560, -149, 2560, 1600);
+        let all = |windows: Value| json!([{ "app": "chrome", "pinned": true, "windows": windows }]);
+        // Maximized on the other display: that one fills in, the main one not.
+        let maxed = all(json!([{ "id": 1, "fills": true, "min": false, "mon": [2560, -149, 2560, 1600] }]));
+        assert!(fills(&maxed, other));
+        assert!(!fills(&maxed, main));
+        // Minimized, or only restored there: neither.
+        assert!(!fills(&all(json!([{ "id": 1, "fills": true, "min": true, "mon": [2560, -149, 2560, 1600] }])), other));
+        assert!(!fills(&all(json!([{ "id": 1, "fills": false, "min": false, "mon": [2560, -149, 2560, 1600] }])), other));
+        // No windows at all (her taskbar not up yet).
+        assert!(!fills(&Value::Null, other));
     }
 
     #[test]
