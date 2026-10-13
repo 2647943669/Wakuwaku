@@ -1172,6 +1172,7 @@ fn main() {
             mail::mail_keep_draft,
             taskbar::taskbar_tray,
             taskbar::taskbar_open,
+            taskbar::taskbar_battery_font,
             taskbar_handoff,
             taskbar::taskbar_tray_rects,
             taskbar::taskbar_window,

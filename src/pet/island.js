@@ -949,15 +949,47 @@
   const volFront = el('span', 'front', '')
   volMark.append(volBack, volFront)
   // The battery after them, as Windows' own taskbar has it on a laptop (none
-  // on a desktop): its level in tenths, Segoe's glyphs for each; while
-  // plugged in, the charging ones; the battery saver on, the saver's.
-  const batMark = el('span', 'fi bat')
+  // on a desktop), in Windows' own battery font (SysBatt Fluent Icons, read
+  // from Windows: taskbar_battery_font) as its taskbar draws it: an outline,
+  // a bolt in it while charging, a plug while plugged in and not charging (a
+  // battery its laptop keeps at 80% too), and over it the level in tenths, in
+  // the fills cut for the bolt or the plug; green while charging, yellow with
+  // the energy saver on, red when critically low. Its percentage beside it as
+  // Windows' "Battery percentage" has it. Without the font (before Windows
+  // 11 has it), Segoe's battery glyphs, one for each tenth.
+  const batMark = el('span', 'bat')
   batMark.hidden = true
+  const batBase = el('span', 'fi base')
+  const batFill = el('span', 'fi fill')
+  const batGlyph = el('span', 'glyph')
+  batGlyph.append(batBase, batFill)
+  const batText = el('span', 'pct')
+  batMark.append(batGlyph, batText)
+  // Windows': each outline; the plain fills for tenths 1 to 10 after the
+  // plain outline, the cut ones for 3 to 10 after the bolt's and the plug's
+  // (1 and 2 do not reach the bolt or the plug, and are the plain ones).
+  const SYSBATT = { plain: 0xf8d0, bolt: 0xf8db, plug: 0xf8e4 }
   const BATTERY = {
     level: ['', '', '', '', '', '', '', '', '', '', ''],
     charging: ['', '', '', '', '', '', '', '', '', '', ''],
     saver: ['', '', '', '', '', '', '', '', '', '', ''],
   }
+  let sysBatt = false
+  let batShown = null
+  window.pet.taskbar
+    .batteryFont()
+    .then(bytes => {
+      // Bytes as they are, or as numbers where the IPC had to send them so.
+      const font = Array.isArray(bytes) ? new Uint8Array(bytes).buffer : bytes
+      if (!(font instanceof ArrayBuffer) || !font.byteLength) return
+      const face = new FontFace('SysBatt Fluent Icons', font)
+      return face.load().then(() => {
+        document.fonts.add(face)
+        sysBatt = true
+        showBattery(batShown)
+      })
+    })
+    .catch(() => {})
   quickBox.append(netMark, volMark, batMark)
   function showNet(kind) {
     netMark.textContent = NET[kind] || NET.other
@@ -971,17 +1003,32 @@
     volBack.hidden = !!muted
     volMark.title = level == null ? '' : muted ? t(lang, 'taskbar.muted') : t(lang, 'taskbar.volume', { n: level })
   }
-  // { percent, plugged, charging, saver, left (s) } (widgets.rs battery_state), or none.
+  // { percent, plugged, charging, saver, critical, left (s), shown } (widgets.rs battery_state), or none.
   function showBattery(b) {
+    batShown = b
     batMark.hidden = !b
     if (!b) return
-    const tenth = Math.max(0, Math.min(10, Math.floor(b.percent / 10)))
-    const glyphs = b.charging || b.plugged ? BATTERY.charging : b.saver ? BATTERY.saver : BATTERY.level
-    batMark.textContent = glyphs[tenth]
     const n = b.percent
+    // In tenths as Windows has them: 96% full, 86% nine, and some left a
+    // tenth (red when critically low); empty at none.
+    const tenth = Math.max(0, Math.min(10, Math.ceil(n / 10)))
+    const plugged = b.plugged || b.charging
+    batMark.classList.toggle('sysbatt', sysBatt)
+    if (sysBatt) {
+      const outline = SYSBATT[b.charging ? 'bolt' : plugged ? 'plug' : 'plain']
+      batBase.textContent = String.fromCharCode(outline)
+      batFill.textContent = !tenth ? '' : String.fromCharCode(outline === SYSBATT.plain || tenth < 3 ? SYSBATT.plain + tenth : outline + tenth - 2)
+    } else {
+      batBase.textContent = (plugged ? BATTERY.charging : b.saver ? BATTERY.saver : BATTERY.level)[tenth]
+      batFill.textContent = ''
+    }
+    // The fill's color, on battery alone but for charging's.
+    batMark.dataset.tint = b.charging ? 'green' : plugged ? '' : b.critical ? 'red' : b.saver ? 'yellow' : ''
+    batText.textContent = `${n}%`
+    batText.hidden = !b.shown
     const left = Number.isFinite(b.left) ? Math.round(b.left / 60) : null
     const time = left == null ? '' : left >= 60 ? t(lang, 'taskbar.hm', { h: Math.floor(left / 60), m: left % 60 }) : t(lang, 'taskbar.m', { m: left })
-    const said = b.charging ? t(lang, 'taskbar.batteryCharging', { n }) : b.plugged ? t(lang, 'taskbar.batteryPlugged', { n }) : time ? t(lang, 'taskbar.batteryLeft', { n, time }) : t(lang, 'taskbar.battery', { n })
+    const said = plugged ? t(lang, 'taskbar.batteryPlugged', { n }) : time ? t(lang, 'taskbar.batteryLeft', { n, time }) : t(lang, 'taskbar.battery', { n })
     batMark.title = b.saver ? `${said}\n${t(lang, 'taskbar.batterySaver')}` : said
   }
   // What is using the microphone, the camera, the location, as Windows'

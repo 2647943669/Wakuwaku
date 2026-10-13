@@ -2663,6 +2663,13 @@ pub fn taskbar_open(what: String) -> bool {
     imp::open(&what)
 }
 
+// Windows' own battery font, for the page to draw the battery as Windows'
+// taskbar does (island.js); empty where Windows has none.
+#[tauri::command]
+pub fn taskbar_battery_font() -> tauri::ipc::Response {
+    tauri::ipc::Response::new(crate::widgets::battery_font())
+}
+
 // A press on a window's button (press: to the front or minimized; close).
 #[tauri::command]
 pub fn taskbar_window(id: i64, what: String) -> bool {
