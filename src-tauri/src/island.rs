@@ -88,6 +88,9 @@ pub struct Island {
     // they close.
     pub temp: bool,
     pub settings_open: bool,
+    // Risen for the prompts waiting (asked from her taskbar on another
+    // display while an app full screen hid it): it goes once they are answered.
+    pub for_asks: bool,
     // Settings asked for before its page was up: the page they open on.
     pending: Option<String>,
     // On the taskbar, her seat along the strip from its start (logical: from
@@ -143,7 +146,7 @@ pub fn is_shown(sh: &Shared) -> bool {
     // Nor while another copy of her holds the taskbar (taskbar.rs waiting).
     let up = if sh.home() == "taskbar" { !sh.is_fullscreen() && !taskbar::waiting() } else { sh.is_visible() };
     let isl = sh.island.lock().unwrap();
-    up || isl.temp || isl.settings_open
+    up || isl.temp || isl.settings_open || isl.for_asks
 }
 
 // Its window's handle, once made (0 before).
@@ -922,6 +925,41 @@ pub fn settings_closed(sh: &Arc<Shared>) {
         apply_visibility(&sh);
         sh.redraw();
     });
+}
+
+// --- The prompts, asked for from another display ---------------------------------------
+
+// Her capsule on another display's taskbar pressed (bars.rs bar_asks): the
+// prompt waiting shown in her island, as a press on hers would (it opens
+// for a prompt by itself, so it is there already): risen should an app
+// full screen have hidden it, kept up until the prompts are answered (as
+// for the settings), raised over any window on top, and the page told to
+// draw the eye to it (island:look-here) on its own display.
+pub fn show_asks(sh: &Arc<Shared>) {
+    let risen = {
+        let up = is_shown(sh);
+        let mut isl = sh.island.lock().unwrap();
+        isl.for_asks |= !up;
+        !up
+    };
+    sh.log(&format!("island: the prompt asked for from another display{}", if risen { " (risen for it)" } else { "" }));
+    if risen {
+        apply_visibility(sh);
+    }
+    // (Not while the settings, locked, are let go under other windows.)
+    let hwnd = hwnd(sh);
+    if hwnd != 0 && TOPMOST.load(Ordering::SeqCst) {
+        crate::tasks::raise_top(hwnd);
+    }
+    let _ = sh.app.emit_to("island", "island:look-here", json!({}));
+}
+
+// The prompts answered: an island risen for them goes.
+pub fn asks_answered(sh: &Arc<Shared>) {
+    let was = std::mem::take(&mut sh.island.lock().unwrap().for_asks);
+    if was {
+        apply_visibility(sh);
+    }
 }
 
 // The settings' two buttons by ✕ (settings.js): locked ("settingsPin"), a

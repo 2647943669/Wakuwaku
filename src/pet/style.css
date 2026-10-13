@@ -4015,3 +4015,27 @@ body.hinting #island[data-view='compact'] .hint-dot {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* The prompt asked for from her capsule on another display's taskbar
+   (island.js onLookHere, bars.rs): a ring in the waiting colour inside the
+   island's edge, twice, so the eye finds it on this display. */
+#island.look-here::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--look, #ffb340);
+  pointer-events: none;
+  animation: look-here 0.8s ease-in-out 2;
+}
+
+@keyframes look-here {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  45% {
+    opacity: 1;
+  }
+}
