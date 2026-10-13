@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::{events, events_codex, island, jump, now_ms, pet, Responder, Shared};
+use crate::{events, events_agy, events_codex, island, jump, now_ms, pet, Responder, Shared};
 
 // Hook events carry whole files (an Edit's PostToolUse has the file before
 // the edit), so this is generous.
@@ -26,9 +26,15 @@ const MAX_BODY: u64 = 16 * 1024 * 1024;
 // holds one this long at most.
 const CODEX_ASK_MS: u64 = 60 * 1000;
 
-// Whether the request comes from Codex's hook (?agent=codex).
-fn is_from_codex(url: &str) -> bool {
-    url.split_once('?').is_some_and(|(_, query)| query.split('&').any(|p| p == "agent=codex"))
+// Which agent's hook the request comes from (?agent=codex, ?agent=agy: handed
+// on by this program, main.rs); none for Claude Code's.
+fn agent_of(url: &str) -> Option<&'static str> {
+    let (_, query) = url.split_once('?')?;
+    query.split('&').find_map(|p| match p {
+        "agent=codex" => Some("codex"),
+        "agent=agy" => Some("agy"),
+        _ => None,
+    })
 }
 
 pub fn serve(sh: Arc<Shared>, server: Server) {
@@ -53,10 +59,10 @@ fn read_json(req: &mut Request) -> Option<Value> {
 
 // The process chain of the session an event comes from, looked up when the
 // session has none yet or a turn begins (it may have been resumed in another
-// process): Codex's hook command brings its own; for Claude Code, it is the
-// process on the other end of this connection.
-fn chain_for(sh: &Shared, req: &Request, event: &Value, is_codex: bool) -> Option<jump::Chain> {
-    if is_codex {
+// process): Codex's and Antigravity's hook command brings its own; for
+// Claude Code, it is the process on the other end of this connection.
+fn chain_for(sh: &Shared, req: &Request, event: &Value, brings_own: bool) -> Option<jump::Chain> {
+    if brings_own {
         let chain = jump::chain_from_json(event.get(jump::CODEX_CHAIN));
         return (!chain.is_empty()).then_some(chain);
     }
@@ -80,18 +86,30 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             if crate::connection::note_connected(true) {
                 sh.redraw();
             }
-            // Codex's events, tagged for the prompts (asks.rs) and read their own way.
-            let is_codex = is_from_codex(req.url());
-            if let (true, Some(fields)) = (is_codex, event.as_object_mut()) {
-                fields.insert("agent".into(), json!("codex"));
-                sh.codex_seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
-            } else {
-                sh.claude_seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+            // Codex's and Antigravity's events, tagged for the prompts (asks.rs)
+            // and read their own way.
+            let agent = agent_of(req.url());
+            if let (Some(agent), Some(fields)) = (agent, event.as_object_mut()) {
+                fields.insert("agent".into(), json!(agent));
             }
-            let msg = if is_codex { events_codex::to_message(&event) } else { events::to_message(&event) };
+            let seen = match agent {
+                Some("codex") => &sh.codex_seen,
+                Some("agy") => &sh.agy_seen,
+                _ => &sh.claude_seen,
+            };
+            seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+            let is_codex = agent == Some("codex");
+            let msg = match agent {
+                Some("codex") => events_codex::to_message(&event),
+                Some("agy") => {
+                    events_agy::with_transcript(&mut event);
+                    events_agy::to_message(&event)
+                }
+                _ => events::to_message(&event),
+            };
             if let Some(mut msg) = msg {
                 // Where the session runs, for going to its window (jump.rs).
-                if let Some(chain) = chain_for(sh, &req, &event, is_codex) {
+                if let Some(chain) = chain_for(sh, &req, &event, agent.is_some()) {
                     msg["chain"] = jump::chain_json(&chain);
                 }
                 sh.apply(&msg);
@@ -202,10 +220,11 @@ mod tests {
 
     #[test]
     fn codex_hooks_say_where_they_come_from() {
-        assert!(is_from_codex("/hook?from=wakuwaku&agent=codex"));
-        assert!(is_from_codex("/hook?agent=codex"));
-        assert!(!is_from_codex("/hook?from=wakuwaku"));
-        assert!(!is_from_codex("/hook?agent=codexx"));
-        assert!(!is_from_codex("/hook"));
+        assert_eq!(agent_of("/hook?from=wakuwaku&agent=codex"), Some("codex"));
+        assert_eq!(agent_of("/hook?agent=codex"), Some("codex"));
+        assert_eq!(agent_of("/hook?from=wakuwaku&agent=agy"), Some("agy"));
+        assert_eq!(agent_of("/hook?from=wakuwaku"), None);
+        assert_eq!(agent_of("/hook?agent=codexx"), None);
+        assert_eq!(agent_of("/hook"), None);
     }
 }

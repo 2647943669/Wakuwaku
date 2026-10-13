@@ -37,6 +37,7 @@ mod connection;
 mod crash;
 mod data;
 mod events;
+mod events_agy;
 mod events_codex;
 mod fetch;
 mod focus;
@@ -114,6 +115,8 @@ pub struct Shared {
     // When the last Codex event came (ms), 0 never: Codex runs its hooks
     // only once the person trusts them.
     pub codex_seen: std::sync::atomic::AtomicU64,
+    // The same for Antigravity's.
+    pub agy_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -256,9 +259,14 @@ impl Shared {
         // The widgets that have something to say: those on take their turns
         // in the island while nothing needs you; any may be on the taskbar.
         now["widgets"] = self.widgets_said();
-        // Neither Claude Code nor Codex connected: the island says so, and
-        // a press on it opens the settings where they are (island.js).
-        now["unconnected"] = json!(!connection::seems_connected());
+        // Nothing connected (Claude Code, Codex, Antigravity): the island
+        // says so, naming those on this computer, and a press on it opens
+        // the settings where they are (island.js).
+        let unconnected = !connection::seems_connected();
+        now["unconnected"] = json!(unconnected);
+        if unconnected {
+            now["tools"] = json!(connection::tools_here());
+        }
         now
     }
 
@@ -1012,6 +1020,40 @@ fn codex_hook(port: u16) {
     }
 }
 
+// Antigravity's hook (connection::AGY_FLAG and the event's name, which its
+// payload does not carry): its answer printed first, whatever comes after
+// (a hook that fails or answers nothing breaks agy's turn: connection.rs),
+// then the event handed to her port with its name and where the session
+// runs (jump.rs), in a moment at most: agy waits on each hook. Its session
+// starting with her not up starts her, as Codex's does.
+fn agy_hook(port: u16, name: &str) {
+    let answer = if name == "Stop" { r#"{"decision":"allow"}"# } else { "{}" };
+    let mut out = std::io::stdout();
+    let _ = out.write_all(answer.as_bytes());
+    let _ = out.flush();
+    let Some(mut event) = read_event() else { return };
+    // Where the session runs only as it starts or a turn begins (it is kept
+    // till then): looking it up is most of a hook's time, and agy waits on
+    // each one.
+    let turn = name == "SessionStart" || (name == "PreInvocation" && event.get("invocationNum").and_then(Value::as_u64) == Some(0));
+    if let Some(fields) = event.as_object_mut() {
+        fields.insert("hook_event_name".into(), json!(name));
+        if turn {
+            fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
+        }
+    }
+    // Connected in a moment or not at all: with her not up, Windows tries a
+    // closed port of its own for 2 s, and agy waited that long on each hook
+    // (a port of hers answers at once).
+    let agent = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_millis(100))).timeout_global(Some(Duration::from_millis(1500))).build().new_agent();
+    match agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=agy")).send_json(&event) {
+        Ok(_) | Err(ureq::Error::StatusCode(_)) => {}
+        // Not if the person quit her (data.rs mark_quit).
+        Err(_) if name == "SessionStart" && data::may_start(&data::folder()) => start_detached(),
+        Err(_) => {}
+    }
+}
+
 fn main() {
     // Her exe again, as the taskbar's guard (shell.rs): it waits for her to
     // end, and gives Windows' taskbar back if she could not; and sees
@@ -1027,6 +1069,9 @@ fn main() {
     }
     if std::env::args().any(|a| a == connection::CODEX_FLAG) {
         return codex_hook(port);
+    }
+    if let Some(at) = args.iter().position(|a| a == connection::AGY_FLAG) {
+        return agy_hook(port, args.get(at + 1).map_or("", String::as_str));
     }
 
     // Started by an update: the one it replaces waited for, so this one
@@ -1091,6 +1136,7 @@ fn main() {
             settings::settings_wallpaper,
             settings::settings_hooks,
             settings::settings_codex_hooks,
+            settings::settings_agy_hooks,
             settings::settings_fetch,
             settings::settings_gallery,
             settings::settings_open_site,
@@ -1160,6 +1206,7 @@ fn main() {
                 quiet: AtomicBool::new(false),
                 greeted: AtomicBool::new(false),
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
+                agy_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),

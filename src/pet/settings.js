@@ -23,7 +23,7 @@
     return
   }
 
-  const { t } = window.I18n
+  const { t, list: nameList } = window.I18n
   const { CLIPS } = window.Sprite
   const Status = window.Status
   const Widgets = window.Widgets
@@ -251,7 +251,7 @@
           .map(x => {
             const name = Status.nameOf(x, detailed)
             const what = [
-              x.agent === 'codex' ? 'Codex' : '',
+              x.agent === 'codex' ? 'Codex' : x.agent === 'agy' ? 'Antigravity' : '',
               Status.status(lang, x, { detailed, withClock: false }),
               detailed && x.name && x.project !== name ? x.project : '',
               detailed && Status.isEnding(x) ? x.reply : '',
@@ -262,7 +262,7 @@
             return `<div class="r${x.jump ? ' jumps' : ''}"${jump} title="${esc(tip)}"><span class="dot" style="background:${COLOR[x.mood] || COLOR.idle}"></span><div class="grow"><div class="ellip">${esc(name || '—')}</div><div class="d ellip">${esc(what.join(' · '))}</div></div>${clockTag(x)}</div>`
           })
           .join('')
-      : `<div class="note">${esc(T('home.noSessions'))}</div>`
+      : `<div class="note">${esc(T('home.noSessions', { list: toolNames(toolsHere()) }))}</div>`
     // Her out on the desktop; and her home, the next one at a press.
     const tiles = [
       ['show', 'eye', T('s.outTile'), !snap.hidden && s.out === true],
@@ -1621,8 +1621,27 @@
         : codexIn
           ? `<button class="pbtn" data-codex="install">${esc(T(codex.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-codex="remove">${esc(T('settings.remove'))}</button>`
           : ''
+    // Antigravity: hooks in ~/.gemini/config/hooks.json, a block of ours.
+    const agy = snap.agy || {}
+    const agyConn = agyIn() && agy.seen ? 's.agyConnOk' : agyIn() ? 's.agyConnWait' : 's.agyConnNone'
+    const agyColor = agyConn === 's.agyConnOk' ? COLOR.done : agyIn() ? COLOR.waiting : COLOR.idle
+    const agyWord = {
+      ok: 'settings.hooksOk',
+      missing: 'settings.hooksMissing',
+      stale: 'settings.hooksStale',
+      off: 's.agyOff',
+      unreadable: 's.agyUnreadable',
+      absent: 's.agyAbsent',
+    }[agy.hooks]
+    const agyButtons =
+      agy.hooks === 'missing'
+        ? `<button class="pbtn" data-agy="install">${esc(T('settings.install'))}</button>`
+        : ['ok', 'stale', 'off'].includes(agy.hooks)
+          ? `<button class="pbtn" data-agy="install">${esc(T(agy.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-agy="remove">${esc(T('settings.remove'))}</button>`
+          : ''
     return `${sec(T('s.status'))}<div class="grp"><div class="r"><span class="dot" style="background:${isOk ? COLOR.done : snap.connection === 'both' ? COLOR.waiting : COLOR.idle}"></span><div class="grow">${esc(T(conn))}</div><span class="d">${esc(T('s.sessionsOnline', { n: sessions }))}</span></div>
-        <div class="r"><span class="dot" style="background:${codexColor}"></span><div class="grow">${esc(T(codexConn))}</div></div></div>
+        <div class="r"><span class="dot" style="background:${codexColor}"></span><div class="grow">${esc(T(codexConn))}</div></div>
+        <div class="r"><span class="dot" style="background:${agyColor}"></span><div class="grow">${esc(T(agyConn))}</div></div></div>
       ${sec(T('home.plugin'))}<div class="grp"><div class="note">${esc(T('home.pluginWhy'))}</div>
         ${snap.pluginCommands.map(c => `<div class="r"><span class="cmd mono">${esc(c)}</span><button class="pbtn" data-copy="${esc(c)}">${esc(T('home.copy'))}</button></div>`).join('')}
       </div>
@@ -1636,6 +1655,10 @@
         ${codex.hooks === 'upgradable' ? `<div class="note">${esc(T('s.codexUpgradeNote'))}</div>` : ''}
         ${codexIn && codex.hooks !== 'upgradable' && !codex.seen ? `<div class="note">${esc(T('s.codexTrust'))}</div>` : ''}
         ${codex.hooks !== 'absent' && !codex.async ? `<div class="note">${esc(T('s.codexOld', { version: codex.version }))}</div>` : ''}
+      </div>
+      ${sec(T('s.agy'))}<div class="grp">
+        <div class="note">${esc(T('s.agyWhy'))}</div>
+        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(agyWord))}</div><div class="d mono ellip">${esc(agy.file || '')}</div></div>${agyButtons}</div>
       </div>
       ${sec(T('settings.about'))}<div class="grp">
         <div class="r"><div class="grow">${esc(T('s.version', { version: snap.version }))}</div><span class="link" data-site="repo">${esc(T('home.repo'))} ›</span></div>
@@ -1707,34 +1730,43 @@
       </div>`
   }
 
-  // --- The welcome: Claude Code and Codex connected, at the top of General -------
+  // --- The welcome: Claude Code, Codex and Antigravity connected, at the top of General ---
   // While nothing is connected, and on the first open after one is (until
-  // she is set up, onboarded): a card with a button for each of the two on
-  // this computer, as equals (whichever one uses, or both), each button
-  // turning into how that one stands; under them what each still needs, or
-  // why it could not be written; what the buttons write; Claude Code's
-  // plugin the other way. Connected (a session of either seen), one row.
-  // Managing the connections stays in the page's Connect part.
+  // she is set up, onboarded): a card with a button for each of the three on
+  // this computer, as equals (whichever one uses, or all), in a row: its name,
+  // and under it how it stands; under them what each still needs, or why it
+  // could not be written; what the buttons write; Claude Code's plugin the
+  // other way. Connected (a session of any seen), one row, and the others on
+  // this computer offered under it. Managing the connections stays in the
+  // page's Connect part. (The appearance session's spec, 2026-10-13.)
   let connecting = ''
-  // Why each could not be written: { error, kind } (locked, invalid, other).
+  // Why each could not be written: { error, kind } (locked, invalid, path, other).
   const failed = {}
   let pluginOpen = false
   // "Not now" said (connectHintOff: the welcome's 以后再说, the island's
   // 不用提醒) and nothing connected: the welcome folded to one row at the
   // page's top; opened again by its 去连接, or by asking for connecting.
   let welcomeOpen = false
-  const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !claudeIn() && !codexIn()
-  const TOOL = { claude: 'Claude Code', codex: 'Codex' }
+  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' }
+  // What each one's buttons say they are for (the handlers below).
+  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy' }
   const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
   const claudeIn = () => snap.connection !== 'none'
-  const showWelcome = () => (!claudeIn() && !codexIn()) || !snap.settings.onboarded
+  const agyIn = () => ['ok', 'stale'].includes(snap.agy?.hooks)
+  const anyIn = () => claudeIn() || codexIn() || agyIn()
+  const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !anyIn()
+  const showWelcome = () => !anyIn() || !snap.settings.onboarded
 
-  // The ones on this computer: Codex by its folder, Claude Code by its own
-  // (or connected). Neither found: both (it cannot be told).
+  // The ones on this computer, in this order: Claude Code by its folder (or
+  // connected), Codex and Antigravity by theirs. None found: all (it cannot
+  // be told).
   function toolsHere() {
-    const here = ['claude', 'codex'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap.codex?.hooks !== 'absent'))
-    return here.length ? here : ['claude', 'codex']
+    const here = ['claude', 'codex', 'agy'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap[tool]?.hooks !== 'absent'))
+    return here.length ? here : ['claude', 'codex', 'agy']
   }
+
+  // Their names as one says them: 「A、B 或 C」, "A, B and C".
+  const toolNames = (tools, kind = 'or') => nameList(lang, tools.map(tool => TOOL[tool]), kind)
 
   // How one stands: busy, seen (a session's event came, or the plugin in),
   // set (written, no session yet: Codex's to be trusted first), failed, none.
@@ -1742,6 +1774,7 @@
     if (connecting === tool) return 'busy'
     if (tool === 'claude' && claudeIn()) return snap.claudeSeen || snap.connection === 'plugin' ? 'seen' : 'set'
     if (tool === 'codex' && codexIn()) return snap.codex?.seen ? 'seen' : 'set'
+    if (tool === 'agy' && agyIn()) return snap.agy?.seen ? 'seen' : 'set'
     return failed[tool] ? 'failed' : 'none'
   }
 
@@ -1753,59 +1786,67 @@
     return winMode() === 'light' ? `--acc:${pair.dark || '#0067c0'};--acc-ink:#fff` : `--acc:${pair.light || '#4cc2ff'};--acc-ink:#000`
   }
 
-  // One's button, as it stands: the done and the one-step-left ones say so
-  // in green or amber, and do nothing.
+  // One's button: its name, and under it how it stands; set up and
+  // connected in green, a step left (Codex) in amber, and those do nothing.
   function toolButton(tool) {
-    const name = TOOL[tool]
-    const act = tool === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'
     const state = toolState(tool)
-    if (state === 'busy') return `<button class="wc-main" disabled><span class="spin"></span>${esc(T('wc.busy'))}</button>`
-    if (state === 'seen') return `<button class="wc-main done" disabled>${esc(T('wc.on', { name }))}</button>`
-    if (state === 'set') return tool === 'claude' ? `<button class="wc-main done" disabled>${esc(T('wc.claudeSet'))}</button>` : `<button class="wc-main warn" disabled>${esc(T('wc.codexSet'))}</button>`
-    return `<button class="wc-main" ${act}>${esc(T(state === 'failed' ? 'wc.retry' : 'wc.go', { name }))}</button>`
+    const name = `<span class="wt-name">${esc(TOOL[tool])}</span>`
+    const line = text => `<span class="wt-state">${text}</span>`
+    if (state === 'busy') return `<button class="wc-tool" disabled>${name}${line(`<span class="spin"></span>${esc(T('wc.busy'))}`)}</button>`
+    if (state === 'seen') return `<button class="wc-tool done" disabled>${name}${line(esc(T('wc.toolOn')))}</button>`
+    if (state === 'set' && tool === 'codex') return `<button class="wc-tool warn" disabled>${name}${line(esc(T('wc.toolStep')))}</button>`
+    if (state === 'set') return `<button class="wc-tool done" disabled>${name}${line(esc(T('wc.toolSet')))}</button>`
+    return `<button class="wc-tool" ${ACT[tool]}="install">${name}${line(esc(T(state === 'failed' ? 'wc.toolRetry' : 'wc.toolGo')))}</button>`
   }
 
-  // Under the buttons: what each still needs (Claude Code where it was
-  // written, and undone), or why it could not be written.
+  // The file each one's hooks go in, as read (~ for the home folder), and its name.
+  const toolFile = tool =>
+    ({ claude: snap.settingsShown || snap.settingsFile, codex: snap.codex?.fileShown || snap.codex?.file, agy: snap.agy?.fileShown || snap.agy?.file })[tool] || ''
+
+  // Under the buttons: what each still needs (Claude Code and Antigravity
+  // where it was written, and undone), or why it could not be written.
   function toolNote(tool) {
     const state = toolState(tool)
     const mono = text => `<span class="mono">${esc(text)}</span>`
-    if (tool === 'claude' && state === 'set') {
-      const file = snap.settingsShown || snap.settingsFile || ''
-      const where = snap.settingsBackup ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
-      return `<div class="wc-tnote"><div>${T('wc.claudeLeft')}</div><div class="wc-where">${where}<span class="link" data-hooks="remove">${esc(T('wc.undo'))}</span></div></div>`
+    const file = toolFile(tool)
+    if ((tool === 'claude' || tool === 'agy') && state === 'set') {
+      const backed = tool === 'claude' ? snap.settingsBackup : snap.agy?.backup
+      const where = backed ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
+      return `<div class="wc-tnote"><div>${T(tool === 'claude' ? 'wc.claudeLeft' : 'wc.agyLeft')}</div><div class="wc-where">${where}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
     }
     if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
     if (state !== 'failed') return ''
     const { error, kind } = failed[tool]
-    const file = tool === 'claude' ? snap.settingsShown || snap.settingsFile || '' : snap.codex?.fileShown || snap.codex?.file || ''
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
     return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: tool === 'claude' ? 'settings.json' : 'hooks.json' }))}</b></div>
-        <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
+        <div class="mono">${esc(file)}</div>${kind === 'path' ? '' : `<div>${esc(error)}</div>`}<div>${esc(way)}</div></div>`
   }
 
   function welcomeBlock() {
-    if (welcomeFolded()) {
-      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.idle}"></span><div class="grow d">${esc(T('hint.title'))}</div><span class="link" data-welcome-open>${esc(T('hint.go'))} ›</span></div></div>`
-    }
     const tools = toolsHere()
-    const seen = tools.filter(tool => toolState(tool) === 'seen')
-    // Connected: one row, this once; one on this computer not written yet
-    // keeps a button at its end.
-    if (seen.length) {
-      const what = seen.length === 2 ? T('wc.onBoth') : T('wc.on', { name: TOOL[seen[0]] })
-      const other = tools.find(tool => ['none', 'failed', 'busy'].includes(toolState(tool)))
-      const busy = other && toolState(other) === 'busy'
-      const more = other ? `<button class="pbtn" ${other === 'claude' ? 'data-hooks="install"' : 'data-codex="install"'} ${busy ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('wc.connect', { name: TOOL[other] }))}</button>` : ''
-      const sessions = (snap.sessions || []).length
-      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow"><div>${esc(what)}</div>
-          <div class="d">${esc(T(sessions === 1 ? 'wc.online1' : 'wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div></div>${more}</div></div>`
+    if (welcomeFolded()) {
+      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.idle}"></span><div class="grow d">${esc(T('wc.notYet', { list: toolNames(tools) }))}</div><span class="link" data-welcome-open>${esc(T('hint.go'))} ›</span></div></div>`
     }
-    const both = tools.length === 2
+    const seen = tools.filter(tool => toolState(tool) === 'seen')
+    // Connected: one row, this once; the others on this computer not
+    // written yet offered under it.
+    if (seen.length) {
+      const others = tools.filter(tool => ['none', 'failed', 'busy'].includes(toolState(tool)))
+      const offer = tool =>
+        toolState(tool) === 'busy'
+          ? `<button class="pbtn sm" disabled><span class="spin"></span>${esc(TOOL[tool])}</button>`
+          : `<button class="pbtn sm" ${ACT[tool]}="install">${esc(TOOL[tool])}</button>`
+      const more = others.length ? `<div class="wc-also"><span class="d">${esc(T('wc.also'))}</span>${others.map(offer).join('')}</div>` : ''
+      const sessions = (snap.sessions || []).length
+      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow"><div>${esc(T('wc.onList', { list: toolNames(seen, 'and') }))}</div>
+          <div class="d">${esc(T(sessions === 1 ? 'wc.online1' : 'wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div>${more}</div></div></div>`
+    }
+    const many = tools.length > 1
     const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
     const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
-    const title = both ? T('wc.titleBoth') : T('wc.title', { name: TOOL[tools[0]] })
-    const safe = [both ? 'wc.safeBoth' : tools[0] === 'claude' ? 'wc.safeClaude' : 'wc.safeCodex', 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
+    // A nudge to approve only where one of them can ask (Antigravity can not).
+    const sub = `${T('wc.sub1')}${tools.some(tool => tool !== 'agy') ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
+    const safe = [many ? 'wc.safeMany' : `wc.safe.${tools[0]}`, 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
     // Claude Code's plugin, while it is here and not written.
     const commands = snap.pluginCommands || []
     const plugBody = pluginOpen
@@ -1818,10 +1859,11 @@
         <button class="wc-plug${pluginOpen ? ' open' : ''}" data-plugin-toggle><span class="fi chev">\uE76C</span><span>${esc(T('wc.plug'))}</span><span class="d">${esc(T('wc.plugNote'))}</span></button>${plugBody}`
         : ''
     // Nothing connected: "not now" at its foot (as the island's 不用提醒).
-    const later = !claudeIn() && !codexIn() ? `<button class="wc-later" data-welcome-later>${esc(T('wc.later'))}</button>` : ''
+    const later = !anyIn() ? `<button class="wc-later" data-welcome-later>${esc(T('wc.later'))}</button>` : ''
     return `<div class="wcard" style="${accentButton()}">
-        <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(title)}</div><div class="wc-sub">${esc(T('wc.sub'))}${both ? esc(T('wc.subBoth')) : ''}</div></div></div>
-        <div class="wc-btns${both ? ' two' : ''}">${tools.map(toolButton).join('')}</div>${tools.map(toolNote).join('')}
+        <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(T('wc.title', { list: toolNames(tools) }))}</div><div class="wc-sub">${esc(sub)}</div></div></div>
+        <div class="wc-lead">${esc(T(many ? 'wc.leadMany' : 'wc.leadOne'))}</div>
+        <div class="wc-tools" style="grid-template-columns:repeat(${tools.length},minmax(0,1fr))">${tools.map(toolButton).join('')}</div>${tools.map(toolNote).join('')}
         <div class="wc-safe">${safe}</div>${plugin}${later}
       </div>`
   }
@@ -2289,6 +2331,22 @@
           failed.claude = { error: got.error || '', kind: got.kind || 'other' }
           pluginOpen = true
         }
+        draw()
+        relayout()
+      })
+    }
+    const agyHooks = at('[data-agy]')
+    if (agyHooks) {
+      const action = agyHooks.dataset.agy
+      if (action === 'install') {
+        connecting = 'agy'
+        delete failed.agy
+        draw()
+      }
+      return window.pet.settings.agyHooks(action).then(got => {
+        connecting = ''
+        snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.agy = { error: got.error || '', kind: got.kind || 'other' }
         draw()
         relayout()
       })

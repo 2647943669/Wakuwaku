@@ -1886,36 +1886,106 @@
   background: rgba(0, 103, 192, 0.08);
 }
 
-#island-settings .wc-btns {
+/* The tools' buttons, as many in a row as there are (settings.js sets the
+   columns): each its name over how it stands, the accent filled; set up and
+   connected a green ring, a step left (Codex) an amber one. */
+#island-settings .wc-lead {
+  margin-bottom: -4px;
+  color: var(--g5);
+  font-size: 12px;
+}
+
+#island-settings .wc-tools {
   display: grid;
   gap: 8px;
 }
 
-#island-settings .wc-btns.two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-#island-settings .wc-btns .wc-main {
+#island-settings .wc-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
   min-width: 0;
-  padding: 0 10px;
-  white-space: nowrap;
+  height: 50px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: inherit;
+  cursor: pointer;
 }
 
-#island-settings .wc-main.done:disabled,
-#island-settings .wc-main.warn:disabled {
-  opacity: 1;
-  background: transparent;
+#island-settings .wc-tool:hover {
+  filter: brightness(1.08);
+}
+
+#island-settings .wt-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+#island-settings .wt-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+#island-settings .wt-state .spin {
+  width: 11px;
+  height: 11px;
+}
+
+#island-settings .wc-tool:disabled {
+  cursor: default;
   filter: none;
 }
 
-#island-settings .wc-main.done {
-  color: var(--wc-ok);
+#island-settings .wc-tool.done:disabled,
+#island-settings .wc-tool.warn:disabled {
+  background: transparent;
+  color: var(--fg);
+}
+
+#island-settings .wc-tool.done {
   box-shadow: inset 0 0 0 1.5px var(--wc-ok);
 }
 
-#island-settings .wc-main.warn {
-  color: var(--wc-warn);
+#island-settings .wc-tool.warn {
   box-shadow: inset 0 0 0 1.5px var(--wc-warn);
+}
+
+#island-settings .wc-tool.done .wt-state {
+  color: var(--wc-ok);
+  opacity: 1;
+}
+
+#island-settings .wc-tool.warn .wt-state {
+  color: var(--wc-warn);
+  opacity: 1;
+}
+
+/* Connected: the others on this computer, offered under the row. */
+#island-settings .wc-also {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+#island-settings .wc-also .pbtn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 #island-settings .wc-tnote {
@@ -1975,28 +2045,6 @@
   color: var(--g5);
 }
 
-#island-settings .wc-main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 36px;
-  border: 0;
-  border-radius: 18px;
-  background: var(--acc);
-  color: var(--acc-ink);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-#island-settings .wc-main:hover {
-  filter: brightness(1.08);
-}
-
-#island-settings .wc-main:disabled,
 #island-settings .pbtn:disabled:has(.spin) {
   opacity: 0.75;
   cursor: default;

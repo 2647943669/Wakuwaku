@@ -40,7 +40,7 @@
 // room, the window grows first and the island after; when it needs less, the
 // island shrinks first and the window after.
 ;(function () {
-  const { t, render: say } = window.I18n
+  const { t, render: say, list: nameList } = window.I18n
   const { CELL_W, CELL_H, CLIPS, MOOD_CLIP } = window.Sprite
   const Status = window.Status
   const Widgets = window.Widgets
@@ -342,6 +342,9 @@
   // and no "don't remind me" (connectHintOff): the island asks for it, and a
   // press on it opens the settings' welcome, where they are connected.
   const isHinting = () => now.unconnected === true && config.connectHintOff !== true
+  // The tools on this computer by name, as one says them (main.rs: with
+  // unconnected): 「Claude Code、Codex 或 Antigravity」.
+  const toolNames = () => nameList(lang, now.tools || ['Claude Code', 'Codex', 'Antigravity'], 'or')
   // Windows' accent as it reads on the island's ground: its light shade on a
   // dark one, its dark shade on a light one.
   const hintAccent = () => (isLight() ? look.accent?.dark || '#0067c0' : look.accent?.light || '#4cc2ff')
@@ -437,11 +440,11 @@
       compact.replaceChildren(...(isHome() ? [] : [stillHer(TASK_HEAD)]), ...(hint || at ? [clock] : []))
       compact.classList.toggle('bare', !(hint || at))
       compact.style.width = ''
-      compact.title = hint ? t(lang, 'hint.tip') : Status.brief(lang, now, { detailed: isDetailed() })
+      compact.title = hint ? t(lang, 'hint.tip', { list: toolNames() }) : Status.brief(lang, now, { detailed: isDetailed() })
       compactWidth = sideCapsule(hint || !!at).width
       return
     }
-    compact.title = isHinting() ? t(lang, 'hint.tip') : ''
+    compact.title = isHinting() ? t(lang, 'hint.tip', { list: toolNames() }) : ''
     // Three places: her at the left (her portrait while she is out), a line
     // of words cut short in the middle, a short value at its right (the
     // clock, a widget's number), with "+N" for the other sessions before it;
@@ -564,7 +567,7 @@
       const card = el('span', 'me')
       const top = el('span', 'head')
       top.append(el('span', 'title', t(lang, 'hint.title')))
-      card.append(top, el('span', 'sub', t(lang, 'hint.sub')))
+      card.append(top, el('span', 'sub', t(lang, 'hint.sub', { list: toolNames() })))
       const go = el('span', 'hintgo')
       go.dataset.connect = '1'
       go.append(el('span', '', t(lang, 'hint.go')), el('span', '', '›'))

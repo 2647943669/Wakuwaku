@@ -23,7 +23,7 @@ pub fn snapshot(sh: &Shared) -> Value {
     let (win_light, win_accent) = crate::wallpaper::look();
     // Whether either is connected, as the island tells it (connection.rs).
     let conn = connection::connection(sh.port);
-    if connection::note_connected(conn != "none" || connection::is_codex_connected()) {
+    if connection::note_connected(conn != "none" || connection::is_codex_connected() || connection::is_agy_connected()) {
         sh.redraw();
     }
     json!({
@@ -58,6 +58,15 @@ pub fn snapshot(sh: &Shared) -> Value {
             "seen": sh.codex_seen.load(Ordering::SeqCst) > 0,
             "version": connection::codex_version().map(|(a, b, c)| format!("{a}.{b}.{c}")),
             "async": connection::codex_runs_async(),
+        },
+        // Antigravity's hooks.json (connection.rs), the same, and whether it
+        // is on this computer at all (agy's folder, or its 2.0 app's).
+        "agy": {
+            "hooks": connection::agy_hooks_status(),
+            "file": connection::agy_hooks_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::agy_hooks_file()),
+            "backup": connection::backup_of(&connection::agy_hooks_file()).exists(),
+            "seen": sh.agy_seen.load(Ordering::SeqCst) > 0,
         },
         "loginAtStart": connection::is_open_at_login(),
         // Windows' own mode and accent colour (settings_win_look sets them).
@@ -395,6 +404,16 @@ pub async fn settings_hooks(app: AppHandle, action: String) -> Value {
 pub async fn settings_codex_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_codex_hooks(&action, &i18n::t(sh.lang(), "codex.waiting")) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+    }
+}
+
+// install, remove: Antigravity's hooks.json.
+#[tauri::command]
+pub async fn settings_agy_hooks(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_agy_hooks(&action) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
         Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }

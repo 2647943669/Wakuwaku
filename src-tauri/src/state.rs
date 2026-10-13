@@ -30,7 +30,9 @@ use crate::jump;
 const MOODS: [&str; 6] = ["idle", "working", "waiting", "done", "review", "error"];
 const REACTS: [&str; 3] = ["wave", "jump", "failed"];
 // apply_patch: every edit Codex makes.
-const EDIT_TOOLS: [&str; 5] = ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch"];
+// Claude Code's, Codex's (apply_patch), Antigravity's (write_to_file, as
+// agy 1.3.4 names it; its edits by the names it keeps from Windsurf).
+const EDIT_TOOLS: [&str; 8] = ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "write_to_file", "replace_file_content", "multi_replace_file_content"];
 // The turns remembered as ended, per session.
 const ENDED_TURNS: usize = 4;
 

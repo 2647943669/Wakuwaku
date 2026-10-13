@@ -127,6 +127,14 @@ Codex 的 hook 只能是命令：运行一次 `wakuwaku.exe --wakuwaku-codex-hoo
 
 Codex 桌面版里装过的宠物（`~/.codex/pets`）格式相同，会直接出现在「宠物」页里，标着「来自 Codex」。
 
+### 4. 连上 Antigravity（可选）
+
+支持 Google 的 Antigravity：`agy` 命令行和 Antigravity 2.0 桌面版。在「连接」页的 Antigravity 一栏点「安装」，会在 `~/.gemini/config/hooks.json` 里加一个名为 `wakuwaku` 的块（先备份，移除时只删这一块，别的工具的 hook 不动）。然后新开一个 agy 会话（Antigravity 2.0 要重开一次）就行。独立的 Antigravity IDE 目前不运行 hook，连不上。
+
+和 Claude Code 的区别：Antigravity 没有「等你批准」的事件，所以她能跟着开始、干活、调用工具、做完和出错，但提醒不了批准，也不能在她这里确认。
+
+Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：程序的路径里有空格时，用它的 8.3 短路径写进去；连短路径也没有（有的盘关掉了短文件名），就装不上，把程序放到路径没有空格的文件夹即可。agy 每一步都会等 hook 跑完，大约 0.1–0.2 秒。
+
 ### 从源码运行
 
 需要 Rust（Windows 上用 MSVC 工具链）。目前只在 Windows 11 上测试过；Tauri 也能在 macOS / Linux 上构建，但全屏检测、开机自启、系统通知和按键状态只写了 Windows 的。

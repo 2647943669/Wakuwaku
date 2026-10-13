@@ -129,6 +129,14 @@ Codex hooks can only be commands: `wakuwaku.exe --wakuwaku-codex-hook` runs once
 
 The pets in Codex's desktop app (`~/.codex/pets`) use the same format, so they show up on the Pets page, marked From Codex.
 
+### 4. Connect Antigravity (optional)
+
+Google's Antigravity is supported: the `agy` CLI and the Antigravity 2.0 desktop app. Click Install in the Antigravity part of the Connect page. It adds a block named `wakuwaku` to `~/.gemini/config/hooks.json` (backed up first; removing takes out only that block, other tools' hooks stay). Then open a new agy session (or restart Antigravity 2.0). The standalone Antigravity IDE runs no hooks for now, so it can't be connected.
+
+How it differs from Claude Code: Antigravity has no "needs your approval" event, so she follows its sessions starting, working, using tools, finishing and failing, but can't remind you to approve, and you can't approve on her.
+
+Antigravity hooks can only be commands, run by `cmd` without reading quotes: if the app's path has a space, its 8.3 short path is written instead; with no short path either (some drives have short names turned off), installing fails, and moving the app to a folder with no spaces in its path fixes it. agy waits for the hook at each step, about 0.1–0.2 s.
+
 ### From source
 
 Needs Rust (the MSVC toolchain on Windows). Only tested on Windows 11 so far; Tauri builds on macOS and Linux too, but full-screen detection, start at login, notifications and the button state are written for Windows only.

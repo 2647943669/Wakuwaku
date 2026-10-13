@@ -3,7 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { test } = require('node:test')
 
-const { STRINGS, t, render, detectLang } = require('../src/shared/i18n')
+const { STRINGS, t, render, detectLang, list } = require('../src/shared/i18n')
 
 test('Chinese and English have the same keys, and the same {placeholders}', () => {
   const zh = Object.keys(STRINGS.zh).sort()
@@ -58,4 +58,13 @@ test('render takes plain text or a key', () => {
 test('any Chinese locale is Chinese; anything else English', () => {
   for (const l of ['zh', 'zh-CN', 'zh-TW', 'zh_CN.UTF-8', 'zh-Hans-CN']) assert.equal(detectLang(l), 'zh', l)
   for (const l of ['en', 'en-US', 'ja-JP', 'C.UTF-8', '', undefined]) assert.equal(detectLang(l), 'en', String(l))
+})
+
+test('names in a row as one says them', () => {
+  assert.equal(list('zh', ['Claude Code', 'Codex', 'Antigravity']), 'Claude Code、Codex 或 Antigravity')
+  assert.equal(list('zh', ['Claude Code', 'Antigravity'], 'and'), 'Claude Code 和 Antigravity')
+  assert.equal(list('en', ['Claude Code', 'Codex', 'Antigravity'], 'and'), 'Claude Code, Codex and Antigravity')
+  assert.equal(list('en', ['Codex', 'Antigravity']), 'Codex or Antigravity')
+  assert.equal(list('en', ['Codex']), 'Codex')
+  assert.equal(list('zh', []), '')
 })

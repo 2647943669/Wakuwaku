@@ -27,7 +27,7 @@ fn s<'a>(e: &'a Value, key: &str) -> &'a str {
     e.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-fn clip(text: &str, max: usize) -> String {
+pub(crate) fn clip(text: &str, max: usize) -> String {
     let text = text.trim();
     if text.chars().count() <= max {
         return text.to_string();
