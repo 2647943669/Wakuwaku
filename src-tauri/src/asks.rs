@@ -351,12 +351,13 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
     }
 
     // Hand every prompt to the terminal (do not disturb, out of sight).
-    pub fn dismiss_all(&mut self) -> bool {
-        let any = !self.list.is_empty();
+    // How many there were.
+    pub fn dismiss_all(&mut self) -> usize {
+        let n = self.list.len();
         while !self.list.is_empty() {
             self.finish(0, Some(json!({})));
         }
-        any
+        n
     }
 
     // Any other hook event: drop the asks it shows were settled in the terminal.

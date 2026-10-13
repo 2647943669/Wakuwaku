@@ -262,7 +262,7 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     if let Some(out) = out {
         set_out(sh, out);
     }
-    if rest.contains_key("dnd") && rest["dnd"] == true && sh.asks.lock().unwrap().dismiss_all() {
+    if rest.contains_key("dnd") && rest["dnd"] == true && sh.asks.lock().unwrap().dismiss_all() > 0 {
         sh.push_asks();
     }
     let plugins = rest.contains_key("plugins");

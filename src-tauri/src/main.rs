@@ -159,6 +159,16 @@ impl Shared {
         self.screens.lock().unwrap().clone()
     }
 
+    // Where a prompt can be answered: her up, or, put away only by an app
+    // full screen on her display, her taskbar still up on another (bars.rs),
+    // whose capsule shows it waiting and brings up her island for it. Else
+    // nobody can answer here, and the terminal has it at once (server.rs,
+    // apply_visibility); it had them even while her capsule on another
+    // display showed (the test session, 2026-10-13).
+    pub fn asks_seen(&self) -> bool {
+        self.is_visible() || (!self.hidden.load(Ordering::SeqCst) && !self.flag("dnd") && self.is_fullscreen() && bars::any_shown())
+    }
+
     pub fn is_visible(&self) -> bool {
         !self.hidden.load(Ordering::SeqCst)
             && !self.flag("dnd")
@@ -535,8 +545,12 @@ impl Shared {
         pet::apply_visibility(self);
         island::apply_visibility(self);
         // Out of sight, nobody can answer here: the terminal has them.
-        if !self.is_visible() && self.asks.lock().unwrap().dismiss_all() {
-            self.push_asks();
+        if !self.asks_seen() {
+            let n = self.asks.lock().unwrap().dismiss_all();
+            if n > 0 {
+                self.log(&format!("{n} prompt(s) handed to the terminal: out of sight"));
+                self.push_asks();
+            }
         }
         tray::refresh(self);
     }
