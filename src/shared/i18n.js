@@ -295,7 +295,7 @@
       's.displays.main': '主屏',
       's.displays.all': '所有屏幕',
       's.displaysAllNote': '每块屏都换成她的任务栏；副屏上放开始、那块屏的窗口和时钟。窗口按钮怎么分，跟 Windows 设置里「在多个显示器上显示任务栏应用」走。',
-      's.displaysMainNote': '她的任务栏只在主屏，其他屏幕用 Windows 自己的任务栏。',
+      's.displaysMainNote': '她的任务栏只在主屏，其他屏幕不显示任务栏，Windows 自己的也不显示。',
       's.displaysOne': '现在只接了一块屏幕',
       // Her capsule on another display's taskbar while a prompt waits (bar.js).
       'bar.approve': '在等你批准 · {n}',
@@ -1127,7 +1127,7 @@
       's.displays.main': 'Main display',
       's.displays.all': 'All displays',
       's.displaysAllNote': "Every display gets her taskbar; the others carry Start, their own windows and the clock. Which windows show where follows Windows' 'Show my taskbar apps on' setting.",
-      's.displaysMainNote': "Her taskbar only on the main display; the others keep Windows' own.",
+      's.displaysMainNote': "Her taskbar only on the main display; the others have no taskbar, Windows' own included.",
       's.displaysOne': 'Only one display is connected',
       'bar.approve': 'Waiting for your approval · {n}',
       'bar.answer': 'Waiting for your answer · {n}',

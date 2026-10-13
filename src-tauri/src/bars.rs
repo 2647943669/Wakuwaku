@@ -7,7 +7,8 @@
 // start of each, "waiting for your approval · N", a press showing it in her
 // island. Which windows show on which follows Windows' own setting for
 // taskbars on several displays (MMTaskbarMode). The main display only (the
-// default): Windows' own taskbar on the others (shell.rs home_display).
+// default): no taskbar on the others at all, Windows' own put away there too
+// (shell.rs rehide), and their work areas whole (keep_work).
 // Not while her home is the island, nor while her taskbar is not up; an
 // app full screen on a display hides that display's alone.
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -46,8 +47,8 @@ struct Bar {
 
 static BARS: Mutex<Vec<Bar>> = Mutex::new(Vec::new());
 static NEXT: AtomicU32 = AtomicU32::new(1);
-// Whether the others had hers when last looked (Windows' own put away on them).
-static ALL_ON: Mutex<Option<bool>> = Mutex::new(None);
+// The displays without a strip of hers whose work area was last made whole, and when (keep_work).
+static BARE_AT: Mutex<Vec<(Mon, Instant)>> = Mutex::new(Vec::new());
 
 // Her taskbar wanted on every display: her home the taskbar, and set so.
 pub fn wanted(sh: &Shared) -> bool {
@@ -59,9 +60,7 @@ fn window(sh: &Shared, label: &str) -> Option<WebviewWindow> {
 }
 
 // Made or taken away as the displays and her settings say: one for each
-// display but hers, while her taskbar is up. Windows' own taskbar put away
-// on every display while they are (none of them left without one), on hers
-// alone otherwise.
+// display but hers, while her taskbar is up.
 pub fn sync(sh: &Arc<Shared>) {
     let up = taskbar::is_up();
     let all = wanted(sh) && up;
@@ -100,16 +99,6 @@ pub fn sync(sh: &Arc<Shared>) {
         // A list open over one gone goes with it.
         send_pop(sh);
     }
-    // Windows' own on the others: put away while hers are there, shown again
-    // once they are not.
-    if up {
-        let mut was = ALL_ON.lock().unwrap();
-        if *was != Some(all) {
-            *was = Some(all);
-            crate::shell::home_display(if all { None } else { home });
-            crate::shell::rehide();
-        }
-    }
 }
 
 // Every one of them gone (quitting, another home): their app bars given back first.
@@ -119,7 +108,6 @@ pub fn close_all(sh: &Shared) {
     for g in all {
         close(sh, g);
     }
-    *ALL_ON.lock().unwrap() = None;
 }
 
 // One going: what closing it needs, taken out of the list first.
@@ -185,24 +173,58 @@ pub fn keep_work(sh: &Shared) {
         let moved = if ok { appbar::refit_maximized(work, to) } else { 0 };
         sh.log(&format!("bars: {label}'s display's work area {work:?} reaches into its strip {strip:?}: made {to:?} ({ok}), {moved} maximized window(s) laid on it anew"));
     }
+    keep_bare(sh, now);
+}
+
+// The displays without a strip of hers (her taskbar on the main display
+// alone, or one not made yet): no taskbar there at all, Windows' own put
+// away there too (shell.rs rehide), so the band it keeps along the foot
+// while it keeps its room (her strip along the bottom) is taken back, the
+// work area the whole display, and the windows maximized there laid on
+// it. With hers on the main display alone, the second showed Windows' own
+// (the user, 2026-10-13: whosever it is, none is to show there). At most
+// every two seconds a display; Windows' own given its room back as it
+// shows again (shell.rs rooms_back).
+fn keep_bare(sh: &Shared, now: Instant) {
+    let home = island::display(sh);
+    let with_bars: Vec<Mon> = BARS.lock().unwrap().iter().map(|b| b.mon).collect();
+    for a in sh.screens().areas {
+        if Some(a.mon) == home || with_bars.contains(&a.mon) {
+            continue;
+        }
+        let foot = a.mon.1 + a.mon.3;
+        let Some(work) = appbar::work_of(a.mon) else { continue };
+        let Some(room) = crate::shell::room(a.mon) else { continue };
+        if work.1 + work.3 != room.1 || room.1 >= foot {
+            continue;
+        }
+        {
+            let mut at = BARE_AT.lock().unwrap();
+            if at.iter().any(|(m, t)| *m == a.mon && now.duration_since(*t) < Duration::from_secs(2)) {
+                continue;
+            }
+            at.retain(|(m, _)| *m != a.mon);
+            at.push((a.mon, now));
+        }
+        let to = Edge::Bottom.with_side(work, foot);
+        let ok = appbar::set_work(to);
+        let moved = if ok { appbar::refit_maximized(work, to) } else { 0 };
+        sh.log(&format!("bars: the display {:?} without a strip of hers: Windows' kept room taken back, work area {work:?} made {to:?} ({ok}), {moved} maximized window(s) laid on it anew", a.mon));
+    }
 }
 
 // Given back as it goes: the work area's side where it was set for the
-// strip moved back to the display's edge, along the bottom to where the
-// room Windows' own keeps there starts (shell.rs room), unless it hides
-// itself, keeping none (it is found there still while it slides away: a
-// bottom strip going as hers moved to the left left the band at the foot,
-// the test session, 2026-10-13); left as it is if something else has set
-// it since (Explorer, counting again).
+// strip moved back to the display's edge (Windows' own is put away there
+// too, its room taken back: keep_bare; it is given it again as it shows,
+// shell.rs rooms_back); left as it is if something else has set it since
+// (Explorer, counting again).
 fn give_work(sh: &Shared, label: &str, mon: Mon, edge: Edge, side: i32) {
     let Some(work) = appbar::work_of(mon) else { return };
     if edge.side_of(work) != side {
         return;
     }
-    let hides = appbar::taskbar_state() & appbar::ABS_AUTOHIDE != 0;
     let back = match edge {
-        Edge::Bottom if hides => mon.1 + mon.3,
-        Edge::Bottom => crate::shell::room(mon).map_or(mon.1 + mon.3, |r| r.1),
+        Edge::Bottom => mon.1 + mon.3,
         Edge::Top => mon.1,
         Edge::Left => mon.0,
         Edge::Right => mon.0 + mon.2,
