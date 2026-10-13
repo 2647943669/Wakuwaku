@@ -936,6 +936,15 @@ body {
   color: #e5e5ea;
 }
 
+/* Under the pointer, lit as a session's line is: a press opens its settings. */
+#island-expanded .wrow {
+  transition: background 0.12s ease;
+}
+
+#island-expanded .wrow:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
 #island-expanded .wrow .wl {
   flex: 1;
   min-width: 0;
@@ -2200,6 +2209,10 @@ body {
 .isl-light #island-expanded .others,
 .isl-light #island-expanded .wlist {
   border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.isl-light #island-expanded .wrow:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .isl-light #island .portrait,

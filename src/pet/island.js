@@ -1653,9 +1653,18 @@
     if (what === 'remove') return removeEntry(entry.id)
     closeWidgetPop()
     if (what === 'mail') return window.pet.openSettings('mail')
-    if (entry.type === 'plugin') window.Settings?.openPlugin?.(entry.of)
-    window.pet.openSettings('widgets')
+    openWidgetSettings(entry.type === 'plugin' ? { plugin: entry.of } : { id: entry.of })
   })
+
+  // A widget's place in the settings: the mail page for an inbox's unread,
+  // else its row on the plugins page, its own settings folded out (the
+  // monitor's, a plugin's she runs).
+  function openWidgetSettings(w) {
+    if (w.from === 'mail') return window.pet.openSettings('mail')
+    const key = w.plugin || w.id
+    if (w.plugin || key === 'monitor') window.Settings?.openPlugin?.(key)
+    window.pet.openSettings(key ? `widgets:${key}` : 'widgets')
+  }
   wgPop.addEventListener('contextmenu', e => {
     e.preventDefault()
     e.stopPropagation()
@@ -3334,12 +3343,14 @@
       // removed while it runs).
       if (e.target.closest('[data-hint-off]')) return window.pet.settings.set({ connectHintOff: true })
       if (isHinting() && !e.target.closest('[data-widget]')) return window.pet.openSettings('connect')
-      // A widget in the open island: the one shown from now on.
+      // A widget in the open island: the one shown from now on, and its
+      // settings open (a press that only lit it felt like none: the user,
+      // 2026-10-13).
       const row = view === 'expanded' && e.target.closest('[data-widget]')
       if (row) {
         const at = widgets.findIndex(w => w.id === row.dataset.widget)
         if (at >= 0) turnWidget(at - (widgetAt % widgets.length))
-        return
+        return openWidgetSettings(at >= 0 ? widgets[at] : { id: row.dataset.widget })
       }
       // A word that points somewhere (an agent answered about a letter): there.
       const open = isNudging() && nudge.widget?.open

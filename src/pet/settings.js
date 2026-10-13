@@ -676,7 +676,7 @@
           const color = (r.mine[0] && r.mine[0].color) || (p.on ? '#5e9bff' : COLOR.idle)
           const isOpen = openPlugin === p.id
           const more = p.params.length ? `<button class="pbtn sm" data-pexp="${esc(p.id)}">${esc(T(isOpen ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-          return `<div class="r"><span class="wi" style="color:${esc(color)}">${Widgets.icon(p.icon)}</span><div class="grow"><div class="ellip">${esc(T(`w.ex.${p.id}`))}<span class="d"> ${esc(says)}</span></div><div class="d${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${up}${sw('pl:' + p.id, p.on)}</div>${isOpen ? pluginFields(p) : ''}`
+          return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(color)}">${Widgets.icon(p.icon)}</span><div class="grow"><div class="ellip">${esc(T(`w.ex.${p.id}`))}<span class="d"> ${esc(says)}</span></div><div class="d${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${up}${sw('pl:' + p.id, p.on)}</div>${isOpen ? pluginFields(p) : ''}`
         }
         const w = r.widget
         const { label, value } = Widgets.words(lang, w, s.details !== false)
@@ -687,7 +687,7 @@
         const says = Widgets.partsOf(w) ? ` ${Widgets.partsHTML(w)}` : `<span class="d"> ${esc(value)}</span>`
         const isMonitor = w.id === 'monitor'
         const more = isMonitor ? `<button class="pbtn sm" data-pexp="monitor">${esc(T(openPlugin === 'monitor' ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-        return `<div class="r"><span class="wi" style="color:${esc(w.color || COLOR.idle)}">${Widgets.icon(w.icon)}</span><div class="grow"><div class="ellip">${esc(label)}${says}</div><div class="d">${esc(from)}</div></div>${more}${up}${sw('w:' + w.id, w.on)}</div>${isMonitor && openPlugin === 'monitor' ? monitorFields() : ''}`
+        return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(w.color || COLOR.idle)}">${Widgets.icon(w.icon)}</span><div class="grow"><div class="ellip">${esc(label)}${says}</div><div class="d">${esc(from)}</div></div>${more}${up}${sw('w:' + w.id, w.on)}</div>${isMonitor && openPlugin === 'monitor' ? monitorFields() : ''}`
       })
       .join('')
     const spins = SPINS.map(n => [n, n ? T('settings.seconds', { n }) : T('w.spinOff')])
@@ -2002,7 +2002,7 @@
     // Connecting while the welcome shows: the welcome, at the page's top.
     if (name === 'connect' && showWelcome()) name = 'welcome'
     const go = () => {
-      const at = body.querySelector(`[data-part="${name}"]`)
+      const at = body.querySelector(`[data-part="${CSS.escape(name)}"]`)
       if (at) body.scrollTop += at.getBoundingClientRect().top - body.getBoundingClientRect().top
       return body.scrollTop
     }
@@ -2022,6 +2022,10 @@
     if (next === 'connect') welcomeOpen = true
     if (PART_OF[next]) {
       tab = PART_OF[next]
+      partToShow = next
+    } else if (String(next).startsWith('widgets:')) {
+      // A widget's row on the plugins page (a press on it in the open island).
+      tab = 'widgets'
       partToShow = next
     } else if (TABS.includes(next)) {
       tab = next
