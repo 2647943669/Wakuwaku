@@ -1816,10 +1816,13 @@
     }
     if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
     if (state !== 'failed') return ''
-    const { error, kind } = failed[tool]
+    const { error, kind, folder } = failed[tool]
+    // Her folder's path has a space, which agy can't run: not a file not
+    // written, but where she is (the appearance session's words).
+    if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name: TOOL[tool] }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
     return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: tool === 'claude' ? 'settings.json' : 'hooks.json' }))}</b></div>
-        <div class="mono">${esc(file)}</div>${kind === 'path' ? '' : `<div>${esc(error)}</div>`}<div>${esc(way)}</div></div>`
+        <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
   }
 
   function welcomeBlock() {
@@ -2346,7 +2349,7 @@
       return window.pet.settings.agyHooks(action).then(got => {
         connecting = ''
         snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.agy = { error: got.error || '', kind: got.kind || 'other' }
+        if (action === 'install' && !got.ok) failed.agy = { error: got.error || '', kind: got.kind || 'other', folder: got.folder || '' }
         draw()
         relayout()
       })

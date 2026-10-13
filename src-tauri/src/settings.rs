@@ -415,7 +415,11 @@ pub async fn settings_agy_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_agy_hooks(&action) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
-        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+        // The folder she is in, for one whose path agy can't run (kind "path").
+        Err(error) => {
+            let folder = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.to_string_lossy().into_owned())).unwrap_or_default();
+            json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "folder": folder, "snapshot": snapshot(&sh) })
+        }
     }
 }
 
