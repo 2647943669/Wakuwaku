@@ -141,7 +141,11 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 }
                 return;
             }
-            if sh.asks.lock().unwrap().seen(&event) {
+            let settled = sh.asks.lock().unwrap().seen(&event);
+            if !settled.is_empty() {
+                for id in settled {
+                    sh.log(&format!("prompt {id} settled in the terminal ({})", event["hook_event_name"].as_str().unwrap_or("?")));
+                }
                 sh.push_asks();
             }
             reply(req, 200, json!({}))

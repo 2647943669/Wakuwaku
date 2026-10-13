@@ -782,6 +782,7 @@ async fn pet_answer(app: AppHandle, id: u64, choice: Value) -> bool {
 async fn pet_dismiss(app: AppHandle, id: u64) {
     let sh = shared(&app);
     if sh.asks.lock().unwrap().dismiss(id) {
+        sh.log(&format!("prompt {id} handed to the terminal: asked to on her"));
         sh.push_asks();
     }
 }
@@ -1438,7 +1439,14 @@ fn main() {
                         if changed {
                             ticker.redraw();
                         }
-                        if ticker.asks.lock().unwrap().expire(now) {
+                        // Each one handed over on its own line, as an answer
+                        // is: a prompt let wait its whole time said nothing
+                        // (the test session, 2026-10-13).
+                        let gone = ticker.asks.lock().unwrap().expire(now);
+                        if !gone.is_empty() {
+                            for id in gone {
+                                ticker.log(&format!("prompt {id} handed to the terminal: its time is up"));
+                            }
                             ticker.push_asks();
                         }
                     }
