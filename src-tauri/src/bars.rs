@@ -164,8 +164,7 @@ fn create(sh: &Arc<Shared>, label: String, area: Area, edge: Edge) {
         crate::tasks::no_transitions(hwnd);
         sh.own_window(&win);
         let granted = if hwnd != 0 && appbar::register(hwnd) { appbar::place(hwnd, area.mon, edge, thick) } else { strip };
-        let _ = win.set_size(PhysicalSize::new(granted.2.max(1) as u32, granted.3.max(1) as u32));
-        let _ = win.set_position(PhysicalPosition::new(granted.0, granted.1));
+        lay(&win, granted);
         let gone = {
             let mut bars = BARS.lock().unwrap();
             match bars.iter_mut().find(|b| b.label == label) {
@@ -182,8 +181,26 @@ fn create(sh: &Arc<Shared>, label: String, area: Area, edge: Edge) {
             return close(&sh, &label, hwnd);
         }
         let _ = win.show();
-        sh.log(&format!("bars: {label} on {:?} at {}%, strip {granted:?} along the {edge:?}", area.mon, (area.sf * 100.0).round()));
+        let laid = match (win.outer_position(), win.outer_size()) {
+            (Ok(p), Ok(s)) => format!("({}, {}, {}, {})", p.x, p.y, s.width, s.height),
+            _ => "?".into(),
+        };
+        sh.log(&format!("bars: {label} on {:?} at {}%, strip {granted:?} along the {edge:?}, window {laid}", area.mon, (area.sf * 100.0).round()));
     });
+}
+
+// A window laid on a rect of the screen, in physical px. Its place first:
+// moved to a display of another scale, Windows gives it a size for that one
+// (the scales' ratio over what it had), which the size then replaces; and
+// its place again, should the new size have moved it. Sized first, a strip
+// made on the main display at 125% came out 1.4 times too long and thick on
+// one at 175% (3584 x 118 for 2560 x 84), its clock and the desktop's
+// sliver past the screen's end and its buttons off centre (the test session,
+// 2026-10-13).
+fn lay(win: &WebviewWindow, rect: Mon) {
+    let _ = win.set_position(PhysicalPosition::new(rect.0, rect.1));
+    let _ = win.set_size(PhysicalSize::new(rect.2.max(1) as u32, rect.3.max(1) as u32));
+    let _ = win.set_position(PhysicalPosition::new(rect.0, rect.1));
 }
 
 // Its page has its listeners up: told what to show; its display's
@@ -427,11 +444,7 @@ pub fn barpop_place(app: tauri::AppHandle, w: f64, h: f64) {
     let button = (strip.0 + px(at.0), strip.1 + px(at.1), px(at.2), px(at.3));
     let rect = pop_rect(edge, strip, mon, button, (px(w), px(h)));
     let Some(win) = sh.app.get_webview_window(POP) else { return };
-    // Its place first: moved to a display of another scale, the window is
-    // given a size for that one, which this then replaces.
-    let _ = win.set_position(PhysicalPosition::new(rect.0, rect.1));
-    let _ = win.set_size(PhysicalSize::new(rect.2.max(1) as u32, rect.3.max(1) as u32));
-    let _ = win.set_position(PhysicalPosition::new(rect.0, rect.1));
+    lay(&win, rect);
     let _ = win.show();
     if let Some(p) = OPEN.lock().unwrap().as_mut() {
         p.rect = Some(rect);
