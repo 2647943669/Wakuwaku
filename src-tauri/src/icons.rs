@@ -567,24 +567,26 @@ pub fn strip_taken(data: &Path, strip: (i32, i32, i32, i32), edge: &str, log: im
         let _one = BUSY.lock().unwrap_or_else(|e| e.into_inner());
         let line = with_com(|| {
             let Some(d) = desktop() else { return "icons: no desktop to tell".to_string() };
-            let saved = match kept(data) {
+            // Said late only when kept here (none was before): one just
+            // kept by keep_before has no "after" yet either, and was said
+            // late too (the test session, 2026-10-13); its places were kept.
+            let (saved, late) = match kept(data) {
                 Some(mut saved) => {
                     if let Some(m) = saved.as_object_mut() {
                         m.remove("now");
                     }
-                    saved
+                    (saved, false)
                 }
                 // Not kept before (keep_before): kept now, maybe already for the strip.
-                None => json!({ "auto": d.auto_arrange(), "items": places(&d.items()), "moved": [], "late": true }),
+                None => (json!({ "auto": d.auto_arrange(), "items": places(&d.items()), "moved": [], "late": true }), true),
             };
-            let fresh = saved.get("after").is_none() && saved["moved"].as_array().is_some_and(Vec::is_empty);
             if let Err(e) = keep(data, &saved) {
                 return format!("icons: places not written ({e})");
             }
             format!(
                 "icons: the desktop told of the work area along the {edge} ({}){}",
                 if d.tell(d.top) { "answered" } else { "no answer" },
-                if fresh { "; places kept late, maybe already moved for the strip" } else { "" }
+                if late { "; places kept late, maybe already moved for the strip" } else { "" }
             )
         });
         log(line);
