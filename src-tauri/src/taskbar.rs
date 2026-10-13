@@ -1976,8 +1976,12 @@ mod imp {
         // Along another edge, the band Windows' own leaves along the foot of
         // hers while it keeps its room (it shows on another display:
         // shell.rs rehide): taken back to the display's foot.
-        let band = strip.filter(|_| edge != Edge::Bottom).and_then(|s| band_left(&work, monitor_of(s).0));
-        let lost = fix.is_some() || band.is_some();
+        let mon = strip.filter(|_| edge != Edge::Bottom).map(|s| monitor_of(s).0);
+        let band = mon.and_then(|m| band_left(&work, m));
+        // A side an earlier strip of hers held in, kept by Explorer: given back (appbar.rs stale_sides).
+        let xywh = (work.left, work.top, work.right - work.left, work.bottom - work.top);
+        let stale = strip.zip(mon).map(|(s, m)| edge.stale_sides(xywh, s, m)).unwrap_or_default();
+        let lost = fix.is_some() || band.is_some() || !stale.is_empty();
         let ticks = TICKS.load(Ordering::SeqCst);
         if !lost {
             LOST_SINCE.store(0, Ordering::SeqCst);
@@ -1996,6 +2000,10 @@ mod imp {
             if let Some(foot) = band {
                 log(&format!("work area ({}, {}, {}, {}) stops at Windows' kept room, the strip along the {edge:?}: its foot set to {foot}", work.left, work.top, work.right, work.bottom));
                 set_work_side(Edge::Bottom, foot);
+            }
+            for (side, at) in stale {
+                log(&format!("work area ({}, {}, {}, {}) held in along the {side:?} as by a strip of hers before, the strip along the {edge:?}: that side set to {at}", work.left, work.top, work.right, work.bottom));
+                set_work_side(side, at);
             }
         }
         // Hers on the other displays keep theirs clear of their strips too (bars.rs).

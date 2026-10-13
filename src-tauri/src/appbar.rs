@@ -79,6 +79,25 @@ impl Edge {
         }
     }
 
+    // The work area's sides other than this edge's (and the bottom, the
+    // room Windows' own keeps: taskbar.rs band_left) held in from the
+    // display by as much as the strip is thick: a strip of hers along that
+    // edge before, which Explorer, counting app bars again, kept (from the
+    // right to the left, her taskbar on the main display alone, the right's
+    // 60 px stayed: the test session, 2026-10-13). Each with the display's
+    // side to give back. None along the bottom.
+    pub fn stale_sides(self, work: (i32, i32, i32, i32), strip: (i32, i32, i32, i32), mon: (i32, i32, i32, i32)) -> Vec<(Edge, i32)> {
+        if self == Edge::Bottom {
+            return Vec::new();
+        }
+        let thick = if self.is_side() { strip.2 } else { strip.3 };
+        [Edge::Top, Edge::Left, Edge::Right]
+            .into_iter()
+            .filter(|&e| e != self && (e.side_of(work) - e.side_of(mon)).abs() == thick)
+            .map(|e| (e, e.side_of(mon)))
+            .collect()
+    }
+
     // A rect with its side along this edge moved to `side`.
     pub fn with_side(self, r: (i32, i32, i32, i32), side: i32) -> (i32, i32, i32, i32) {
         let (l, t, rt, b) = (r.0, r.1, r.0 + r.2, r.1 + r.3);
@@ -348,5 +367,22 @@ mod edge_tests {
         assert_eq!(Edge::Top.with_side(mon, Edge::Top.inner(Edge::Top.strip(mon, 84))), (2560, -65, 2560, 1516));
         assert_eq!(Edge::Right.with_side(mon, Edge::Right.inner(Edge::Right.strip(mon, 84))), (2560, -149, 2476, 1600));
         assert_eq!(Edge::Right.side_of(mon), 5120);
+    }
+
+    #[test]
+    fn a_side_an_earlier_strip_held_in_is_given_back() {
+        // The main display at 125%, her strip along the left (60 px); Explorer
+        // kept the right's 60 px from when it was along the right.
+        let mon = (0, 0, 2560, 1440);
+        let left = Edge::Left.strip(mon, 60);
+        assert_eq!(Edge::Left.stale_sides((60, 0, 2440, 1440), left, mon), vec![(Edge::Right, 2560)]);
+        // Only the strip's own side held in: nothing else to give back.
+        assert!(Edge::Left.stale_sides((60, 0, 2500, 1440), left, mon).is_empty());
+        // Another bar's side of another thickness is not hers: left be.
+        assert!(Edge::Left.stale_sides((60, 0, 2400, 1440), left, mon).is_empty());
+        // Along the top, the left's 60 px kept from before.
+        assert_eq!(Edge::Top.stale_sides((60, 60, 2500, 1380), Edge::Top.strip(mon, 60), mon), vec![(Edge::Left, 0)]);
+        // Along the bottom, none (the room there is Windows' own).
+        assert!(Edge::Bottom.stale_sides((60, 0, 2500, 1380), Edge::Bottom.strip(mon, 60), mon).is_empty());
     }
 }
