@@ -371,6 +371,9 @@
     return node
   }
 
+  // The portraits' clock (playPortraits).
+  let portraitTimer = null
+
   // Her in the island's line while she is out on the desktop (her own
   // element went with her): a round portrait, her mood's first frame, ringed
   // in its colour. The face stands in only when there is no pet at all.
@@ -386,6 +389,7 @@
     sheetImage(sheet, spriteUrl)
     showFrame(sheet, CLIPS[clip].row, frameNow(CLIPS[clip]))
     node.append(sheet)
+    playPortraits()
     return node
   }
 
@@ -394,13 +398,24 @@
   const frameNow = clip => Math.floor(Date.now() / clip.ms) % clip.frames
 
   // Her portraits while she is out play her mood's clip (not while quiet).
-  setInterval(() => {
-    if (!isOn() || document.hidden || quiet) return
-    for (const sheet of document.querySelectorAll('.still-her .sheet[data-clip]')) {
-      const clip = CLIPS[sheet.dataset.clip]
-      if (clip) showFrame(sheet, clip.row, frameNow(clip))
-    }
-  }, 60)
+  // Its timer runs only while there are any to play, started as one is
+  // drawn or the quiet ends: it woke 17 times a second all day for none
+  // (#14).
+  function playPortraits() {
+    if (portraitTimer) return
+    portraitTimer = setInterval(() => {
+      const sheets = document.querySelectorAll('.still-her .sheet[data-clip]')
+      if (!sheets.length || !isOn() || document.hidden || quiet) {
+        clearInterval(portraitTimer)
+        portraitTimer = null
+        return
+      }
+      for (const sheet of sheets) {
+        const clip = CLIPS[sheet.dataset.clip]
+        if (clip) showFrame(sheet, clip.row, frameNow(clip))
+      }
+    }, 60)
+  }
 
   // The sheet (the film) behind a cell-sized box, moved to the frame's cell
   // by a transform on its own layer (style.css .film): a frame costs no
@@ -3289,6 +3304,7 @@
     quiet = on === true
     herClip = null
     animateHer()
+    playPortraits()
   })
 
   // A hello, or something to fix: the island opens to say it, and she waves.

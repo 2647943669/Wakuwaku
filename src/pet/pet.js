@@ -138,11 +138,23 @@ function frame() {
 }
 
 // Draw now and plan the next frame; called again on anything that changes her.
+// Not while her page is put away with her window (she is home: pet.rs):
+// drawn again as it shows.
 function kick() {
   clearTimeout(frameTimer)
+  if (document.hidden) return
   const wait = frame()
   frameTimer = setTimeout(kick, Math.max(16, Math.ceil(wait)))
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopIdle()
+    return clearTimeout(frameTimer)
+  }
+  kick()
+  scheduleIdle()
+})
 
 // --- Bubble -------------------------------------------------------------------
 
@@ -216,12 +228,13 @@ let glanceTimer
 
 function scheduleIdle() {
   clearTimeout(idleTimer)
-  if (now.mood !== 'idle' || isIsland()) return
+  if (now.mood !== 'idle' || isIsland() || document.hidden) return
   idleTimer = setTimeout(idleAct, 12000 + Math.random() * 18000)
 }
 
+// Free for a walk or a glance: at rest, someone about, and she out to be seen.
 function isFree() {
-  return now.mood === 'idle' && !quiet && !reaction && !walking && !dragged && !(looking && performance.now() < looking.until)
+  return now.mood === 'idle' && !quiet && !document.hidden && !reaction && !walking && !dragged && !(looking && performance.now() < looking.until)
 }
 
 async function idleAct() {

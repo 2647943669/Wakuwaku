@@ -41,6 +41,8 @@ src-tauri/
     connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json（安装 / 移除 / 状态）、开机自启
     fetch.rs              codex-pets.net：解析地址、下载宠物、图库
     fullscreen.rs         别的程序是否全屏（user32）
+    power.rs              省电：后台线程一直、整个进程和 WebView2 的进程在静默时交给效率核（EcoQoS），静默时页面内存设为低；多久没碰键盘鼠标
+    gpu.rs                她那块屏由哪块显卡输出（D3DKMT），WebView2 就在那块上渲染
     focus.rs              前台窗口：设置拿走键盘前记下，收起时还回去
     jump.rs               点会话就到它的窗口：会话的进程链、找窗口、叫到前面、桌面版的会话链接
     widgets.rs            岛上的插件（第一层）：脚本发来的、内置的（今天、今天的 token、监控），什么时候冒头
@@ -447,8 +449,32 @@ Codex pet v2 图集为 1536×2288，8 列 × 11 行，每格 192×208。v1 是 1
 
 CPU 主要花在 GPU 进程和渲染进程上，两边几乎一样（页面是同一个）。Windows 上 WebView2 本身就是 Chromium，所以内存和 CPU 跟 Electron 持平，省下来的是安装包体积。
 
+### 省下来的（#13、#14）
+
+- **她回家后桌宠的页面也收起来**（`pet.rs` 的 `hide_window`）：只藏窗口时，WebView2 仍当页面可见（`document.hidden` 为假），`pet.js` 照样按节拍画她、闲逛时还请 Rust 挪一个看不见的窗口；桌宠窗口又关了后台节流。现在连 WebView 一起藏（`Webview::hide`，即 `SetIsVisible(false)`），窗口建好时页面也先藏起来；`pet.js` 在 `document.hidden` 时不画、不闲逛，显示时整份状态（含 `quiet`）随 `pet:update` 补上。
+- **轮询改成等待**：任务栏键盘线程（`keys_loop`）的小睡和监控线程都改成条件变量，有事（要停、按了输入法按钮、静默开始或结束、设置改了）才叫醒；岛上她的头像那个 60 ms 的定时器只在有头像要播时才开。
+- **静默时**：WebView2 的浏览器、GPU、渲染和工具进程也设 EcoQoS（只动执行速度那一位，Chromium 自己设的计时器精度保留），各页面的内存目标设为低（`SetMemoryUsageTargetLevel`），回来时设回；任务栏线程每 2 秒才做一轮自愈检查（每轮约 10 次唤醒）。
+- **线程和进程**：Tauri 的异步运行时只开 2 个工作线程（默认每个逻辑核一个）；网络服务并进浏览器进程（`NetworkServiceInProcess2`），少一个进程、约 40 MB；存储服务已经没有对应开关，仍是单独的进程。
+- **显卡**：WebView2 默认在 Windows 给它的「省电」显卡（核显）上渲染，不管她的屏是哪块显卡输出；她那块屏在独显上时，每一帧都要从核显拷到独显，核显忙（比如 Chrome 在放视频）时她的动画就掉帧。现在启动时用 `D3DKMTOpenAdapterFromGdiDisplayName` 查出她那块屏（家所在的屏，启动时是主屏）的显卡，确认它能渲染（远程桌面的虚拟显示器、间接显示器不算），用 `--use-adapter-luid=<高位>,<低位>`（十进制）交给 WebView2；屏在核显上就用核显，不会为她叫醒独显。只在启动时定，换屏、插拔显示器后要重启她才跟着变。
+- **没改**：任务栏线程钩着「位置变了」（`EVENT_OBJECT_LOCATIONCHANGE`），鼠标指针每动一下都会叫醒它（装了 1000 Hz 鼠标时每秒上千次，回调第一行就丢掉），只按进程过滤也躲不开（指针的事件算在指针下面那个程序头上）。换成轮询的话，窗口最大化时条带变实、前台窗口全屏时让开都会晚最多半秒，所以留着。
+
+在 Intel Core Ultra 9 386H + RTX 5090 Laptop 上实测（调试模式，有会话在跑，没人碰键盘鼠标）：
+
+| | 改之前 | 改之后 |
+| --- | --- | --- |
+| 有人在、不碰她：整树 CPU | 60.1 ms/s | 48.4 ms/s |
+| 有人在、不碰她：唤醒 | 849 次/秒 | 697 次/秒 |
+| 隐藏的桌宠页面 5 秒画了几帧 | 11 | 0 |
+| 主进程线程数 | 51 | 37 |
+| 静默：唤醒 | 301 次/秒 | 159 次/秒 |
+| 静默：工作集 | 549 MB | 171 MB |
+| 渲染所在的显卡 | 核显（屏在独显上，#13 测的） | 独显（输出她那块屏的） |
+
 ## 踩过的坑
 
+- **藏窗口不等于藏页面**：`WebviewWindow::hide` 只藏窗口，WebView2 照样当页面可见，定时器和动画都在跑；要连 WebView 一起藏（`win.as_ref().hide()`，即 `SetIsVisible(false)`），`document.hidden` 才是真。
+- **线程的 EcoQoS 是第 3 类**：`SetThreadInformation` 的 `ThreadPowerThrottling` 是 3（0、1、2 是内存优先级、绝对优先级、动态代码策略）；写成 2 时调用因为大小不对失败（ERROR_BAD_LENGTH），返回值没人看，她的线程一直都不是 EcoQoS。
+- **`--use-adapter-luid` 的格式**：Chromium（`ui/gl/gl_display.cc`）读的是 `<高位>,<低位>`，都按十进制；读不出来 GPU 进程就起不来。
 - **右键菜单一闪就没**：muda 弹菜单前调用 `SetForegroundWindow`，不能获得焦点的窗口做不到，菜单立刻关掉。弹菜单前临时让窗口可获得焦点（`main.rs` 的 `pet_menu`）。
 - **页面的 CSP**：精灵图走 `http://asset.localhost`，IPC 走 `http://ipc.localhost`，图库图片来自 `https://codex-pets.net`，都要在 `index.html` 的 CSP 里放行；否则 IPC 会退回 postMessage，图也加载不出来。
 - **监听要先注册好**：`listen()` 本身也是一次 IPC，是异步的。bridge 等所有监听注册完再发 `pet_ready`，Rust 收到后才开始推状态。

@@ -31,6 +31,8 @@ png = "0.17"
 base64 = "0.22"
 # The SHA-256 of an update downloaded (updates.rs); already in the tree, under Tauri.
 sha2 = "0.10"
+# Tauri's async runtime made with fewer threads (main.rs); already in the tree, under Tauri.
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [features]
 default = ["custom-protocol"]

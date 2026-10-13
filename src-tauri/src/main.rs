@@ -44,6 +44,7 @@ mod events_codex;
 mod fetch;
 mod focus;
 mod fullscreen;
+mod gpu;
 mod i18n;
 mod icons;
 mod island;
@@ -189,8 +190,16 @@ impl Shared {
         let quiet = after > 0 && power::idle_ms() >= after;
         if self.quiet.swap(quiet, Ordering::SeqCst) != quiet {
             let eco = power::process_eco(quiet);
-            self.log(&format!("quiet: {quiet} (efficiency mode set: {eco})"));
+            // WebView2's processes, where her pages' work is, with her; and
+            // their memory (#14).
+            let webview_eco = power::webview_eco(quiet);
+            let windows = self.app.webview_windows();
+            for window in windows.values() {
+                power::webview_memory(window, quiet);
+            }
+            self.log(&format!("quiet: {quiet} (efficiency mode set: {eco}; for {webview_eco} of WebView2's processes; memory {} for {} pages)", if quiet { "low" } else { "normal" }, windows.len()));
             self.to_pages("pet:quiet", json!({ "on": quiet }));
+            wake_monitor();
             if !quiet {
                 taskbar::wake();
             }
@@ -484,10 +493,14 @@ impl Shared {
         let Value::Object(patch) = patch else { return };
         let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge", "taskbarDisplays"].iter().any(|k| patch.contains_key(*k));
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
+        let touches_monitor = ["monitor", "widgetsOff"].iter().any(|k| patch.contains_key(*k));
         {
             let mut settings = self.settings.lock().unwrap();
             settings.extend(patch);
             data::save(&self.dir, &settings);
+        }
+        if touches_monitor {
+            wake_monitor();
         }
         self.redraw();
         tray::refresh_menu(self);
@@ -878,6 +891,16 @@ pub fn jump_to(sh: &Shared, id: &str) -> bool {
     went
 }
 
+// The monitor's thread woken from its wait (setup): its settings changed
+// (Shared::change), the quiet began or ended (Shared::check_quiet).
+static MONITOR_WAKE: (Mutex<bool>, std::sync::Condvar) = (Mutex::new(false), std::sync::Condvar::new());
+
+fn wake_monitor() {
+    let (woken, cv) = &MONITOR_WAKE;
+    *woken.lock().unwrap() = true;
+    cv.notify_one();
+}
+
 // Nobody at the keyboard or mouse this long: quiet (Shared::check_quiet).
 // WAKUWAKU_QUIET_AFTER_MS, for a test that cannot wait; 0 never.
 pub const QUIET_AFTER_MS: u64 = 90_000;
@@ -888,9 +911,31 @@ fn quiet_after_ms() -> u64 {
 }
 
 // What WebView2 is started with: wry's own (its Office and PDF parts and
-// SmartScreen off), and her two pages in one renderer process, not one
-// each (same origin, same show; the second was 90 MB and its own idle).
-pub const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --renderer-process-limit=1";
+// SmartScreen off); her two pages in one renderer process, not one each
+// (same origin, same show; the second was 90 MB and its own idle); the
+// network service in its browser process, not a process of its own (#14;
+// the storage service's process has no such switch any more: it stays);
+// and rendering on the graphics card that drives her display
+// (gpu.rs, #13). WebView2 takes them once, for all her windows (another
+// set refused): worked out as the first is made, her home's display then
+// the primary one. WAKUWAKU_BROWSER_ARGS, more of them (to try one).
+pub fn browser_args(sh: &Shared) -> &'static str {
+    static ARGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ARGS.get_or_init(|| {
+        let mut args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --renderer-process-limit=1".to_string();
+        match island::display(sh).and_then(gpu::switch_for) {
+            Some((switch, display)) => {
+                sh.log(&format!("webview: rendering on the card driving {display} ({switch})"));
+                args = format!("{args} {switch}");
+            }
+            None => sh.log("webview: its card left to Chromium (her display's card not told, or it renders nothing)"),
+        }
+        if let Ok(more) = std::env::var("WAKUWAKU_BROWSER_ARGS") {
+            args = format!("{args} {more}");
+        }
+        args
+    })
+}
 
 // Where WebView2 keeps its own files for her pages: in her data folder
 // (portable, as the rest), not Windows' shared place for the app id. Two
@@ -1111,6 +1156,12 @@ fn main() {
         shell::spawn_guard(&dir.join("taskbar.json"));
     }
 
+    // Tauri's async commands on two threads: its own runtime starts one for
+    // each logical processor, nearly all of them idle all day (31 of 32,
+    // #14). Kept for as long as she runs.
+    let runtime = Box::leak(Box::new(tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("a runtime")));
+    tauri::async_runtime::set(runtime.handle().clone());
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             pet_ready,
@@ -1317,21 +1368,23 @@ fn main() {
             });
 
             // The monitor: the parts that are on, every so many seconds (its
-            // setting, 1 to 10), while it is on; looked at again within a
-            // quarter second when it is turned on or its pace changes.
+            // setting, 1 to 10), while it is on; read again at once when it
+            // is turned on, its pace changes or the quiet does (woken by
+            // Shared::change and check_quiet: it looked four times a second
+            // whether they had, #14).
             let monitored = sh.clone();
             spawn_named("monitor", move || {
                 power::thread_eco();
                 let mut monitor = widgets::Monitor::new();
                 let mut next = std::time::Instant::now();
-                let mut was = (false, 0);
+                let mut was = (false, 0, false);
                 loop {
                     let watching = widgets::Watching::from(&monitored.setting("monitor"));
-                    let on = monitored.is_widget_on("monitor");
-                    if std::time::Instant::now() >= next || (on, watching.every) != was {
-                        was = (on, watching.every);
+                    let (on, quiet) = (monitored.is_widget_on("monitor"), monitored.is_quiet());
+                    if std::time::Instant::now() >= next || (on, watching.every, quiet) != was {
+                        was = (on, watching.every, quiet);
                         // Quiet (nobody looking), every ten seconds at least.
-                        let every = if monitored.is_quiet() { watching.every.max(10) } else { watching.every };
+                        let every = if quiet { watching.every.max(10) } else { watching.every };
                         next = std::time::Instant::now() + Duration::from_secs(every);
                         let words = if on { monitor.read(&watching) } else { None };
                         let changed = {
@@ -1345,7 +1398,12 @@ fn main() {
                             monitored.redraw_widgets();
                         }
                     }
-                    std::thread::sleep(Duration::from_millis(250));
+                    // Off, till it is turned on.
+                    let wait = if on { next.saturating_duration_since(std::time::Instant::now()) } else { Duration::from_secs(3600) };
+                    let (woken, cv) = &MONITOR_WAKE;
+                    let guard = woken.lock().unwrap();
+                    let (mut guard, _) = cv.wait_timeout_while(guard, wait, |w| !*w).unwrap();
+                    *guard = false;
                 }
             });
 
