@@ -1044,8 +1044,12 @@ fn agy_hook(port: u16, name: &str) {
     }
     // Connected in a moment or not at all: with her not up, Windows tries a
     // closed port of its own for 2 s, and agy waited that long on each hook
-    // (a port of hers answers at once).
-    let agent = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_millis(100))).timeout_global(Some(Duration::from_millis(1500))).build().new_agent();
+    // (a port of hers answers at once). Answered in half a second or let go:
+    // she holds her port from her first moment but answers only once she is
+    // set up, a second or two later, and agy waited 1.5 s on each hook
+    // meanwhile (3.8 s more for a session that started her: the test
+    // session); up, a hook takes some 50 ms.
+    let agent = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_millis(100))).timeout_global(Some(Duration::from_millis(500))).build().new_agent();
     match agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=agy")).send_json(&event) {
         Ok(_) | Err(ureq::Error::StatusCode(_)) => {}
         // Not if the person quit her (data.rs mark_quit).
