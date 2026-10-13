@@ -576,7 +576,10 @@ pub fn hold(data: &Path) -> Vec<String> {
         let items = d.items();
         saved["now"] = places(&items);
         match keep(data, &saved) {
-            Ok(()) => vec![format!("icons: {} places held before giving back", items.len())],
+            Ok(()) => {
+                let w = imp::work_area();
+                vec![format!("icons: {} places held before giving back (work area ({}, {}, {}, {}))", items.len(), w.left, w.top, w.right, w.bottom)]
+            }
             Err(e) => vec![format!("icons: places held not written ({e})")],
         }
     })
@@ -613,26 +616,52 @@ pub fn given_back(data: &Path) -> Vec<String> {
                 (None, _) => was.filter(|w| (w.x - i.at.x).abs() < spacing.x && (w.y - i.at.y).abs() < spacing.y),
             }
         };
-        let back = |items: &[Item]| -> (usize, bool) {
-            let moves: Vec<(&Item, Point)> = items.iter().filter_map(|i| target(i).filter(|t| *t != i.at).map(|t| (i, t))).collect();
-            (moves.len(), moves.is_empty() || d.place(&moves))
-        };
-        let (mut n, mut put, mut again) = (0, true, 0);
-        if !auto {
-            (n, put) = back(&items);
-            if n > 0 {
-                // Looked at again: moved since, put back once more.
-                let later = settled(&d, Duration::from_secs(2));
-                (again, _) = back(&later);
+        // Put back, then looked at once the desktop is done; any not where
+        // asked asked again, off by as much the other way, twice at most. In
+        // the real flow the desktop took the places given a strip's width
+        // further than it tells them (60 px, or a place on the grid where it
+        // keeps them to it: 16 became 109; the test session, 2026-10-13), and
+        // put back the same way again it did the same.
+        let wanted: Vec<(String, Point)> = if auto { Vec::new() } else { items.iter().filter_map(|i| target(i).filter(|t| *t != i.at).map(|t| (i.name.clone(), t))).collect() };
+        let mut ask = wanted.clone();
+        let (mut put, mut rounds) = (true, Vec::new());
+        for _ in 0..3 {
+            if ask.is_empty() {
+                break;
+            }
+            let now = d.items();
+            let moves: Vec<(&Item, Point)> = ask.iter().filter_map(|(name, p)| now.iter().find(|i| &i.name == name).map(|i| (i, *p))).collect();
+            put &= d.place(&moves);
+            let after = settled(&d, Duration::from_secs(2));
+            let mut off = Vec::new();
+            for ((name, want), (_, asked)) in wanted.iter().zip(ask.iter_mut()) {
+                if let Some(i) = after.iter().find(|i| &i.name == name) {
+                    let (dx, dy) = (i.at.x - want.x, i.at.y - want.y);
+                    if (dx, dy) != (0, 0) {
+                        off.push(format!("{dx:+},{dy:+}"));
+                        *asked = Point { x: asked.x - dx, y: asked.y - dy };
+                    }
+                }
+            }
+            let done = off.is_empty();
+            rounds.push(if done { "there".to_string() } else { format!("off {}", off.join(" ")) });
+            if done {
+                break;
             }
         }
+        let w = imp::work_area();
         let _ = std::fs::remove_file(file(data));
         vec![format!(
-            "icons: the desktop told the work area is whole again ({}): arranged by itself: {auto}, {n} of {} put back{}{}",
+            "icons: the desktop told the work area is whole again ({}; work area ({}, {}, {}, {})): arranged by itself: {auto}, {} of {} put back{}{}",
             if told { "answered" } else { "no answer" },
+            w.left,
+            w.top,
+            w.right,
+            w.bottom,
+            wanted.len(),
             items.len(),
             if put { "" } else { " (refused)" },
-            if again > 0 { format!(", {again} again after the desktop moved them") } else { String::new() }
+            if rounds.is_empty() { String::new() } else { format!(": {}", rounds.join(", then ")) }
         )]
     })
 }
