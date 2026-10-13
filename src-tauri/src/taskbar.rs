@@ -415,6 +415,16 @@ mod imp {
     // none) for another edge, where an empty band would be left at the
     // bottom (shell.rs keep_room); put away again at once if it is up.
     pub fn set_edge(edge: Edge) {
+        // Back to the bottom from another edge: the desktop's icons where
+        // they are, before Windows' taskbar takes its room back and the
+        // desktop moves them (icons.rs hold).
+        if edge == Edge::Bottom && *EDGE.lock().unwrap() != Edge::Bottom && is_up() {
+            if let Some(sh) = sh() {
+                for line in crate::icons::hold_within(&sh.dir, Duration::from_secs(2)) {
+                    sh.log(&line);
+                }
+            }
+        }
         let was = std::mem::replace(&mut *EDGE.lock().unwrap(), edge);
         shell::keep_room(edge == Edge::Bottom);
         if was != edge && is_up() {
@@ -682,6 +692,19 @@ mod imp {
         if file.exists() {
             sh.log(&format!("taskbar: Windows' given back: {}", shell::restore(&file)));
         }
+        // The desktop's icons as they were (icons.rs), the work area whole
+        // again, not waited for: it takes some seconds, the desktop putting
+        // them back first. Quitting, she is gone before then, and her guard
+        // does it (main.rs). Taken again, the work area is made anew.
+        if crate::icons::file(&sh.dir).exists() {
+            let (dir, log) = (sh.dir.clone(), crate::shared(&sh.app));
+            std::thread::spawn(move || {
+                for line in crate::icons::given_back(&dir) {
+                    log.log(&line);
+                }
+            });
+        }
+        *WORK_EDGE.lock().unwrap() = None;
         *SENT.lock().unwrap() = Value::Null;
         *SENT_WINDOWS.lock().unwrap() = Value::Null;
         *PAPER.lock().unwrap() = Value::Null;
@@ -1336,6 +1359,17 @@ mod imp {
             }
             log(&format!("the strip now along the {edge:?}: work area made ({}, {}, {}, {})", r.left, r.top, r.right, r.bottom));
             set_work_area(r);
+            icons_out(strip, edge);
+        } else if is_up() && was.is_some_and(|w| w != Edge::Bottom) && edge == Edge::Bottom {
+            // Back along the bottom, Windows' room taken again: the desktop's
+            // icons as they were (icons.rs).
+            if let Some(sh) = sh() {
+                std::thread::spawn(move || {
+                    for line in crate::icons::given_back(&sh.dir) {
+                        sh.log(&line);
+                    }
+                });
+            }
         }
         if is_up() {
             systray::place(strip);
@@ -1444,6 +1478,17 @@ mod imp {
         if let Some(sh) = sh() {
             std::thread::spawn(move || crate::island::take_strip_again(&sh));
         }
+    }
+
+    // The desktop's icons out from under the strip, the work area set (icons.rs:
+    // the desktop is told it, as it is not). Off this thread: it is asked
+    // through Explorer, which may be busy.
+    fn icons_out(strip: (i32, i32, i32, i32), edge: Edge) {
+        let Some(sh) = sh() else { return };
+        std::thread::spawn(move || {
+            let log = sh.clone();
+            crate::icons::strip_taken(&sh.dir, strip, edge.word(), move |line| log.log(&line));
+        });
     }
 
     // The work area's side on the strip's edge set where the strip starts,
@@ -1876,6 +1921,9 @@ mod imp {
             LAST_TAKEN.store(ticks, Ordering::SeqCst);
             LOST_SINCE.store(0, Ordering::SeqCst);
             set_work_side(edge, side);
+            if let Some(strip) = strip {
+                icons_out(strip, edge);
+            }
         }
         systray::sweep();
         if systray::keep_first() {
@@ -2514,6 +2562,17 @@ mod tests {
 pub fn recover(sh: &Shared) {
     if crate::shell::recover(&sh.dir.join("taskbar.json")) {
         sh.log("taskbar: Windows' taskbar was left put away: given back");
+    }
+    // The desktop's icons left moved by such a run (icons.rs): as they were,
+    // before this one takes the strip (and keeps their places anew); not
+    // waited for, the start goes on (icons.rs keeps them one at a time).
+    if crate::icons::file(&sh.dir).exists() {
+        let (dir, log) = (sh.dir.clone(), crate::shared(&sh.app));
+        std::thread::spawn(move || {
+            for line in crate::icons::given_back(&dir) {
+                log.log(&line);
+            }
+        });
     }
 }
 

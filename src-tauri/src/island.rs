@@ -305,6 +305,13 @@ fn sync_bar_now(sh: &Shared, keep: bool) {
     // asking goes to the taskbar's window of the tray, on the taskbar's
     // thread, waited for (quitting, the main thread).
     if let Some((_, _, was, _)) = held.filter(|h| Some(h.2) != ask.map(|a| a.2)) {
+        // The desktop's icons where they are, before the work area goes
+        // back under them (icons.rs hold).
+        if was == "taskbar" {
+            for line in crate::icons::hold_within(&sh.dir, std::time::Duration::from_secs(2)) {
+                sh.log(&line);
+            }
+        }
         if registered {
             appbar::remove(hwnd);
         }

@@ -43,6 +43,7 @@ mod fetch;
 mod focus;
 mod fullscreen;
 mod i18n;
+mod icons;
 mod island;
 mod jump;
 mod mail;
@@ -1065,7 +1066,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if let Some((pid, file)) = shell::guard_args(&args) {
         let data = file.parent().map(PathBuf::from).unwrap_or_default();
-        return shell::guard(pid, file, move |code, started| crash::after_exit(&data, pid, code, started));
+        let after = data.clone();
+        shell::guard(pid, file, || drop(icons::hold(&data)), move |code, started| crash::after_exit(&after, pid, code, started));
+        // Her desktop's icons as they were, should she have left them moved (icons.rs).
+        icons::given_back(&data);
+        return;
     }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(47213);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
