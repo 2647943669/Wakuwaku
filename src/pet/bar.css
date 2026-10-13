@@ -21,7 +21,9 @@ body {
   box-sizing: border-box;
   padding: 0 0 0 4px;
   /* Clear filling in as solid, and back (bar.js ground), a short fade as hers. */
-  transition: background-color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 /* The ground, by material: black (the line along its inner edge), Mica
@@ -37,7 +39,8 @@ body {
   display: none;
 }
 
-.b-mica #mica {
+.b-mica #mica,
+.b-clear-mica #mica {
   display: block;
   position: absolute;
   inset: 0;
@@ -51,8 +54,21 @@ body {
   transition: opacity 0.4s ease;
 }
 
-.b-light.b-mica #mica {
+.b-light.b-mica #mica,
+.b-light.b-clear-mica #mica {
   background: #f3f3f3;
+}
+
+/* Clear, filling in as Mica (bar.js clearMica): its layer there all along,
+   unseen, faded in while a window fills this display (b-mica) and out after,
+   as hers (style.css tb-clear-mica). */
+.b-clear-mica #mica {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.b-clear-mica.b-mica #mica {
+  opacity: 1;
 }
 
 .b-mica #bar {
