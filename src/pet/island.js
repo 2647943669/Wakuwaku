@@ -3305,7 +3305,8 @@
 
   // The prompt waiting asked for from her capsule on another display's
   // taskbar (bars.rs): it is open here already; a ring in the waiting
-  // colour goes round the island twice so the eye finds it (style.css look-here).
+  // colour goes round the island twice so the eye finds it (style.css
+  // look-here; held still a moment instead with reduced motion).
   window.pet.onLookHere(() => {
     if (!isAsking()) return
     island.style.setProperty('--look', hue().waiting)
@@ -3313,7 +3314,7 @@
     void island.offsetWidth
     island.classList.add('look-here')
   })
-  island.addEventListener('animationend', e => e.animationName === 'look-here' && island.classList.remove('look-here'))
+  island.addEventListener('animationend', e => e.animationName.startsWith('look-here') && island.classList.remove('look-here'))
 
   // panel.js tells the island when its prompt changes.
   // The most the settings may be high: above the taskbar, its room (the

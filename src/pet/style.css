@@ -4039,3 +4039,21 @@ body.hinting #island[data-view='compact'] .hint-dot {
     opacity: 1;
   }
 }
+
+/* With Windows' animation effects off (reduced motion): no flashing, the
+   ring held still for 1.6 s and then faded (the appearance session). */
+@media (prefers-reduced-motion: reduce) {
+  #island.look-here::after {
+    animation: look-here-still 1.9s linear 1;
+  }
+}
+
+@keyframes look-here-still {
+  0%,
+  84% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -424,3 +424,16 @@ body {
     var(--h-edge),
     0 1px 4px rgba(0, 0, 0, 0.08);
 }
+
+/* With Windows' animation effects off: it fades in, no growing. */
+@media (prefers-reduced-motion: reduce) {
+  #her {
+    animation-name: her-fade;
+  }
+}
+
+@keyframes her-fade {
+  from {
+    opacity: 0;
+  }
+}
