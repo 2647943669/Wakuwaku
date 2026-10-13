@@ -682,6 +682,12 @@ mod imp {
         if file.exists() {
             sh.log(&format!("taskbar: Windows' given back: {}", shell::restore(&file)));
         }
+        // The desktop's icons as they were (icons.rs), the work area whole
+        // again; a moment at most. Taken again, the work area is made anew.
+        for line in crate::icons::given_back_within(&sh.dir, Duration::from_secs(3)) {
+            sh.log(&line);
+        }
+        *WORK_EDGE.lock().unwrap() = None;
         *SENT.lock().unwrap() = Value::Null;
         *SENT_WINDOWS.lock().unwrap() = Value::Null;
         *PAPER.lock().unwrap() = Value::Null;
@@ -1336,6 +1342,17 @@ mod imp {
             }
             log(&format!("the strip now along the {edge:?}: work area made ({}, {}, {}, {})", r.left, r.top, r.right, r.bottom));
             set_work_area(r);
+            icons_out(strip, edge);
+        } else if is_up() && was.is_some_and(|w| w != Edge::Bottom) && edge == Edge::Bottom {
+            // Back along the bottom, Windows' room taken again: the desktop's
+            // icons as they were (icons.rs).
+            if let Some(sh) = sh() {
+                std::thread::spawn(move || {
+                    for line in crate::icons::given_back(&sh.dir) {
+                        sh.log(&line);
+                    }
+                });
+            }
         }
         if is_up() {
             systray::place(strip);
@@ -1444,6 +1461,18 @@ mod imp {
         if let Some(sh) = sh() {
             std::thread::spawn(move || crate::island::take_strip_again(&sh));
         }
+    }
+
+    // The desktop's icons out from under the strip, the work area set (icons.rs:
+    // the desktop is told it, as it is not). Off this thread: it is asked
+    // through Explorer, which may be busy.
+    fn icons_out(strip: (i32, i32, i32, i32), edge: Edge) {
+        let Some(sh) = sh() else { return };
+        std::thread::spawn(move || {
+            for line in crate::icons::strip_taken(&sh.dir, strip, edge.word()) {
+                sh.log(&line);
+            }
+        });
     }
 
     // The work area's side on the strip's edge set where the strip starts,
@@ -1876,6 +1905,9 @@ mod imp {
             LAST_TAKEN.store(ticks, Ordering::SeqCst);
             LOST_SINCE.store(0, Ordering::SeqCst);
             set_work_side(edge, side);
+            if let Some(strip) = strip {
+                icons_out(strip, edge);
+            }
         }
         systray::sweep();
         if systray::keep_first() {
@@ -2514,6 +2546,11 @@ mod tests {
 pub fn recover(sh: &Shared) {
     if crate::shell::recover(&sh.dir.join("taskbar.json")) {
         sh.log("taskbar: Windows' taskbar was left put away: given back");
+    }
+    // The desktop's icons left moved by such a run (icons.rs): as they were,
+    // before this one takes the strip (and keeps their places anew).
+    for line in crate::icons::given_back_within(&sh.dir, std::time::Duration::from_secs(3)) {
+        sh.log(&line);
     }
 }
 

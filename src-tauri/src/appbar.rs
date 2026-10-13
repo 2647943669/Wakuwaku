@@ -25,6 +25,16 @@ impl Edge {
         }
     }
 
+    // The setting's word for it.
+    pub fn word(self) -> &'static str {
+        match self {
+            Edge::Top => "top",
+            Edge::Bottom => "bottom",
+            Edge::Left => "left",
+            Edge::Right => "right",
+        }
+    }
+
     // Along the left or right of the screen: upright.
     pub fn is_side(self) -> bool {
         matches!(self, Edge::Left | Edge::Right)
