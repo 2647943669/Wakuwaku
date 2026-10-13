@@ -33,6 +33,19 @@ pub fn read(app: &AppHandle) -> Screens {
 }
 
 impl Screens {
+    // For the log: each display, the main one marked, with its scale and
+    // work area (multi-display reports could not tell them: #4).
+    pub fn describe(&self) -> String {
+        self.areas
+            .iter()
+            .map(|a| {
+                let main = self.primary.is_some_and(|p| p.mon == a.mon);
+                format!("{:?} at {}%{}, work area ({}, {}, {}, {})", a.mon, (a.sf * 100.0).round(), if main { ", main" } else { "" }, a.x, a.y, a.w, a.h)
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+
     // The work area holding this point, or the nearest one.
     pub fn near(&self, x: i32, y: i32) -> Option<Area> {
         let gap = |a: &Area| {

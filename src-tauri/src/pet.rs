@@ -111,6 +111,15 @@ pub fn is_shown(sh: &Shared) -> bool {
     sh.is_visible() && sh.flag("out")
 }
 
+// The display her window is on (x, y, w, h).
+pub fn display(sh: &Shared) -> Option<(i32, i32, i32, i32)> {
+    let (pos, size) = {
+        let win = sh.win.lock().unwrap();
+        (win.pos, win.size)
+    };
+    sh.screens().near(pos.0 + size.0 / 2, pos.1 + size.1 / 2).map(|a| a.mon)
+}
+
 fn set_ignore(sh: &Shared, ignore: Option<bool>) {
     if let (Some(ignore), Some(win)) = (ignore, window(sh)) {
         sh.log(&format!("pet: mouse {}", if ignore { "passes through" } else { "caught" }));
