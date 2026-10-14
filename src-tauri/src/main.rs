@@ -1355,8 +1355,15 @@ fn main() {
             // Quiet (nobody touching it), looked at once a second.
             let pointer = sh.clone();
             spawn_named("pointer", move || loop {
-                // Each window's pointer in its own display's scale (screen::cursor).
+                // Each window's pointer in its own display's scale on a Mac
+                // (screen::cursor); elsewhere the one pointer, read once.
+                #[cfg(target_os = "macos")]
                 let at = (screen::cursor(&pointer, pet::sf(&pointer)), screen::cursor(&pointer, island::origin(&pointer).1));
+                #[cfg(not(target_os = "macos"))]
+                let at = {
+                    let c = screen::cursor(&pointer, 1.0);
+                    (c, c)
+                };
                 let wait = match at {
                     (Some(her), Some(home)) => pet::poll(&pointer, her).min(island::poll(&pointer, home)),
                     _ => 200,

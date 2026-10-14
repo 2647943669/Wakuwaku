@@ -34,6 +34,10 @@
   }
 
   window.pet = {
+    // On a Mac (WebKit says MacIntel, on Apple silicon too): what is done
+    // for its notch and its menus only there, so Windows and macOS never
+    // change each other.
+    mac: /^Mac/.test(navigator.platform || ''),
     onUpdate: on('pet:update'),
     // Only the widgets' words changed (the monitor's readings): { widgets }.
     onWidgets: on('pet:widgets'),

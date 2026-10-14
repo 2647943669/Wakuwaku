@@ -391,6 +391,15 @@ mail/proxy.rs      代理：跟随系统 / 手动（HTTP CONNECT、SOCKS5，自�
 
 **它自己的外观**（#27）：设置 `islandTopLook`，和任务栏的 `islandLook` 一样是 `{ dark, light }`，各自 `{ bg, op, blur, edge }`（没有 `bare`：上面没有条带可以融进去），分开保存；没设时纯黑、一圈 `rgba(255,255,255,0.07)` 的细线、白字，和以前一样，所以老用户什么都不变。`island.js` 的 `lookNow` 按家选哪一份，模式在这里用 `pet:update` 的 `winLight`（Windows 的浅色、深色，岛的模式下没有任务栏线程发 `taskbar:look`；`island.rs` 的 `look_over_max` 发现模式变了就重画一次）；样式是 `style.css` 的 `home-island` 一节，变量和任务栏的一样（`--i-bg`、`--i-edge`、`--i-line`，浅底上线和字都变深）。页面自己的 `backdrop-filter` 在这里没有东西可模糊，所以不设 `--i-blur`：半透明又开了毛玻璃时，`backplate.rs` 的亚克力底板跟着岛走，收起、展开、确认都垫着（设置不垫），大小变的时候不藏（见上面 #20 的 `movePlate`），静默时不垫。底板用不了时（Windows 10、关了透明效果），设置里不显示「云母毛玻璃」预设和毛玻璃滑块。半透明又没有模糊时，所在屏幕上有窗口最大化（`tasks::maximized_on`：有任务栏按钮、最大化、中心在这块屏上），底色加深到 90%：`look_over_max` 跟着全屏检测每 1.5 秒看一次（只在设了顶部外观、不透明度低于 90%、没有底板模糊、有人在用电脑时），变了才发 `island:over-max`。设置「外观」页的「灵动岛外观」在岛的模式下放在灵动岛那一组里，预设是纯黑（默认）、Windows 深灰、云母毛玻璃、深灰 + 状态色光圈（深色），纯黑、Windows 浅灰、近白、云母毛玻璃、白 + 状态色光圈（浅色），上面一句说明这是顶部灵动岛的、和任务栏分开保存（`s.ilookTop`）；预览是桌面顶上的一颗岛，展开往下长。
 
+## macOS（刘海里的岛，zhoupengjie/Wakuwaku#32）
+
+从源码在 Mac 上编译、运行（jjme9307 的 PR，Apple Silicon + macOS 26.6 上试过）。家只有灵动岛：`display` 在 Windows 以外默认、也只接受 `island`，从 Windows 带来的 `taskbar` 退回 `island`（`data.rs`、`settings.rs`）。Accessory 应用（不进 Dock、不占菜单栏），`macos-private-api` 让窗口透明。
+
+- **岛在刘海里**（`notch.rs`）：窗口在屏幕顶部正中、层级高过菜单栏；量出刘海的宽高（`safeAreaInsets`、`auxiliaryTopLeftArea` / `auxiliaryTopRightArea`）用 `island:top` 告诉页面，收起时和刘海一样大、顶边直角，鼠标穿过去（`aside`），刘海留给 Atoll 这类 App。左键点托盘图标（`island:peek`）或双击桌面上的她才展开；只有等你批准会自己弹出；展开的岛和从菜单打开的设置，鼠标进去再离开就收，一直没进来 6 秒后收，打字时不收。她的家在刘海里看不见，双击、拖向岛都不会把她收回去（`notch::in_notch`）。
+- **多屏不同缩放**：Tauri 给的鼠标位置按主屏的缩放，每个窗口的位置按它自己那块屏的，`screen::cursor` 按窗口所在屏换算；拖她时用逻辑坐标摆窗口（`pet.rs` 的 `place`）。
+- **互不影响**：Mac 的东西只在 Mac 上跑，Windows 的只在 Windows 上跑。Rust 用 `cfg(target_os = "macos")` / `cfg(windows)`，Windows 专有的模块（`inputs.rs`、`backplate.rs`、`tasks.rs`、`taskbar.rs` 等）在别处有空实现；页面上 Mac 的行为只在收到 `island:top`、`island:peek`（只有 Mac 会发）或 `window.pet.mac` 为真时才有（`bridge.js`：`navigator.platform` 以 Mac 开头，Apple Silicon 上也是 `MacIntel`）。例如设置刚打开 0.5 秒内的失焦不算点外面、记录设置有没有被用过的监听，都只在 Mac 上；指针线程在 Windows 上每轮只读一次鼠标位置，和以前一样。只在 Windows 上成立的单元测试标 `cfg(windows)`。
+- **Mac 上还没有的**：任务栏这个家、点会话跳到窗口、系统通知、邮件（密码在 Windows 凭据管理器，还没接钥匙串）、监控插件、PowerShell 插件、开机自启、打包和自动更新、跟随系统强调色和壁纸、WebView 崩溃监视和省电。
+
 ## 软件更新（updates.rs）
 
 只对下载的 exe：从源码树的 `target` 下运行（`data::from_source`，和数据放在项目 `data/` 的判断是同一个）时不检查也不更新，设置里写着「从源码运行」。

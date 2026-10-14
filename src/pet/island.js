@@ -114,7 +114,8 @@
   // Where the pointer was first seen in the settings: a move counts once it
   // goes a few px from there (WebKit may send one as they open under it).
   let settingsFrom = null
-  for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown']) {
+  // Listened for on a Mac only: the notch is there alone.
+  for (const type of window.pet.mac ? ['pointermove', 'pointerdown', 'wheel', 'keydown'] : []) {
     document.addEventListener(
       type,
       e => {

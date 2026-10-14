@@ -675,6 +675,8 @@ mod tests {
         assert_eq!((backoff(0), backoff(2), backoff(9)), (Duration::ZERO, Duration::from_secs(30), Duration::from_secs(300)));
     }
 
+    // Windows paths: elsewhere a backslash is no separator.
+    #[cfg(windows)]
     #[test]
     fn a_store_alias_comes_after_the_real_powershells() {
         let p = |s: &str| PathBuf::from(s);
