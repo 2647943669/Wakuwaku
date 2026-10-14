@@ -432,14 +432,58 @@ pub fn take_strip_again(sh: &Shared) {
     place(sh);
 }
 
+// The window laid on its rect (physical): its place first, then its size,
+// then its place again, as bars.rs lay does. Sized first and then moved to
+// a display of another scale, Windows gave it the size for that one (the
+// scales' ratio over it): an external display at 125% plugged back in and
+// made the main one while it sat on the laptop's at 175%, her taskbar came
+// out 1830 x 615 for 2560 x 860, the strip floating up the screen and short
+// of its end, until she was restarted (zhoupengjie/Wakuwaku#37).
+fn lay(win: &WebviewWindow, (x, y): (i32, i32), (w, h): (i32, i32)) {
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    let _ = win.set_size(PhysicalSize::new(w.max(1) as u32, h.max(1) as u32));
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+}
+
+// Laid again where it is meant to be (a change of scale under it).
+fn lay_again(sh: &Shared, why: &str) {
+    let (pos, size, bar) = {
+        let isl = sh.island.lock().unwrap();
+        (isl.pos, isl.size, isl.bar)
+    };
+    // The display it is meant for: the one her strip lies on, or the
+    // island's middle; none between strips (a display gone, the new one not
+    // yet taken by the taskbar's thread).
+    let areas = sh.screens().areas;
+    let on = |r: (i32, i32, i32, i32)| areas.iter().find(|a| r.0 >= a.mon.0 && r.1 >= a.mon.1 && r.0 + r.2 <= a.mon.0 + a.mon.2 && r.1 + r.3 <= a.mon.1 + a.mon.3);
+    let meant = match bar {
+        _ if sh.home() != "taskbar" => on((pos.0 + size.0 / 2, pos.1 + size.1 / 2, 1, 1)),
+        Some(b) => on(b),
+        None => None,
+    };
+    let Some(meant) = meant else { return };
+    let Some(win) = window(sh) else { return };
+    // Laid again only once it has that display's scale: of another (Windows
+    // moving it off a display unplugged, the list of displays not yet
+    // without it), its place is still to come, and laid now it went back
+    // on the display going away for a moment.
+    if win.scale_factor().is_ok_and(|sf| (sf - meant.sf).abs() > 0.01) {
+        return;
+    }
+    let now = win.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or(size);
+    if now != size {
+        sh.log(&format!("island: sized by Windows to {}x{} ({why}); laid again at {pos:?} {size:?} on {:?} at {}", now.0, now.1, meant.mon, meant.sf));
+        lay(&win, pos, size);
+    }
+}
+
 fn place(sh: &Shared) {
     sync_bar(sh, true);
     let fitted = fit(sh);
     tell_strip(sh, false);
     let Some((pos, size)) = fitted else { return };
     if let Some(win) = window(sh) {
-        let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
-        let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
+        lay(&win, pos, size);
     }
     // On another display, another notch (or none).
     crate::notch::settle(sh);
@@ -483,8 +527,7 @@ fn create(sh: &Arc<Shared>) {
             .build();
         match built {
             Ok(win) => {
-                let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
-                let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
+                lay(&win, pos, size);
                 let _ = win.set_ignore_cursor_events(true);
                 crate::notch::settle(&sh);
                 // A click anywhere else takes the focus from the settings: they close.
@@ -495,6 +538,18 @@ fn create(sh: &Arc<Shared>) {
                         if !crate::shared(&app).is_shuffling() {
                             let _ = app.emit_to("island", "island:blur", ());
                         }
+                    }
+                    // Its display's scale changed under it (a display plugged
+                    // in or out, another made the main one): Windows sized it
+                    // for the new scale; once it has, put where it belongs on
+                    // the displays there are now, at its size (#37), not at
+                    // the next look.
+                    if let WindowEvent::ScaleFactorChanged { .. } = event {
+                        let app = app.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            keep_on_screen(&crate::shared(&app));
+                        });
                     }
                 });
                 #[cfg(windows)]
@@ -709,8 +764,7 @@ fn handoff_cover(sh: &Arc<Shared>) -> bool {
         (isl.pos, isl.size, isl.hwnd)
     };
     let Some(win) = window(sh) else { return false };
-    let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
-    let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
+    lay(&win, pos, size);
     let _ = win.show();
     let shown = std::time::Instant::now();
     // Over Windows' own, which is kept on top too.
@@ -775,7 +829,11 @@ pub fn keep_on_screen(sh: &Shared) {
     if !is_up {
         return;
     }
+    // Where it belongs now (a display come or gone moves it), then its size
+    // as Windows left it: place compares only with what it asked for last,
+    // the same, and would never set it again (#37).
     place(sh);
+    lay_again(sh, "seen by the look");
     if sh.home() != "taskbar" {
         return;
     }
@@ -783,8 +841,7 @@ pub fn keep_on_screen(sh: &Shared) {
     if let Ok(at) = win.outer_position() {
         if (at.x, at.y) != pos && sh.island.lock().unwrap().pos == pos {
             sh.log(&format!("island: moved by Windows to ({}, {}); put back at {pos:?}", at.x, at.y));
-            let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
-            let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
+            lay(&win, pos, size);
         }
     }
 }
