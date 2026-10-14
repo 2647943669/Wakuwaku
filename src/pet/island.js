@@ -110,6 +110,22 @@
   let peekTimer = 0
   const PEEK_MS = 6000
   let settingsIdleTimer = 0
+  let settingsUsed = false
+  // Where the pointer was first seen in the settings: a move counts once it
+  // goes a few px from there (WebKit may send one as they open under it).
+  let settingsFrom = null
+  for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown']) {
+    document.addEventListener(
+      type,
+      e => {
+        if (view !== 'settings') return
+        if (type !== 'pointermove') settingsUsed = true
+        else if (!settingsFrom) settingsFrom = { x: e.screenX, y: e.screenY }
+        else if (Math.hypot(e.screenX - settingsFrom.x, e.screenY - settingsFrom.y) > 3) settingsUsed = true
+      },
+      true,
+    )
+  }
   const slotWidth = () => (screenTop?.notch ? screenTop.notch + 2 * EAR : WIDTHS[config.islandWidth] || WIDTHS.normal)
   // The window without extra room (main's ISLAND), and the island's distance
   // from the top of it. As wide as a pull needs (PULL_ROOM), so the window
@@ -2924,14 +2940,19 @@
     // Opened in the notch (from her menu) and the pointer never comes: back
     // after a while, as a peek goes back (PEEK_MS). Counted from their
     // opening, not from each redraw (the widgets redraw every few seconds).
-    if (screenTop?.notch && view === 'settings' && !isHover) {
+    // Under a still pointer they are not being used: only a move, a press, a
+    // wheel or a key in them since they opened is (settingsUsed): they opened
+    // under the pointer that had just chosen them from her menu, and stayed.
+    if (screenTop?.notch && view === 'settings' && !settingsUsed) {
       settingsIdleTimer ||= setTimeout(() => {
         settingsIdleTimer = 0
-        if (!isHover && isSetting()) window.Settings?.close('unused')
+        if (!settingsUsed && isSetting()) window.Settings?.close('unused')
       }, PEEK_MS)
-    } else if (settingsIdleTimer) {
+    } else if (view !== 'settings') {
       clearTimeout(settingsIdleTimer)
       settingsIdleTimer = 0
+      settingsUsed = false
+      settingsFrom = null
     }
     island.dataset.view = view
     setInk()
