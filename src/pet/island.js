@@ -238,7 +238,8 @@
     // The tray's icons where they are drawn now, for the menus they open.
     requestAnimationFrame(sendTrayRects)
   }
-  // Windows' look as taskbar.rs sent it last: its mode (dark, light) and accent colour.
+  // Windows' look as taskbar.rs sent it last: its mode (dark, light) and
+  // accent colour; and whether its End task is on (a program's menu offers it).
   let look = { mode: 'dark' }
   let spriteUrl = null
   let second = null
@@ -1575,7 +1576,6 @@
     barRest.classList.toggle('icons', isSide() || config.taskbarButtons !== 'labels')
     startButton.title = t(lang, 'taskbar.start')
     quickBox.title = t(lang, 'taskbar.quick')
-    clockBox.title = t(lang, 'taskbar.clock')
     deskEdge.title = t(lang, 'taskbar.desktop')
     facesBox.replaceChildren(...widgetFaces())
     drawWindows()
@@ -1818,6 +1818,8 @@
   let popDrawn = ''
   let popTimer
   const appOf = key => taskWindows.find(a => a.app === key)
+  // File Explorer's button, by its program: explorer.exe, the shell itself.
+  const isExplorer = path => /(^|[\\/])explorer\.exe$/i.test(path || '')
 
   function openPop(key, kind) {
     if (wgFor) closeWidgetPop()
@@ -1826,6 +1828,14 @@
     popFor = { app: key, kind }
     drawPop()
     watchPresses()
+    // Windows' End task as its setting is now (the look tells it only every
+    // half minute): the menu drawn again should it have changed.
+    if (kind === 'menu')
+      window.pet.taskbar.endTask().then(on => {
+        if (on === look.endTask) return
+        look.endTask = on === true
+        if (popFor?.kind === 'menu') drawPop()
+      })
   }
 
   function closePop() {
@@ -2006,6 +2016,11 @@
       }
       const head = el('div', 'whead', app.name)
       rows.push(head, item(t(lang, windows.length ? 'taskbar.newWindow' : 'taskbar.open'), 'launch'), item(t(lang, app.pinned ? 'taskbar.unpin' : 'taskbar.pin'), app.pinned ? 'unpin' : 'pin'))
+      // Windows' End task while its setting is on (zhoupengjie/Wakuwaku#36),
+      // over the close as on Windows' menu: the program's windows' processes
+      // ended (tasks.rs end_task). None for File Explorer, as Windows offers
+      // none: its windows are the shell's own (explorer.exe).
+      if (windows.length && look.endTask && !isExplorer(app.path)) rows.push(item(t(lang, windows.length > 1 ? 'taskbar.endAll' : 'taskbar.end'), 'end'))
       if (windows.length) rows.push(item(t(lang, windows.length > 1 ? 'taskbar.closeAll' : 'taskbar.close'), 'close'))
     }
     if (!rows.length) return closePop()
@@ -2016,7 +2031,7 @@
     const opening = pop.hidden
     // Drawn again only when what it shows changed: a card replaced under a
     // press is never clicked (the windows' list comes again often).
-    const drawn = JSON.stringify([popFor.app, popFor.kind, app.name, app.pinned, windows.map(w => [w.id, w.title, w.front, (w.png || '').length]), lang])
+    const drawn = JSON.stringify([popFor.app, popFor.kind, app.name, app.pinned, windows.map(w => [w.id, w.title, w.front, (w.png || '').length]), lang, look.endTask])
     if (drawn !== popDrawn || pop.hidden) {
       popDrawn = drawn
       pop.replaceChildren(...rows)
@@ -2358,7 +2373,7 @@
     const act = e.target.closest('[data-act]')?.dataset.act
     if (!act) return
     closePop()
-    if (act === 'close') for (const w of app.windows || []) window.pet.taskbar.window(w.id, 'close')
+    if (act === 'close' || act === 'end') for (const w of app.windows || []) window.pet.taskbar.window(w.id, act)
     else window.pet.taskbar.app(app.path, act, app.id)
   })
   pop.addEventListener('contextmenu', e => {
@@ -2660,7 +2675,7 @@
   // under the window in front; its own blue until it comes). Not --accent:
   // that is her mood's colour (pet.js).
   window.pet.onLook(l => {
-    look = { mode: l?.mode === 'light' ? 'light' : 'dark', accent: l?.accent || null }
+    look = { mode: l?.mode === 'light' ? 'light' : 'dark', accent: l?.accent || null, endTask: l?.endTask === true }
     // How many times a button flashes for attention (style.css .flash).
     if (l?.flashes !== undefined) barRest.style.setProperty('--flashes', l.flashes === 0 ? 'infinite' : String(l.flashes))
     const colour = look.accent && (look.mode === 'light' ? look.accent.dark : look.accent.light)
@@ -2692,9 +2707,19 @@
     if (clockBox.dataset.at !== time + date) {
       clockBox.dataset.at = time + date
       clockBox.replaceChildren(el('b', '', time), el('i', '', date))
+      tipClock()
     }
   }
   setInterval(() => isOn() && home() === 'taskbar' && tickClock(), 5000)
+  // Its tip as Windows' own (zhoupengjie/Wakuwaku#36, clock.rs): the date in
+  // full with its weekday, in the person's own format, and Windows'
+  // additional clocks; read anew each minute and as the pointer comes.
+  function tipClock() {
+    window.pet.taskbar.clockTip().then(tip => {
+      if (typeof tip === 'string' && tip) clockBox.title = tip
+    })
+  }
+  clockBox.addEventListener('pointerenter', tipClock)
 
   // The tray, as Windows' has it: the icons kept out on the taskbar, and
   // the rest folded away behind ^, open above it on a press. Where each is
@@ -3206,8 +3231,9 @@
     if (widget) wgFor === widget.dataset.entry ? closeWidgetPop() : openWidgetPop(widget.dataset.entry)
   })
   // A right press: a tray icon's program has it; on the input method, the
-  // input methods to pick from; on a widget put there, its card; elsewhere,
-  // her menu.
+  // input methods to pick from; on a widget put there, its card; on the
+  // volume, the network or the clock, the menu Windows' own taskbar has
+  // there (zhoupengjie/Wakuwaku#36: tray.rs part_menu); elsewhere, her menu.
   barRest.addEventListener('contextmenu', e => {
     e.preventDefault()
     if (trayKey(e)) return
@@ -3215,8 +3241,24 @@
     const widget = e.target.closest('.tw-widget, .tw-plugin')
     if (widget) return openWidgetPop(widget.dataset.entry)
     if (e.target.closest('[data-bar="ime"]')) return imeOpen ? closeImeList() : openImeList()
-    window.pet.menu()
+    const mark = quickBox.contains(e.target) ? quickMarkAt(e.clientX, e.clientY) : null
+    window.pet.menu(mark === volMark ? 'volume' : mark === netMark ? 'network' : clockBox.contains(e.target) ? 'clock' : null)
   })
+  // Which of the quick settings' marks a press on its button is for: the
+  // nearest along the strip, each having the button's height (its width
+  // along a side), as Windows' own do. The battery's menu stays hers.
+  function quickMarkAt(x, y) {
+    const a = along(x, y)
+    let nearest = null
+    let gap = Infinity
+    for (const mark of [netMark, volMark, batMark]) {
+      if (mark.hidden) continue
+      const r = mark.getBoundingClientRect()
+      const d = a < lo(r) ? lo(r) - a : a > hi(r) ? a - hi(r) : 0
+      if (d < gap) [nearest, gap] = [mark, d]
+    }
+    return nearest
+  }
   // It takes the pointer while it is under it (the window lets clicks through elsewhere).
   barRest.addEventListener('mouseenter', () => window.pet.hover(true))
   barRest.addEventListener('mouseleave', () => window.pet.hover(false))

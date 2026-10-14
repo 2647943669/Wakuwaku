@@ -63,7 +63,9 @@
     },
     dragStart: () => send('pet_drag_start'),
     dragEnd: () => send('pet_drag_end'),
-    menu: () => send('pet_menu'),
+    // Her menu; on the volume, the network or the clock of her taskbar
+    // (part), the one Windows' own taskbar has there.
+    menu: part => send('pet_menu', { part: part || null }),
     doubleClick: () => send('pet_double_click'),
     // Out of the queue: it answers when the walk is over.
     walk: (dx, ms) => invoke('pet_walk', { dx, ms }).catch(() => false),
@@ -107,6 +109,11 @@
       open: what => invoke('taskbar_open', { what: String(what) }).catch(() => false),
       // The volume that many steps up (down below 0), by Windows' volume keys.
       volume: steps => invoke('taskbar_volume', { steps: Math.round(Number(steps) || 0) }).catch(() => false),
+      // The clock's tip as Windows' own has it: the date in full, and
+      // Windows' additional clocks (clock.rs).
+      clockTip: () => invoke('taskbar_clock_tip').catch(() => ''),
+      // Whether Windows' End task is on now (Settings → For developers).
+      endTask: () => invoke('taskbar_end_task').catch(() => false),
       // The input methods to pick from ([{ id, lang, langName, name, icon, own,
       // current }], inputs.rs), and one of them switched to for the window in front.
       inputs: () => invoke('taskbar_inputs').catch(() => []),
@@ -117,7 +124,8 @@
       trayRects: rects => send('taskbar_tray_rects', { rects }),
       // A press on a window's button: press (to the front, or minimized),
       // front (to the front alone: the next of a program's windows), drag (to
-      // the front, a file held over its button), close.
+      // the front, a file held over its button),
+      // close, end (its process ended, as Windows' End task does).
       window: (id, what) => invoke('taskbar_window', { id: Number(id), what: String(what) }).catch(() => false),
       // A program's windows all to the front, or all minimized when one is in front.
       windows: ids => invoke('taskbar_windows', { ids: (ids || []).map(Number) }).catch(() => false),

@@ -43,6 +43,16 @@ pub fn t(lang: &str, key: &str) -> String {
         "taskbar.restoreAll" => if zh { "还原所有窗口" } else { "Restore all windows" },
         "taskbar.minimizeAll" => if zh { "最小化所有窗口" } else { "Minimize all windows" },
         "taskbar.closeAll" => if zh { "关闭所有窗口" } else { "Close all windows" },
+        // Windows' own menus on the volume, the network and the clock, in
+        // its words (tray.rs part_menu), and its clock's tip (clock.rs).
+        "menu.soundFix" => if zh { "声音问题疑难解答" } else { "Troubleshoot sound problems" },
+        "menu.mixer" => if zh { "打开音量合成器" } else { "Open volume mixer" },
+        "menu.sound" => if zh { "声音设置" } else { "Sound settings" },
+        "menu.netFix" => if zh { "诊断网络问题" } else { "Diagnose network problems" },
+        "menu.network" => if zh { "网络和 Internet 设置" } else { "Network and Internet settings" },
+        "menu.dateTime" => if zh { "调整日期和时间" } else { "Adjust date and time" },
+        "menu.notifySettings" => if zh { "通知设置" } else { "Notifications settings" },
+        "clock.local" => if zh { "本地时间" } else { "Local time" },
         "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
         "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },
         "crash.out" => if zh { "她上次意外退出了，要发崩溃报告吗？" } else { "She quit unexpectedly. Send a crash report?" },

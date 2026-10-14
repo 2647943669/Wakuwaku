@@ -539,7 +539,8 @@ fn send_pop(sh: &Shared) {
     let _ = sh.app.emit_to(
         POP,
         "barpop:show",
-        json!({ "kind": kind, "app": app, "edge": edge.word(), "look": taskbar::look_value(), "lang": sh.lang() }),
+        // A menu with Windows' End task while its setting is on, read now.
+        json!({ "kind": kind, "app": app, "edge": edge.word(), "look": taskbar::look_value(), "lang": sh.lang(), "endTask": kind == "menu" && taskbar::end_task_on() }),
     );
 }
 

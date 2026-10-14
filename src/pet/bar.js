@@ -70,8 +70,23 @@
     if (clock.dataset.at !== time + date) {
       clock.dataset.at = time + date
       clock.replaceChildren(el('b', '', time), el('i', '', date))
+      tipClock()
     }
   }
+
+  // The clock's tip and its right press as on the main taskbar
+  // (zhoupengjie/Wakuwaku#36): the date in full and Windows' additional
+  // clocks (clock.rs), read anew each minute and as the pointer comes; the
+  // menu Windows' own taskbar has there (tray.rs part_menu).
+  function tipClock() {
+    invoke('taskbar_clock_tip')
+      .then(tip => {
+        if (typeof tip === 'string' && tip) clock.title = tip
+      })
+      .catch(() => {})
+  }
+  clock.addEventListener('pointerenter', tipClock)
+  clock.addEventListener('contextmenu', () => invoke('pet_menu', { part: 'clock' }).catch(() => {}))
 
   // A button for each program, as the main taskbar's icons (island.js
   // drawWindows): its icon, a mark under it while running (longer in the

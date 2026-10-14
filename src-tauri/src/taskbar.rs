@@ -1310,6 +1310,8 @@ mod imp {
     // (Ctrl and a press, front), or one a file is dragged over (drag), which
     // closes nothing first: Start in front (a file dragged from it) would be
     // closed with Esc, and Esc ends the drag.
+,
+    // or ended.
     pub fn window(what: &str, hwnd: isize) -> bool {
         let done = match what {
             // Off the page's thread: a window may take its time to come up
@@ -1341,6 +1343,16 @@ mod imp {
                 true
             }
             "close" => tasks::close(hwnd),
+            // Windows' End task (tasks::end_task), off the page's thread as
+            // Windows does it off its own.
+            "end" => {
+                std::thread::spawn(move || {
+                    let ended = tasks::end_task(hwnd);
+                    log(&format!("end task {hwnd:#x}: {ended}"));
+                    wake_tasks();
+                });
+                true
+            }
             _ => false,
         };
         wake_tasks();
@@ -1547,6 +1559,15 @@ mod imp {
         text.or_else(number).unwrap_or(7)
     }
 
+    // Windows' End task on a program's button (Settings → System → For
+    // developers → End task), as its settings page keeps it:
+    // TaskbarDeveloperSettings\TaskbarEndTask, a number. Off unless set.
+    pub fn end_task_on() -> bool {
+        use winreg::enums::HKEY_CURRENT_USER;
+        let key = winreg::RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings");
+        super::end_task_set(key.ok().and_then(|k| k.get_value::<u32, _>("TaskbarEndTask").ok()))
+    }
+
     // From outside (settings.rs, the wallpaper changed by her own settings:
     // Windows says nothing of that): the desktop looked at now.
     pub fn look_now() {
@@ -1571,6 +1592,8 @@ mod imp {
             "mode": if light { "light" } else { "dark" },
             "accent": accent.map(|a| json!({ "base": a.base, "light": a.light, "dark": a.dark })),
             "flashes": flash_count(),
+            // Whether a program's menu offers End task (island.js drawPop).
+            "endTask": end_task_on(),
         });
         let mut sent = LOOK.lock().unwrap();
         if *sent != look {
@@ -1775,16 +1798,32 @@ mod imp {
         }
         // A press on what shows the microphone, camera or location in use:
         // its page in Windows' privacy settings. From the input methods' list,
-        // Windows' languages and their keyboards.
+        // Windows' languages and their keyboards. From the menus of a right
+        // press on the volume, the network and the clock (tray.rs
+        // part_menu), what Windows' own open (SystemTray.dll): the volume
+        // mixer, the sound settings, Get Help's network troubleshooter, the
+        // network settings, the date and time, the notifications.
         let page = match what {
             "privacy-mic" => Some("ms-settings:privacy-microphone"),
             "privacy-cam" => Some("ms-settings:privacy-webcam"),
             "privacy-loc" => Some("ms-settings:privacy-location"),
             "languages" => Some("ms-settings:regionlanguage"),
+            "mixer" => Some("ms-settings:apps-volume"),
+            "sound" => Some("ms-settings:sound"),
+            "netFix" => Some("ms-contact-support://?ActivationType=NetworkDiagnostics&invoker=SystemTrayIcon"),
+            "network" => Some("ms-settings:network"),
+            "dateTime" => Some("ms-settings:dateandtime"),
+            "notifySettings" => Some("ms-settings:notifications"),
             _ => None,
         };
         if let Some(page) = page {
             return tasks::launch(page);
+        }
+        // Get Help's sound troubleshooter; where it cannot be opened, the
+        // old one, as Windows falls back to it.
+        if what == "soundFix" {
+            let msdt = format!("{}\\System32\\msdt.exe", std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into()));
+            return tasks::launch("ms-contact-support://windows-speaker-icon") || tasks::launch_with(&msdt, "-id AudioPlaybackDiagnostic -skip true -ep SndVolTrayMenu");
         }
         // Search pressed again while it is open: closed, as Windows' own
         // search button does (Win+S again left it open: the test session).
@@ -2698,6 +2737,9 @@ mod imp {
     }
     pub fn watch_presses(_on: bool) {}
     pub fn note(_line: &str) {}
+    pub fn end_task_on() -> bool {
+        false
+    }
     pub fn window(_what: &str, _hwnd: isize) -> bool {
         false
     }
@@ -2716,7 +2758,13 @@ mod imp {
     }
 }
 
-pub use imp::{explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, look_value, note, resend, strip_moved, strip_picture, take, waiting, wake, windows_now, work_area_bottom, work_area_rect};
+pub use imp::{end_task_on, explorer_room, give_back, handing_back, is_up, set_edge, look_for_other, look_now, look_value, note, resend, strip_moved, strip_picture, take, waiting, wake, windows_now, work_area_bottom, work_area_rect};
+
+// Windows' End task setting's number (end_task_on): on once set, but for 0.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn end_task_set(value: Option<u32>) -> bool {
+    value.is_some_and(|v| v != 0)
+}
 
 // RGBA pixels (sw × sh) made dw × dh smoothly: each pixel out the weighted
 // mean of those it covers, under a tent as wide as a pixel of the coarser
@@ -2784,7 +2832,14 @@ fn resize(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::resize;
+    use super::{end_task_set, resize};
+
+    #[test]
+    fn end_task_only_once_turned_on() {
+        assert!(!end_task_set(None));
+        assert!(!end_task_set(Some(0)));
+        assert!(end_task_set(Some(1)));
+    }
 
     #[test]
     fn resize_keeps_a_flat_colour_and_the_size() {
@@ -2846,6 +2901,21 @@ pub fn taskbar_volume(steps: i32) -> bool {
     imp::volume(steps)
 }
 
+// The clock's tip as Windows' own has it (clock.rs): the date in full, and
+// Windows' additional clocks.
+#[tauri::command]
+pub async fn taskbar_clock_tip(app: tauri::AppHandle) -> String {
+    let sh = crate::shared(&app);
+    crate::clock::tip(&crate::i18n::t(sh.lang(), "clock.local"))
+}
+
+// Whether Windows' End task is on now: asked as a program's menu opens
+// (the look says it only every half minute).
+#[tauri::command]
+pub async fn taskbar_end_task() -> bool {
+    end_task_on()
+}
+
 // The input methods to pick from (the mark's right press), each with its
 // icon, the one in front marked (inputs.rs list); one of them picked.
 #[tauri::command]
@@ -2867,7 +2937,8 @@ pub fn taskbar_battery_font() -> tauri::ipc::Response {
 
 // A press on a window's button (press: to the front or minimized; front: to
 // the front alone, the next of a program's windows; drag: to the front, a
-// file held over its button; close).
+// file held over its button; close;
+// end: Windows' End task, tasks::end_task).
 #[tauri::command]
 pub fn taskbar_window(id: i64, what: String) -> bool {
     imp::window(&what, id as isize)
