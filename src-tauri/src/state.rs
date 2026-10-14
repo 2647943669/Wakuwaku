@@ -6,10 +6,12 @@
 //   detail   a tool name, or { key, vars } to translate
 //   event    turn-start | tool-start | tool-done | tool-failed | turn-end | session-end
 //   react    wave | jump | failed: played once over the mood, `say` in the bubble
-//   agent    "codex", or none for Claude Code
+//   agent    "codex", "agy", or none for Claude Code
 //   turn     the turn it belongs to (Codex): some of its hooks run in the
 //            background, so one can come after its turn ended (turn-end), and
-//            changes nothing then
+//            changes nothing then. Antigravity's turn-start has one too (the
+//            person's words it answers): it starts again, the same turn, once
+//            a task it left running in the background is done
 //   title    the session's name; task   the person's words for the work
 //   step     what a starting tool does, { key, vars }; toolId pairs it with its end
 //   todo     { set: [{ text, active, status }] }, { add: { text, active } }
@@ -76,7 +78,9 @@ pub struct Outcome {
     // Moods just arrived that want a chime (and a notification): (mood,
     // whose: the session's name, or its project).
     pub alerts: Vec<(String, String)>,
-    // For today's count: turns begun, and how long the ones that ended took.
+    // For today's count: turns begun, and how long the ones that ended took
+    // (stopped by the person too, and one that never said it ended, up to
+    // its last event, when the next begins).
     pub turns: u64,
     pub worked_ms: u64,
 }
@@ -362,8 +366,13 @@ impl Pet {
                 }
                 if event == "turn-start" && is_new_turn {
                     out.turns += 1;
+                    // The turn before never said it ended (stopped without a
+                    // word, or Antigravity's still waiting on a task of its
+                    // own): it worked until its last event.
+                    if let Some(since) = s.since.take() {
+                        out.worked_ms += s.at.saturating_sub(since);
+                    }
                     s.has_edited = false;
-                    s.since = None;
                     s.running.clear();
                     s.thought_at = Some(now);
                     s.files.clear();
@@ -421,10 +430,12 @@ impl Pet {
                     s.has_edited = false;
                 }
                 let whose = s.whose();
-                let was_busy = s.since.is_some();
+                // How long the turn has gone on, should this end it.
+                let busy_for = s.since.map(|since| now.saturating_sub(since));
                 out.alerts.extend(set(s, mood, detail, now, hold).map(|m| (m, whose)));
-                if was_busy && is_ending(mood) {
-                    out.worked_ms += s.took.unwrap_or(0);
+                // Its end: done, or stopped by the person, having worked till then.
+                if is_ending(mood) || (mood == "idle" && event == "turn-end") {
+                    out.worked_ms += busy_for.unwrap_or(0);
                 }
             }
             out.changed = true;
@@ -749,5 +760,24 @@ mod tests {
         assert!(pet.wants_you());
         pet.seen(62_000, Hold::Seen);
         assert!(!pet.wants_you());
+    }
+
+    #[test]
+    fn a_stopped_turn_and_one_that_never_ended_count_too() {
+        let mut pet = Pet::default();
+        // Stopped by the person (Codex's Interrupt): it worked till then.
+        pet.apply(&codex("t1", json!({ "mood": "working", "event": "turn-start" })), 1_000, Hold::Seen);
+        let out = pet.apply(&codex("t1", json!({ "mood": "idle", "event": "turn-end" })), 21_000, Hold::Seen).unwrap();
+        assert_eq!(out.worked_ms, 20_000);
+        // A turn that never said it ended, then the next: up to its last event.
+        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 30_000, Hold::Seen);
+        pet.apply(&msg(json!({ "session": "a", "mood": "working", "detail": "Bash", "event": "tool-done" })), 40_000, Hold::Seen);
+        let out = pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 100_000, Hold::Seen).unwrap();
+        assert_eq!((out.turns, out.worked_ms), (1, 10_000));
+        let out = pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 105_000, Hold::Seen).unwrap();
+        assert_eq!(out.worked_ms, 5_000);
+        // Rest that ends no turn counts nothing.
+        pet.apply(&msg(json!({ "session": "b", "mood": "working", "event": "turn-start" })), 200_000, Hold::Seen);
+        assert_eq!(pet.apply(&msg(json!({ "session": "b", "mood": "idle" })), 210_000, Hold::Seen).unwrap().worked_ms, 0);
     }
 }

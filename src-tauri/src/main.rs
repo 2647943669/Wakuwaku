@@ -370,8 +370,12 @@ impl Shared {
         let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
+            let is_agy = msg["agent"] == "agy";
             self.count_today(|t| {
                 t.turns += out.turns;
+                if is_agy {
+                    t.agy_turns += out.turns;
+                }
                 t.worked_ms += out.worked_ms;
             });
         }

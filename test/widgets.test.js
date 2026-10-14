@@ -18,6 +18,10 @@ test('a widget says its words, a built-in one in her language', () => {
   assert.deepEqual(Widgets.words('zh', today), { label: '今天', value: '12 轮 · 1:43 · 批准 5' })
   assert.deepEqual(Widgets.words('en', today), { label: 'Today', value: '12 turns · 1:43 · 5 approved' })
   assert.deepEqual(Widgets.words('zh', { label: '上海 · 多云', value: '22°' }), { label: '上海 · 多云', value: '22°' })
+  // Under a minute in seconds; Antigravity's turns alone, no approvals to count (widgets.rs Today::words).
+  const short = { ...today, value: { key: 'widget.todayValueAgy', vars: { turns: '2', time: { key: 'widget.todaySeconds', vars: { n: '45' } }, approvals: '0' } } }
+  assert.equal(Widgets.words('zh', short).value, '2 轮 · 45 秒 · 批准 —')
+  assert.equal(Widgets.words('en', short).value, '2 turns · 45 s · approvals —')
 })
 
 test("the monitor's readings in two rows: the machine's over the network's", () => {

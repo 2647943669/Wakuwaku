@@ -103,6 +103,9 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 Some("codex") => events_codex::to_message(&event),
                 Some("agy") => {
                     events_agy::with_transcript(&mut event);
+                    if let Some(line) = events_agy::log_line(&event) {
+                        sh.log(&line);
+                    }
                     events_agy::to_message(&event)
                 }
                 _ => events::to_message(&event),
