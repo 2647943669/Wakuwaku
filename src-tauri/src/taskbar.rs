@@ -1305,13 +1305,11 @@ mod imp {
         }
     }
 
-    // A press on a window's button: to the front, or minimized; or closed.
-    // To the front alone, never minimized: the next of a program's windows
-    // (Ctrl and a press, front), or one a file is dragged over (drag), which
-    // closes nothing first: Start in front (a file dragged from it) would be
-    // closed with Esc, and Esc ends the drag.
-,
-    // or ended.
+    // A press on a window's button: to the front, or minimized; or closed,
+    // or ended. To the front alone, never minimized: the next of a
+    // program's windows (Ctrl and a press, front), or one a file is dragged
+    // over (drag), which closes nothing first: Start in front (a file
+    // dragged from it) would be closed with Esc, and Esc ends the drag.
     pub fn window(what: &str, hwnd: isize) -> bool {
         let done = match what {
             // Off the page's thread: a window may take its time to come up
@@ -2937,8 +2935,8 @@ pub fn taskbar_battery_font() -> tauri::ipc::Response {
 
 // A press on a window's button (press: to the front or minimized; front: to
 // the front alone, the next of a program's windows; drag: to the front, a
-// file held over its button; close;
-// end: Windows' End task, tasks::end_task).
+// file held over its button; close; end: Windows' End task,
+// tasks::end_task).
 #[tauri::command]
 pub fn taskbar_window(id: i64, what: String) -> bool {
     imp::window(&what, id as isize)
