@@ -1267,6 +1267,25 @@
     })
     .catch(() => {})
   quickBox.append(netMark, volMark, batMark)
+  // The wheel turned on it: the volume, as on Windows' own taskbar
+  // (zhoupengjie/Wakuwaku#35): a notch a step up or down (2%, by Windows'
+  // volume keys, its own flyout shown); a touchpad's or a fine wheel's
+  // small turns gathered to a notch's worth. Not while the layout is edited.
+  let wheelGathered = 0
+  quickBox.addEventListener(
+    'wheel',
+    e => {
+      if (editLayout) return
+      e.preventDefault()
+      const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY
+      wheelGathered = Math.abs(dy) >= 50 ? Math.sign(dy) * 100 : wheelGathered + dy
+      const steps = Math.trunc(wheelGathered / 100)
+      if (!steps) return
+      wheelGathered -= steps * 100
+      window.pet.taskbar.volume(-steps)
+    },
+    { passive: false },
+  )
   function showNet(kind) {
     netMark.textContent = NET[kind] || NET.other
   }
@@ -2005,7 +2024,7 @@
     const opening = pop.hidden
     // Drawn again only when what it shows changed: a card replaced under a
     // press is never clicked (the windows' list comes again often).
-    const drawn = JSON.stringify([popFor, app.name, app.pinned, windows.map(w => [w.id, w.title, w.front, (w.png || '').length]), lang])
+    const drawn = JSON.stringify([popFor.app, popFor.kind, app.name, app.pinned, windows.map(w => [w.id, w.title, w.front, (w.png || '').length]), lang])
     if (drawn !== popDrawn || pop.hidden) {
       popDrawn = drawn
       pop.replaceChildren(...rows)
@@ -2108,7 +2127,10 @@
   })
 
   // A press on a program's button: one not running starts; one window goes
-  // to the front, or is minimized when in front; several to pick from.
+  // to the front, or is minimized when in front; several, their list at
+  // once to pick one from, as Windows 11's own (zhoupengjie/Wakuwaku#34:
+  // they all came to the front together, or all went down), and pressed
+  // again it goes. One the pointer rested on stays open for the press.
   windowsBox.addEventListener('click', e => {
     const app = appOf(e.target.closest('[data-app]')?.dataset.app)
     if (!app) return
@@ -2120,11 +2142,15 @@
     }
     const windows = app.windows || []
     if (!windows.length) return window.pet.taskbar.app(app.path, 'launch', app.id)
+    if (windows.length > 1) {
+      const listed = popFor?.kind === 'list' && popFor.app === app.app && !pop.hidden
+      if (listed && popFor.pressed) return closePop()
+      if (!listed) openPop(app.app, 'list')
+      popFor.pressed = true
+      return
+    }
     closePop()
-    if (windows.length === 1) return window.pet.taskbar.window(windows[0].id, 'press')
-    // Several: all to the front, or all minimized when one is in front (the
-    // list of them comes with the pointer resting on the button).
-    window.pet.taskbar.windows(windows.map(w => w.id))
+    window.pet.taskbar.window(windows[0].id, 'press')
   })
   windowsBox.addEventListener('contextmenu', e => {
     const app = appOf(e.target.closest('[data-app]')?.dataset.app)

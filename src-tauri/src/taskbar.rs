@@ -1763,6 +1763,33 @@ mod imp {
         unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<Input>() as i32) == inputs.len() as u32 }
     }
 
+    // The wheel turned on the quick settings' button: the volume that many
+    // steps up (down, below 0) by Windows' own volume keys, as on Windows'
+    // own taskbar (zhoupengjie/Wakuwaku#35): 2% a step, its volume flyout
+    // shown, a muted one unmuted going up. The mark read again once Windows
+    // has turned it (keys_loop).
+    pub fn volume(steps: i32) -> bool {
+        const VK_VOLUME_DOWN: u16 = 0xAE;
+        const VK_VOLUME_UP: u16 = 0xAF;
+        let vk = if steps > 0 { VK_VOLUME_UP } else { VK_VOLUME_DOWN };
+        let key = |up: bool| Input {
+            kind: 1,
+            u: InputUnion { ki: KeybdInput { vk, scan: 0, flags: if up { KEYEVENTF_KEYUP } else { 0 }, time: 0, extra: 0 } },
+        };
+        let inputs: Vec<Input> = (0..steps.unsigned_abs().min(10)).flat_map(|_| [key(false), key(true)]).collect();
+        if inputs.is_empty() {
+            return false;
+        }
+        // SAFETY: a slice of INPUTs of the size passed.
+        let sent = unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<Input>() as i32) } == inputs.len() as u32;
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(80));
+            KEYS_NOW.store(true, Ordering::SeqCst);
+            wake_keys();
+        });
+        sent
+    }
+
     fn run(strip: (i32, i32, i32, i32), ready: std::sync::mpsc::Sender<isize>) {
         // SAFETY: our own class and window, on this thread, which runs its loop.
         unsafe {
@@ -2611,6 +2638,9 @@ mod imp {
     pub fn open(_what: &str) -> bool {
         false
     }
+    pub fn volume(_steps: i32) -> bool {
+        false
+    }
     pub fn windows(_hwnds: Vec<isize>) -> bool {
         false
     }
@@ -2756,6 +2786,12 @@ pub fn taskbar_tray(app: tauri::AppHandle, key: u64, press: String) -> bool {
 #[tauri::command]
 pub fn taskbar_open(what: String) -> bool {
     imp::open(&what)
+}
+
+// The wheel on the quick settings' button: the volume steps up or down.
+#[tauri::command]
+pub fn taskbar_volume(steps: i32) -> bool {
+    imp::volume(steps)
 }
 
 // The input methods to pick from (the mark's right press), each with its

@@ -210,8 +210,19 @@
 
   // Presses: Start and the clock open what Windows' do, the sliver shows the
   // desktop; a program's button as on the main taskbar (island.js): one not
-  // running starts, one window to the front or minimized, several in turn.
+  // running starts, one window to the front or minimized, several their list
+  // to pick from, pressed again it goes (zhoupengjie/Wakuwaku#34).
   document.addEventListener('click', e => {
+    const node = e.target.closest('[data-app]')
+    const several = node && ((state.windows || []).find(a => a.app === node.dataset.app)?.windows || []).length > 1
+    if (several) {
+      clearTimeout(popTimer)
+      const listed = popFor?.kind === 'list' && popFor.app === node.dataset.app
+      if (listed && popFor.pressed) return closePop()
+      if (!listed) openPop(node, 'list')
+      popFor.pressed = true
+      return
+    }
     // Her capsule: the prompt shown in her island on the main display (bars.rs bar_asks).
     closePop()
     if (e.target.closest('#her')) return invoke('bar_asks').catch(() => {})
@@ -222,8 +233,7 @@
     if (!app) return
     const windows = app.windows || []
     if (!windows.length) return invoke('taskbar_app', { path: String(app.path), what: 'launch', id: app.id ? String(app.id) : null }).catch(() => {})
-    if (windows.length === 1) return invoke('taskbar_window', { id: Number(windows[0].id), what: 'press' }).catch(() => {})
-    invoke('taskbar_windows', { ids: windows.map(w => Number(w.id)) }).catch(() => {})
+    if (windows.length === 1) invoke('taskbar_window', { id: Number(windows[0].id), what: 'press' }).catch(() => {})
   })
   document.addEventListener('contextmenu', e => e.preventDefault())
 

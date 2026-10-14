@@ -105,6 +105,8 @@
     // tray's icons; the icons as they change.
     taskbar: {
       open: what => invoke('taskbar_open', { what: String(what) }).catch(() => false),
+      // The volume that many steps up (down below 0), by Windows' volume keys.
+      volume: steps => invoke('taskbar_volume', { steps: Math.round(Number(steps) || 0) }).catch(() => false),
       // The input methods to pick from ([{ id, lang, langName, name, icon, own,
       // current }], inputs.rs), and one of them switched to for the window in front.
       inputs: () => invoke('taskbar_inputs').catch(() => []),
