@@ -63,6 +63,9 @@ pub fn t(lang: &str, key: &str) -> String {
         "mail.talkDone" => if zh { "{agent} 看完了：{what}" } else { "{agent} read it: {what}" },
         "mail.talkReplied" => if zh { "{agent} 回答了：{what}" } else { "{agent} answered: {what}" },
         "mail.handFailed" => if zh { "{agent} 没看成：{what}" } else { "{agent} could not read it: {what}" },
+        // Antigravity's turn over with no words from it (agent.rs).
+        "mail.agyRefused" => if zh { "它要运行的命令被拒绝了，没有回答" } else { "the command it wanted to run was refused, and it gave no answer" },
+        "mail.agySilent" => if zh { "它没有回答" } else { "it gave no answer" },
         "mood.idle" => if zh { "摸鱼中" } else { "Taking a break" },
         "mood.working" => if zh { "干活中…" } else { "Working…" },
         "mood.waiting" => if zh { "等你回复！" } else { "Waiting for you!" },
