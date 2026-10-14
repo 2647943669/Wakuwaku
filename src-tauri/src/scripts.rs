@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -164,17 +164,43 @@ fn arguments(s: &Script, conf: &Value, folder: &Path, port: u16) -> Vec<String> 
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &line].map(String::from).to_vec()
 }
 
-// PowerShell 7 where it is, else the Windows PowerShell every Windows has.
-fn powershell() -> PathBuf {
-    static FOUND: OnceLock<PathBuf> = OnceLock::new();
-    FOUND
-        .get_or_init(|| {
-            let on_path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).map(|d| d.join("pwsh.exe")).collect::<Vec<_>>()).unwrap_or_default();
-            let installed = std::env::var_os("ProgramFiles").map(|p| PathBuf::from(p).join("PowerShell").join("7").join("pwsh.exe"));
-            let windows = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| "C:\\Windows".into()).join("System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-            on_path.into_iter().chain(installed).find(|p| p.is_file()).unwrap_or(windows)
-        })
-        .clone()
+// The PowerShells a script may be started with, best first: PowerShell 7
+// where it is (on the PATH, then in Program Files), a Store one's alias on
+// the PATH after those, and last the Windows PowerShell every Windows has.
+// Looked for at each start: the Store's PowerShell updates itself and takes
+// its old package folder away, and an alias started once before then may
+// fail from then on in this process (zhoupengjie/Wakuwaku#28).
+fn powershells() -> Vec<PathBuf> {
+    let on_path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).map(|d| d.join("pwsh.exe")).filter(|p| p.is_file()).collect()).unwrap_or_default();
+    let installed = std::env::var_os("ProgramFiles").map(|p| PathBuf::from(p).join("PowerShell").join("7").join("pwsh.exe")).filter(|p| p.is_file());
+    let windows = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| "C:\\Windows".into()).join("System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    in_order(on_path, installed, windows, is_alias)
+}
+
+fn in_order(on_path: Vec<PathBuf>, installed: Option<PathBuf>, windows: PathBuf, alias: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
+    let (aliases, real): (Vec<PathBuf>, Vec<PathBuf>) = on_path.into_iter().partition(|p| alias(p));
+    let mut all: Vec<PathBuf> = Vec::new();
+    for p in real.into_iter().chain(installed).chain(aliases).chain([windows]) {
+        let same = |q: &PathBuf| q.as_os_str().eq_ignore_ascii_case(p.as_os_str());
+        if !all.iter().any(same) {
+            all.push(p);
+        }
+    }
+    all
+}
+
+// An app execution alias (WindowsApps\pwsh.exe): no program of its own, a
+// reparse point naming the one in its package.
+#[cfg(windows)]
+fn is_alias(p: &Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    // FILE_ATTRIBUTE_REPARSE_POINT
+    std::fs::symlink_metadata(p).is_ok_and(|m| m.file_attributes() & 0x400 != 0)
+}
+
+#[cfg(not(windows))]
+fn is_alias(_: &Path) -> bool {
+    false
 }
 
 // The scripts in her folder, rewritten when they differ from hers.
@@ -240,6 +266,8 @@ struct Run {
 struct Trouble {
     failures: u32,
     retry_at: Option<Instant>,
+    // No PowerShell would start it: not the plugin's own fault.
+    no_shell: bool,
 }
 
 // Ending soon after starting is failing: tried again later each time.
@@ -264,25 +292,50 @@ pub struct Runner {
     said: Arc<Mutex<HashMap<&'static str, String>>>,
     job: Option<job::Job>,
     written: bool,
+    // The PowerShell the last start went with, tried first the next time.
+    shell: Option<PathBuf>,
+}
+
+// The first of them that starts; each that would not, told.
+fn first_started(shells: &[PathBuf], mut spawn: impl FnMut(&Path) -> std::io::Result<Child>, mut failed: impl FnMut(&Path, &std::io::Error)) -> std::io::Result<(PathBuf, Child)> {
+    let mut last = std::io::Error::from(std::io::ErrorKind::NotFound);
+    for shell in shells {
+        match spawn(shell) {
+            Ok(child) => return Ok((shell.clone(), child)),
+            Err(err) => {
+                failed(shell, &err);
+                last = err;
+            }
+        }
+    }
+    Err(last)
 }
 
 impl Runner {
     // Started hidden, in the job; all it prints goes to <folder>/<id>.log,
-    // new each start, and its last line that says something is kept.
-    fn start(&mut self, s: &'static Script, args: &[String], folder: &Path, once: bool) -> std::io::Result<Run> {
+    // new each start, and its last line that says something is kept. With
+    // the PowerShell that started the last one, else the next that will.
+    fn start(&mut self, s: &'static Script, args: &[String], folder: &Path, once: bool, log: &dyn Fn(&str)) -> std::io::Result<Run> {
         self.said.lock().unwrap().remove(s.id);
-        let mut command = Command::new(powershell());
-        command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        // No update check or telemetry of PowerShell's own, and no second
-        // thread for its garbage collector.
-        command.env("POWERSHELL_UPDATECHECK", "Off").env("POWERSHELL_TELEMETRY_OPTOUT", "1").env("DOTNET_gcConcurrent", "0");
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            // CREATE_NO_WINDOW
-            command.creation_flags(0x0800_0000);
-        }
-        let mut child = command.spawn()?;
+        let last = self.shell.take();
+        let shells: Vec<PathBuf> = last.clone().into_iter().chain(powershells().into_iter().filter(|p| Some(p) != last.as_ref())).collect();
+        let spawn = |shell: &Path| {
+            let mut command = Command::new(shell);
+            command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            // No update check or telemetry of PowerShell's own, and no second
+            // thread for its garbage collector.
+            command.env("POWERSHELL_UPDATECHECK", "Off").env("POWERSHELL_TELEMETRY_OPTOUT", "1").env("DOTNET_gcConcurrent", "0");
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                // CREATE_NO_WINDOW
+                command.creation_flags(0x0800_0000);
+            }
+            command.spawn()
+        };
+        let failed = |shell: &Path, err: &std::io::Error| log(&format!("plugins: {} not started with {}: {err}", s.id, shell.display()));
+        let (shell, mut child) = first_started(&shells, spawn, failed)?;
+        self.shell = Some(shell);
         if self.job.is_none() {
             self.job = job::Job::new();
         }
@@ -393,15 +446,19 @@ pub fn sync(sh: &Shared) -> bool {
                     r.done.remove(s.id);
                 }
             }
-            match r.start(s, &args, &folder, s.turn.is_some()) {
+            match r.start(s, &args, &folder, s.turn.is_some(), &|line| sh.log(line)) {
                 Ok(run) => {
                     r.runs.insert(s.id, run);
+                    if let Some(t) = r.trouble.get_mut(s.id) {
+                        t.no_shell = false;
+                    }
                 }
                 Err(err) => {
                     r.said.lock().unwrap().insert(s.id, err.to_string());
                     let t = r.trouble.entry(s.id).or_default();
                     t.failures += 1;
                     t.retry_at = Some(now + backoff(t.failures));
+                    t.no_shell = true;
                 }
             }
             // A look in its turn changes nothing for the island or the settings.
@@ -457,7 +514,8 @@ pub fn view(sh: &Shared) -> Value {
                         json!({ "name": p.name, "kind": kind, "required": p.required, "value": c[p.name] })
                     })
                     .collect();
-                json!({ "id": s.id, "icon": s.icon, "on": on, "state": state, "missing": missing(s, c), "said": said.get(s.id), "retryIn": retry, "params": params })
+                let no_shell = r.trouble.get(s.id).is_some_and(|t| t.no_shell);
+                json!({ "id": s.id, "icon": s.icon, "on": on, "state": state, "missing": missing(s, c), "said": said.get(s.id), "noShell": no_shell, "retryIn": retry, "params": params })
             })
             .collect(),
     )
@@ -615,6 +673,33 @@ mod tests {
         assert_eq!(tidy("\x1b[31;1mInvoke-RestMethod: \x1b[31;1mbad\x1b[0m"), "Invoke-RestMethod: bad");
         assert_eq!(decode("好".as_bytes()), "好");
         assert_eq!((backoff(0), backoff(2), backoff(9)), (Duration::ZERO, Duration::from_secs(30), Duration::from_secs(300)));
+    }
+
+    #[test]
+    fn a_store_alias_comes_after_the_real_powershells() {
+        let p = |s: &str| PathBuf::from(s);
+        let alias = |q: &Path| q.starts_with("C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps");
+        let on_path = vec![p("C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe"), p("C:\\Program Files\\PowerShell\\7\\pwsh.exe"), p("D:\\scoop\\pwsh.exe")];
+        let found = in_order(on_path, Some(p("c:\\program files\\powershell\\7\\pwsh.exe")), p("C:\\Windows\\ps.exe"), alias);
+        assert_eq!(found, [p("C:\\Program Files\\PowerShell\\7\\pwsh.exe"), p("D:\\scoop\\pwsh.exe"), p("C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe"), p("C:\\Windows\\ps.exe")]);
+        assert_eq!(in_order(Vec::new(), None, p("C:\\Windows\\ps.exe"), alias), [p("C:\\Windows\\ps.exe")]);
+    }
+
+    // A PowerShell gone from under her (its folder taken away: os error 3)
+    // gives way to the next one.
+    #[cfg(windows)]
+    #[test]
+    fn a_powershell_that_will_not_start_gives_way() {
+        let gone = std::env::temp_dir().join("wakuwaku-no-such-folder").join("pwsh.exe");
+        let cmd = std::env::var_os("ComSpec").map(PathBuf::from).unwrap();
+        let mut told = Vec::new();
+        let spawn = |shell: &Path| Command::new(shell).args(["/c", "exit"]).stdout(Stdio::null()).spawn();
+        let (used, mut child) = first_started(&[gone.clone(), cmd.clone()], spawn, |shell, err| told.push((shell.to_path_buf(), err.raw_os_error()))).unwrap();
+        let _ = child.wait();
+        assert_eq!(used, cmd);
+        assert_eq!(told, [(gone.clone(), Some(3))]);
+        let err = first_started(&[gone], |shell: &Path| Command::new(shell).spawn(), |_, _| {}).unwrap_err();
+        assert_eq!(err.raw_os_error(), Some(3));
     }
 
     #[cfg(windows)]

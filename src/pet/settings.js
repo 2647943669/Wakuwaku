@@ -630,7 +630,8 @@
   function pluginNote(p, mine) {
     if (p.state === 'needs') return { text: T('pl.needs', { what: T(`pl.${p.id}.${p.missing}`) }), bad: true }
     if (p.state === 'stopped') {
-      const why = p.said ? T('pl.stopped', { line: p.said }) : T('pl.stoppedQuiet')
+      // No PowerShell would start it: not the plugin's fault (#28).
+      const why = p.noShell ? T('pl.noShell', { line: p.said || '' }) : p.said ? T('pl.stopped', { line: p.said }) : T('pl.stoppedQuiet')
       return { text: p.retryIn ? `${why} · ${T('pl.retry', { n: p.retryIn })}` : why, bad: true }
     }
     if (p.state === 'running' && !mine.length) return p.said ? { text: T('pl.trouble', { line: p.said }), bad: true } : { text: T('pl.starting') }
