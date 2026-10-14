@@ -102,7 +102,9 @@
   let reading = null
   let handNote = null
   let handNoteTimer
-  const AGENTS = { claude: 'Claude', codex: 'Codex' }
+  const AGENTS = { claude: 'Claude', codex: 'Codex', agy: 'Antigravity' }
+  // Their names on the Mail page's settings.
+  const AGENT_NAMES = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' }
   // The letter being written, one at a time: from which account, to whom,
   // the subject and text, the letter it answers or passes on, files added;
   // touched once typed in; sending, what went wrong. Kept until sent or
@@ -880,9 +882,11 @@
     return `<div class="note ok">✓ ${esc(how)} ${esc(auths)}</div>${domain}`
   }
 
-  // Who a letter goes to first (the setting), and both in that order.
-  const firstAgent = () => (snap.settings.mailAgent === 'codex' ? 'codex' : 'claude')
-  const agentOrder = () => (firstAgent() === 'codex' ? ['codex', 'claude'] : ['claude', 'codex'])
+  // Who a letter goes to first (the setting), and each in that order:
+  // Antigravity only where it is (or set first), as few have it.
+  const firstAgent = () => (['codex', 'agy'].includes(snap.settings.mailAgent) ? snap.settings.mailAgent : 'claude')
+  const agentsHere = () => ['claude', 'codex', ...((snap.mailAgents || {}).agy || firstAgent() === 'agy' ? ['agy'] : [])]
+  const agentOrder = () => [firstAgent(), ...agentsHere().filter(a => a !== firstAgent())]
   // A letter's talk going on now, by its key (agent.rs).
   const talkOf = key => (key && (snap.mailTalks || {})[key]) || null
   const letterKey = l => l.messageId || `${l.account}:${l.uid}`
@@ -1016,7 +1020,7 @@
 
   // Who a letter goes to first, and how each agent takes it.
   function agentsHTML() {
-    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', [['claude', 'Claude Code'], ['codex', 'Codex']], firstAgent()))
+    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', agentsHere().map(a => [a, AGENT_NAMES[a]]), firstAgent()))
     return `<div class="grp agent-pick">${agent}</div>${agentOrder().map(agentConfHTML).join('')}`
   }
 
@@ -1049,13 +1053,17 @@
     return `<button class="pick" data-picker="${ag}.${key}">${esc(label)} ▾</button>`
   }
 
+  // Antigravity has no read-only mode (agent.rs talk_args): asking first,
+  // or as set up; and its models are each one effort already.
   function agentConfHTML(ag) {
     const c = confOf(ag)
-    const access = ['read', 'ask', 'mine'].includes(c.access) ? c.access : 'read'
+    const levels = ag === 'agy' ? ['ask', 'mine'] : ['read', 'ask', 'mine']
+    const access = levels.includes(c.access) ? c.access : levels[0]
     const missing = (snap.mailAgents || {})[ag] ? '' : ` · ${T('mail.hand.missing')}`
-    return `<div class="sec">${esc(ag === 'claude' ? 'Claude Code' : 'Codex')}${esc(missing)}</div><div class="grp agent-conf">
-      ${row(esc(T('mail.conf.access')), esc(T(`mail.conf.${access}Note.${ag}`)), seg(`mconf.${ag}`, ['read', 'ask', 'mine'].map(a => [a, T(`mail.conf.${a}`)]), access))}
-      <div class="r"><div class="grow">${esc(T('mail.conf.session'))}</div>${pickerHTML(ag, 'model')}${pickerHTML(ag, 'effort')}</div>
+    const pickers = ag === 'agy' ? pickerHTML(ag, 'model') : pickerHTML(ag, 'model') + pickerHTML(ag, 'effort')
+    return `<div class="sec">${esc(AGENT_NAMES[ag])}${esc(missing)}</div><div class="grp agent-conf">
+      ${row(esc(T('mail.conf.access')), esc(T(`mail.conf.${access}Note.${ag}`)), seg(`mconf.${ag}`, levels.map(a => [a, T(`mail.conf.${a}`)]), access))}
+      <div class="r"><div class="grow">${esc(T(ag === 'agy' ? 'mail.conf.model' : 'mail.conf.session'))}</div>${pickers}</div>
     </div>`
   }
 

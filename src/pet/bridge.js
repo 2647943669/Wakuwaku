@@ -165,7 +165,7 @@
     // signing in (Re-test); an inbox's newest letters (id "*" every
     // account's; filter all | unseen | flagged), a star put on or off, one
     // letter opened (and marked read), one handed to an agent (agent claude
-    // | codex, how talk | open), more asked in its talk; a letter sent
+    // | codex | agy, how talk | open), more asked in its talk; a letter sent
     // (send.rs); Re-test of the outgoing server (kind smtp). The lookup and
     // Re-test go the way the account being set up does (proxy: its own, or
     // null for the Mail page's; mail/proxy.rs).

@@ -14,8 +14,8 @@
 //
 // The Mail page lists the inbox as conversations from what is kept
 // (letters.rs, threads.rs) and reads a letter (opening one marks it read,
-// as any mail program does), hands a letter to Claude Code or Codex
-// (agent.rs), and writes letters: new ones, replies, letters passed on
+// as any mail program does), hands a letter to Claude Code, Codex or
+// Antigravity (agent.rs), and writes letters: new ones, replies, letters passed on
 // (send.rs, over SMTP: smtp.rs). IMAP is io-imap's (imap.rs), the library
 // under himalaya; finding the servers is discover.rs; reaching them through
 // a proxy, proxy.rs.
@@ -27,9 +27,9 @@
 // null: as the Mail page has it); one password for both servers;
 // "mailProxy": { mode: system | manual | none, kind, address }, how mail
 // reaches its servers (proxy.rs; Windows' proxy unless set);
-// "mailAgent": "claude" | "codex", who a letter goes to first;
-// "mailAgentConf": { claude | codex: { access, model, effort, sumModel,
-// sumEffort } }, what a session may do and the models (agent.rs);
+// "mailAgent": "claude" | "codex" | "agy", who a letter goes to first;
+// "mailAgentConf": { claude | codex | agy: { access, model, effort,
+// sumModel, sumEffort } }, what a session may do and the models (agent.rs);
 // "mailPanes": "two" | "one", the Mail page as list and letter side by side
 // (the default), or one under the other (settings.js);
 // "mailOffline": "year" (the default) | "90d" | "all" | "opened", how much

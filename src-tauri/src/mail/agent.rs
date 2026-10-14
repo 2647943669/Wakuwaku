@@ -1,9 +1,10 @@
-// A letter handed to Claude Code or Codex. It is kept as a folder of its own
-// under <data>/mail; then a talk about it runs in the background and shows
-// under the letter on the Mail page, the answer as it comes, and one can ask
-// more there (each turn a run of its own, the agent's session taken up
-// again: claude -p --resume, codex exec resume). A session in a terminal is
-// still there for those who want one.
+// A letter handed to Claude Code, Codex or Antigravity. It is kept as a
+// folder of its own under <data>/mail; then a talk about it runs in the
+// background and shows under the letter on the Mail page, the answer as it
+// comes, and one can ask more there (each turn a run of its own, the agent's
+// session taken up again: claude -p --resume, codex exec resume, agy
+// --conversation). A session in a terminal is still there for those who
+// want one.
 //
 //   <data>/mail/2026-10-09-周五的方案/
 //     letter.md      who, to whom, when, the subject, the text
@@ -55,6 +56,9 @@ const MOST_TEXT_ATTACHMENT: u64 = 20 << 10;
 pub enum Agent {
     Claude,
     Codex,
+    // Google's Antigravity, its agy command (the 2.0 app's own agent is not
+    // run from outside).
+    Agy,
 }
 
 impl Agent {
@@ -62,6 +66,7 @@ impl Agent {
         match s {
             "claude" => Some(Agent::Claude),
             "codex" => Some(Agent::Codex),
+            "agy" => Some(Agent::Agy),
             _ => None,
         }
     }
@@ -70,6 +75,7 @@ impl Agent {
         match self {
             Agent::Claude => "claude",
             Agent::Codex => "codex",
+            Agent::Agy => "agy",
         }
     }
 
@@ -77,6 +83,7 @@ impl Agent {
         match self {
             Agent::Claude => "Claude",
             Agent::Codex => "Codex",
+            Agent::Agy => "Antigravity",
         }
     }
 }
@@ -176,7 +183,9 @@ fn find(name: &str) -> Option<PathBuf> {
     let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     dirs.extend(home.map(|h| h.join(".local").join("bin")));
-    dirs.extend(local.map(|l| l.join("Programs").join("OpenAI").join("Codex").join("bin")));
+    dirs.extend(local.iter().map(|l| l.join("Programs").join("OpenAI").join("Codex").join("bin")));
+    // Antigravity's installer (agy).
+    dirs.extend(local.iter().map(|l| l.join("agy").join("bin")));
     dirs.extend(roaming.map(|r| r.join("npm")));
     let exts: &[&str] = if cfg!(windows) { &["exe", "cmd", "bat"] } else { &[""] };
     dirs.iter().flat_map(|d| exts.iter().map(move |e| if e.is_empty() { d.join(name) } else { d.join(format!("{name}.{e}")) })).find(|p| p.is_file())
@@ -189,7 +198,7 @@ pub fn available() -> Value {
     if let Some((_, v)) = seen.as_ref().filter(|(at, _)| at.elapsed() < Duration::from_secs(10)) {
         return v.clone();
     }
-    let v = json!({ "claude": find("claude").is_some(), "codex": find("codex").is_some() });
+    let v = json!({ "claude": find("claude").is_some(), "codex": find("codex").is_some(), "agy": find("agy").is_some() });
     *seen = Some((Instant::now(), v.clone()));
     v
 }
@@ -385,7 +394,8 @@ fn hidden(_command: &mut Command) {}
 // left alone.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 enum Access {
-    // Only read: no commands, no web, files only in the mail folder.
+    // Only read: no commands, no web, files only in the mail folder (not
+    // for Antigravity, which has no such mode: see talk_args).
     #[default]
     Read,
     // Anything, each step asked first.
@@ -431,6 +441,8 @@ fn conf_of(all: &Value, agent: Agent) -> Conf {
     let access = match c["access"].as_str() {
         Some("ask") => Access::Ask,
         Some("mine") => Access::Mine,
+        // Antigravity can not be held to reading: asking first is the least.
+        _ if agent == Agent::Agy => Access::Ask,
         _ => Access::Read,
     };
     Conf { access, model: word("model"), effort: word("effort") }
@@ -448,7 +460,9 @@ fn claude_own() -> (String, String) {
 fn model_args(agent: Agent, model: &str, effort: &str) -> Vec<String> {
     let mut args = Vec::new();
     match agent {
-        Agent::Claude => {
+        // Antigravity's models are each one effort already (gemini-3.8-flash-high);
+        // --effort, where set, picks another of the same model.
+        Agent::Claude | Agent::Agy => {
             if !model.is_empty() {
                 args.extend(["--model".into(), model.into()]);
             }
@@ -485,27 +499,35 @@ fn codex_sandbox() -> Vec<String> {
 // What a session starts with, before its prompt. Claude, only reading, is
 // --restricted (no commands, no web, files in its folders only), which
 // leaves out the person's settings: so her hooks come along by --settings
-// (the island still sees it) and so do their model and effort.
+// (the island still sees it) and so do their model and effort. Antigravity
+// asks in the terminal before what it is not allowed, its commands in its
+// sandbox; -i last, for the prompt after it to run at once and the session
+// to go on.
 fn session_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String)) -> Vec<String> {
     let mut args: Vec<String> = match (agent, conf.access) {
         (Agent::Claude, Access::Read) => vec!["--restricted".into(), "--settings".into(), hooks.to_string_lossy().into_owned()],
         (Agent::Claude, Access::Ask) => vec!["--permission-mode".into(), "manual".into()],
         (Agent::Codex, Access::Read) => ["--sandbox", "read-only", "--ask-for-approval", "on-request"].map(String::from).into_iter().chain(codex_sandbox()).collect(),
         (Agent::Codex, Access::Ask) => ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"].map(String::from).into_iter().chain(codex_sandbox()).collect(),
+        (Agent::Agy, Access::Read | Access::Ask) => vec!["--sandbox".into()],
         (_, Access::Mine) => Vec::new(),
     };
     let restricted = agent == Agent::Claude && conf.access == Access::Read;
     let model = if conf.model.is_empty() && restricted { own.0 } else { conf.model.clone() };
     let effort = if conf.effort.is_empty() && restricted { own.1 } else { conf.effort.clone() };
     args.extend(model_args(agent, &model, &effort));
+    if agent == Agent::Agy {
+        args.push("-i".into());
+    }
     args
 }
 
 // What a turn of a talk runs with: the first (a new session, of the id
-// given for Claude; Codex says its own) or one after (that session taken up
-// again), as much as the access lets, the model and effort. What it is asked
-// goes after these: the first prompt as the last argument, or "-" (Codex) /
-// nothing (Claude) to read it from stdin.
+// given for Claude; Codex and Antigravity say their own) or one after (that
+// session taken up again), as much as the access lets, the model and effort.
+// What it is asked goes after these: the first prompt as the last argument,
+// or "-" (Codex) / nothing (Claude) to read it from stdin; Antigravity reads
+// it from stdin always, as a stream-json message (agy_says).
 //   Claude: printed, streamed as JSON lines, the answer in pieces as it comes.
 //     Reading only: --restricted, her hooks by --settings, asking nobody,
 //     Read/Glob/Grep (one comma-separated argument, so the prompt after it
@@ -514,6 +536,13 @@ fn session_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String)) 
 //   Codex: exec (resume) with JSON lines; read-only or workspace-write
 //     sandbox (exec asks nobody), MXC where there is one. Resume takes no
 //     --sandbox: the same as config.
+//   Antigravity: stream-json in and out, the turn run when stdin closes
+//     (--conversation for one after). It has no read-only mode. Asking
+//     first: its default review, where reading the mail folder goes and
+//     anything else (an edit, a command, the web) waits for an approval
+//     nobody gives here, so it is not done (but what the person always
+//     allows in Antigravity), its commands in its sandbox. As set up:
+//     nothing more.
 fn talk_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String), cwd: &Path, session: &str, first: bool) -> Vec<String> {
     let strs = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
     let mut args = match agent {
@@ -536,6 +565,16 @@ fn talk_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String), cwd
             if let Some(s) = sandbox {
                 a.extend(if first { strs(&["--sandbox", s]) } else { strs(&["-c", &format!("sandbox_mode={s}")]) });
                 a.extend(codex_sandbox());
+            }
+            a
+        }
+        Agent::Agy => {
+            let mut a = strs(&["--output-format", "stream-json", "--input-format", "stream-json"]);
+            if !first {
+                a.extend(strs(&["--conversation", session]));
+            }
+            if conf.access != Access::Mine {
+                a.push("--sandbox".into());
             }
             a
         }
@@ -562,16 +601,93 @@ fn hooks_file(sh: &Shared) -> PathBuf {
 
 // The models each agent can be asked for, for the page: Claude's by alias
 // (the latest of each), Codex's from its own list (models_cache.json), each
-// with the efforts it takes.
-pub fn models() -> Value {
+// with the efforts it takes; Antigravity's as agy lists them.
+pub fn models(sh: &Shared) -> Value {
     static SEEN: Mutex<Option<(Instant, Value)>> = Mutex::new(None);
     let mut seen = SEEN.lock().unwrap();
-    if let Some((_, v)) = seen.as_ref().filter(|(at, _)| at.elapsed() < Duration::from_secs(30)) {
-        return v.clone();
-    }
-    let v = read_models();
-    *seen = Some((Instant::now(), v.clone()));
+    let mut v = match seen.as_ref().filter(|(at, _)| at.elapsed() < Duration::from_secs(30)) {
+        Some((_, v)) => v.clone(),
+        None => {
+            let v = read_models();
+            *seen = Some((Instant::now(), v.clone()));
+            v
+        }
+    };
+    v["agy"] = Value::Array(agy_models(sh));
     v
+}
+
+// How often Antigravity's models are asked for (agy asks Google), and how
+// soon again when it did not answer.
+const AGY_MODELS_EVERY: Duration = Duration::from_secs(30 * 60);
+const AGY_MODELS_AGAIN: Duration = Duration::from_secs(2 * 60);
+
+// Antigravity's models, as `agy models` lists them (an id, a tab, a name a
+// line; each a model at one effort: gemini-3.8-flash-high): asked in the
+// background when the settings want them (only while they are open), at
+// most every half hour, and the page told when they came; none until then.
+fn agy_models(sh: &Shared) -> Vec<Value> {
+    // When to ask next; what it said last.
+    static KNOWN: Mutex<(Option<Instant>, Vec<Value>)> = Mutex::new((None, Vec::new()));
+    let mut known = KNOWN.lock().unwrap();
+    if known.0.is_none_or(|next| Instant::now() >= next) {
+        known.0 = Some(Instant::now() + AGY_MODELS_EVERY);
+        if let Some(exe) = find("agy") {
+            let (app, cwd) = (sh.app.clone(), home(sh));
+            std::thread::spawn(move || {
+                let listed = list_agy_models(&exe, &cwd);
+                let mut known = KNOWN.lock().unwrap();
+                if listed.is_empty() {
+                    known.0 = Some(Instant::now() + AGY_MODELS_AGAIN);
+                    return;
+                }
+                known.1 = listed;
+                drop(known);
+                shared(&app).push_settings();
+            });
+        }
+    }
+    known.1.clone()
+}
+
+// `agy models`, hidden, a minute at most: its list.
+fn list_agy_models(exe: &Path, cwd: &Path) -> Vec<Value> {
+    let _ = std::fs::create_dir_all(cwd);
+    let mut command = Command::new(exe);
+    command.arg("models").current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    hidden(&mut command);
+    let Ok(mut child) = command.spawn() else { return Vec::new() };
+    let reading = child.stdout.take().map(|mut o| std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = o.read_to_string(&mut text);
+        text
+    }));
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(60) {
+        if child.try_wait().ok().flatten().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    agy_listed(&reading.and_then(|r| r.join().ok()).unwrap_or_default())
+}
+
+// The models in what `agy models` printed: "id<TAB>name" lines (its
+// "Fetching available models..." has no tab).
+fn agy_listed(text: &str) -> Vec<Value> {
+    text.lines()
+        .filter_map(|line| line.trim().split_once('\t'))
+        .filter(|(id, _)| is_word(id.trim()))
+        .map(|(id, name)| json!({ "id": id.trim(), "name": name.trim(), "efforts": [] }))
+        .collect()
+}
+
+// What a turn of Antigravity's is asked, as its stream-json input has it: a
+// user message, one line.
+fn agy_says(text: &str) -> String {
+    format!("{}\n", json!({ "event": "user", "message": { "role": "user", "content": text } }))
 }
 
 fn read_models() -> Value {
@@ -633,15 +749,15 @@ fn new_session_id() -> String {
     format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
 }
 
-// A tool the agent used, in a line: its name and what it was used on.
+// A tool the agent used, in a line: its name and what it was used on
+// (Antigravity's parameters are named otherwise: AbsolutePath, TargetFile,
+// CommandLine…).
 fn tool_line(name: &str, input: &Value) -> String {
     let base = |p: &str| p.rsplit(['/', '\\']).next().unwrap_or(p).to_string();
-    let what = input["file_path"]
-        .as_str()
-        .map(base)
-        .or_else(|| input["path"].as_str().map(base))
-        .or_else(|| input["pattern"].as_str().map(String::from))
-        .or_else(|| input["command"].as_str().map(String::from))
+    let first = |keys: &[&str]| keys.iter().find_map(|k| input[*k].as_str()).map(String::from);
+    let what = first(&["file_path", "path", "AbsolutePath", "TargetFile", "DirectoryPath", "SearchPath"])
+        .map(|p| base(&p))
+        .or_else(|| first(&["pattern", "command", "CommandLine", "Query", "Url"]))
         .unwrap_or_default();
     if what.is_empty() {
         name.to_string()
@@ -661,6 +777,10 @@ fn cut(s: &str) -> String {
 //   Codex (--json): thread.started (its session); a command started; an
 //     agent message or a file change done; turn.failed, error. Its "error"
 //     items are warnings about its config, and left out.
+//   Antigravity (stream-json): init (its session, conversation_id); a
+//     step_update's text_delta pieces of its answer, its tools as they start
+//     and the ones refused (no approval in a talk); result (an error, or its
+//     answer whole when no pieces came).
 fn hear(talk: &mut Talk, line: &str) -> bool {
     let Ok(e) = serde_json::from_str::<Value>(line) else { return false };
     match talk.agent {
@@ -711,6 +831,49 @@ fn hear(talk: &mut Talk, line: &str) -> bool {
             },
             Some("turn.failed") => talk.error = cut(e["error"]["message"].as_str().unwrap_or("failed")),
             Some("error") => talk.error = cut(e["message"].as_str().unwrap_or("error")),
+            _ => {}
+        },
+        Agent::Agy => match e["event"].as_str() {
+            Some("init") => {
+                if let Some(id) = e["conversation_id"].as_str().filter(|id| !id.is_empty()) {
+                    talk.session = id.into();
+                }
+            }
+            Some("step_update") => {
+                let step = &e["step_update"];
+                match (step["step_type"].as_str(), step["state"].as_str()) {
+                    (Some("agent_response"), _) => {
+                        if let Some(t) = step["text_delta"].as_str() {
+                            talk.streamed = true;
+                            talk.say(t);
+                        }
+                    }
+                    (Some("tool"), Some("ACTIVE")) => talk.tool(tool_line(step["tool_name"].as_str().unwrap_or("?"), &step["tool_info"]["parameters"])),
+                    // Not allowed (nobody here to approve it): said so on its line.
+                    (Some("tool"), Some("ERROR")) => {
+                        let line = tool_line(step["tool_name"].as_str().unwrap_or("?"), &step["tool_info"]["parameters"]);
+                        let refused = step["tool_info"]["error"]["message"].as_str().is_some_and(|m| m.contains("denied permission"));
+                        let said = format!("{line} · {}", if refused { "not allowed" } else { "failed" });
+                        match talk.turns.last_mut() {
+                            Some(t) if t.who == "tool" && t.text == line.chars().take(120).collect::<String>() => t.text = said.chars().take(120).collect(),
+                            _ => talk.tool(said),
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some("result") => {
+                let r = &e["result"];
+                if r["status"] != "SUCCESS" {
+                    talk.error = cut(r["error"].as_str().or(r["status"].as_str()).unwrap_or("error"));
+                }
+                if let Some(answer) = r["response"].as_str().filter(|a| !a.trim().is_empty() && !talk.streamed) {
+                    talk.say(answer);
+                }
+                if let Some(id) = r["conversation_id"].as_str().filter(|id| !id.is_empty() && talk.session.is_empty()) {
+                    talk.session = id.into();
+                }
+            }
             _ => {}
         },
     }
@@ -904,9 +1067,16 @@ pub async fn mail_hand(app: AppHandle, id: String, uid: u32, agent: String, how:
     let session = if agent == Agent::Claude { new_session_id() } else { String::new() };
     let talk = Talk { agent, account: id.clone(), mailbox: mailbox.name(), uid, subject: subject.clone(), folder: dir.clone(), session: session.clone(), turns: vec![Turn { who: "start".into(), text: String::new() }], state: "running", error: String::new(), streamed: false };
     let mut args = args_for(&sh, agent, &session, true);
-    args.push(prompt(&folder, &subject, true, zh));
+    let ask = prompt(&folder, &subject, true, zh);
     let letter: String = with_text_attachments(&dir).chars().take(MOST_STDIN).collect();
-    match go(&sh, &key, talk, &exe, args, letter) {
+    // Antigravity takes no prompt beside its stream-json input: both in one message.
+    let stdin = if agent == Agent::Agy {
+        agy_says(&format!("{ask}\n\n{letter}"))
+    } else {
+        args.push(ask);
+        letter
+    };
+    match go(&sh, &key, talk, &exe, args, stdin) {
         Ok(()) => json!({ "ok": true, "folder": folder, "key": key }),
         Err(e) => fail("start", &e),
     }
@@ -932,8 +1102,9 @@ pub async fn mail_say(app: AppHandle, key: String, text: String) -> Value {
     if talk.agent == Agent::Codex {
         args.push("-".into());
     }
-    talk.turns.push(Turn { who: "me".into(), text: text.clone() });
-    match go(&sh, &key, talk, &exe, args, text) {
+    let stdin = if talk.agent == Agent::Agy { agy_says(&text) } else { text.clone() };
+    talk.turns.push(Turn { who: "me".into(), text });
+    match go(&sh, &key, talk, &exe, args, stdin) {
         Ok(()) => json!({ "ok": true, "key": key }),
         Err(e) => fail("start", &e),
     }
@@ -1070,6 +1241,71 @@ mod tests {
         assert!(t.error.is_empty());
         hear(&mut t, r#"{"type":"turn.failed","error":{"message":"stream disconnected"}}"#);
         assert_eq!(t.error, "stream disconnected");
+    }
+
+    #[test]
+    fn antigravity_asks_first_at_least() {
+        // No read-only mode: reading only is asking first.
+        assert_eq!(conf_of(&Value::Null, Agent::Agy).access, Access::Ask);
+        assert_eq!(conf_of(&json!({ "agy": { "access": "read" } }), Agent::Agy).access, Access::Ask);
+        let mine = Conf { access: Access::Mine, model: "gemini-3.8-flash-high".into(), ..Conf::default() };
+        assert_eq!(conf_of(&json!({ "agy": { "access": "mine", "model": "gemini-3.8-flash-high" } }), Agent::Agy), mine);
+        assert!(is_conf_ok(&json!({ "agy": { "access": "ask", "model": "claude-opus-4-6-thinking" } })));
+        // A session in a terminal: its sandbox, asking there; the prompt after -i.
+        let (hooks, cwd) = (Path::new("h.json"), Path::new("D:/m"));
+        let ask = conf_of(&Value::Null, Agent::Agy);
+        assert_eq!(session_args(Agent::Agy, &ask, hooks, Default::default()), ["--sandbox", "-i"]);
+        assert_eq!(session_args(Agent::Agy, &mine, hooks, Default::default()), ["--model", "gemini-3.8-flash-high", "-i"]);
+        // A talk: stream-json both ways, its conversation taken up again.
+        assert_eq!(talk_args(Agent::Agy, &ask, hooks, Default::default(), cwd, "", true), ["--output-format", "stream-json", "--input-format", "stream-json", "--sandbox"]);
+        assert_eq!(
+            talk_args(Agent::Agy, &mine, hooks, Default::default(), cwd, "C-1", false),
+            ["--output-format", "stream-json", "--input-format", "stream-json", "--conversation", "C-1", "--model", "gemini-3.8-flash-high"]
+        );
+        // What it is asked: one line of stream-json.
+        let said = agy_says("看邮件：\"x\"\n信");
+        assert!(said.ends_with('\n') && !said.trim_end().contains('\n'), "{said}");
+        let v: Value = serde_json::from_str(&said).unwrap();
+        assert_eq!((v["event"].as_str(), v["message"]["role"].as_str(), v["message"]["content"].as_str()), (Some("user"), Some("user"), Some("看邮件：\"x\"\n信")));
+    }
+
+    // As agy 1.3.5 printed them (2026-10-14), the tools' list shortened.
+    #[test]
+    fn what_antigravity_prints_is_heard() {
+        let mut t = talk(Agent::Agy);
+        for line in [
+            r#"{"event":"init","conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","init":{"cwd":"D:\\m","tools":["view_file","write_to_file"],"permission_mode":"request-review"}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":2,"state":"DONE","step_type":"user_input"}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":5,"state":"ACTIVE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"D:\\m\\2026-10-09-x\\note.txt"}}}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":5,"state":"DONE","step_type":"tool","tool_name":"view_file","duration_seconds":0.3,"tool_info":{"name":"view_file","parameters":{"AbsolutePath":"D:\\m\\2026-10-09-x\\note.txt"},"output":"2 lines, 35 bytes"}}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":7,"state":"ACTIVE","step_type":"tool","tool_name":"write_to_file","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"D:\\m\\made.txt"}}}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":7,"state":"ERROR","step_type":"tool","tool_name":"write_to_file","tool_info":{"name":"write_to_file","parameters":{"TargetFile":"D:\\m\\made.txt"},"error":{"type":"TOOL_ERROR","message":"permission check failed for write_file: user denied permission for write_file(D:\\m\\made.txt)"}}}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":8,"state":"ACTIVE","step_type":"agent_response","text_delta":"信里"}}"#,
+            r#"{"event":"step_update","step_update":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","step_index":8,"state":"DONE","step_type":"agent_response","text_delta":"说了两件事。\n","usage":{"input_tokens":12782}}}"#,
+            r#"{"event":"result","result":{"conversation_id":"e04d3843-603d-4d39-b082-2ccc14e8d96c","status":"SUCCESS","response":"信里说了两件事。\n","num_turns":2,"denied_actions":[{"action":"write_file","display_name":"WriteToFile"}]}}"#,
+        ] {
+            assert!(hear(&mut t, line), "{line}");
+        }
+        assert_eq!(t.session, "e04d3843-603d-4d39-b082-2ccc14e8d96c");
+        let turn = |who: &str, text: &str| Turn { who: who.into(), text: text.into() };
+        assert_eq!(t.turns[1..], [turn("tool", "view_file · note.txt"), turn("tool", "write_to_file · made.txt · not allowed"), turn("agent", "信里说了两件事。\n")]);
+        assert!(t.error.is_empty());
+        // An answer that came whole (no pieces) is taken; a failed turn says why.
+        let mut t = talk(Agent::Agy);
+        hear(&mut t, r#"{"event":"result","result":{"conversation_id":"d1fd2723","status":"SUCCESS","response":"好的\n","num_turns":1}}"#);
+        assert_eq!((t.turns.last().map(|t| t.text.as_str()), t.session.as_str()), (Some("好的\n"), "d1fd2723"));
+        let mut t = talk(Agent::Agy);
+        hear(&mut t, r#"{"event":"result","result":{"conversation_id":"ca5fdcf4","status":"ERROR","response":"","error":"failed to decode stream input: invalid character '\ufeff' looking for beginning of value","num_turns":0}}"#);
+        assert!(t.error.starts_with("failed to decode stream input"), "{}", t.error);
+    }
+
+    #[test]
+    fn antigravity_lists_its_models() {
+        let printed = "Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\nclaude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)\nnot a model\tX\n";
+        let got = agy_listed(printed);
+        assert_eq!(got.len(), 2);
+        assert_eq!((got[0]["id"].as_str(), got[0]["name"].as_str()), (Some("gemini-3.8-flash-high"), Some("Gemini 3.8 Flash (High)")));
+        assert_eq!(got[1]["efforts"], json!([]));
     }
 
     #[test]
