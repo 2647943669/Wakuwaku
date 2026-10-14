@@ -660,8 +660,10 @@ pub fn let_go(sh: &Arc<Shared>) {
 pub fn double_click(sh: &Arc<Shared>) {
     if sh.flag("out") && crate::notch::in_notch() {
         // Her home in a Mac's notch is out of sight: she stays, and the
-        // island drops open from it to show what is going on (island.js peek).
-        let _ =sh.app.emit_to("island", "island:peek", ());
+        // island drops open from it to show what is going on (island.js peek):
+        // open, not toggled, so a second double-click does not shut it again.
+        sh.log("pet: double-click; the island drops open from the notch");
+        let _ = sh.app.emit_to("island", "island:peek", serde_json::json!({ "open": true }));
     } else if sh.flag("out") {
         fly_home(sh);
     } else {

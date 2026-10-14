@@ -172,7 +172,7 @@ pub fn create(sh: &Shared) -> tauri::Result<()> {
                     // On a Mac the notch is another app's to hover (Atoll and
                     // the like): her island stays in it, and this drops it
                     // open, or puts it back (island.js peek).
-                    let _ =sh.app.emit_to("island", "island:peek", ());
+                    let _ = sh.app.emit_to("island", "island:peek", ());
                 } else {
                     sh.set_hidden(sh.is_visible());
                 }
