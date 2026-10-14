@@ -1371,19 +1371,18 @@ mod imp {
 
     // Shift and a right press on a program's button: its window's own menu,
     // or one for all its windows in her words (tasks::window_menu), at the
-    // pointer; on a thread of its own, which the menu holds while it is open.
+    // pointer; the calling thread held while it is open (the command's
+    // own, off the main one), so the page hears when it has gone.
     pub fn window_menu(hwnds: Vec<isize>, lang: &'static str) -> bool {
-        std::thread::spawn(move || {
-            let words = ["taskbar.restoreAll", "taskbar.minimizeAll", "taskbar.closeAll"].map(|k| crate::i18n::t(lang, k));
-            let shown = tasks::window_menu(&hwnds, [&words[0], &words[1], &words[2]]);
-            let what = match shown {
-                Some((front, picked)) => format!("in front {front}, picked {picked:#x}"),
-                None => "none to show".into(),
-            };
-            log(&format!("window menu for {} window(s): {what}", hwnds.len()));
-            wake_tasks();
-        });
-        true
+        let words = ["taskbar.restoreAll", "taskbar.minimizeAll", "taskbar.closeAll"].map(|k| crate::i18n::t(lang, k));
+        let shown = tasks::window_menu(&hwnds, [&words[0], &words[1], &words[2]]);
+        let what = match &shown {
+            Some((front, picked)) => format!("in front {front}, picked {picked:#x}"),
+            None => "none to show".into(),
+        };
+        log(&format!("window menu for {} window(s): {what}", hwnds.len()));
+        wake_tasks();
+        shown.is_some()
     }
 
     // A press anywhere, told to the page while it has something open (the
@@ -2954,9 +2953,13 @@ pub async fn taskbar_held() -> serde_json::Value {
 
 // Shift and a right press on a program's button: its window's own menu, or
 // one for all its windows (Restore, Minimize, Close them all), at the pointer.
+// Answered once it has gone: till then the page opens no list of windows on
+// the pointer resting there, which came up over it.
 #[tauri::command]
-pub fn taskbar_window_menu(app: tauri::AppHandle, ids: Vec<i64>) -> bool {
-    imp::window_menu(ids.into_iter().map(|id| id as isize).collect(), crate::shared(&app).lang())
+pub async fn taskbar_window_menu(app: tauri::AppHandle, ids: Vec<i64>) -> bool {
+    let lang = crate::shared(&app).lang();
+    let hwnds = ids.into_iter().map(|id| id as isize).collect();
+    tauri::async_runtime::spawn_blocking(move || imp::window_menu(hwnds, lang)).await.unwrap_or(false)
 }
 
 // A press on the button of a program with several windows: all of them to

@@ -232,6 +232,8 @@
   const appOf = key => (state.windows || []).find(a => a.app === key)
   // The window Ctrl and a press last brought (island.js cycled).
   let cycled = null
+  // A window's own menu open: no list on the pointer resting (island.js menuUp).
+  let menuUp = false
   function pressApp(node, app, what) {
     const windows = app.windows || []
     if (!what) return
@@ -243,7 +245,8 @@
     }
     if (what === 'windowMenu') {
       closePop()
-      return call('taskbar_window_menu', { ids: windows.map(w => Number(w.id)) })
+      menuUp = true
+      return Promise.resolve(call('taskbar_window_menu', { ids: windows.map(w => Number(w.id)) })).finally(() => (menuUp = false))
     }
     if (what === 'next') {
       closePop()
@@ -319,7 +322,7 @@
     const node = e.target.closest('[data-app]')
     clearTimeout(popTimer)
     const app = node && (state.windows || []).find(a => a.app === node.dataset.app)
-    if (!app || popFor?.kind === 'menu' || popFor?.app === app.app || !(app.windows || []).length) return
+    if (!app || menuUp || popFor?.kind === 'menu' || popFor?.app === app.app || !(app.windows || []).length) return
     popTimer = setTimeout(() => openPop(node, 'list'), popFor ? 0 : 500)
   })
   wins.addEventListener('mouseenter', () => call('bar_pop_over', { over: true }))

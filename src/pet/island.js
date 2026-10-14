@@ -2150,7 +2150,10 @@
     if (what === 'menu') return openPop(app.app, 'menu')
     if (what !== 'press') closePop()
     if (what === 'launch' || what === 'admin') return window.pet.taskbar.app(app.path, what, app.id)
-    if (what === 'windowMenu') return window.pet.taskbar.windowMenu(windows.map(w => w.id))
+    if (what === 'windowMenu') {
+      menuUp = true
+      return window.pet.taskbar.windowMenu(windows.map(w => w.id)).finally(() => (menuUp = false))
+    }
     if (what === 'next') {
       const last = cycled?.app === app.app && Date.now() - cycled.at < window.Presses.CYCLED_MS ? cycled.id : null
       const next = window.Presses.nextWindow(windows, last)
@@ -2171,6 +2174,9 @@
   // The window Ctrl and a press last brought, for the next to go on from
   // it while its mark in front has not come yet ({ app, id, at }).
   let cycled = null
+  // A window's own menu open (Shift and a right press): no list of windows
+  // on the pointer resting on the button, which came up over the menu.
+  let menuUp = false
   // Shift and Ctrl as Windows has them at the press (taskbar_held), there
   // by the time the button comes up: her window never takes the keyboard,
   // and what the page's own events say of them may be behind. Theirs only
@@ -2308,7 +2314,7 @@
   windowsBox.addEventListener('mouseover', e => {
     const app = appOf(e.target.closest('[data-app]')?.dataset.app)
     clearTimeout(popTimer)
-    if (winPress?.ghost) return
+    if (winPress?.ghost || menuUp) return
     if (!app || popFor?.kind === 'menu') return
     if (popFor?.app === app.app) return
     popTimer = setTimeout(() => (app.windows || []).length && openPop(app.app, 'list'), popFor ? 0 : 500)
