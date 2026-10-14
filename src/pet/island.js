@@ -2372,9 +2372,10 @@
     const close = e.target.closest('[data-close]')
     if (close) return window.pet.taskbar.window(close.dataset.close, 'close')
     const row = e.target.closest('[data-win]')
+    // A window picked: to the front, never minimized (taskbar.rs 'front').
     if (row) {
       closePop()
-      return window.pet.taskbar.window(row.dataset.win, 'press')
+      return window.pet.taskbar.window(row.dataset.win, 'front')
     }
     const act = e.target.closest('[data-act]')?.dataset.act
     if (!act) return

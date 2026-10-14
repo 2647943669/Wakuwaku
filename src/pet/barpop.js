@@ -158,7 +158,7 @@
     const card = e.target.closest('[data-win]')
     if (card) {
       close()
-      return invoke('taskbar_window', { id: Number(card.dataset.win), what: 'press' }).catch(() => {})
+      return invoke('taskbar_window', { id: Number(card.dataset.win), what: 'front' }).catch(() => {})
     }
     const act = e.target.closest('[data-act]')?.dataset.act
     if (!act) return
