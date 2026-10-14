@@ -164,6 +164,36 @@
   })
   document.addEventListener('contextmenu', e => e.preventDefault())
 
+  // A file dragged from another program over the list (its program's button
+  // held over: bar.js): a card held over half a second brings its window to
+  // the front, for the file to be let go of in it, as on Windows' own
+  // (zhoupengjie/Wakuwaku#36). The page hears no mouse while the drag is on
+  // it (Tauri's drop handler has it, tauri://drag-*, in physical px): the
+  // list goes once the drag has left it and the buttons a moment, as for
+  // the pointer.
+  let fileHeld = null
+  let fileTimer
+  for (const type of ['enter', 'over', 'leave', 'drop']) {
+    listen(
+      `tauri://drag-${type}`,
+      ({ payload }) => {
+        const p = type === 'enter' || type === 'over' ? payload?.position : null
+        const node = p ? document.elementFromPoint(p.x / devicePixelRatio, p.y / devicePixelRatio) : null
+        const onPop = !!node && pop.contains(node)
+        if (onPop !== overPop) {
+          overPop = onPop
+          watchPointer()
+        }
+        const card = shown?.kind === 'list' && onPop ? node.closest('[data-win]') : null
+        if ((card?.dataset.win ?? null) === fileHeld) return
+        fileHeld = card?.dataset.win ?? null
+        clearTimeout(fileTimer)
+        if (card) fileTimer = setTimeout(() => invoke('taskbar_window', { id: Number(card.dataset.win), what: 'drag' }).catch(() => {}), window.Presses.DRAG_HOLD_MS)
+      },
+      { target },
+    )
+  }
+
   Promise.all([
     listen('barpop:show', e => e.payload?.app && draw(e.payload), { target }),
     listen(

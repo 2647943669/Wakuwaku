@@ -39,6 +39,10 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.taskManager" => if zh { "任务管理器" } else { "Task Manager" },
         "menu.editTaskbar" => if zh { "编辑任务栏布局" } else { "Edit the taskbar layout" },
         "menu.deviceManager" => if zh { "设备管理器" } else { "Device Manager" },
+        // Shift and a right press on a program's button with several windows (tasks.rs window_menu), in Windows' words.
+        "taskbar.restoreAll" => if zh { "还原所有窗口" } else { "Restore all windows" },
+        "taskbar.minimizeAll" => if zh { "最小化所有窗口" } else { "Minimize all windows" },
+        "taskbar.closeAll" => if zh { "关闭所有窗口" } else { "Close all windows" },
         "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
         "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },
         "crash.out" => if zh { "她上次意外退出了，要发崩溃报告吗？" } else { "She quit unexpectedly. Send a crash report?" },

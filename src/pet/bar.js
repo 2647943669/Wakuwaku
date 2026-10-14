@@ -209,32 +209,76 @@
   }
 
   // Presses: Start and the clock open what Windows' do, the sliver shows the
-  // desktop; a program's button as on the main taskbar (island.js): one not
-  // running starts, one window to the front or minimized, several their list
-  // to pick from, pressed again it goes (zhoupengjie/Wakuwaku#34).
-  document.addEventListener('click', e => {
-    const node = e.target.closest('[data-app]')
-    const several = node && ((state.windows || []).find(a => a.app === node.dataset.app)?.windows || []).length > 1
-    if (several) {
-      clearTimeout(popTimer)
-      const listed = popFor?.kind === 'list' && popFor.app === node.dataset.app
+  // desktop; a program's button as on the main taskbar (island.js pressApp):
+  // one not running starts, one window to the front or minimized, several
+  // their list to pick from, pressed again it goes (zhoupengjie/Wakuwaku#34);
+  // with the keys and the other buttons as on Windows' own
+  // (zhoupengjie/Wakuwaku#36, presses.js pressOf).
+  const appOf = key => (state.windows || []).find(a => a.app === key)
+  // The window Ctrl and a press last brought (island.js cycled).
+  let cycled = null
+  function pressApp(node, app, what) {
+    const windows = app.windows || []
+    if (!what) return
+    clearTimeout(popTimer)
+    if (what === 'menu') return openPop(node, 'menu')
+    if (what === 'launch' || what === 'admin') {
+      closePop()
+      return call('taskbar_app', { path: String(app.path), what, id: app.id ? String(app.id) : null })
+    }
+    if (what === 'windowMenu') {
+      closePop()
+      return call('taskbar_window_menu', { ids: windows.map(w => Number(w.id)) })
+    }
+    if (what === 'next') {
+      closePop()
+      const last = cycled?.app === app.app && Date.now() - cycled.at < window.Presses.CYCLED_MS ? cycled.id : null
+      const next = window.Presses.nextWindow(windows, last)
+      cycled = { app: app.app, id: next.id, at: Date.now() }
+      return call('taskbar_window', { id: Number(next.id), what: 'front' })
+    }
+    if (windows.length > 1) {
+      const listed = popFor?.kind === 'list' && popFor.app === app.app
       if (listed && popFor.pressed) return closePop()
       if (!listed) openPop(node, 'list')
       popFor.pressed = true
       return
     }
+    closePop()
+    if (!windows.length) return call('taskbar_app', { path: String(app.path), what: 'launch', id: app.id ? String(app.id) : null })
+    call('taskbar_window', { id: Number(windows[0].id), what: 'press' })
+  }
+  // Shift and Ctrl as Windows has them at the press (island.js heldAtPress):
+  // this window never takes the keyboard either.
+  let heldAtPress = null
+  document.addEventListener('pointerdown', e => {
+    if (e.target.closest('[data-app]')) heldAtPress = invoke('taskbar_held').catch(() => null)
+  })
+  function pressAt(e, node) {
+    const press = { type: e.type, button: e.button }
+    const own = { shift: e.shiftKey, ctrl: e.ctrlKey }
+    const held = heldAtPress
+    heldAtPress = null
+    Promise.resolve(held).then(keys => {
+      const app = appOf(node.dataset.app)
+      if (app) pressApp(node, app, window.Presses.pressOf(press, keys || own, (app.windows || []).length))
+    })
+  }
+  document.addEventListener('click', e => {
+    const node = e.target.closest('[data-app]')
+    if (node) return pressAt(e, node)
     // Her capsule: the prompt shown in her island on the main display (bars.rs bar_asks).
     closePop()
     if (e.target.closest('#her')) return invoke('bar_asks').catch(() => {})
     const what = e.target.closest('[data-bar]')?.dataset.bar
     if (what) return invoke('taskbar_open', { what })
-    const key = e.target.closest('[data-app]')?.dataset.app
-    const app = (state.windows || []).find(a => a.app === key)
-    if (!app) return
-    const windows = app.windows || []
-    if (!windows.length) return invoke('taskbar_app', { path: String(app.path), what: 'launch', id: app.id ? String(app.id) : null }).catch(() => {})
-    if (windows.length === 1) invoke('taskbar_window', { id: Number(windows[0].id), what: 'press' }).catch(() => {})
   })
+  document.addEventListener('auxclick', e => {
+    const node = e.target.closest('[data-app]')
+    if (node && e.button === 1) pressAt(e, node)
+  })
+  // The middle button pressed: no scrolling by the pointer (Chromium's).
+  document.addEventListener('mousedown', e => e.button === 1 && e.preventDefault())
   document.addEventListener('contextmenu', e => e.preventDefault())
 
   // Over a program's button, as on the main taskbar (island.js openPop): the
@@ -268,15 +312,57 @@
     clearTimeout(popTimer)
     call('bar_pop_over', { over: false })
   })
+  // A right press: its menu; with Shift, its window's own (pressApp).
   wins.addEventListener('contextmenu', e => {
     const node = e.target.closest('[data-app]')
     if (!node) return
     e.preventDefault()
     clearTimeout(popTimer)
-    openPop(node, 'menu')
+    pressAt(e, node)
   })
   // Gone by itself (the pointer away, a press elsewhere, its program gone).
   listen('bar:pop-gone', () => (popFor = null), { target })
+
+  // A file dragged from another program and held over a running program's
+  // button half a second, as on the main taskbar (island.js fileHeld): its
+  // window to the front, or with several their list open (barpop.js: a card
+  // there held over as long brings that one). Tauri's drop handler has the
+  // window's drags (tauri://drag-*, where it is in physical px), and the
+  // page hears no mouse meanwhile: the list's window is told when the drag
+  // is on the buttons or off them, as for the pointer (bar_pop_over).
+  let fileHeld = null
+  let fileTimer
+  let fileOnWins = false
+  for (const type of ['enter', 'over', 'leave', 'drop']) {
+    listen(
+      `tauri://drag-${type}`,
+      ({ payload }) => {
+        const p = type === 'enter' || type === 'over' ? payload?.position : null
+        const node = p ? document.elementFromPoint(p.x / devicePixelRatio, p.y / devicePixelRatio) : null
+        const onWins = !!node && wins.contains(node)
+        if (onWins !== fileOnWins) {
+          fileOnWins = onWins
+          call('bar_pop_over', { over: onWins })
+        }
+        const button = onWins ? node.closest('[data-app]') : null
+        if ((button?.dataset.app ?? null) === fileHeld) return
+        fileHeld = button?.dataset.app ?? null
+        clearTimeout(fileTimer)
+        if (!button) return
+        fileTimer = setTimeout(() => {
+          const app = appOf(button.dataset.app)
+          const windows = app?.windows || []
+          if (windows.length === 1) {
+            closePop()
+            call('taskbar_window', { id: Number(windows[0].id), what: 'drag' })
+          } else if (windows.length > 1 && !(popFor?.kind === 'list' && popFor.app === app.app)) {
+            openPop(button, 'list')
+          }
+        }, window.Presses.DRAG_HOLD_MS)
+      },
+      { target },
+    )
+  }
 
   setInterval(tickClock, 5000)
   addEventListener('resize', () => {

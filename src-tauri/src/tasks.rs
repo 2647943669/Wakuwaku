@@ -379,9 +379,21 @@ mod imp {
 
     // A program started, as a double press in Explorer starts it.
     pub fn launch(path: &str) -> bool {
+        start(path, "open") > 32
+    }
+
+    // Started as administrator, Windows asking first, as its "Run as
+    // administrator" starts it: ShellExecute's answer, above 32 once it has
+    // started (Windows' asking turned down, or a thing that cannot run so,
+    // such as most apps from the Store, gives less).
+    pub fn launch_as_admin(path: &str) -> isize {
+        start(path, "runas")
+    }
+
+    fn start(path: &str, verb: &str) -> isize {
         let dir = path.rsplit_once('\\').map(|(d, _)| d.to_string()).unwrap_or_default();
         // SAFETY: strings of our own, null-terminated.
-        unsafe { ShellExecuteW(std::ptr::null_mut(), wide("open").as_ptr(), wide(path).as_ptr(), std::ptr::null(), wide(&dir).as_ptr(), SW_SHOWNORMAL) > 32 }
+        unsafe { ShellExecuteW(std::ptr::null_mut(), wide(verb).as_ptr(), wide(path).as_ptr(), std::ptr::null(), wide(&dir).as_ptr(), SW_SHOWNORMAL) }
     }
 
     // Cloaked: on another virtual desktop, or a store app's window not running.
@@ -664,25 +676,8 @@ mod imp {
         // SAFETY: plain calls and posted messages about windows; a stale
         // handle only makes them fail.
         unsafe {
-            let up = |h: isize| IsIconic(h as Hwnd) == 0 && IsWindowVisible(h as Hwnd) != 0;
-            let wait_for = |done: &dyn Fn() -> bool, ms: u64| {
-                let asked = std::time::Instant::now();
-                while !done() && asked.elapsed() < std::time::Duration::from_millis(ms) {
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                }
-            };
             if may_minimize && windows.contains(&(GetForegroundWindow() as isize)) {
-                // As press(): each asked, forced once it has had its time.
-                for &h in &windows {
-                    if up(h) {
-                        PostMessageW(h as Hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
-                    }
-                }
-                wait_for(&|| !windows.iter().any(|&h| up(h)), 1000);
-                for &h in windows.iter().filter(|&&h| up(h)) {
-                    ShowWindow(h as Hwnd, SW_MINIMIZE);
-                }
-                return true;
+                return minimize_all(&windows);
             }
             // The minimized ones asked to come back all at once (jump::bring),
             // then each to the front from the lowest, the top one last.
@@ -691,7 +686,7 @@ mod imp {
                     PostMessageW(h as Hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
                 }
             }
-            wait_for(&|| !windows.iter().any(|&h| IsIconic(h as Hwnd) != 0), 1500);
+            wait_until(&|| !windows.iter().any(|&h| IsIconic(h as Hwnd) != 0), 1500);
         }
         // The top one to the front, as a single window's button brings it;
         // the others laid right under it, as they lay. Each brought to the
@@ -760,6 +755,224 @@ mod imp {
         unsafe { PostMessageW(hwnd as Hwnd, WM_SYSCOMMAND, SC_CLOSE, 0) != 0 || PostMessageW(hwnd as Hwnd, WM_CLOSE, 0, 0) != 0 }
     }
 
+    // Until done, or this long has gone (looked at every 20 ms).
+    fn wait_until(done: &dyn Fn() -> bool, ms: u64) {
+        let asked = std::time::Instant::now();
+        while !done() && asked.elapsed() < std::time::Duration::from_millis(ms) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    // These windows minimized, as press() minimizes one: each asked, forced
+    // once it has had its time.
+    pub fn minimize_all(hwnds: &[isize]) -> bool {
+        // SAFETY: plain queries about windows by handle; a stale one only fails them.
+        let up = |h: isize| unsafe { IsIconic(h as Hwnd) == 0 && IsWindowVisible(h as Hwnd) != 0 };
+        for &h in hwnds.iter().filter(|&&h| up(h)) {
+            // SAFETY: a posted message, no pointers.
+            unsafe { PostMessageW(h as Hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0) };
+        }
+        wait_until(&|| !hwnds.iter().any(|&h| up(h)), 1000);
+        for &h in hwnds.iter().filter(|&&h| up(h)) {
+            // SAFETY: as above.
+            unsafe { ShowWindow(h as Hwnd, SW_MINIMIZE) };
+        }
+        true
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetSystemMenu(hwnd: Hwnd, revert: i32) -> isize;
+        fn EnableMenuItem(menu: isize, id: u32, flags: u32) -> i32;
+        fn SetMenuDefaultItem(menu: isize, item: u32, by_position: u32) -> i32;
+        fn CreatePopupMenu() -> isize;
+        fn AppendMenuW(menu: isize, flags: u32, id: usize, text: *const u16) -> i32;
+        fn DestroyMenu(menu: isize) -> i32;
+        fn TrackPopupMenuEx(menu: isize, flags: u32, x: i32, y: i32, hwnd: Hwnd, params: *const c_void) -> i32;
+        fn CreateWindowExW(ex: u32, class: *const u16, title: *const u16, style: u32, x: i32, y: i32, w: i32, h: i32, parent: Hwnd, menu: isize, instance: isize, param: *mut c_void) -> Hwnd;
+        fn DestroyWindow(hwnd: Hwnd) -> i32;
+        fn SetForegroundWindow(hwnd: Hwnd) -> i32;
+        fn GetCursorPos(at: *mut MenuAt) -> i32;
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct MenuAt {
+        x: i32,
+        y: i32,
+    }
+
+    const GWL_STYLE: i32 = -16;
+    const GCL_STYLE: i32 = -26;
+    const WS_POPUP: u32 = 0x8000_0000;
+    const WS_MINIMIZE: isize = 0x2000_0000;
+    const WS_MAXIMIZE: isize = 0x0100_0000;
+    const WS_THICKFRAME: isize = 0x0004_0000;
+    const WS_MINIMIZEBOX: isize = 0x0002_0000;
+    const WS_MAXIMIZEBOX: isize = 0x0001_0000;
+    const CS_NOCLOSE: usize = 0x200;
+    const SC_SIZE: usize = 0xF000;
+    const SC_MOVE: usize = 0xF010;
+    const SC_MAXIMIZE: usize = 0xF030;
+    const MF_BYCOMMAND: u32 = 0x0;
+    const MF_ENABLED: u32 = 0x0;
+    const MF_GRAYED: u32 = 0x1;
+    const MF_STRING: u32 = 0x0;
+    const MF_SEPARATOR: u32 = 0x800;
+    const TPM_RIGHTBUTTON: u32 = 0x2;
+    const TPM_NONOTIFY: u32 = 0x80;
+    const TPM_RETURNCMD: u32 = 0x100;
+    const WM_NULL: u32 = 0x0;
+    // The menu for several windows: what each of its items is.
+    const ALL_RESTORE: usize = 1;
+    const ALL_MINIMIZE: usize = 2;
+    const ALL_CLOSE: usize = 3;
+
+    // A window's own menu made ready for its state as the window makes it
+    // ready itself (Windows' DefWindowProc, as the menu opens from its title
+    // bar or Alt+Space; shown from here, the window is not asked): by its
+    // style and its class's, which items are enabled (the rest greyed), and
+    // the one in bold. Size with a sizing frame and neither minimized nor
+    // maximized; Move but maximized; Minimize and Maximize where it has the
+    // box and is not so already; Restore once minimized or maximized; Close
+    // as the window keeps it, but greyed for a class that has none.
+    fn menu_states(style: isize, class_style: usize) -> (Vec<(usize, bool)>, usize) {
+        let (min, max) = (style & WS_MINIMIZE != 0, style & WS_MAXIMIZE != 0);
+        let mut items = vec![
+            (SC_SIZE, style & WS_THICKFRAME != 0 && !min && !max),
+            (SC_MOVE, !max),
+            (SC_MINIMIZE, style & WS_MINIMIZEBOX != 0 && !min),
+            (SC_MAXIMIZE, style & WS_MAXIMIZEBOX != 0 && !max),
+            (SC_RESTORE, min || max),
+        ];
+        if class_style & CS_NOCLOSE != 0 {
+            items.push((SC_CLOSE, false));
+        }
+        (items, if min { SC_RESTORE } else { SC_CLOSE })
+    }
+
+    // Shift and a right press on a program's button, as on Windows' own
+    // taskbar: one window's own menu (Restore, Move, Size, Minimize,
+    // Maximize, Close, and what its program puts there), made ready for its
+    // state (menu_states), at the pointer; what is picked sent to the window
+    // as from that menu (window_picked). For several windows, a menu for
+    // them all in these words (restore them all, minimize them all, close
+    // them all), as Windows' has for a group. The menu holds the caller's
+    // thread while it is open; it hangs from a window of ours made for it,
+    // put in front for it (a menu not in front never closes at a press
+    // elsewhere). None when there was none to show; else whether ours came
+    // to the front, and what was picked (0: nothing).
+    pub fn window_menu(hwnds: &[isize], words: [&str; 3]) -> Option<(bool, usize)> {
+        let hwnds: Vec<isize> = hwnds.iter().copied().filter(|&h| alive(h)).collect();
+        let &first = hwnds.first()?;
+        let one = hwnds.len() == 1;
+        // SAFETY: a menu and a window of our own, or the window's own menu by
+        // its handle, used and let go of on this thread; strings of our own,
+        // null-terminated, copied by the calls; our own POINT.
+        unsafe {
+            let menu = if one { GetSystemMenu(first as Hwnd, 0) } else { CreatePopupMenu() };
+            if menu == 0 {
+                return None;
+            }
+            let grey = |on: bool| if on { MF_ENABLED } else { MF_GRAYED };
+            if one {
+                let (items, bold) = menu_states(GetWindowLongPtrW(first as Hwnd, GWL_STYLE), GetClassLongPtrW(first as Hwnd, GCL_STYLE));
+                for (id, on) in items {
+                    EnableMenuItem(menu, id as u32, MF_BYCOMMAND | grey(on));
+                }
+                SetMenuDefaultItem(menu, bold as u32, 0);
+            } else {
+                let down = hwnds.iter().filter(|&&h| IsIconic(h as Hwnd) != 0).count();
+                AppendMenuW(menu, MF_STRING | grey(down > 0), ALL_RESTORE, wide(words[0]).as_ptr());
+                AppendMenuW(menu, MF_STRING | grey(down < hwnds.len()), ALL_MINIMIZE, wide(words[1]).as_ptr());
+                AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
+                AppendMenuW(menu, MF_STRING, ALL_CLOSE, wide(words[2]).as_ptr());
+            }
+            let mut at = MenuAt::default();
+            GetCursorPos(&mut at);
+            let owner = CreateWindowExW(WS_EX_TOOLWINDOW as u32, wide("STATIC").as_ptr(), std::ptr::null(), WS_POPUP, at.x, at.y, 0, 0, std::ptr::null_mut(), 0, 0, std::ptr::null_mut());
+            if owner.is_null() {
+                if !one {
+                    DestroyMenu(menu);
+                }
+                return None;
+            }
+            let front = SetForegroundWindow(owner) != 0;
+            let picked = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, at.x, at.y, owner, std::ptr::null()).max(0) as usize;
+            // As Windows asks after a menu shown so: its window's queue moves on.
+            PostMessageW(owner, WM_NULL, 0, 0);
+            if !one {
+                DestroyMenu(menu);
+            }
+            // Done while the front is still ours to hand on.
+            match (one, picked) {
+                (_, 0) => {}
+                (true, cmd) => window_picked(first, cmd),
+                // As a press on the button did (press_all): the minimized
+                // ones back, and all of them to the front as they lay.
+                (false, ALL_RESTORE) => {
+                    press_all(&hwnds, false);
+                }
+                (false, ALL_MINIMIZE) => {
+                    minimize_all(&hwnds);
+                }
+                (false, _) => hwnds.iter().for_each(|&h| {
+                    close(h);
+                }),
+            }
+            DestroyWindow(owner);
+            Some((front, picked))
+        }
+    }
+
+    // What was picked in a window's own menu, sent to it as from that menu
+    // (the pointer's place not given: Move and Size then go by the arrow
+    // keys, as when picked with the keys). To the front first, but to go
+    // down or away: Move and Size need its keys, Restore and Maximize are
+    // to show it, and what its program put there may open something. One
+    // minimized is restored by coming to the front, to as it was, maximized
+    // or not: a Restore sent after it would undo the maximized.
+    fn window_picked(hwnd: isize, cmd: usize) {
+        let h = hwnd as Hwnd;
+        // SAFETY: a plain query.
+        let down = unsafe { IsIconic(h) } != 0;
+        if cmd != SC_MINIMIZE && cmd != SC_CLOSE {
+            crate::jump::bring_window(hwnd);
+            if cmd == SC_RESTORE && down {
+                return;
+            }
+        }
+        // SAFETY: a posted message, no pointers.
+        unsafe { PostMessageW(h, WM_SYSCOMMAND, cmd, 0) };
+    }
+
+    #[cfg(test)]
+    mod menu_tests {
+        use super::*;
+
+        const WINDOW: isize = 0x00CF_0000; // WS_OVERLAPPEDWINDOW: caption, sizing frame, both boxes
+        const DIALOG: isize = 0x00C8_0000; // a caption and a system menu, no frame or boxes
+
+        fn on(style: isize, class_style: usize) -> Vec<usize> {
+            menu_states(style, class_style).0.into_iter().filter(|i| i.1).map(|i| i.0).collect()
+        }
+
+        #[test]
+        fn a_window_menu_as_the_window_readies_it() {
+            assert_eq!(on(WINDOW, 0), [SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE]);
+            assert_eq!(menu_states(WINDOW, 0).1, SC_CLOSE);
+            // Maximized: Restore, Minimize; neither moved nor sized.
+            assert_eq!(on(WINDOW | WS_MAXIMIZE, 0), [SC_MINIMIZE, SC_RESTORE]);
+            // Minimized: Restore (in bold), Move and Maximize.
+            assert_eq!(on(WINDOW | WS_MINIMIZE, 0), [SC_MOVE, SC_MAXIMIZE, SC_RESTORE]);
+            assert_eq!(menu_states(WINDOW | WS_MINIMIZE, 0).1, SC_RESTORE);
+            // A dialog: Move alone; Close as it keeps it, greyed for a class without one.
+            assert_eq!(on(DIALOG, 0), [SC_MOVE]);
+            assert!(!menu_states(DIALOG, 0).0.iter().any(|i| i.0 == SC_CLOSE));
+            assert!(menu_states(DIALOG, CS_NOCLOSE).0.contains(&(SC_CLOSE, false)));
+        }
+    }
+
     const WM_IME_CONTROL: u32 = 0x0283;
     const IMC_GETCONVERSIONMODE: usize = 0x1;
     const IMC_SETCONVERSIONMODE: usize = 0x2;
@@ -821,6 +1034,15 @@ mod imp {
     pub fn shift_down() -> bool {
         // SAFETY: a plain query; the high bit is the key's state now.
         unsafe { GetAsyncKeyState(VK_SHIFT) as u16 & 0x8000 != 0 }
+    }
+
+    // Shift and Ctrl held now (a press on a program's button, taskbar.rs
+    // taskbar_held).
+    pub fn keys_held() -> (bool, bool) {
+        const VK_CONTROL: i32 = 0x11;
+        // SAFETY: a plain query; the high bit is the key's state now.
+        let ctrl = unsafe { GetAsyncKeyState(VK_CONTROL) as u16 & 0x8000 != 0 };
+        (shift_down(), ctrl)
     }
 
     // Whether the IME in front writes the language's own script: asked of
@@ -926,6 +1148,9 @@ mod imp {
     pub fn shift_down() -> bool {
         false
     }
+    pub fn keys_held() -> (bool, bool) {
+        (false, false)
+    }
     pub fn title(_hwnd: isize) -> String {
         String::new()
     }
@@ -992,6 +1217,12 @@ mod imp {
     pub fn launch(_path: &str) -> bool {
         false
     }
+    pub fn launch_as_admin(_path: &str) -> isize {
+        0
+    }
+    pub fn window_menu(_hwnds: &[isize], _words: [&str; 3]) -> Option<(bool, usize)> {
+        None
+    }
 
     pub fn list() -> Vec<Task> {
         Vec::new()
@@ -1016,7 +1247,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, keys_held, launch, launch_as_admin, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, window_menu, with_com};
 
 #[cfg(test)]
 mod tests {
