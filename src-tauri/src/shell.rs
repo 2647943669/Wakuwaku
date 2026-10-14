@@ -415,6 +415,10 @@ mod imp {
     pub fn room(_mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
         None
     }
+    pub fn shown_room(_mon: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
+        None
+    }
+    pub fn show_bars() {}
     pub fn restore(_file: &Path) -> bool {
         false
     }

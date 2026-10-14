@@ -52,6 +52,7 @@ mod inputs;
 mod island;
 mod jump;
 mod mail;
+mod notch;
 mod notify;
 mod paper;
 mod pet;
@@ -1273,6 +1274,10 @@ fn main() {
         ])
         .on_menu_event(|app, event| tray::on_menu(&shared(app), event.id().as_ref()))
         .setup(move |app| {
+            // On macOS she is an accessory, as a menu-bar app is: no Dock icon,
+            // and the menu bar is never hers, even while her settings are open.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let mut settings = data::load(&dir);
             // Her pet gone: the first one there is.
             let found = data::pets(&dir);
@@ -1350,12 +1355,11 @@ fn main() {
             // Quiet (nobody touching it), looked at once a second.
             let pointer = sh.clone();
             spawn_named("pointer", move || loop {
-                let wait = match pointer.app.cursor_position() {
-                    Ok(c) => {
-                        let cursor = (c.x.round() as i32, c.y.round() as i32);
-                        pet::poll(&pointer, cursor).min(island::poll(&pointer, cursor))
-                    }
-                    Err(_) => 200,
+                // Each window's pointer in its own display's scale (screen::cursor).
+                let at = (screen::cursor(&pointer, pet::sf(&pointer)), screen::cursor(&pointer, island::origin(&pointer).1));
+                let wait = match at {
+                    (Some(her), Some(home)) => pet::poll(&pointer, her).min(island::poll(&pointer, home)),
+                    _ => 200,
                 };
                 let wait = if pointer.check_quiet() { wait.max(1000) } else { wait };
                 std::thread::sleep(Duration::from_millis(wait));

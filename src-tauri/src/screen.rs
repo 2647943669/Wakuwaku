@@ -62,3 +62,23 @@ impl Screens {
         (x.max(a.x).min(a.x + a.w - w), y.max(a.y).min(a.y + a.h - h))
     }
 }
+
+// The pointer, in the physical pixels of a window whose display has the scale
+// sf. On a Mac Tauri gives it in the primary display's scale, wherever it is,
+// while each window's place is in its own display's: on a second display of
+// another scale she never saw the pointer over her and could not be clicked
+// (2026-10-14). Elsewhere the two agree.
+pub fn cursor(sh: &crate::Shared, sf: f64) -> Option<(i32, i32)> {
+    let c = sh.app.cursor_position().ok()?;
+    #[cfg(target_os = "macos")]
+    let (x, y) = {
+        let primary = sh.screens().primary.map_or(1.0, |a| a.sf);
+        (c.x / primary * sf, c.y / primary * sf)
+    };
+    #[cfg(not(target_os = "macos"))]
+    let (x, y) = {
+        let _ = sf;
+        (c.x, c.y)
+    };
+    Some((x.round() as i32, y.round() as i32))
+}

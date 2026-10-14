@@ -168,6 +168,11 @@ pub fn create(sh: &Shared) -> tauri::Result<()> {
                 let sh = crate::shared(tray.app_handle());
                 if sh.flag("dnd") {
                     crate::island::open_settings(&sh, None);
+                } else if cfg!(target_os = "macos") && sh.home() == "island" && !sh.flag("out") {
+                    // On a Mac the notch is another app's to hover (Atoll and
+                    // the like): her island stays in it, and this drops it
+                    // open, or puts it back (island.js peek).
+                    let _ = sh.app.emit_to("island", "island:peek", ());
                 } else {
                     sh.set_hidden(sh.is_visible());
                 }

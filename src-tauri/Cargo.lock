@@ -2306,6 +2306,7 @@ checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags 2.13.2",
  "block2",
+ "libc",
  "objc2",
  "objc2-core-foundation",
 ]
@@ -4227,10 +4228,13 @@ version = "0.2.8"
 dependencies = [
  "base64 0.22.1",
  "io-imap",
+ "libc",
  "mail-builder",
  "mail-parser",
  "native-tls",
  "nom",
+ "objc2",
+ "objc2-foundation",
  "png 0.17.16",
  "serde",
  "serde_json",

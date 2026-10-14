@@ -67,9 +67,10 @@ fn defaults() -> Map<String, Value> {
         "lang": "auto",
         "pet": "claude-chan",
         "scale": 0.55,
-        // Her home: island or taskbar (the taskbar from the first start);
+        // Her home: island or taskbar (the taskbar from the first start, on
+        // Windows; elsewhere there is no taskbar of hers, only the island);
         // out, she is on the desktop.
-        "display": "taskbar",
+        "display": if cfg!(windows) { "taskbar" } else { "island" },
         "out": false,
         // The compact island's width: narrow, normal or wide (island.js WIDTHS).
         "islandWidth": "normal",
@@ -146,6 +147,10 @@ pub fn load(dir: &Path) -> Map<String, Value> {
             settings.insert("out".into(), json!(true));
         }
         Some("capsule" | "corner" | "bar") => {
+            settings.insert("display".into(), json!("island"));
+        }
+        // A settings file brought from Windows: no taskbar of hers here.
+        Some("taskbar") if !cfg!(windows) => {
             settings.insert("display".into(), json!("island"));
         }
         _ => {}

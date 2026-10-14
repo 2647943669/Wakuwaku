@@ -97,6 +97,36 @@
   // whatever it holds, so it keeps its size while the words change and the
   // widgets take turns. Just her (MIN_W) when there is nothing to say.
   const WIDTHS = { narrow: 240, normal: 300, wide: 380 }
+  // On a Mac the island hangs from the screen's top edge over the menu bar
+  // (notch.rs, island:top): { height, notch }, the band's height and the
+  // notch's width (0 without one); null elsewhere. With a notch the compact
+  // island wraps round it: her in the ear at its left, the clock in the ear at
+  // its right, the words (which the notch would hide) left out.
+  let screenTop = null
+  const EAR = 64
+  // Dropped open from the notch by her tray icon (setPeek), for PEEK_MS at
+  // most if the pointer never comes.
+  let peek = false
+  let peekTimer = 0
+  const PEEK_MS = 6000
+  let settingsIdleTimer = 0
+  let settingsUsed = false
+  // Where the pointer was first seen in the settings: a move counts once it
+  // goes a few px from there (WebKit may send one as they open under it).
+  let settingsFrom = null
+  for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown']) {
+    document.addEventListener(
+      type,
+      e => {
+        if (view !== 'settings') return
+        if (type !== 'pointermove') settingsUsed = true
+        else if (!settingsFrom) settingsFrom = { x: e.screenX, y: e.screenY }
+        else if (Math.hypot(e.screenX - settingsFrom.x, e.screenY - settingsFrom.y) > 8) settingsUsed = true
+      },
+      true,
+    )
+  }
+  const slotWidth = () => (screenTop?.notch ? screenTop.notch + 2 * EAR : WIDTHS[config.islandWidth] || WIDTHS.normal)
   // The window without extra room (main's ISLAND), and the island's distance
   // from the top of it. As wide as a pull needs (PULL_ROOM), so the window
   // only ever grows down: a window whose top-left corner moves shows its old
@@ -507,8 +537,18 @@
     compact.classList.toggle('bare', isBare)
     // As wide as set, and the readings' width more when pinned (their own,
     // fixed); just her (and the readings) with nothing to say.
-    compact.style.width = isBare ? '' : `${slotWidth() + (pinned ? pinned.offsetWidth + 12 : 0)}px`
-    compactWidth = isBare ? Math.max(MIN_W, compact.offsetWidth) : parseFloat(compact.style.width)
+    // Round a notch: always tucked into it, just as wide and empty, whatever
+    // goes on, so the menu bar's icons by it stay in sight and the notch is
+    // left to the app that lives there (Atoll and the like: the user's call,
+    // 2026-10-14). Her tray icon drops it open (peek); a prompt opens it.
+    const tucked = !!screenTop?.notch
+    body.classList.toggle('tucked', tucked)
+    compact.style.width = tucked
+      ? `${screenTop.notch}px`
+      : isBare && !screenTop?.notch
+        ? ''
+        : `${slotWidth() + (pinned ? pinned.offsetWidth + 12 : 0)}px`
+    compactWidth = compact.style.width ? parseFloat(compact.style.width) : Math.max(MIN_W, compact.offsetWidth)
     if (key !== shownKey) {
       if (shownKey && view === 'compact') turnedAt = Date.now()
       shownKey = key
@@ -523,9 +563,6 @@
   // How long something new takes to slide into the compact island.
   const TURN_MS = 320
   const isPinned = () => !!monitor && config.monitor?.pin !== false
-
-  // The compact island's width as set.
-  const slotWidth = () => WIDTHS[config.islandWidth] || WIDTHS.normal
 
   // A widget's line in the open island: the one shown is lit.
   function widgetRow(widget, isShown) {
@@ -693,13 +730,15 @@
       herSheet.style.transform = `translate(${-(CELL_W * scale - px) / 2}px, -2px) scale(${scale})`
     }
     if (view === 'compact') {
-      const [px, at] = home() === 'taskbar' ? [TASK_HEAD, (taskCompactH() - TASK_HEAD) / 2] : [HEAD, 6]
+      // At a Mac's screen top, in the middle of the band's height.
+      const [px, at] = home() === 'taskbar' ? [TASK_HEAD, (taskCompactH() - TASK_HEAD) / 2] : [HEAD, screenTop ? (screenTop.height - HEAD) / 2 : 6]
+      const left = home() === 'taskbar' ? at : screenTop ? 10 : 6
       if (home() === 'taskbar') portrait(TASK_HEAD, TASK_HEAD * PER_PX, at, at)
-      else portrait(HEAD, HEAD_SCALE, 6, 6)
+      else portrait(HEAD, HEAD_SCALE, left, at)
       // The dot over her portrait's top-right, 2 px out; 1 px in on an
       // upright capsule, whose round top would cut it (the island clips).
       const [dx, dy] = isSide() ? [px - 10, 1] : [px - 7, -2]
-      Object.assign(hintDot.style, { left: `${at + dx}px`, top: `${at + dy}px` })
+      Object.assign(hintDot.style, { left: `${left + dx}px`, top: `${at + dy}px` })
     } else if (view === 'settings') {
       portrait(SET_HEAD, SET_HEAD_SCALE, 16, 13)
     } else {
@@ -1015,7 +1054,10 @@
           : view === 'settings' || isCapsule()
             ? '22px'
             : flat[tbEdge()]
-        : `${height > 60 ? 30 : height / 2}px`
+        : screenTop
+          ? // Hung from a Mac's screen top: square where it meets the edge.
+            `0 0 ${view === 'compact' ? 12 : 30}px ${view === 'compact' ? 12 : 30}px`
+          : `${height > 60 ? 30 : height / 2}px`
   }
 
   // --- Deciding ---------------------------------------------------------------
@@ -1036,7 +1078,7 @@
         : { width: Math.min(OPEN_BARE_MAX_W, Math.max(300, expanded.offsetWidth)), height: Math.max(84, expanded.offsetHeight) }
     }
     if (isSide()) return sideCapsule(isHinting() || !!time())
-    return { width: compactWidth, height: home() === 'taskbar' ? taskCompactH() : 36 }
+    return { width: compactWidth, height: home() === 'taskbar' ? taskCompactH() : screenTop ? screenTop.height : 36 }
   }
 
   // --- The taskbar's right part ---------------------------------------------------
@@ -2358,6 +2400,27 @@
       console.log(`taskbar: strip in the page ${[r.left, r.top, r.right, r.bottom].map(v => +(v * dpr).toFixed(2)).join(', ')} (x ${dpr}, told ${stripThick} px)`)
     }, 400)
   }
+  // Her tray icon clicked on a Mac: the island in the notch drops open, or
+  // goes back. Open, it goes back once the pointer has been in it and left,
+  // or after a while if the pointer never comes.
+  function setPeek(on) {
+    if (on !== peek) console.log(`island: peek ${on ? 'open' : 'closed'}`)
+    peek = on
+    clearTimeout(peekTimer)
+    if (peek) peekTimer = setTimeout(() => !isHover && setPeek(false), PEEK_MS)
+    update()
+  }
+  // Her tray icon toggles it; a double-click on her only opens it ({ open }).
+  window.pet.onPeek(p => setPeek(p?.open === true ? true : !peek))
+  window.pet.onTop(({ height, notch } = {}) => {
+    const next = height > 0 ? { height, notch: notch > 0 ? notch : 0 } : null
+    if (JSON.stringify(next) === JSON.stringify(screenTop)) return
+    screenTop = next
+    body.classList.toggle('at-top', !!screenTop)
+    body.classList.toggle('notched', !!screenTop?.notch)
+    document.documentElement.style.setProperty('--top-h', `${screenTop ? screenTop.height : 36}px`)
+    update()
+  })
   // The page as big as its window (told with the strip, its physical size).
   // At 175% Chromium makes the page a little bigger than its window (the
   // window's 1204 px over 1.75 come to 688.00006 in its sums, so 689 CSS
@@ -3251,7 +3314,27 @@
     // A prompt answered: the island closes rather than lingering open.
     if (view === 'ask' && !isAsking()) nudge = null
     const was = view
-    view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() ? 'expanded' : 'compact'
+    view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() || peek ? 'expanded' : 'compact'
+    // In the notch and closed it is out of the way: the pointer passes to
+    // what is under it (the notch's own app), and a hover opens nothing.
+    body.classList.toggle('aside', !!screenTop?.notch && view === 'compact')
+    // Opened in the notch (from her menu) and the pointer never comes: back
+    // after a while, as a peek goes back (PEEK_MS). Counted from their
+    // opening, not from each redraw (the widgets redraw every few seconds).
+    // Under a still pointer they are not being used: only a move, a press, a
+    // wheel or a key in them since they opened is (settingsUsed): they opened
+    // under the pointer that had just chosen them from her menu, and stayed.
+    if (screenTop?.notch && view === 'settings' && !settingsUsed) {
+      settingsIdleTimer ||= setTimeout(() => {
+        settingsIdleTimer = 0
+        if (!settingsUsed && isSetting()) window.Settings?.close('unused')
+      }, PEEK_MS)
+    } else if (view !== 'settings') {
+      clearTimeout(settingsIdleTimer)
+      settingsIdleTimer = 0
+      settingsUsed = false
+      settingsFrom = null
+    }
     island.dataset.view = view
     // Closing on the taskbar, the blur under it goes first, then it shrinks.
     const late = plateSent && home() === 'taskbar' && view === 'compact' && was !== 'compact' && !stillMotion() ? PLATE_OUT_MS : 0
@@ -3326,6 +3409,9 @@
   }
 
   function nudgeFor(clip, text, ms = NUDGE_MS, widget = null) {
+    // In the notch nothing opens by itself (done, failed, a hello, a widget):
+    // only a prompt, which Claude waits on (the user's call, 2026-10-14).
+    if (screenTop?.notch) return update()
     nudge = { until: Date.now() + ms, clip, text, widget }
     clearTimeout(nudgeTimer)
     nudgeTimer = setTimeout(() => {
@@ -3736,7 +3822,13 @@
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
         isHover = false
-        update()
+        // In the notch, whatever was open goes back once the pointer has
+        // left, as a notch app's does: the settings too, unless a field in
+        // them is being typed in (the user's call, 2026-10-14).
+        const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')
+        if (screenTop?.notch && isSetting() && !typing) window.Settings?.close('left')
+        if (peek) setPeek(false)
+        else update()
       }, HOVER_CLOSE_MS)
     })
     // One click opens the settings (no double-click to wait for), except on a

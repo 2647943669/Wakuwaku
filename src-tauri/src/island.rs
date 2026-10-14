@@ -209,8 +209,9 @@ fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     let pos = match home {
         // The window's edge on the strip's outer one, the room inside it.
         "taskbar" => window_at(edge, isl.bar.unwrap_or_else(|| edge.strip(area.mon, (TASKBAR_H * area.sf).round() as i32)), size),
-        // The top centre, below a taskbar that sits at the top.
-        _ => (area.x + (area.w - size.0) / 2, area.y),
+        // On a Mac the notch's place, over the menu bar (notch.rs); elsewhere
+        // the top centre, below a taskbar that sits at the top.
+        _ => crate::notch::at_top(area.mon, size.0).unwrap_or((area.x + (area.w - size.0) / 2, area.y)),
     };
     if (pos, size) == (isl.pos, isl.size) {
         return None;
@@ -440,6 +441,8 @@ fn place(sh: &Shared) {
         let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
         let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
     }
+    // On another display, another notch (or none).
+    crate::notch::settle(sh);
 }
 
 // Made the first time her home shows, then kept (hidden while she talks
@@ -483,6 +486,7 @@ fn create(sh: &Arc<Shared>) {
                 let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
                 let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
                 let _ = win.set_ignore_cursor_events(true);
+                crate::notch::settle(&sh);
                 // A click anywhere else takes the focus from the settings: they close.
                 let app = sh.app.clone();
                 win.on_window_event(move |event| {
@@ -548,6 +552,8 @@ pub fn ready(sh: &Arc<Shared>) {
     sh.redraw();
     taskbar::resend(sh);
     tell_strip(sh, true);
+    // The band at a Mac's screen top, now that the page hears it.
+    crate::notch::settle(sh);
     sh.greet();
     // Taking the taskbar over: Windows' own laid over ours first, put away
     // under it, then turned to dust that settles into ours.
@@ -1064,6 +1070,10 @@ pub fn keep_on_top(sh: &Arc<Shared>) {
     if TOPMOST.swap(topmost, Ordering::SeqCst) != topmost {
         if let Some(win) = window(sh) {
             let _ = win.set_always_on_top(topmost);
+            // On top again (or not) takes a Mac's window off the menu bar's level.
+            if topmost {
+                crate::notch::settle(sh);
+            }
         }
         sh.log(&format!("island: settings {}", if topmost { "on top of other windows" } else { "under the windows pressed" }));
     }

@@ -73,6 +73,11 @@ pub struct Win {
     parked: Option<(i32, i32)>,
 }
 
+// Her window's display's scale.
+pub fn sf(sh: &Shared) -> f64 {
+    sh.win.lock().unwrap().sf()
+}
+
 impl Win {
     fn sf(&self) -> f64 {
         if self.sf > 0.0 { self.sf } else { 1.0 }
@@ -129,6 +134,17 @@ fn set_ignore(sh: &Shared, ignore: Option<bool>) {
 
 fn place(sh: &Shared, (x, y): (i32, i32)) {
     if let Some(win) = window(sh) {
+        // On a Mac a window's physical place is in its own display's scale,
+        // which changes as she crosses to a display of another: placed in
+        // points, from the scale her place was reckoned in (Win::sf), she
+        // stays under the pointer across (dragged over, she drifted away
+        // from it, 2026-10-14). Elsewhere the physical place is one space.
+        #[cfg(target_os = "macos")]
+        {
+            let sf = sh.win.lock().unwrap().sf();
+            let _ = win.set_position(tauri::LogicalPosition::new(x as f64 / sf, y as f64 / sf));
+        }
+        #[cfg(not(target_os = "macos"))]
         let _ = win.set_position(PhysicalPosition::new(x, y));
     }
 }
@@ -573,7 +589,7 @@ pub fn hover(sh: &Shared, is_over: bool) {
 }
 
 pub fn drag_start(sh: &Shared) {
-    let Ok(c) = sh.app.cursor_position() else { return };
+    let Some((cx, cy)) = crate::screen::cursor(sh, sf(sh)) else { return };
     let ignore = {
         let mut w = sh.win.lock().unwrap();
         // Already started from the button: the same press.
@@ -583,7 +599,6 @@ pub fn drag_start(sh: &Shared) {
         w.walk_gen += 1;
         w.walking = false;
         let (x, y) = w.pos;
-        let (cx, cy) = (c.x.round() as i32, c.y.round() as i32);
         w.drag = Some(Drag { dx: cx - x, dy: cy - y, x, y, x0: x, y0: y, moved: false, carried: false });
         w.ct.force(Mode::Catch)
     };
@@ -612,7 +627,8 @@ pub fn let_go(sh: &Arc<Shared>) {
         island::end_hold(sh);
     }
     if drag.moved {
-        if island::reach(sh, Some(her), true) == island::Reach::Snap {
+        // Not into a notch's out-of-sight home by a drag (notch::in_notch).
+        if !crate::notch::in_notch() && island::reach(sh, Some(her), true) == island::Reach::Snap {
             return crate::absorb(sh, her);
         }
         island::reach(sh, None, false);
@@ -653,7 +669,13 @@ pub fn let_go(sh: &Arc<Shared>) {
 // A double-click: she flies back into her home (else the settings, grown
 // out of a home risen for them).
 pub fn double_click(sh: &Arc<Shared>) {
-    if sh.flag("out") {
+    if sh.flag("out") && crate::notch::in_notch() {
+        // Her home in a Mac's notch is out of sight: she stays, and the
+        // island drops open from it to show what is going on (island.js peek):
+        // open, not toggled, so a second double-click does not shut it again.
+        sh.log("pet: double-click; the island drops open from the notch");
+        let _ = sh.app.emit_to("island", "island:peek", serde_json::json!({ "open": true }));
+    } else if sh.flag("out") {
         fly_home(sh);
     } else {
         island::open_settings(sh, None);
@@ -705,8 +727,7 @@ fn fly_home(sh: &Arc<Shared>) {
 // comes under the cursor, her middle where the drop had it (offset, logical
 // px from the cursor), and follows it.
 pub fn carry(sh: &Arc<Shared>, offset: &Value) {
-    let Ok(c) = sh.app.cursor_position() else { return };
-    let cursor = (c.x.round() as i32, c.y.round() as i32);
+    let Some(cursor) = crate::screen::cursor(sh, sf(sh)) else { return };
     let scale = scale(sh);
     let p = {
         let mut w = sh.win.lock().unwrap();

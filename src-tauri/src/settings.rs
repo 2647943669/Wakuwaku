@@ -198,7 +198,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "updateFrom" => matches!(v.as_str(), Some("auto" | "github" | "gitee")),
         // Crash reports sent by themselves, never, or asked about (crash.rs).
         "crashReports" => matches!(v.as_str(), Some("auto" | "off" | "ask")),
-        "display" => matches!(v.as_str(), Some("island" | "taskbar")),
+        // The taskbar home stands in for Windows' own: elsewhere, only the island.
+        "display" => v.as_str() == Some("island") || (cfg!(windows) && v.as_str() == Some("taskbar")),
         "islandWidth" => matches!(v.as_str(), Some("narrow" | "normal" | "wide")),
         "taskbarMaterial" => matches!(v.as_str(), Some("mica" | "black" | "clear")),
         "taskbarClearWhen" => matches!(v.as_str(), Some("mica" | "solid" | "always")),

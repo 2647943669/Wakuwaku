@@ -309,6 +309,51 @@ body {
   padding-top: 8px;
 }
 
+/* On a Mac it hangs from the screen's top edge over the menu bar, as tall as
+   the band there (island.js screenTop): black on the black notch, no ring. */
+.island.at-top #island-bar {
+  padding-top: 0;
+}
+
+.at-top #island {
+  box-shadow: none;
+}
+
+.at-top #island-compact {
+  height: var(--top-h, 36px);
+}
+
+/* Round a notch the words would sit under it: her and the clock only. */
+.notched #island-compact .label,
+.notched #island-compact .more {
+  visibility: hidden;
+}
+
+/* Tucked into the notch while nothing goes on: black on its black, nothing
+   in it, her portrait too. */
+.tucked #island-compact {
+  visibility: hidden;
+}
+
+.tucked.compact-her #island-her {
+  opacity: 0;
+}
+
+/* Closed in the notch, the pointer goes through it to what is under it (the
+   notch's own app): nothing here is under the pointer (bridge.js chainAt). */
+.aside #island,
+.aside #island * {
+  pointer-events: none;
+}
+
+/* The clock (or a widget's value) within the right ear (island.js EAR),
+   never under the notch. */
+.notched #island-compact .clock {
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #island-row {
   position: relative;
   z-index: 2;
