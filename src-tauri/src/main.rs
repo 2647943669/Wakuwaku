@@ -1317,12 +1317,11 @@ fn main() {
             // Quiet (nobody touching it), looked at once a second.
             let pointer = sh.clone();
             spawn_named("pointer", move || loop {
-                let wait = match pointer.app.cursor_position() {
-                    Ok(c) => {
-                        let cursor = (c.x.round() as i32, c.y.round() as i32);
-                        pet::poll(&pointer, cursor).min(island::poll(&pointer, cursor))
-                    }
-                    Err(_) => 200,
+                // Each window's pointer in its own display's scale (screen::cursor).
+                let at = (screen::cursor(&pointer, pet::sf(&pointer)), screen::cursor(&pointer, island::origin(&pointer).1));
+                let wait = match at {
+                    (Some(her), Some(home)) => pet::poll(&pointer, her).min(island::poll(&pointer, home)),
+                    _ => 200,
                 };
                 let wait = if pointer.check_quiet() { wait.max(1000) } else { wait };
                 std::thread::sleep(Duration::from_millis(wait));

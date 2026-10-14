@@ -73,6 +73,11 @@ pub struct Win {
     parked: Option<(i32, i32)>,
 }
 
+// Her window's display's scale.
+pub fn sf(sh: &Shared) -> f64 {
+    sh.win.lock().unwrap().sf()
+}
+
 impl Win {
     fn sf(&self) -> f64 {
         if self.sf > 0.0 { self.sf } else { 1.0 }
@@ -573,7 +578,7 @@ pub fn hover(sh: &Shared, is_over: bool) {
 }
 
 pub fn drag_start(sh: &Shared) {
-    let Ok(c) = sh.app.cursor_position() else { return };
+    let Some((cx, cy)) = crate::screen::cursor(sh, sf(sh)) else { return };
     let ignore = {
         let mut w = sh.win.lock().unwrap();
         // Already started from the button: the same press.
@@ -583,7 +588,6 @@ pub fn drag_start(sh: &Shared) {
         w.walk_gen += 1;
         w.walking = false;
         let (x, y) = w.pos;
-        let (cx, cy) = (c.x.round() as i32, c.y.round() as i32);
         w.drag = Some(Drag { dx: cx - x, dy: cy - y, x, y, x0: x, y0: y, moved: false, carried: false });
         w.ct.force(Mode::Catch)
     };
@@ -705,8 +709,7 @@ fn fly_home(sh: &Arc<Shared>) {
 // comes under the cursor, her middle where the drop had it (offset, logical
 // px from the cursor), and follows it.
 pub fn carry(sh: &Arc<Shared>, offset: &Value) {
-    let Ok(c) = sh.app.cursor_position() else { return };
-    let cursor = (c.x.round() as i32, c.y.round() as i32);
+    let Some(cursor) = crate::screen::cursor(sh, sf(sh)) else { return };
     let scale = scale(sh);
     let p = {
         let mut w = sh.win.lock().unwrap();
