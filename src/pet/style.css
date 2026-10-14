@@ -329,6 +329,16 @@ body {
   visibility: hidden;
 }
 
+/* Tucked into the notch while nothing goes on: black on its black, nothing
+   in it, her portrait too. */
+.tucked #island-compact {
+  visibility: hidden;
+}
+
+.tucked.compact-her #island-her {
+  opacity: 0;
+}
+
 /* The clock (or a widget's value) within the right ear (island.js EAR),
    never under the notch. */
 .notched #island-compact .clock {

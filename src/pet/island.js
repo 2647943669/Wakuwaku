@@ -515,8 +515,18 @@
     compact.classList.toggle('bare', isBare)
     // As wide as set, and the readings' width more when pinned (their own,
     // fixed); just her (and the readings) with nothing to say.
-    // Round a notch, always as wide as both its ears.
-    compact.style.width = isBare && !screenTop?.notch ? '' : `${slotWidth() + (pinned ? pinned.offsetWidth + 12 : 0)}px`
+    // Round a notch: tucked into it, just as wide, while nothing goes on (no
+    // session at work, waiting, done or failed; the widgets' turns too), so
+    // the menu bar's own icons by it stay in sight (the user's call,
+    // 2026-10-14); out at both its ears once something does. A hover still
+    // opens it.
+    const tucked = !!screenTop?.notch && now.mood === 'idle' && !isHinting()
+    body.classList.toggle('tucked', tucked)
+    compact.style.width = tucked
+      ? `${screenTop.notch}px`
+      : isBare && !screenTop?.notch
+        ? ''
+        : `${slotWidth() + (pinned ? pinned.offsetWidth + 12 : 0)}px`
     compactWidth = compact.style.width ? parseFloat(compact.style.width) : Math.max(MIN_W, compact.offsetWidth)
     if (key !== shownKey) {
       if (shownKey && view === 'compact') turnedAt = Date.now()
