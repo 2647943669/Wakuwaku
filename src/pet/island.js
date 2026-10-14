@@ -834,22 +834,35 @@
   // --- Behind the island: a blur, or a deeper ground (zhoupengjie/Wakuwaku#20) ------
   // The page's own blur (--i-blur) blurs only what the page draws: open
   // above the strip, a see-through look had other programs' windows sharp
-  // behind it. Under it, then, a window of Windows' acrylic (backplate.rs)
-  // in the island's shape: for a look both see-through and blurred, while
-  // the island is open (at the top of the screen, while it is up at all)
-  // and someone is about; faded in once its spring is over, out as it
-  // closes, before it shrinks; gone at once while it changes size, back
-  // once it has. Without it (Windows 10, transparency effects off, a look
-  // not blurred), over a maximized window the ground deepens (setDeep) so
-  // its words read.
+  // behind it. Under it, then, a window of Windows' acrylic (backplate.rs):
+  // for a look both see-through and blurred, while the island is open (at
+  // the top of the screen, while it is up at all) and someone is about;
+  // faded in once its spring is over, out as it closes on the taskbar,
+  // before it shrinks. While the island changes size it stays, under the
+  // smaller of its two sizes, set in further (movePlate), and is set where
+  // the island has come to once it settles. Without it (Windows 10,
+  // transparency effects off, the acrylic refused, a look not blurred),
+  // over a maximized window the ground deepens (setDeep) so its words read.
   const PLATE_IN_MS = 150
   const PLATE_OUT_MS = 100
   const DEEP_OP = 0.9
   const DEEP_MS = 150
-  // What the plate was last told (where, as JSON; '': none), and the wait
-  // for the spring before it shows.
+  // The acrylic's corners are DWM's (8 px): set in from the island's edge
+  // until they lie inside its rounder ones, (R - 8)(1 - 1/√2), a pixel at
+  // least (4.1 under the taskbar's 22 px). The band left the page paints
+  // (plated, style.css #island::before, its rim).
+  const DWM_CORNER = 8
+  const plateInset = radius => Math.max(1, (radius - DWM_CORNER) * (1 - Math.SQRT1_2))
+  // While it springs to another size, this much further in, and as much
+  // again as the spring may carry an edge past where it goes (style.css's
+  // curve: some 7 % of the way it moves).
+  const PLATE_SLACK = 3
+  const SPRING_OVER = 0.07
+  // What the plate was last told (where, as JSON; '': none), the wait for
+  // the spring before it fades in, and the wait while it moves with it.
   let plateSent = ''
   let plateWait = null
+  let plateMove = null
   // A maximized window on her display, at the top of the screen (island.rs
   // look_over_max; on the taskbar, its windows' list says).
   let overMaxTop = false
@@ -861,26 +874,75 @@
     return home() !== 'taskbar' || view !== 'compact'
   }
 
-  // After the island is laid out (resized: its size changing).
-  function placePlate(resized) {
+  // After the island is laid out; resized: from its box and corners then
+  // (from, fromRadius) to its new size.
+  function placePlate(resized, from, fromRadius) {
     if (!plateWanted()) return hidePlate(PLATE_OUT_MS)
-    if (resized || (!plateSent && !plateWait)) {
-      hidePlate(0)
-      plateWait = afterSpring(() => {
-        plateWait = null
-        showPlate(PLATE_IN_MS)
-      })
+    if (!plateSent) {
+      if (resized || !plateWait) {
+        plateWait?.()
+        plateWait = afterSpring(() => {
+          plateWait = null
+          showPlate(PLATE_IN_MS)
+        })
+      }
       return
     }
-    if (!plateWait) showPlate(0)
+    if (resized && from) return movePlate(from, fromRadius)
+    if (!plateMove) showPlate(0)
   }
 
-  // Where the island is now (moved: told again, no fade).
+  // Where the island will lie at its new size, from where it lies: at the
+  // top of the screen from its top, about its middle; on the taskbar from
+  // the strip's edge it grows from, at her end's side (isl-right, isl-low).
+  function rectAt(r, width, height) {
+    if (home() !== 'taskbar') return { x: r.left + (r.width - width) / 2, y: r.top, width, height }
+    const fromRight = tbEdge() === 'right' || (!isSide() && body.classList.contains('isl-right'))
+    const fromFoot = tbEdge() === 'bottom' || (isSide() && body.classList.contains('isl-low'))
+    return { x: fromRight ? r.right - width : r.left, y: fromFoot ? r.bottom - height : r.top, width, height }
+  }
+
+  // Changing size: under the smaller of its two boxes (where they meet),
+  // each edge set in further by the slack and by as much as the spring may
+  // carry that edge past where it goes (an edge it grows from stays put),
+  // the rim as wide at once (plate-moving); where the island has come to
+  // once it settles, the rim narrowing back over a moment.
+  function movePlate(from, fromRadius) {
+    const to = rectAt(from, parseFloat(island.style.width), parseFloat(island.style.height))
+    const x = Math.max(from.left, to.x)
+    const y = Math.max(from.top, to.y)
+    const box = { x, y, width: Math.min(from.right, to.x + to.width) - x, height: Math.min(from.bottom, to.y + to.height) - y }
+    const inset = plateInset(Math.max(fromRadius || 0, parseFloat(island.style.borderRadius) || 0))
+    const edge = moved => inset + PLATE_SLACK + SPRING_OVER * Math.abs(moved)
+    const sides = [edge(to.x - from.left), edge(to.y - from.top), edge(to.x + to.width - from.right), edge(to.y + to.height - from.bottom)]
+    island.classList.add('plate-moving')
+    sendPlate(box, sides, 0)
+    plateMove?.()
+    plateMove = afterSpring(() => {
+      plateMove = null
+      island.classList.remove('plate-moving')
+      showPlate(0)
+    })
+  }
+
+  // Under the island as it is now (moved: told again, no fade).
   function showPlate(fade) {
     if (!plateWanted()) return hidePlate(0)
     const r = island.getBoundingClientRect()
-    const radius = parseFloat(getComputedStyle(island).borderTopLeftRadius) || 0
-    const rect = { x: r.left, y: r.top, width: r.width, height: r.height, radius, vw: innerWidth, vh: innerHeight, dark: modeNow() !== 'light' }
+    const inset = plateInset(parseFloat(getComputedStyle(island).borderTopLeftRadius) || 0)
+    sendPlate({ x: r.left, y: r.top, width: r.width, height: r.height }, [inset, inset, inset, inset], fade)
+  }
+
+  // The plate in box, its edges set in by sides (left, top, right, bottom;
+  // never to nothing: it stays), the rim as wide as the widest; faded in
+  // when new.
+  function sendPlate(box, sides, fade) {
+    const across = Math.min(1, (box.width - 2) / (sides[0] + sides[2]))
+    const down = Math.min(1, (box.height - 2) / (sides[1] + sides[3]))
+    const [left, top, right, bottom] = [sides[0] * across, sides[1] * down, sides[2] * across, sides[3] * down]
+    const rect = { x: box.x + left, y: box.y + top, width: box.width - left - right, height: box.height - top - bottom, vw: innerWidth, vh: innerHeight, dark: modeNow() !== 'light' }
+    island.style.setProperty('--rim', `${Math.max(left, top, right, bottom).toFixed(2)}px`)
+    body.classList.add('plated')
     const sent = JSON.stringify(rect)
     if (sent === plateSent) return
     const first = !plateSent
@@ -891,13 +953,17 @@
   function hidePlate(fade) {
     plateWait?.()
     plateWait = null
+    plateMove?.()
+    plateMove = null
+    island.classList.remove('plate-moving')
+    body.classList.remove('plated')
     if (!plateSent) return
     plateSent = ''
     window.pet.plate(null, stillMotion() ? 0 : fade)
   }
 
   // Resized for its room, the window moves the island in the page.
-  window.addEventListener('resize', () => plateSent && !plateWait && showPlate(0))
+  window.addEventListener('resize', () => plateSent && !plateMove && showPlate(0))
 
   // Over a maximized window (one on her display, taskbar.rs "max"), a
   // see-through ground the plate does not blur goes to DEEP_OP while open,
@@ -2237,6 +2303,16 @@
     // Deeper over a maximized window, with nothing to blur it (setDeep).
     if (bg === null || op >= DEEP_OP) body.style.removeProperty('--i-bg-deep')
     else body.style.setProperty('--i-bg-deep', rgba(DEEP_OP))
+    // The rim over the acrylic's edge (sendPlate): three quarters of the
+    // way from the ground's opacity to solid, half that as it fades in.
+    const rim = op + (1 - op) * 0.75
+    if (bg === null || op >= 1) {
+      body.style.removeProperty('--i-rim')
+      body.style.removeProperty('--i-rim-half')
+    } else {
+      body.style.setProperty('--i-rim', rgba(rim.toFixed(3)))
+      body.style.setProperty('--i-rim-half', rgba((rim / 2).toFixed(3)))
+    }
     if (blur && home() === 'taskbar') island.style.setProperty('--i-blur', `blur(${blur}px) saturate(1.25)`)
     else island.style.removeProperty('--i-blur')
     const edge = {
@@ -3065,6 +3141,9 @@
     // The window has its room before the island (and she) grow into it.
     const grow = () => {
       const resized = island.style.width !== `${want.width}px` || island.style.height !== `${want.height}px`
+      // Where it is, for the plate under it to stay covered as it changes.
+      const from = resized && plateSent ? island.getBoundingClientRect() : null
+      const fromRadius = from ? parseFloat(getComputedStyle(island).borderTopLeftRadius) : 0
       setSize(want)
       const snap = isHome() && !herShown
       if (snap) her.classList.add('snap')
@@ -3075,7 +3154,7 @@
       }
       herShown = isHome()
       animateHer()
-      placePlate(resized)
+      placePlate(resized, from, fromRadius)
     }
     if (grows) setTimeout(grow, 40)
     else if (late) {
