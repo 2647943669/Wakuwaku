@@ -652,6 +652,13 @@ impl Shared {
                 *self.prev_focus.lock().unwrap() = before;
             }
             let _ = window.set_focusable(true);
+            // To the front by borrowing the input of the window there
+            // (jump::bring_window): taken after Win came up (winkeys.rs), the
+            // foreground was not hers to take, and tao's way (an Alt pressed
+            // for it) went to the window in front, its menu bar opened, the
+            // keyboard left there (with Narrator on, 2026-10-14).
+            #[cfg(windows)]
+            crate::jump::bring_window(mine);
             let _ = window.set_focus();
         } else {
             let _ = window.set_focusable(false);

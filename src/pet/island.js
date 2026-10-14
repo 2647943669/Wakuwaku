@@ -1092,6 +1092,11 @@
   // are (the user's call, 2026-10-12).
   const barRest = document.createElement('div')
   barRest.id = 'bar-rest'
+  // Keys as Windows' own taskbar takes them: a screen reader in a page
+  // reads it by its arrows (Narrator's scan mode) and the arrows never came
+  // to her buttons; as an application they come (tried, 2026-10-14). Named
+  // as the keyboard comes to it (keys, below).
+  barRest.setAttribute('role', 'application')
   island.after(barRest)
 
   // The widget shown, and the monitor, pinned: always there by the settings.
@@ -3050,6 +3055,7 @@
     // Win let go after something else than Win+T or Win+B (winkeys.rs win_up).
     if (part === 'end') return keysOff()
     keyPaused = false
+    barRest.setAttribute('aria-label', t(lang, 'taskbar.aria'))
     if (!isOn() || home() !== 'taskbar' || editLayout) return window.pet.keyboard(false)
     // The settings open: closed (theirs went back to the window before as
     // they closed, which blurs this one); the keyboard comes once Win is let
