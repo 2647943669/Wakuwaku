@@ -616,7 +616,8 @@ pub fn let_go(sh: &Arc<Shared>) {
         island::end_hold(sh);
     }
     if drag.moved {
-        if island::reach(sh, Some(her), true) == island::Reach::Snap {
+        // Not into a notch's out-of-sight home by a drag (notch::in_notch).
+        if !crate::notch::in_notch() && island::reach(sh, Some(her), true) == island::Reach::Snap {
             return crate::absorb(sh, her);
         }
         island::reach(sh, None, false);
@@ -657,7 +658,11 @@ pub fn let_go(sh: &Arc<Shared>) {
 // A double-click: she flies back into her home (else the settings, grown
 // out of a home risen for them).
 pub fn double_click(sh: &Arc<Shared>) {
-    if sh.flag("out") {
+    if sh.flag("out") && crate::notch::in_notch() {
+        // Her home in a Mac's notch is out of sight: she stays, and the
+        // island drops open from it to show what is going on (island.js peek).
+        let _ =sh.app.emit_to("island", "island:peek", ());
+    } else if sh.flag("out") {
         fly_home(sh);
     } else {
         island::open_settings(sh, None);

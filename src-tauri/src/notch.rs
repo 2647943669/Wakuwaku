@@ -5,15 +5,23 @@
 // is covered. Elsewhere nothing: the island stays under the screen's top.
 
 use crate::Shared;
+use std::sync::Mutex;
+
+// The band last told (height, notch width), so the log has a line only when
+// it changes, and so it is known whether her island sits in a notch.
+static TOLD: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+// Her island is in a notch, where it is out of the way (island.js aside):
+// her home there is out of sight, so she is never sent into it by a gesture
+// that is easily made by mistake (a double-click, a drag towards it).
+pub fn in_notch() -> bool {
+    TOLD.lock().unwrap().is_some_and(|(_, notch)| notch > 0.0)
+}
 
 #[cfg(target_os = "macos")]
 pub fn settle(sh: &Shared) {
     use serde_json::json;
-    use std::sync::Mutex;
     use tauri::{Emitter, Manager};
-
-    // The band last told, so the log has a line only when it changes.
-    static TOLD: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 
     let Some(win) = sh.app.get_webview_window("island") else { return };
     let sh = crate::shared(&sh.app);
