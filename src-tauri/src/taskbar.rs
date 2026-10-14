@@ -1195,9 +1195,15 @@ mod imp {
     // starts. Kept on the taskbar, or no longer.
     // A program by its file, or an app (a store app) by its id: started as
     // Windows starts it (its file would not start it), kept by its id.
+    // Another started (the middle button, Shift and a press; its menu's New
+    // window), or one run as administrator (Ctrl, Shift and a press, as on
+    // Windows' own taskbar, zhoupengjie/Wakuwaku#36): Windows asks first,
+    // and what cannot run so (most apps from the Store) is not started
+    // otherwise, only told in the log.
     pub fn app(sh: &Shared, what: &str, path: &str, id: Option<&str>) -> bool {
         let done = match what {
-            "launch" => {
+            "launch" | "admin" => {
+                let admin = what == "admin";
                 close_flyout();
                 // One taken from Windows' pins by its shortcut: started by it,
                 // as Windows' taskbar starts it (what the shortcut adds, a
@@ -1214,15 +1220,20 @@ mod imp {
                 };
                 // File Explorer opened where it is set to open, by its folder
                 // (no explorer.exe, nor its shortcut, to go through).
-                let explorer = is_explorer(path).then(explorer_opens);
+                let explorer = (is_explorer(path) && !admin).then(explorer_opens);
                 // On a thread of its own, with COM, as the shell wants: asked
                 // on the main thread, the shell held it 80 to 400 ms on
                 // Explorer's shortcut alone, and the press seemed to come
-                // before the program (2026-10-12).
+                // before the program (2026-10-12). Run as administrator, it
+                // waits there for Windows' asking to be answered.
                 let log_sh = crate::shared(&sh.app);
                 crate::spawn_named("launch", move || {
                     tasks::with_com();
                     let started = Instant::now();
+                    if admin {
+                        let answer = tasks::launch_as_admin(&target);
+                        return log_sh.log(&format!("taskbar: started {target} as administrator in {} ms: {} ({answer})", started.elapsed().as_millis(), answer > 32));
+                    }
                     let ok = match explorer {
                         Some(folder) => tasks::launch(folder) || tasks::launch(&target),
                         None => tasks::launch(&target),
@@ -1291,19 +1302,36 @@ mod imp {
     }
 
     // A press on a window's button: to the front, or minimized; or closed.
+    // To the front alone, never minimized: the next of a program's windows
+    // (Ctrl and a press, front), or one a file is dragged over (drag), which
+    // closes nothing first: Start in front (a file dragged from it) would be
+    // closed with Esc, and Esc ends the drag.
     pub fn window(what: &str, hwnd: isize) -> bool {
         let done = match what {
             // Off the page's thread: a window may take its time to come up
             // or go down (tasks::press waits for it).
-            "press" => {
+            "press" | "front" => {
+                let front = what == "front";
                 std::thread::spawn(move || {
                     // Start closed for it: the window to the front, even the
                     // one in front before Start (not minimized), as on Windows'.
-                    if close_flyout() {
+                    if front {
+                        close_flyout();
+                        let brought = crate::jump::bring_window(hwnd);
+                        log(&format!("the next of its windows: {hwnd} brought {brought}"));
+                    } else if close_flyout() {
                         crate::jump::bring_window(hwnd);
                     } else {
                         tasks::press(hwnd);
                     }
+                    wake_tasks();
+                });
+                true
+            }
+            "drag" => {
+                std::thread::spawn(move || {
+                    let brought = crate::jump::bring_window(hwnd);
+                    log(&format!("a file held over its button: {hwnd} brought {brought}"));
                     wake_tasks();
                 });
                 true
@@ -1322,6 +1350,23 @@ mod imp {
         std::thread::spawn(move || {
             let closed = close_flyout();
             tasks::press_all(&hwnds, !closed);
+            wake_tasks();
+        });
+        true
+    }
+
+    // Shift and a right press on a program's button: its window's own menu,
+    // or one for all its windows in her words (tasks::window_menu), at the
+    // pointer; on a thread of its own, which the menu holds while it is open.
+    pub fn window_menu(hwnds: Vec<isize>, lang: &'static str) -> bool {
+        std::thread::spawn(move || {
+            let words = ["taskbar.restoreAll", "taskbar.minimizeAll", "taskbar.closeAll"].map(|k| crate::i18n::t(lang, k));
+            let shown = tasks::window_menu(&hwnds, [&words[0], &words[1], &words[2]]);
+            let what = match shown {
+                Some((front, picked)) => format!("in front {front}, picked {picked:#x}"),
+                None => "none to show".into(),
+            };
+            log(&format!("window menu for {} window(s): {what}", hwnds.len()));
             wake_tasks();
         });
         true
@@ -2644,6 +2689,9 @@ mod imp {
     pub fn windows(_hwnds: Vec<isize>) -> bool {
         false
     }
+    pub fn window_menu(_hwnds: Vec<isize>, _lang: &'static str) -> bool {
+        false
+    }
     pub fn watch_presses(_on: bool) {}
     pub fn note(_line: &str) {}
     pub fn window(_what: &str, _hwnd: isize) -> bool {
@@ -2813,10 +2861,29 @@ pub fn taskbar_battery_font() -> tauri::ipc::Response {
     tauri::ipc::Response::new(crate::widgets::battery_font())
 }
 
-// A press on a window's button (press: to the front or minimized; close).
+// A press on a window's button (press: to the front or minimized; front: to
+// the front alone, the next of a program's windows; drag: to the front, a
+// file held over its button; close).
 #[tauri::command]
 pub fn taskbar_window(id: i64, what: String) -> bool {
     imp::window(&what, id as isize)
+}
+
+// Shift and Ctrl held now ({ shift, ctrl }), read at a press on a program's
+// button: the page's own events may say otherwise, her windows never taking
+// the keyboard (Windows keeps the keys' state for the thread that has it).
+// Off the main thread, which a menu of hers may hold.
+#[tauri::command]
+pub async fn taskbar_held() -> serde_json::Value {
+    let (shift, ctrl) = crate::tasks::keys_held();
+    serde_json::json!({ "shift": shift, "ctrl": ctrl })
+}
+
+// Shift and a right press on a program's button: its window's own menu, or
+// one for all its windows (Restore, Minimize, Close them all), at the pointer.
+#[tauri::command]
+pub fn taskbar_window_menu(app: tauri::AppHandle, ids: Vec<i64>) -> bool {
+    imp::window_menu(ids.into_iter().map(|id| id as isize).collect(), crate::shared(&app).lang())
 }
 
 // A press on the button of a program with several windows: all of them to

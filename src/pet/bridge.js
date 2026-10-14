@@ -115,17 +115,25 @@
       batteryFont: () => invoke('taskbar_battery_font').catch(() => null),
       tray: (key, press) => send('taskbar_tray', { key: Number(key), press: String(press) }),
       trayRects: rects => send('taskbar_tray_rects', { rects }),
-      // A press on a window's button: press (to the front, or minimized), close.
+      // A press on a window's button: press (to the front, or minimized),
+      // front (to the front alone: the next of a program's windows), drag (to
+      // the front, a file held over its button), close.
       window: (id, what) => invoke('taskbar_window', { id: Number(id), what: String(what) }).catch(() => false),
       // A program's windows all to the front, or all minimized when one is in front.
       windows: ids => invoke('taskbar_windows', { ids: (ids || []).map(Number) }).catch(() => false),
+      // Shift and Ctrl held now, as Windows has them ({ shift, ctrl }; null
+      // if it could not say): read at a press on a program's button.
+      held: () => invoke('taskbar_held').catch(() => null),
+      // A window's own menu, or one for all of a program's windows, at the pointer.
+      windowMenu: ids => invoke('taskbar_window_menu', { ids: (ids || []).map(Number) }).catch(() => false),
       // Presses anywhere told back (onPress) while something is open that closes on one.
       watch: on => send('taskbar_watch_presses', { on: on === true }),
       // A tray icon kept out on the taskbar, or folded away (its name,
       // systray.rs; null: where it was), and the tray's order (names) after it.
       trayPin: (name, pinned, order) =>
         send('taskbar_tray_pin', { name: String(name), pinned: typeof pinned === 'boolean' ? pinned : null, order: Array.isArray(order) ? order.map(String) : null }),
-      // A program's button: launch (it, or another window of it), pin, unpin.
+      // A program's button: launch (it, or another window of it), admin (run
+      // as administrator), pin, unpin.
       app: (path, what, id) => invoke('taskbar_app', { path: String(path), what: String(what), id: id ? String(id) : null }).catch(() => false),
       // Room for windows' live pictures in the page: [[window, x, y, w, h]], or none.
       thumbs: items => send('taskbar_thumbs', { items }),
@@ -155,6 +163,11 @@
     onKeys: on('taskbar:keys'),
     onImeIcons: on('taskbar:imeIcons'),
     onPress: on('taskbar:press'),
+    // A file dragged from another program over the window: (type, at) with
+    // type enter, over, leave or drop, at where it is in the page's px (none
+    // once it has left). Tauri's drop handler has the window's drags, so the
+    // page hears no dragenter of its own.
+    onFileDrag: fn => fileDrags.push(fn),
     // The desktop's picture under the strip, for its Mica ({ url, position,
     // color, mon, screen, sf }; mica.js).
     onWallpaper: on('taskbar:wallpaper'),
@@ -243,6 +256,41 @@
       { target },
     ),
   )
+
+  // --- A file dragged over the window ---------------------------------------------
+
+  // While a drag of files from another program is over the window (Tauri's
+  // drop handler has it: tauri://drag-*, where it is in physical px), the
+  // drag holds the mouse and the page hears none. Where it is is played as
+  // the pointer's, in a chain of its own (hover() clears the pointer's), so
+  // that the window lets the drag through once it is off her things, as it
+  // does the pointer: caught, the clear window over the strip took the drop
+  // meant for the window under it. Then told the page (onFileDrag).
+  const fileDrags = []
+  let dragged = []
+  for (const type of ['enter', 'over', 'leave', 'drop']) {
+    pending.push(
+      listen(
+        `tauri://drag-${type}`,
+        ({ payload }) => {
+          const p = type === 'leave' ? null : payload?.position
+          const at = p ? { x: p.x / devicePixelRatio, y: p.y / devicePixelRatio } : null
+          if (at && type !== 'drop') {
+            const next = chainAt(at.x, at.y)
+            const was = dragged
+            dragged = next
+            for (const el of was) if (!next.includes(el)) play('mouseleave', el, at.x, at.y)
+            for (const el of next) if (!was.includes(el)) play('mouseenter', el, at.x, at.y)
+          } else {
+            // Gone, or let go of: the mouse is the page's again.
+            dragged = []
+          }
+          for (const fn of fileDrags) fn(type, at)
+        },
+        { target },
+      ),
+    )
+  }
 
   // The page's console.log into debug.log (when it is on).
   const log = console.log.bind(console)

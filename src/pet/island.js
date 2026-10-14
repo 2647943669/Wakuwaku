@@ -2120,16 +2120,25 @@
   // once to pick one from, as Windows 11's own (zhoupengjie/Wakuwaku#34:
   // they all came to the front together, or all went down), and pressed
   // again it goes. One the pointer rested on stays open for the press.
-  windowsBox.addEventListener('click', e => {
-    const app = appOf(e.target.closest('[data-app]')?.dataset.app)
-    if (!app) return
-    e.stopPropagation()
-    // The end of a drag, not a press.
-    if (winDragged) {
-      winDragged = false
-      return
-    }
+  // With the keys and the other buttons as on Windows' own
+  // (zhoupengjie/Wakuwaku#36, presses.js pressOf): the middle button or
+  // Shift, another of it; Ctrl and Shift, another as administrator; Ctrl on
+  // one with several windows, the next of them; a right press, its menu,
+  // with Shift its window's own menu (one for all its windows when it has
+  // several).
+  function pressApp(app, what) {
     const windows = app.windows || []
+    if (!what) return
+    if (what === 'menu') return openPop(app.app, 'menu')
+    if (what !== 'press') closePop()
+    if (what === 'launch' || what === 'admin') return window.pet.taskbar.app(app.path, what, app.id)
+    if (what === 'windowMenu') return window.pet.taskbar.windowMenu(windows.map(w => w.id))
+    if (what === 'next') {
+      const last = cycled?.app === app.app && Date.now() - cycled.at < window.Presses.CYCLED_MS ? cycled.id : null
+      const next = window.Presses.nextWindow(windows, last)
+      cycled = { app: app.app, id: next.id, at: Date.now() }
+      return window.pet.taskbar.window(next.id, 'front')
+    }
     if (!windows.length) return window.pet.taskbar.app(app.path, 'launch', app.id)
     if (windows.length > 1) {
       const listed = popFor?.kind === 'list' && popFor.app === app.app && !pop.hidden
@@ -2140,13 +2149,52 @@
     }
     closePop()
     window.pet.taskbar.window(windows[0].id, 'press')
+  }
+  // The window Ctrl and a press last brought, for the next to go on from
+  // it while its mark in front has not come yet ({ app, id, at }).
+  let cycled = null
+  // Shift and Ctrl as Windows has them at the press (taskbar_held), there
+  // by the time the button comes up: her window never takes the keyboard,
+  // and what the page's own events say of them may be behind. Theirs only
+  // when it could not say.
+  let heldAtPress = null
+  windowsBox.addEventListener('pointerdown', e => {
+    if (e.target.closest('[data-app]')) heldAtPress = window.pet.taskbar.held()
   })
+  function pressAt(e) {
+    const key = e.target.closest('[data-app]')?.dataset.app
+    const press = { type: e.type, button: e.button }
+    const own = { shift: e.shiftKey, ctrl: e.ctrlKey }
+    const held = heldAtPress
+    heldAtPress = null
+    Promise.resolve(held).then(keys => {
+      const app = appOf(key)
+      if (app) pressApp(app, window.Presses.pressOf(press, keys || own, (app.windows || []).length))
+    })
+  }
+  windowsBox.addEventListener('click', e => {
+    if (!appOf(e.target.closest('[data-app]')?.dataset.app)) return
+    e.stopPropagation()
+    // The end of a drag, not a press.
+    if (winDragged) {
+      winDragged = false
+      return
+    }
+    pressAt(e)
+  })
+  windowsBox.addEventListener('auxclick', e => {
+    if (e.button !== 1 || !appOf(e.target.closest('[data-app]')?.dataset.app)) return
+    e.stopPropagation()
+    pressAt(e)
+  })
+  // The middle button pressed: no scrolling by the pointer (Chromium's), on
+  // a side bar's column of buttons.
+  windowsBox.addEventListener('mousedown', e => e.button === 1 && e.preventDefault())
   windowsBox.addEventListener('contextmenu', e => {
-    const app = appOf(e.target.closest('[data-app]')?.dataset.app)
-    if (!app) return
+    if (!appOf(e.target.closest('[data-app]')?.dataset.app)) return
     e.preventDefault()
     e.stopPropagation()
-    openPop(app.app, 'menu')
+    pressAt(e)
   })
   // A program's button dragged along the taskbar: put where it is let go
   // among the others, before the one under the pointer (after it past its
@@ -2255,6 +2303,40 @@
     })
     node.addEventListener('mouseenter', () => popFor && clearTimeout(popTimer))
   }
+
+  // A file dragged from another program and held over a running program's
+  // button half a second: its window to the front, or with several their
+  // list open, a card in it held over as long bringing that one, for the
+  // file to be let go of in the window, as on Windows' own
+  // (zhoupengjie/Wakuwaku#36). The drag's place comes from Tauri
+  // (bridge.js onFileDrag, which also plays it as the pointer's: the list
+  // goes once the drag has left it and the buttons a moment, as for the
+  // pointer). What it is held over: 'win:<id>', 'app:<key>', or null.
+  let fileHeld = null
+  let fileTimer
+  window.pet.onFileDrag((type, at) => {
+    const live = at && (type === 'enter' || type === 'over') && isOn() && home() === 'taskbar' && !editLayout
+    const node = live ? document.elementFromPoint(at.x, at.y) : null
+    const card = node && pop.contains(node) ? node.closest('[data-win]') : null
+    const button = !card && node && windowsBox.contains(node) ? node.closest('[data-app]') : null
+    const held = card ? `win:${card.dataset.win}` : button ? `app:${button.dataset.app}` : null
+    if (held === fileHeld) return
+    fileHeld = held
+    clearTimeout(fileTimer)
+    if (!held) return
+    fileTimer = setTimeout(() => {
+      if (card) return window.pet.taskbar.window(card.dataset.win, 'drag')
+      const app = appOf(button.dataset.app)
+      const windows = app?.windows || []
+      if (windows.length === 1) {
+        closePop()
+        window.pet.taskbar.window(windows[0].id, 'drag')
+      } else if (windows.length > 1 && !(popFor?.kind === 'list' && popFor.app === app.app && !pop.hidden)) {
+        openPop(app.app, 'list')
+      }
+    }, window.Presses.DRAG_HOLD_MS)
+  })
+
   // On the press, not the click: what was pressed may be drawn anew before
   // the button comes up.
   pop.addEventListener('click', e => e.stopPropagation())
@@ -3239,7 +3321,7 @@
 
   // While editing, the parts' own presses (Start, the buttons, the tray, the
   // menu) are held back: they are being moved, not used.
-  for (const type of ['click', 'dblclick', 'contextmenu', 'pointerup']) {
+  for (const type of ['click', 'auxclick', 'dblclick', 'contextmenu', 'pointerup']) {
     barRest.addEventListener(
       type,
       e => {
