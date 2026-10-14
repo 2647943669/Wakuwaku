@@ -1157,8 +1157,10 @@ body {
 }
 
 /* Grown up from the strip, black on black: no outline, which would cut a
-   line down through the strip where the two meet. */
-.home-taskbar #island:not([data-view='compact']) {
+   line down through the strip where the two meet. Shrinking back
+   (island.js holdGround), it keeps its shadow until the spring is over. */
+.home-taskbar #island:not([data-view='compact']),
+.home-taskbar #island.shrinking {
   box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.45);
 }
 
@@ -2152,13 +2154,14 @@ body {
   color: #1b1b1b;
 }
 
-.tb-light.home-taskbar.tb-capsule #island[data-view='compact'] {
+.tb-light.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.08),
     0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.tb-light.home-taskbar.tb-capsule #island.shrinking {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.18),
     0 0 0 1px rgba(0, 0, 0, 0.08);
@@ -2581,40 +2584,46 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   backdrop-filter: var(--i-blur);
 }
 
-.home-taskbar.tb-capsule #island[data-view='compact'] {
+/* Collapsing, the open island's ground, edge and shadow are kept while it
+   shrinks (island.js holdGround, shrinking), then fade to the capsule's: a
+   bare one's ground gone at once left the open island's words over the
+   desktop as it shrank (zhoupengjie/Wakuwaku#16). */
+.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   box-shadow: var(--i-edge);
 }
 
-.tb-light.home-taskbar.tb-capsule #island[data-view='compact'] {
+.tb-light.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   box-shadow:
     var(--i-edge),
     0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.home-taskbar.tb-capsule #island.shrinking {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.5),
     var(--i-edge);
 }
 
-.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.tb-light.home-taskbar.tb-capsule #island.shrinking {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.18),
     var(--i-edge);
 }
 
-.island-bare.home-taskbar.tb-capsule #island[data-view='compact'] {
+.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
 }
 
-.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:hover {
+.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking):hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.tb-light.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:hover {
+.tb-light.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking):hover {
   background: rgba(0, 0, 0, 0.05);
 }
 

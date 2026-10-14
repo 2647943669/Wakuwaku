@@ -781,6 +781,56 @@
     return grows
   }
 
+  // fn once the island's size spring is over: its width's or height's
+  // transitionend, or a little after the spring's length should none come
+  // (the size unchanged, a spring cut short). Returns what calls it off.
+  function afterSpring(fn) {
+    let timer
+    const stop = () => {
+      clearTimeout(timer)
+      island.removeEventListener('transitionend', done)
+    }
+    const done = e => {
+      if (e && (e.target !== island || (e.propertyName !== 'width' && e.propertyName !== 'height'))) return
+      stop()
+      fn()
+    }
+    island.addEventListener('transitionend', done)
+    timer = setTimeout(done, SPRING_MS + 50)
+    return stop
+  }
+
+  // Collapsing on the taskbar, the open island's ground, edge and shadow
+  // stay (style.css shrinking) until it has shrunk, then fade to the
+  // capsule's over GROUND_FADE_MS: gone at once, a bare capsule's ground
+  // left the open island's words over the desktop while it was still big
+  // (zhoupengjie/Wakuwaku#16). Open again meanwhile, it has them at once.
+  const GROUND_FADE_MS = 180
+  let groundWait = null
+  const stillMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  function holdGround(was) {
+    if (home() === 'taskbar' && view === 'compact' && was && was !== 'compact') {
+      groundWait?.()
+      island.classList.add('shrinking')
+      groundWait = afterSpring(fadeGround)
+      return
+    }
+    if (view === 'compact' && home() === 'taskbar') return
+    groundWait?.()
+    groundWait = null
+    island.classList.remove('shrinking')
+    for (const a of island.getAnimations()) if (a.id === 'ground') a.cancel()
+  }
+
+  function fadeGround() {
+    groundWait = null
+    const held = getComputedStyle(island)
+    const from = { offset: 0, backgroundColor: held.backgroundColor, boxShadow: held.boxShadow, backdropFilter: held.backdropFilter }
+    island.classList.remove('shrinking')
+    if (!stillMotion()) island.animate([from], { id: 'ground', duration: GROUND_FADE_MS, easing: 'ease-out' })
+  }
+
   function setSize({ width, height }) {
     island.style.width = `${width}px`
     island.style.height = `${height}px`
@@ -2870,8 +2920,10 @@
     if (!isOn() || (pull?.started && !pull.carrying) || isAbsorbing) return
     // A prompt answered: the island closes rather than lingering open.
     if (view === 'ask' && !isAsking()) nudge = null
+    const was = view
     view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() ? 'expanded' : 'compact'
     island.dataset.view = view
+    holdGround(was)
     setInk()
     island.style.setProperty('--ring', hue()[now.mood])
     island.classList.toggle('wants', now.mood === 'waiting')
