@@ -1898,6 +1898,27 @@ body.home-taskbar {
   background: #2c2c2e;
 }
 
+/* The keyboard on the taskbar (Win+T, Win+B; island.js keyRing): a ring
+   round what it is on, as Windows draws round what has its keyboard, light
+   outside and a dark line inside it (the other way round in Windows' light
+   mode); drawn inside the button, as its column may clip what lies outside
+   it, and over the line a window in front has round its button or card.
+   Nothing of the browser's own. */
+#bar-rest :focus:not(.kfocus) {
+  outline: none;
+}
+
+#bar-rest .kfocus {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.7) !important;
+}
+
+.tb-light #bar-rest .kfocus {
+  outline-color: rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7) !important;
+}
+
 .tray-dragging #bar-rest .tfly,
 .tray-dragging #bar-rest .tout {
   outline: 1.5px dashed rgba(94, 155, 255, 0.6);

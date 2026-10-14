@@ -155,6 +155,9 @@
     onKeys: on('taskbar:keys'),
     onImeIcons: on('taskbar:imeIcons'),
     onPress: on('taskbar:press'),
+    // Win+T, Win+B (winkeys.rs): the keyboard, given her window already, on
+    // her programs' buttons or her tray ({ part: apps | tray, back }).
+    onFocusBar: on('taskbar:focus'),
     // The desktop's picture under the strip, for its Mica ({ url, position,
     // color, mon, screen, sf }; mica.js).
     onWallpaper: on('taskbar:wallpaper'),

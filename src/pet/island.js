@@ -1790,6 +1790,9 @@
         const windows = app.windows || []
         const button = el('span', 'win')
         button.dataset.app = app.app
+        // As Windows' own buttons say themselves to a screen reader.
+        button.setAttribute('role', 'button')
+        button.setAttribute('aria-label', t(lang, !windows.length ? 'taskbar.ariaPinned' : windows.length > 1 ? 'taskbar.ariaMany' : 'taskbar.ariaOne', { name: app.name || '', n: windows.length }))
         button.classList.toggle('front', windows.some(w => w.front))
         button.classList.toggle('min', windows.length > 0 && windows.every(w => w.min))
         const flashes = windows.filter(w => w.flash)
@@ -2639,6 +2642,7 @@
   }
   const chevron = el('span', 'tchev')
   chevron.append(el('span', 'fi', ''))
+  chevron.setAttribute('role', 'button')
   const outBox = el('span', 'tout')
   const flyout = el('span', 'tfly')
   let trayOpen = false
@@ -2648,6 +2652,8 @@
     slot.dataset.tray = i.key
     slot.dataset.name = i.name
     slot.title = i.tip || i.exe
+    slot.setAttribute('role', 'button')
+    slot.setAttribute('aria-label', i.tip || i.name || i.exe || '')
     if (i.png) {
       const img = el('img')
       img.src = i.png
@@ -2734,6 +2740,8 @@
       trayDrawn = drawn
       chevron.hidden = !folded.length
       chevron.classList.toggle('open', trayOpen)
+      chevron.setAttribute('aria-label', t(lang, 'taskbar.showHidden'))
+      chevron.setAttribute('aria-expanded', String(trayOpen))
       outBox.replaceChildren(...icons.filter(isOut).map(trayIcon))
       flyout.replaceChildren(...folded.map(trayIcon))
       flyout.hidden = !trayOpen
@@ -2795,6 +2803,198 @@
     for (const key of [...trayPngs.keys()]) if (!trayIcons.some(i => i.key === key)) trayPngs.delete(key)
     if (isOn() && home() === 'taskbar') drawTray()
   })
+
+  // --- The keyboard on the taskbar (Win+T, Win+B) ---------------------------------------
+  // As on Windows' own taskbar: Win+T puts the keyboard on the programs'
+  // buttons (the first; Win+Shift+T the last; again, the next one), Win+B
+  // on the tray (^ first, then the icons kept out). The arrows along the bar
+  // go from one to the next (up and down on a side bar; Home, End), Tab
+  // goes between the two, Enter or Space is a press, Shift+F10 or the menu
+  // key a right press, Esc gives the keyboard back to the window that had
+  // it. What a press opens over a button (its windows to pick from, its
+  // menu, the folded tray icons) is gone through the same way, any arrow
+  // along it, Esc back to the button. A ring round the one it is on, as
+  // Windows draws it (style.css .kfocus). The keys come from the hook that
+  // takes them from Windows' put-away taskbar (winkeys.rs), which has given
+  // her window the keyboard already; a press that brings another window to
+  // the front takes it away again (island:blur), and that ends it too.
+  // Where it is: the part ('apps', 'tray'; 'pop', 'fly' for what opened
+  // over them), the one it is on (by its key, and its place), the part and
+  // the one it came from into what opened, and when the settings were
+  // closed for it.
+  let keyPart = null
+  let keyAt = null
+  let keyFrom = null
+  let keyedAt = 0
+  const keyId = node => node.dataset.app ?? node.dataset.tray ?? node.dataset.win ?? node.dataset.act ?? (node === chevron ? '^' : '')
+  function keyNodes(part) {
+    if (part === 'apps') return [...windowsBox.querySelectorAll('[data-app]')]
+    if (part === 'tray') return [...(chevron.hidden ? [] : [chevron]), ...outBox.querySelectorAll('[data-tray]')]
+    if (part === 'pop') return pop.hidden ? [] : [...pop.querySelectorAll('[data-win], [data-act]')]
+    if (part === 'fly') return trayOpen ? [...flyout.querySelectorAll('[data-tray]')] : []
+    return []
+  }
+
+  // The ring on the one it is at, found again after the bar is drawn anew
+  // (by its key, else at its place); what opened over a button gone, back
+  // on that button.
+  function keyRing() {
+    if ((keyPart === 'pop' || keyPart === 'fly') && !keyNodes(keyPart).length) {
+      keyPart = keyFrom?.part || 'apps'
+      keyAt = keyFrom?.at || null
+    }
+    const nodes = keyNodes(keyPart)
+    const node = nodes.find(n => keyId(n) === keyAt?.id) || nodes[Math.min(keyAt?.i ?? 0, nodes.length - 1)] || null
+    for (const n of barRest.querySelectorAll('.kfocus')) if (n !== node) n.classList.remove('kfocus')
+    if (!node) return
+    keyAt = { id: keyId(node), i: nodes.indexOf(node) }
+    node.classList.add('kfocus')
+    node.tabIndex = -1
+    if (!node.hasAttribute('role')) node.setAttribute('role', 'button')
+    // A window's card by its title (its ✕ is no part of its name).
+    if (node.dataset.win) node.setAttribute('aria-label', node.querySelector('.wt')?.textContent || '')
+    if (document.activeElement !== node) node.focus({ preventScroll: true })
+    // In sight in a side bar's programs' column, should it scroll.
+    if (isSide() && windowsBox.contains(node)) {
+      const box = windowsBox.getBoundingClientRect()
+      const r = node.getBoundingClientRect()
+      windowsBox.scrollTop += r.top < box.top ? r.top - box.top : r.bottom > box.bottom ? r.bottom - box.bottom : 0
+    }
+  }
+  // Drawn anew (the windows changed, a tray icon came or went): the ring found again.
+  new MutationObserver(() => keyPart && keyRing()).observe(barRest, { childList: true, subtree: true })
+
+  function keyStep(by) {
+    const nodes = keyNodes(keyPart)
+    if (!nodes.length) return
+    const at = Math.max(0, nodes.findIndex(n => keyId(n) === keyAt?.id))
+    keyAt = { id: keyId(nodes[(at + by + nodes.length) % nodes.length]) }
+    keyRing()
+  }
+
+  // Into what a press opened over a button, its first.
+  function keyInto(part) {
+    keyFrom = { part: keyPart, at: keyAt }
+    keyPart = part
+    keyAt = null
+    keyRing()
+  }
+
+  function keysOff() {
+    if (!keyPart) return
+    keyPart = keyAt = keyFrom = null
+    keyRing()
+    if (barRest.contains(document.activeElement)) document.activeElement.blur()
+    window.pet.keyboard(false)
+  }
+
+  // Enter, Space: as a press with the pointer, by the same handlers (a
+  // program started, its window to the front, its windows listed; a window
+  // or an item picked from them; a tray icon's program told; ^ opening the
+  // folded ones).
+  function keyPress(node) {
+    if (keyPart === 'apps') {
+      node.click()
+      if (popFor?.app === node.dataset.app && !pop.hidden) keyInto('pop')
+      return
+    }
+    if (keyPart === 'pop') {
+      node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
+      return keyRing()
+    }
+    if (node === chevron) {
+      openTray(!trayOpen)
+      if (trayOpen) keyInto('fly')
+      return
+    }
+    window.pet.taskbar.tray(node.dataset.tray, 'leftDown')
+    window.pet.taskbar.tray(node.dataset.tray, 'leftUp')
+    if (keyPart === 'fly') {
+      openTray(false)
+      keyRing()
+    }
+  }
+
+  // Shift+F10, the menu key: as a right press (a program's menu, the keyboard
+  // in it; a tray icon's program's own).
+  function keyMenu(node) {
+    if (keyPart === 'apps') {
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+      if (popFor?.kind === 'menu' && !pop.hidden) keyInto('pop')
+    } else if (node.dataset.tray) {
+      window.pet.taskbar.tray(node.dataset.tray, 'rightDown')
+      window.pet.taskbar.tray(node.dataset.tray, 'rightUp')
+    }
+  }
+
+  // Esc: out of what opened, back on its button; else the keyboard given back.
+  function keyBack() {
+    if (keyPart === 'pop') closePop()
+    else if (keyPart === 'fly') openTray(false)
+    else return keysOff()
+    keyRing()
+  }
+
+  window.pet.onFocusBar(({ part, back } = {}) => {
+    if (!isOn() || home() !== 'taskbar' || editLayout) return window.pet.keyboard(false)
+    // The settings open: closed, and the keyboard taken again (theirs went
+    // back to the window before as they closed, which blurs this one).
+    keyedAt = 0
+    if (isSetting()) {
+      keyedAt = Date.now()
+      window.Settings?.close?.('keys')
+      window.pet.keyboard(true)
+    }
+    const want = part === 'tray' ? 'tray' : 'apps'
+    // Win+T again with the keyboard on the buttons: the next one (Shift: the one before), as Windows' does.
+    const again = keyPart === 'apps' && want === 'apps'
+    if (popFor) closePop()
+    if (trayOpen) openTray(false)
+    keyPart = want
+    keyFrom = null
+    const nodes = keyNodes(want)
+    if (!nodes.length) return keysOff()
+    if (again) return keyStep(back ? -1 : 1)
+    keyAt = { id: keyId(nodes[back ? nodes.length - 1 : 0]) }
+    keyRing()
+  })
+  // Gone to another window: over. Not for the settings closing as it began
+  // (keyedAt: then).
+  window.pet.onBlur(() => keyPart && Date.now() - keyedAt > 600 && keysOff())
+
+  document.addEventListener(
+    'keydown',
+    e => {
+      if (!keyPart) return
+      // The settings opened meanwhile (a press on her capsule): the keys are theirs.
+      if (isSetting()) return keysOff()
+      const k = e.key
+      const node = keyNodes(keyPart).find(n => keyId(n) === keyAt?.id)
+      // Along the bar, or in what opened over it any way.
+      const [prev, next] = keyPart === 'pop' || keyPart === 'fly' ? [null, null] : isSide() ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight']
+      if (next ? k === next : k === 'ArrowRight' || k === 'ArrowDown') keyStep(1)
+      else if (prev ? k === prev : k === 'ArrowLeft' || k === 'ArrowUp') keyStep(-1)
+      else if (k === 'Home' || k === 'End') {
+        const nodes = keyNodes(keyPart)
+        if (nodes.length) keyAt = { id: keyId(nodes[k === 'Home' ? 0 : nodes.length - 1]) }
+        keyRing()
+      } else if (k === 'Tab' && (keyPart === 'apps' || keyPart === 'tray')) {
+        const other = keyPart === 'apps' ? 'tray' : 'apps'
+        if (keyNodes(other).length) {
+          keyPart = other
+          keyAt = null
+          keyRing()
+        }
+      } else if ((k === 'Enter' || k === ' ') && node) {
+        if (!e.repeat) keyPress(node)
+      } else if ((k === 'ContextMenu' || (k === 'F10' && e.shiftKey)) && node) keyMenu(node)
+      else if (k === 'Escape') keyBack()
+      else if (k !== 'Tab') return
+      e.preventDefault()
+      e.stopPropagation()
+    },
+    true,
+  )
 
   // A press on a tray icon goes to its program, as Windows' taskbar tells it:
   // the second press of a double one as a double press; the pointer coming,
