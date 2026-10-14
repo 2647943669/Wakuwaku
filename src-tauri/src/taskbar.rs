@@ -1308,6 +1308,18 @@ mod imp {
                 });
                 true
             }
+            // A window picked from its program's list: to the front, never
+            // minimized, the one in front too (picked to go to it; minimized,
+            // the window behind came up as if the press went through, the
+            // user, 2026-10-14).
+            "front" => {
+                std::thread::spawn(move || {
+                    close_flyout();
+                    crate::jump::bring_window(hwnd);
+                    wake_tasks();
+                });
+                true
+            }
             "close" => tasks::close(hwnd),
             _ => false,
         };
@@ -2813,7 +2825,8 @@ pub fn taskbar_battery_font() -> tauri::ipc::Response {
     tauri::ipc::Response::new(crate::widgets::battery_font())
 }
 
-// A press on a window's button (press: to the front or minimized; close).
+// A press on a window's button (press: to the front or minimized; front: to
+// the front, picked from a list; close).
 #[tauri::command]
 pub fn taskbar_window(id: i64, what: String) -> bool {
     imp::window(&what, id as isize)
