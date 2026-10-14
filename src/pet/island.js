@@ -2031,6 +2031,7 @@
   function setStrip() {
     if (!stripThick) return
     document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
+    fitPage()
     // Once laid out for it (its edge may have just changed too).
     setTimeout(() => {
       const r = island.parentElement.getBoundingClientRect()
@@ -2038,12 +2039,33 @@
       console.log(`taskbar: strip in the page ${[r.left, r.top, r.right, r.bottom].map(v => +(v * dpr).toFixed(2)).join(', ')} (x ${dpr}, told ${stripThick} px)`)
     }, 400)
   }
-  window.pet.onStrip(({ thick } = {}) => {
+  // The page as big as its window (told with the strip, its physical size).
+  // At 175% Chromium makes the page a little bigger than its window (the
+  // window's 1204 px over 1.75 come to 688.00006 in its sums, so 689 CSS
+  // px): what lies along the page's foot or right end lay past the window's,
+  // the strip 2 px low and a gap above it (zhoupengjie/Wakuwaku#19). The
+  // overhang cut off (style.css body.home-taskbar); a few px at most, else
+  // it is the window being resized under a size told before.
+  let winPx = null
+  function fitPage() {
+    const root = document.documentElement
+    const r = root.getBoundingClientRect()
+    const dpr = devicePixelRatio || 1
+    const over = (have, want) => (have - want / dpr > 0.01 && have - want / dpr < 4 ? have - want / dpr : 0)
+    root.style.setProperty('--page-cut-x', `${winPx ? over(r.width, winPx[0]) : 0}px`)
+    root.style.setProperty('--page-cut-y', `${winPx ? over(r.height, winPx[1]) : 0}px`)
+  }
+  window.pet.onStrip(({ thick, win } = {}) => {
     if (!(thick > 0)) return
     stripThick = thick
+    if (Array.isArray(win) && win[0] > 0 && win[1] > 0) winPx = win
     setStrip()
   })
-  window.addEventListener('resize', () => stripThick && document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`))
+  window.addEventListener('resize', () => {
+    if (!stripThick) return
+    document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
+    fitPage()
+  })
 
   const micaBox = el('div')
   micaBox.id = 'mica'

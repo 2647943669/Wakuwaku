@@ -1126,6 +1126,17 @@ body {
   align-items: stretch;
 }
 
+/* The page as big as its window, should Chromium have made it a little
+   bigger (island.js fitPage; 175%: zhoupengjie/Wakuwaku#19). What is laid
+   along its foot or right end, the fixed ones too (contain), along the
+   window's. */
+body.home-taskbar {
+  position: relative;
+  contain: layout;
+  width: calc(100% - var(--page-cut-x, 0px));
+  height: calc(100% - var(--page-cut-y, 0px));
+}
+
 /* As thick as the strip lies on the screen (island.js setStrip, --strip-h:
    its physical px over the scale), its inner edge where the work area stops. */
 .home-taskbar #island-row {

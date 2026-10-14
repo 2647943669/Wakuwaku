@@ -257,7 +257,9 @@ pub fn tell_strip(sh: &Shared, again: bool) {
         thick as f64 / sf,
         taskbar::work_area_rect()
     ));
-    let _ = sh.app.emit_to("island", "taskbar:strip", json!({ "thick": thick }));
+    // With the window's size: the page may be a little bigger (island.js
+    // fitPage, zhoupengjie/Wakuwaku#19).
+    let _ = sh.app.emit_to("island", "taskbar:strip", json!({ "thick": thick, "win": [size.0, size.1] }));
 }
 
 // One at a time: two at once took the taskbar twice (two tray threads, one
