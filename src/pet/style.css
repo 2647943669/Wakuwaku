@@ -1744,6 +1744,46 @@ body.home-taskbar {
   color: #8e8e93;
 }
 
+/* An input method of another maker (inputs.rs): the picture of its mode
+   that Windows shows, or its own icon beside the script's mark. */
+#bar-rest .kbd .ime .pic {
+  width: 16px;
+  height: 16px;
+}
+
+#bar-rest .kbd .ime .pic + .script {
+  margin-left: 3px;
+}
+
+/* The input methods to pick from (a right press on the mark): each its
+   icon (a layout its language's mark), its language over its name, the
+   one in front marked. */
+#bar-rest .wpop .irow {
+  height: auto;
+  min-height: 40px;
+  padding: 4px 10px;
+}
+
+#bar-rest .wpop .irow .itile {
+  flex: none;
+  min-width: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+#bar-rest .wpop .irow .ilines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#bar-rest .wpop .irow .iname {
+  color: #a1a1a6;
+  font-size: 11px;
+}
+
 /* The tray's ^, the icons kept out after it, the folded ones above it
    (open on a press), and an icon being dragged between the two. */
 #bar-rest .tray {
@@ -2072,7 +2112,8 @@ body.home-taskbar {
 
 .tb-light #bar-rest .tclock i,
 .tb-light #bar-rest .wpop .wx,
-.tb-light #bar-rest .wpop .whead {
+.tb-light #bar-rest .wpop .whead,
+.tb-light #bar-rest .wpop .irow .iname {
   color: #5d5d5d;
 }
 

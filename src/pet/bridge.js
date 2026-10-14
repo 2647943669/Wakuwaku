@@ -95,6 +95,10 @@
     // tray's icons; the icons as they change.
     taskbar: {
       open: what => invoke('taskbar_open', { what: String(what) }).catch(() => false),
+      // The input methods to pick from ([{ id, lang, langName, name, icon, own,
+      // current }], inputs.rs), and one of them switched to for the window in front.
+      inputs: () => invoke('taskbar_inputs').catch(() => []),
+      input: id => invoke('taskbar_input', { id: String(id) }).catch(() => false),
       // Windows' own battery font (an ArrayBuffer; empty where Windows has none).
       batteryFont: () => invoke('taskbar_battery_font').catch(() => null),
       tray: (key, press) => send('taskbar_tray', { key: Number(key), press: String(press) }),
@@ -127,8 +131,11 @@
     onStrip: on('taskbar:strip'),
     // The windows' buttons as they change ({ id, title, exe, png, front, min, flash, sessions }).
     onWindows: on('taskbar:windows'),
-    // The keyboard as it changes ({ lang, native, caps }).
+    // The keyboard as it changes ({ lang, native, caps, ime: { id, name, lang,
+    // icon, own, mode: { tip, glyph, icon, off } } }), and the input methods'
+    // icons the keys name ({ key: png }), each sent once.
     onKeys: on('taskbar:keys'),
+    onImeIcons: on('taskbar:imeIcons'),
     onPress: on('taskbar:press'),
     // The desktop's picture under the strip, for its Mica ({ url, position,
     // color, mon, screen, sf }; mica.js).

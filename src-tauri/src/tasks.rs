@@ -15,11 +15,13 @@ pub struct Task {
 }
 
 // The keyboard as Windows' taskbar shows it: the language of the window in
-// front (its keyboard layout's), whether its input method types the
-// language's own script or plain letters (中 or 英), and Caps Lock.
+// front (its keyboard layout's, and the layout itself: which input method
+// it is, inputs.rs), whether its input method types the language's own
+// script or plain letters (中 or 英), and Caps Lock.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Keys {
     pub lang: u16,
+    pub hkl: isize,
     pub native: Option<bool>,
     pub caps: bool,
 }
@@ -755,23 +757,22 @@ mod imp {
         (ok != 0).then_some(answer)
     }
 
-    fn front_ime() -> (u16, Hwnd) {
+    fn front_ime() -> (isize, Hwnd) {
         // SAFETY: plain queries about the window in front.
         unsafe {
             let front = GetForegroundWindow();
             let thread = GetWindowThreadProcessId(front, std::ptr::null_mut());
-            let lang = (GetKeyboardLayout(thread) & 0xffff) as u16;
-            (lang, ImmGetDefaultIMEWnd(front))
+            (GetKeyboardLayout(thread), ImmGetDefaultIMEWnd(front))
         }
     }
 
-    // The language and Caps Lock alone: answered within this process, so
-    // asked many times a second (taskbar.rs keys_loop).
+    // The layout, its language and Caps Lock alone: answered within this
+    // process, so asked many times a second (taskbar.rs keys_loop).
     pub fn keys_cheap() -> Keys {
-        let (lang, _) = front_ime();
+        let (hkl, _) = front_ime();
         // SAFETY: a plain query; the low bit is the toggle's.
         let caps = unsafe { GetKeyState(VK_CAPITAL) } & 1 != 0;
-        Keys { lang, native: None, caps }
+        Keys { lang: (hkl & 0xffff) as u16, hkl, native: None, caps }
     }
 
     // A window's title now (taskbar.rs on_shell: a title said to have
