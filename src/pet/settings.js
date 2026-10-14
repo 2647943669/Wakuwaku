@@ -934,7 +934,6 @@
   // Antigravity only where it is (or set first), as few have it.
   const firstAgent = () => (['codex', 'agy'].includes(snap.settings.mailAgent) ? snap.settings.mailAgent : 'claude')
   const agentsHere = () => ['claude', 'codex', ...((snap.mailAgents || {}).agy || firstAgent() === 'agy' ? ['agy'] : [])]
-  const agentOrder = () => [firstAgent(), ...agentsHere().filter(a => a !== firstAgent())]
   // A letter's talk going on now, by its key (agent.rs).
   const talkOf = key => (key && (snap.mailTalks || {})[key]) || null
   const letterKey = l => l.messageId || `${l.account}:${l.uid}`
@@ -1066,14 +1065,22 @@
     return `${head}<div class="grp inbox">${tools}${kept}${note}${missed}${list}${more}</div>`
   }
 
-  // Who a letter goes to first, and how each agent takes it.
+  // Mail's AI, one for every letter of every mailbox (the user, 2026-10-14:
+  // which agent, its model, its effort, and no more): its model and effort
+  // (mailAgentConf, agent.rs; empty is the agent's own setting), what a talk
+  // may do the least it has, said under them (Antigravity's models are each
+  // one effort already). Not found, it says so there.
   function agentsHTML() {
-    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', agentsHere().map(a => [a, AGENT_NAMES[a]]), firstAgent()))
-    return `<div class="grp agent-pick">${agent}</div>${agentOrder().map(agentConfHTML).join('')}`
+    const ag = firstAgent()
+    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', agentsHere().map(a => [a, AGENT_NAMES[a]]), ag))
+    const note = (snap.mailAgents || {})[ag] ? T(`mail.conf.note.${ag}`) : T('mail.err.noAgent', { agent: AGENT_NAMES[ag] })
+    const pickers = ag === 'agy' ? pickerHTML(ag, 'model') : pickerHTML(ag, 'model') + pickerHTML(ag, 'effort')
+    const model = row(esc(T(ag === 'agy' ? 'mail.conf.model' : 'mail.conf.session')), esc(note), `<span class="btns">${pickers}</span>`)
+    return `<div class="grp agent-pick">${agent}${model}</div>`
   }
 
-  // How a letter goes to each agent (mailAgentConf, agent.rs): how much its
-  // talk may do, and its model and effort; empty is the agent's own setting.
+  // How a letter goes to an agent (mailAgentConf, agent.rs): its model and
+  // effort; empty is the agent's own setting.
   const confOf = ag => ((snap.settings.mailAgentConf || {})[ag] || {})
   const modelsOf = ag => (snap.mailModels || {})[ag] || []
 
@@ -1099,20 +1106,6 @@
     const value = confOf(ag)[key] || ''
     const label = choicesOf(ag, key).find(([v]) => v === value)?.[1] || value
     return `<button class="pick" data-picker="${ag}.${key}">${esc(label)} ▾</button>`
-  }
-
-  // Antigravity has no read-only mode (agent.rs talk_args): asking first,
-  // or as set up; and its models are each one effort already.
-  function agentConfHTML(ag) {
-    const c = confOf(ag)
-    const levels = ag === 'agy' ? ['ask', 'mine'] : ['read', 'ask', 'mine']
-    const access = levels.includes(c.access) ? c.access : levels[0]
-    const missing = (snap.mailAgents || {})[ag] ? '' : ` · ${T('mail.hand.missing')}`
-    const pickers = ag === 'agy' ? pickerHTML(ag, 'model') : pickerHTML(ag, 'model') + pickerHTML(ag, 'effort')
-    return `<div class="sec">${esc(AGENT_NAMES[ag])}${esc(missing)}</div><div class="grp agent-conf">
-      ${row(esc(T('mail.conf.access')), esc(T(`mail.conf.${access}Note.${ag}`)), seg(`mconf.${ag}`, levels.map(a => [a, T(`mail.conf.${a}`)]), access))}
-      <div class="r"><div class="grow">${esc(T(ag === 'agy' ? 'mail.conf.model' : 'mail.conf.session'))}</div>${pickers}</div>
-    </div>`
   }
 
   // One of them changed; an effort the new model does not take goes back
@@ -1640,8 +1633,8 @@
     }
   }
 
-  // The menu a right-click on a letter opens: each agent (a talk, or a
-  // terminal), the first agent first, one not found greyed out; its star.
+  // The menu a right-click on a letter opens: mail's AI (a talk, or a
+  // terminal), greyed out when not found; its star.
   const menuEl = document.createElement('div')
   menuEl.className = 'mmenu'
   menuEl.hidden = true
@@ -1652,8 +1645,9 @@
     const at = `data-account="${esc(account)}" data-folder="${folder || 'inbox'}" data-uid="${uid}"`
     const item = (ag, how, label) =>
       `<button class="mi" data-hand="${ag}:${how}" ${at} ${found[ag] ? '' : 'disabled'}>${esc(label)}${found[ag] ? '' : ` <span class="d">${esc(T('mail.hand.missing'))}</span>`}</button>`
-    const talks = agentOrder().map(ag => item(ag, 'talk', T('mail.hand.talk', { agent: AGENTS[ag] }))).join('')
-    const terminals = agentOrder().map(ag => item(ag, 'open', T('mail.hand.open', { agent: AGENTS[ag] }))).join('')
+    const ag = firstAgent()
+    const talks = item(ag, 'talk', T('mail.hand.talk', { agent: AGENTS[ag] }))
+    const terminals = item(ag, 'open', T('mail.hand.open', { agent: AGENTS[ag] }))
     const l = listed(account, folder, uid) || (isReading(account, folder, uid) ? reading.letter : null)
     const starItem = `<button class="mi" data-star="${esc(account)}" data-folder="${folder || 'inbox'}" data-uid="${uid}">${esc(T(l?.flagged ? 'mail.unstar' : 'mail.star'))}</button>`
     const replies = [
@@ -2560,7 +2554,7 @@
   // A mail account's setup: what was clicked, if it was its. True when it was.
   function handleMail(at) {
     // How a letter goes to an agent: a model or effort picked, a picker
-    // opened, how much a session may do.
+    // opened.
     const picked = at('[data-pick]')
     if (picked && menuPick) {
       const pick = menuPick
@@ -2577,11 +2571,6 @@
     const way = at('[data-seg^="mailProxy."] > span')
     if (way) {
       setProxy({ [way.parentElement.dataset.seg.slice(10)]: way.dataset.value })
-      return true
-    }
-    const access = at('[data-seg^="mconf."] > span')
-    if (access) {
-      setConf(access.parentElement.dataset.seg.slice(6), 'access', access.dataset.value)
       return true
     }
     // The inbox and a letter: handed to an agent (from a button or the

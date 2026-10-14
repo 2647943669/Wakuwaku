@@ -441,10 +441,12 @@ fn hidden(_command: &mut Command) {}
 // --- How much it may do, and with which model ---------------------------------------------
 
 // How a letter goes to an agent, as set on the Mail page ("mailAgentConf":
-// { claude: {…}, codex: {…} }): how much a talk (or a session) may do, and
-// a model and effort. An empty model or effort is the agent's own setting.
-// sumModel and sumEffort, from when summaries had their own, are taken and
-// left alone.
+// { claude: {…}, codex: {…} }): a model and effort, the page showing only
+// the agent letters go to (mailAgent). An empty model or effort is the
+// agent's own setting. How much a talk (or a session) may do is no longer
+// asked (the user, 2026-10-14: which agent, its model, its effort, and no
+// more): the least each has. "access", and sumModel and sumEffort from when
+// summaries had their own, are taken and left alone.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 enum Access {
     // Only read: no commands, no web, files only in the mail folder (not
@@ -453,8 +455,6 @@ enum Access {
     Read,
     // Anything, each step asked first.
     Ask,
-    // As the person has it set up.
-    Mine,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -491,13 +491,8 @@ pub fn is_conf_ok(v: &Value) -> bool {
 fn conf_of(all: &Value, agent: Agent) -> Conf {
     let c = &all[agent.id()];
     let word = |k: &str| c[k].as_str().filter(|v| is_word(v)).unwrap_or("").to_string();
-    let access = match c["access"].as_str() {
-        Some("ask") => Access::Ask,
-        Some("mine") => Access::Mine,
-        // Antigravity can not be held to reading: asking first is the least.
-        _ if agent == Agent::Agy => Access::Ask,
-        _ => Access::Read,
-    };
+    // Antigravity can not be held to reading: asking first is the least.
+    let access = if agent == Agent::Agy { Access::Ask } else { Access::Read };
     Conf { access, model: word("model"), effort: word("effort") }
 }
 
@@ -563,7 +558,6 @@ fn session_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String)) 
         (Agent::Codex, Access::Read) => ["--sandbox", "read-only", "--ask-for-approval", "on-request"].map(String::from).into_iter().chain(codex_sandbox()).collect(),
         (Agent::Codex, Access::Ask) => ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"].map(String::from).into_iter().chain(codex_sandbox()).collect(),
         (Agent::Agy, Access::Read | Access::Ask) => vec!["--sandbox".into()],
-        (_, Access::Mine) => Vec::new(),
     };
     let restricted = agent == Agent::Claude && conf.access == Access::Read;
     let model = if conf.model.is_empty() && restricted { own.0 } else { conf.model.clone() };
@@ -585,7 +579,7 @@ fn session_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String)) 
 //     Reading only: --restricted, her hooks by --settings, asking nobody,
 //     Read/Glob/Grep (one comma-separated argument, so the prompt after it
 //     is not taken for a tool). Asking first: what wants asking goes to her
-//     (her hooks, the island's prompt). As set up: nothing more.
+//     (her hooks, the island's prompt).
 //   Codex: exec (resume) with JSON lines; read-only or workspace-write
 //     sandbox (exec asks nobody), MXC where there is one. Resume takes no
 //     --sandbox: the same as config.
@@ -594,8 +588,7 @@ fn session_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String)) 
 //     first: its default review, where reading the mail folder goes and
 //     anything else (an edit, a command, the web) waits for an approval
 //     nobody gives here, so it is not done (but what the person always
-//     allows in Antigravity), its commands in its sandbox. As set up:
-//     nothing more.
+//     allows in Antigravity), its commands in its sandbox.
 fn talk_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String), cwd: &Path, session: &str, first: bool) -> Vec<String> {
     let strs = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
     let mut args = match agent {
@@ -604,21 +597,17 @@ fn talk_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String), cwd
             match conf.access {
                 Access::Read => a.extend(strs(&["--restricted", "--settings", &hooks.to_string_lossy(), "--permission-mode", "dontAsk", "--allowedTools", "Read,Glob,Grep"])),
                 Access::Ask => a.extend(strs(&["--permission-mode", "manual"])),
-                Access::Mine => {}
             }
             a
         }
         Agent::Codex => {
             let mut a = if first { strs(&["exec", "--json", "--skip-git-repo-check", "-C", &cwd.to_string_lossy()]) } else { strs(&["exec", "resume", "--json", "--skip-git-repo-check"]) };
             let sandbox = match conf.access {
-                Access::Read => Some("read-only"),
-                Access::Ask => Some("workspace-write"),
-                Access::Mine => None,
+                Access::Read => "read-only",
+                Access::Ask => "workspace-write",
             };
-            if let Some(s) = sandbox {
-                a.extend(if first { strs(&["--sandbox", s]) } else { strs(&["-c", &format!("sandbox_mode={s}")]) });
-                a.extend(codex_sandbox());
-            }
+            a.extend(if first { strs(&["--sandbox", sandbox]) } else { strs(&["-c", &format!("sandbox_mode={sandbox}")]) });
+            a.extend(codex_sandbox());
             a
         }
         Agent::Agy => {
@@ -626,9 +615,7 @@ fn talk_args(agent: Agent, conf: &Conf, hooks: &Path, own: (String, String), cwd
             if !first {
                 a.extend(strs(&["--conversation", session]));
             }
-            if conf.access != Access::Mine {
-                a.push("--sandbox".into());
-            }
+            a.push("--sandbox".into());
             a
         }
     };
@@ -1230,7 +1217,9 @@ mod tests {
         assert!(!is_conf_ok(&json!({ "gemini": {} })));
         assert!(!is_conf_ok(&json!({ "codex": { "extra": "--yolo" } })));
         assert_eq!(conf_of(&Value::Null, Agent::Codex), Conf::default());
-        assert_eq!(conf_of(&json!({ "codex": { "access": "mine", "model": "a b" } }), Agent::Codex), Conf { access: Access::Mine, ..Conf::default() });
+        // What a talk may do is no longer set: one set before is left alone, the least taken.
+        assert_eq!(conf_of(&json!({ "codex": { "access": "mine", "model": "a b" } }), Agent::Codex), Conf::default());
+        assert_eq!(conf_of(&json!({ "claude": { "access": "ask", "model": "opus" } }), Agent::Claude), Conf { model: "opus".into(), ..Conf::default() });
     }
 
     #[test]
@@ -1241,9 +1230,6 @@ mod tests {
         assert_eq!(session_args(Agent::Claude, &read, hooks, own()), ["--restricted", "--settings", "D:/data/mail/.wakuwaku-hooks.json", "--model", "opus", "--effort", "high"]);
         let ask = Conf { access: Access::Ask, model: "sonnet".into(), ..Conf::default() };
         assert_eq!(session_args(Agent::Claude, &ask, hooks, own()), ["--permission-mode", "manual", "--model", "sonnet"]);
-        let mine = Conf { access: Access::Mine, ..Conf::default() };
-        assert!(session_args(Agent::Claude, &mine, hooks, own()).is_empty());
-        assert!(session_args(Agent::Codex, &mine, hooks, Default::default()).is_empty());
         // On Windows, Codex's sandbox is MXC where there is one.
         let mxc: &[&str] = if cfg!(windows) { &["-c", "features.prefer_mxc=true"] } else { &[] };
         let with_mxc = |head: &[&str], tail: &[&str]| -> Vec<String> { head.iter().chain(mxc).chain(tail).map(|s| s.to_string()).collect() };
@@ -1275,8 +1261,6 @@ mod tests {
         let low = Conf { access: Access::Ask, effort: "low".into(), ..Conf::default() };
         let again: Vec<String> = v(&["exec", "resume", "--json", "--skip-git-repo-check", "-c", "sandbox_mode=workspace-write"]).into_iter().chain(v(mxc)).chain(v(&["-c", "model_reasoning_effort=low", "T"])).collect();
         assert_eq!(talk_args(Agent::Codex, &low, hooks, Default::default(), cwd, "T", false), again);
-        let mine = Conf { access: Access::Mine, ..Conf::default() };
-        assert_eq!(talk_args(Agent::Codex, &mine, hooks, Default::default(), cwd, "T", false), v(&["exec", "resume", "--json", "--skip-git-repo-check", "T"]));
     }
 
     fn talk(agent: Agent) -> Talk {
@@ -1329,19 +1313,19 @@ mod tests {
         // No read-only mode: reading only is asking first.
         assert_eq!(conf_of(&Value::Null, Agent::Agy).access, Access::Ask);
         assert_eq!(conf_of(&json!({ "agy": { "access": "read" } }), Agent::Agy).access, Access::Ask);
-        let mine = Conf { access: Access::Mine, model: "gemini-3.8-flash-high".into(), ..Conf::default() };
-        assert_eq!(conf_of(&json!({ "agy": { "access": "mine", "model": "gemini-3.8-flash-high" } }), Agent::Agy), mine);
+        let flash = Conf { access: Access::Ask, model: "gemini-3.8-flash-high".into(), ..Conf::default() };
+        assert_eq!(conf_of(&json!({ "agy": { "access": "mine", "model": "gemini-3.8-flash-high" } }), Agent::Agy), flash);
         assert!(is_conf_ok(&json!({ "agy": { "access": "ask", "model": "claude-opus-4-6-thinking" } })));
         // A session in a terminal: its sandbox, asking there; the prompt after -i.
         let (hooks, cwd) = (Path::new("h.json"), Path::new("D:/m"));
         let ask = conf_of(&Value::Null, Agent::Agy);
         assert_eq!(session_args(Agent::Agy, &ask, hooks, Default::default()), ["--sandbox", "-i"]);
-        assert_eq!(session_args(Agent::Agy, &mine, hooks, Default::default()), ["--model", "gemini-3.8-flash-high", "-i"]);
+        assert_eq!(session_args(Agent::Agy, &flash, hooks, Default::default()), ["--sandbox", "--model", "gemini-3.8-flash-high", "-i"]);
         // A talk: stream-json both ways, its conversation taken up again.
         assert_eq!(talk_args(Agent::Agy, &ask, hooks, Default::default(), cwd, "", true), ["--output-format", "stream-json", "--input-format", "stream-json", "--sandbox"]);
         assert_eq!(
-            talk_args(Agent::Agy, &mine, hooks, Default::default(), cwd, "C-1", false),
-            ["--output-format", "stream-json", "--input-format", "stream-json", "--conversation", "C-1", "--model", "gemini-3.8-flash-high"]
+            talk_args(Agent::Agy, &flash, hooks, Default::default(), cwd, "C-1", false),
+            ["--output-format", "stream-json", "--input-format", "stream-json", "--conversation", "C-1", "--sandbox", "--model", "gemini-3.8-flash-high"]
         );
         // What it is asked: one line of stream-json.
         let said = agy_says("看邮件：\"x\"\n信");
