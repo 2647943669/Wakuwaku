@@ -860,10 +860,10 @@ async fn island_seat(app: AppHandle, x: f64) {
 }
 
 // Under her island, a blur of what is behind it (backplate.rs): where the
-// page laid the island out ({ x, y, width, height } in its px, its corners'
-// radius, the size of the page it measured in, Windows' mode), faded in
-// over fade ms; none, faded out. Measured in a window of another size
-// (resized meanwhile), it is not shown: the page sends it again once resized.
+// page puts it ({ x, y, width, height } in its px, set in from the island's
+// edge; the size of the page it measured in; Windows' mode), faded in over
+// fade ms; none, faded out. Measured in a window of another size (resized
+// meanwhile), it is not shown: the page sends it again once resized.
 #[tauri::command]
 async fn island_plate(app: AppHandle, rect: Option<Value>, fade: u32) {
     let sh = shared(&app);
@@ -874,11 +874,8 @@ async fn island_plate(app: AppHandle, rect: Option<Value>, fade: u32) {
         sh.log(&format!("plate: measured in a {}x{} page, the window {ww}x{wh} at {sf}: not shown", num("vw"), num("vh")));
         return;
     }
-    let px = |v: f64| (v * sf).round() as i32;
-    let radius = num("radius") * sf;
-    let inset = backplate::inset(radius, sf);
-    let (w, h) = (px(num("width")) - 2 * inset, px(num("height")) - 2 * inset);
-    let plate = (w > 0 && h > 0).then(|| backplate::Plate { x: ox + px(num("x")) + inset, y: oy + px(num("y")) + inset, w, h, radius, dark: r["dark"].as_bool() != Some(false) });
+    let (x, y, w, h) = backplate::on_screen((ox, oy), sf, (num("x"), num("y"), num("width"), num("height")));
+    let plate = (w > 0 && h > 0).then_some(backplate::Plate { x, y, w, h, dark: r["dark"].as_bool() != Some(false) });
     backplate::set(&sh, plate, fade);
 }
 

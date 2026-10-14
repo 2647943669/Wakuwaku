@@ -2664,6 +2664,37 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
     var(--i-edge);
 }
 
+/* Windows' acrylic under her island (island.js sendPlate, plated): the band
+   between the island's edge and the acrylic's, set in so DWM's smaller
+   corners lie inside the island's (--rim wide), in the ground nearly solid
+   (--i-rim: three quarters of the way to solid), fading inwards so it
+   reads as the glass's edge, not a frame; under its own edge line, over
+   its ground, under what it shows (the appearance session's, 2026-10-14). */
+#island::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 calc(var(--rim, 4px) - 1px) var(--i-rim, transparent),
+    inset 0 0 3px var(--rim, 4px) var(--i-rim-half, transparent);
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    box-shadow 0.15s ease;
+  pointer-events: none;
+}
+
+.plated #island:not([data-view='settings'])::before {
+  opacity: 1;
+}
+
+/* While the island springs to another size the acrylic lies further in
+   (island.js movePlate): the rim as wide at once, back over a moment. */
+#island.plate-moving::before {
+  transition: opacity 0.15s ease;
+}
+
 /* Open over a maximized window, a see-through ground with nothing to blur
    what is behind it deepens (island.js setDeep, zhoupengjie/Wakuwaku#20). */
 .isl-deep.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {

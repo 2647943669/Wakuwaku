@@ -14,44 +14,43 @@
 // window never active, as this one never is, and neither honours a window
 // region; the accent blurs either way. Rounded by DWM's own corners
 // (DWMWA_WINDOW_CORNER_PREFERENCE, ROUND: 8 px), set in from the island's
-// edge far enough that they stay inside the island's rounder ones.
-// Layered, so it lets the pointer through and fades (its alpha).
+// edge (by the page, island.js plateInset) far enough that they stay inside
+// the island's rounder ones; the page paints the band left over (its rim).
+// Layered, so it lets the pointer through and fades (its alpha). Where the
+// accent is not there or is refused (SetWindowCompositionAttribute missing,
+// or answering 0, when tried at first and whenever set), there is none:
+// available says so, and the page deepens its ground instead.
 //
-// The page says where and when (island.js placePlate): open and settled,
-// and only for a look that is see-through and blurred; nothing otherwise,
-// nor while she is quiet. Made on first use, on a thread of its own that
-// waits for messages, so nothing runs while it is not moving.
+// The page says where and when (island.js placePlate): for a look that is
+// see-through and blurred, under the island as it is, moved with it as it
+// changes size; nothing otherwise, nor while she is quiet. Made on first
+// use, on a thread of its own that waits for messages, so nothing runs
+// while it is not moving.
 use crate::Shared;
 
-// Where the plate goes on the screen (physical px): the island's box and
-// the radius of its corners, Windows' mode for its tint.
+// Where the plate goes on the screen (physical px), Windows' mode for its tint.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Plate {
     pub x: i32,
     pub y: i32,
     pub w: i32,
     pub h: i32,
-    pub radius: f64,
     pub dark: bool,
 }
 
-// DWM's round corner (DWMWCP_ROUND), logical px.
-const DWM_CORNER: f64 = 8.0;
-
-// How far in from the island's edge the plate lies, so its corners, DWM's
-// smaller ones, stay inside the island's: a pixel at least, under the
-// page's antialiased edge, and enough that a corner of radius r inside one
-// of radius R is covered by it: (R - r)(1 - 1/√2).
-pub fn inset(radius: f64, sf: f64) -> i32 {
-    let corner = DWM_CORNER * sf;
-    let inside = (radius - corner).max(0.0) * (1.0 - std::f64::consts::FRAC_1_SQRT_2);
-    inside.max(sf).ceil() as i32
+// A box of the page's (x, y, w, h, its px) on the screen: from the window's
+// origin at its scale, rounded inwards, so the plate never reaches past
+// where the page set it in to.
+pub fn on_screen((ox, oy): (i32, i32), sf: f64, (x, y, w, h): (f64, f64, f64, f64)) -> (i32, i32, i32, i32) {
+    let (left, top) = ((x * sf).ceil() as i32, (y * sf).ceil() as i32);
+    let (right, bottom) = (((x + w) * sf).floor() as i32, ((y + h) * sf).floor() as i32);
+    (ox + left, oy + top, right - left, bottom - top)
 }
 
 #[cfg(windows)]
 mod imp {
     use std::ffi::c_void;
-    use std::sync::atomic::{AtomicIsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
 
@@ -124,6 +123,7 @@ mod imp {
         fn SetLayeredWindowAttributes(hwnd: Hwnd, key: u32, alpha: u8, flags: u32) -> i32;
         fn SetTimer(hwnd: Hwnd, id: usize, ms: u32, f: *const c_void) -> usize;
         fn KillTimer(hwnd: Hwnd, id: usize) -> i32;
+        fn DestroyWindow(hwnd: Hwnd) -> i32;
     }
 
     #[link(name = "gdi32")]
@@ -210,9 +210,38 @@ mod imp {
         (f != 0).then(|| unsafe { std::mem::transmute::<usize, SetComposition>(f) })
     }
 
-    // Windows 11 (DWM's round corners, build 22000 on), the accent there to
-    // be set, and transparency effects on (Settings → Personalization →
-    // Colors): Windows' own acrylic is solid with them off.
+    // The accent set on a window, for Windows' mode: whether it took.
+    fn accent(hwnd: Hwnd, dark: bool) -> bool {
+        let Some(f) = set_composition() else { return false };
+        let policy = AccentPolicy { state: ACCENT_ENABLE_ACRYLICBLURBEHIND, flags: 2, gradient: if dark { TINT_DARK } else { TINT_LIGHT }, animation: 0 };
+        let data = CompositionData { attribute: WCA_ACCENT_POLICY, data: &policy as *const AccentPolicy as *const c_void, size: std::mem::size_of::<AccentPolicy>() };
+        // SAFETY: a window of ours and structs alive for the call.
+        unsafe { f(hwnd, &data) != 0 }
+    }
+
+    // Tried once on a hidden window of the system's own class, made and
+    // gone on the calling thread.
+    fn accent_takes() -> bool {
+        // SAFETY: a window of a system class, never shown, destroyed on this thread.
+        unsafe {
+            let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, wide("STATIC").as_ptr(), std::ptr::null(), WS_POPUP, 0, 0, 1, 1, std::ptr::null_mut(), 0, GetModuleHandleW(std::ptr::null()), std::ptr::null_mut());
+            if hwnd.is_null() {
+                return false;
+            }
+            let took = accent(hwnd, true);
+            DestroyWindow(hwnd);
+            took
+        }
+    }
+
+    // Refused once it was set on the plate (SetWindowCompositionAttribute
+    // answering 0): none from then on.
+    static REFUSED: AtomicBool = AtomicBool::new(false);
+
+    // Windows 11 (DWM's round corners, build 22000 on), the accent there and
+    // taken (tried at first, and as set), and transparency effects on
+    // (Settings → Personalization → Colors): Windows' own acrylic is solid
+    // with them off.
     pub fn available() -> bool {
         use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
         use winreg::RegKey;
@@ -222,13 +251,16 @@ mod imp {
                 .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion")
                 .and_then(|k| k.get_value("CurrentBuild"))
                 .unwrap_or_default();
-            build.parse::<u32>().is_ok_and(|b| b >= 22000) && set_composition().is_some()
+            build.parse::<u32>().is_ok_and(|b| b >= 22000) && accent_takes()
         });
+        if !os || REFUSED.load(Ordering::SeqCst) {
+            return false;
+        }
         let transparency: u32 = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
             .and_then(|k| k.get_value("EnableTransparency"))
             .unwrap_or(1);
-        os && transparency != 0
+        transparency != 0
     }
 
     // The page's last wish, kept while the island's window is hidden.
@@ -299,36 +331,40 @@ mod imp {
         }
     }
 
-    // The accent's tint for Windows' mode, set again only when it changes.
-    fn tint(hwnd: Hwnd, dark: bool) {
+    // The accent's tint for Windows' mode, set again only when it changes;
+    // whether it took.
+    fn tint(hwnd: Hwnd, dark: bool) -> bool {
         let mut shown = SHOWN.lock().unwrap();
         if shown.tint == Some(dark) {
-            return;
+            return true;
         }
         shown.tint = Some(dark);
         drop(shown);
-        let policy = AccentPolicy { state: ACCENT_ENABLE_ACRYLICBLURBEHIND, flags: 2, gradient: if dark { TINT_DARK } else { TINT_LIGHT }, animation: 0 };
-        let data = CompositionData { attribute: WCA_ACCENT_POLICY, data: &policy as *const AccentPolicy as *const c_void, size: std::mem::size_of::<AccentPolicy>() };
         let mode = dark as u32;
-        // SAFETY: our own window and structs, alive for the calls.
-        unsafe {
-            DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &mode as *const u32 as *const c_void, 4);
-            if let Some(f) = set_composition() {
-                f(hwnd, &data);
-            }
-        }
+        // SAFETY: our own window and value, alive for the call.
+        unsafe { DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &mode as *const u32 as *const c_void, 4) };
+        accent(hwnd, dark)
     }
 
     // The page's latest wish: placed under the island and faded in, or
-    // faded out and hidden.
+    // faded out and hidden. The accent refused: none, and the pages drawn
+    // anew to deepen their ground instead (available).
     fn apply(hwnd: Hwnd) {
         let Some(want) = WANT.lock().unwrap().take() else { return };
         let mut shown = SHOWN.lock().unwrap();
         let from = shown.alpha;
         match want.plate {
+            Some(_) if REFUSED.load(Ordering::SeqCst) => fade(hwnd, &mut shown, from, 0.0, 0),
             Some(p) => {
                 drop(shown);
-                tint(hwnd, p.dark);
+                if !tint(hwnd, p.dark) {
+                    REFUSED.store(true, Ordering::SeqCst);
+                    shown = SHOWN.lock().unwrap();
+                    fade(hwnd, &mut shown, from, 0.0, 0);
+                    drop(shown);
+                    super::refused();
+                    return;
+                }
                 // SAFETY: our own window, placed right under the island's.
                 unsafe { SetWindowPos(hwnd, want.under, p.x, p.y, p.w, p.h, SWP_NOACTIVATE | SWP_SHOWWINDOW) };
                 shown = SHOWN.lock().unwrap();
@@ -416,9 +452,13 @@ mod imp {
 
 pub use imp::{again, available};
 
+// Her app, for the pages to be drawn anew should the accent be refused.
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
 // The plate under her island's window as the page wishes it, faded in over
 // fade_ms; none: faded out and hidden.
 pub fn set(sh: &Shared, plate: Option<Plate>, fade_ms: u32) {
+    APP.get_or_init(|| sh.app.clone());
     imp::wish(plate, crate::island::hwnd(sh), fade_ms.min(1000));
 }
 
@@ -428,16 +468,25 @@ pub fn hide() {
     imp::set(None, 0, 0);
 }
 
+// The accent refused on the plate: the pages told there is none
+// (pet:update's plate), so they deepen their ground instead.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn refused() {
+    if let Some(app) = APP.get() {
+        let sh = crate::shared(app);
+        sh.log("plate: Windows refused the acrylic; the ground deepens instead");
+        sh.redraw();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
-    fn its_corners_stay_inside_the_islands() {
-        // The taskbar's open island (22 px) at 125 %: 17.5 physical px
-        // rounder than DWM's corner, 6 in; the pill at the top (18 px) at
-        // 100 %: 3; one no rounder than DWM's own: a pixel.
-        assert_eq!(super::inset(22.0 * 1.25, 1.25), 6);
-        assert_eq!(super::inset(18.0, 1.0), 3);
-        assert_eq!(super::inset(8.0, 1.0), 1);
-        assert_eq!(super::inset(4.0 * 1.5, 1.5), 2);
+    fn it_lies_inside_where_the_page_set_it() {
+        // At 125 %, 4.1 px in from an island at 220.0, 8.8 (the page's
+        // px): never past it, by a part of a pixel at most.
+        assert_eq!(super::on_screen((805, 0), 1.25, (224.1, 12.9, 311.8, 107.8)), (805 + 281, 17, 388, 133));
+        // Whole pixels at 100 % stay as they are.
+        assert_eq!(super::on_screen((0, 0), 1.0, (10.0, 20.0, 30.0, 40.0)), (10, 20, 30, 40));
     }
 }
