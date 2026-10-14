@@ -379,9 +379,15 @@ mod imp {
 
     // A program started, as a double press in Explorer starts it.
     pub fn launch(path: &str) -> bool {
+        launch_with(path, "")
+    }
+
+    // The same, with what follows it on its command line.
+    pub fn launch_with(path: &str, params: &str) -> bool {
         let dir = path.rsplit_once('\\').map(|(d, _)| d.to_string()).unwrap_or_default();
+        let params = (!params.is_empty()).then(|| wide(params));
         // SAFETY: strings of our own, null-terminated.
-        unsafe { ShellExecuteW(std::ptr::null_mut(), wide("open").as_ptr(), wide(path).as_ptr(), std::ptr::null(), wide(&dir).as_ptr(), SW_SHOWNORMAL) > 32 }
+        unsafe { ShellExecuteW(std::ptr::null_mut(), wide("open").as_ptr(), wide(path).as_ptr(), params.as_ref().map_or(std::ptr::null(), |p| p.as_ptr()), wide(&dir).as_ptr(), SW_SHOWNORMAL) > 32 }
     }
 
     // Cloaked: on another virtual desktop, or a store app's window not running.
@@ -760,6 +766,58 @@ mod imp {
         unsafe { PostMessageW(hwnd as Hwnd, WM_SYSCOMMAND, SC_CLOSE, 0) != 0 || PostMessageW(hwnd as Hwnd, WM_CLOSE, 0, 0) != 0 }
     }
 
+    #[link(name = "user32")]
+    extern "system" {
+        fn EndTask(hwnd: Hwnd, shut_down: i32, force: i32) -> i32;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn IsProcessCritical(process: Handle, critical: *mut i32) -> i32;
+    }
+
+    // A process Windows cannot run without (it stops with it).
+    fn is_critical(pid: u32) -> bool {
+        // SAFETY: a handle we close; the answer into our own i32.
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process == 0 {
+                return false;
+            }
+            let mut critical = 0;
+            let asked = IsProcessCritical(process, &mut critical);
+            CloseHandle(process);
+            asked != 0 && critical != 0
+        }
+    }
+
+    // Ended, as Windows' own taskbar ends a program with End task (its
+    // setting on: taskbar.rs end_task_on): user32's EndTask, forced, on the
+    // window (Taskbar.dll, read 2026-10-14). Its own process goes at once,
+    // unsaved work and all; what it started keeps running (tried: a window
+    // that turned its close down went in 3 ms, the program it had started
+    // stayed). A store app's frame (ApplicationFrameHost, which every such
+    // app's frame shares) is not ended: the app's own window in it is.
+    // Never File Explorer's (explorer.exe is also the desktop and Windows'
+    // own taskbar; Windows offers no End task for it), hers, or a process
+    // Windows cannot run without.
+    pub fn end_task(hwnd: isize) -> bool {
+        let mut h = hwnd as Hwnd;
+        if file_name(&path_of(pid_of(h))).eq_ignore_ascii_case("ApplicationFrameHost.exe") {
+            // SAFETY: a class name of our own; looking among the frame's children.
+            h = unsafe { FindWindowExW(h, std::ptr::null_mut(), wide("Windows.UI.Core.CoreWindow").as_ptr(), std::ptr::null()) };
+            if h.is_null() {
+                return false;
+            }
+        }
+        let pid = pid_of(h);
+        if pid == 0 || pid == std::process::id() || file_name(&path_of(pid)).eq_ignore_ascii_case("explorer.exe") || is_critical(pid) {
+            return false;
+        }
+        // SAFETY: a window's handle; a stale one only makes it fail.
+        unsafe { EndTask(h, 0, 1) != 0 }
+    }
+
     const WM_IME_CONTROL: u32 = 0x0283;
     const IMC_GETCONVERSIONMODE: usize = 0x1;
     const IMC_SETCONVERSIONMODE: usize = 0x2;
@@ -992,6 +1050,9 @@ mod imp {
     pub fn launch(_path: &str) -> bool {
         false
     }
+    pub fn launch_with(_path: &str, _params: &str) -> bool {
+        false
+    }
 
     pub fn list() -> Vec<Task> {
         Vec::new()
@@ -1014,9 +1075,12 @@ mod imp {
     pub fn close(_hwnd: isize) -> bool {
         false
     }
+    pub fn end_task(_hwnd: isize) -> bool {
+        false
+    }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, end_task, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, launch_with, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, with_com};
 
 #[cfg(test)]
 mod tests {

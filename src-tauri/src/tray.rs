@@ -113,6 +113,34 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     Ok(menu)
 }
 
+// A right press on the volume, the network or the clock of her taskbar:
+// the menu Windows' own taskbar has there (SystemTray.dll, read
+// 2026-10-14), its items in its order and words, a native menu as hers on
+// the strip is; each opens what Windows' opens (taskbar.rs open). None for
+// another part: hers.
+pub fn part_menu(sh: &Shared, part: &str) -> Option<tauri::Result<Menu<Wry>>> {
+    let items: &[&str] = match part {
+        "volume" => &["soundFix", "-", "mixer", "sound"],
+        "network" => &["netFix", "-", "network"],
+        "clock" => &["dateTime", "notifySettings"],
+        _ => return None,
+    };
+    let app = &sh.app;
+    let lang = sh.lang();
+    let build = || -> tauri::Result<Menu<Wry>> {
+        let menu = Menu::new(app)?;
+        for item in items {
+            if *item == "-" {
+                menu.append(&PredefinedMenuItem::separator(app)?)?;
+            } else {
+                menu.append(&MenuItem::with_id(app, format!("win:{item}"), i18n::t(lang, &format!("menu.{item}")), true, None::<&str>)?)?;
+            }
+        }
+        Ok(menu)
+    };
+    Some(build())
+}
+
 pub fn on_menu(sh: &Arc<Shared>, id: &str) {
     match id {
         "toggle" => sh.set_hidden(sh.is_visible()),
@@ -144,7 +172,9 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
             sh.quit();
         }
         _ => {
-            if let Some(home) = id.strip_prefix("display:") {
+            if let Some(what) = id.strip_prefix("win:") {
+                crate::taskbar::taskbar_open(what.to_string());
+            } else if let Some(home) = id.strip_prefix("display:") {
                 crate::set_display(sh, home);
             } else if let Some(pet_id) = id.strip_prefix("pet:") {
                 sh.change(json!({ "pet": pet_id }));

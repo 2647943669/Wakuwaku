@@ -35,6 +35,7 @@ mod asks;
 mod audio;
 mod backplate;
 mod bars;
+mod clock;
 mod connection;
 mod crash;
 mod data;
@@ -752,10 +753,13 @@ async fn pet_drag_end(app: AppHandle, window: WebviewWindow) {
     }
 }
 
+// Her menu; on the volume, the network or the clock of her taskbar (part),
+// the one Windows' own taskbar has there (tray.rs part_menu).
 #[tauri::command]
-async fn pet_menu(app: AppHandle, window: WebviewWindow) {
+async fn pet_menu(app: AppHandle, window: WebviewWindow, part: Option<String>) {
     let sh = shared(&app);
-    if let Ok(menu) = tray::menu(&sh, if is_island(&window) { tray::Over::Home } else { tray::Over::Her }) {
+    let menu = part.as_deref().and_then(|p| tray::part_menu(&sh, p)).unwrap_or_else(|| tray::menu(&sh, if is_island(&window) { tray::Over::Home } else { tray::Over::Her }));
+    if let Ok(menu) = menu {
         // A Windows menu closes at once unless its window can come to the
         // front, which these cannot (they never take focus): for the menu, it may.
         let was_open = sh.island.lock().unwrap().settings_open && is_island(&window);
@@ -1261,6 +1265,8 @@ fn main() {
             taskbar::taskbar_tray,
             taskbar::taskbar_open,
             taskbar::taskbar_volume,
+            taskbar::taskbar_clock_tip,
+            taskbar::taskbar_end_task,
             taskbar::taskbar_inputs,
             taskbar::taskbar_input,
             taskbar::taskbar_battery_font,

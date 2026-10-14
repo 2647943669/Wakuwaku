@@ -1,7 +1,8 @@
 // Over a program's button on her taskbar on another display (bars.rs
 // bar_pop): its windows, a card each with its live picture (Windows draws
 // them where the cards leave room, taskbar.rs thumbs), or, on a right
-// press, what can be done with it; as her own taskbar's (island.js drawPop).
+// press, what can be done with it (Windows' End task too while it is on);
+// as her own taskbar's (island.js drawPop).
 // The window is laid against the strip at the size this lays it out at
 // (barpop_place). The windows' list goes once the pointer has been off the
 // button and off it a moment; either goes at a press elsewhere (bars.rs
@@ -65,6 +66,9 @@
       return row
     }
     const out = [el('div', 'whead', app.name), item(t(s.lang, windows.length ? 'taskbar.newWindow' : 'taskbar.open'), 'launch'), item(t(s.lang, app.pinned ? 'taskbar.unpin' : 'taskbar.pin'), app.pinned ? 'unpin' : 'pin')]
+    // Windows' End task while its setting is on (bars.rs, read as it
+    // opens), but for File Explorer, as on her own taskbar (island.js drawPop).
+    if (windows.length && s.endTask && !/(^|[\\/])explorer\.exe$/i.test(app.path || '')) out.push(item(t(s.lang, windows.length > 1 ? 'taskbar.endAll' : 'taskbar.end'), 'end'))
     if (windows.length) out.push(item(t(s.lang, windows.length > 1 ? 'taskbar.closeAll' : 'taskbar.close'), 'close'))
     return out
   }
@@ -79,7 +83,7 @@
     const edge = ['top', 'left', 'right'].includes(s.edge) ? s.edge : 'bottom'
     for (const e of ['bottom', 'top', 'left', 'right']) document.body.classList.toggle(`e-${e}`, e === edge)
     // Drawn again only when what it shows changed: a card replaced under a press is never clicked.
-    const key = JSON.stringify([s.kind, s.app.app, s.app.name, s.app.pinned, (s.app.windows || []).map(w => [w.id, w.title, w.front, (w.png || '').length]), s.lang, edge, light])
+    const key = JSON.stringify([s.kind, s.app.app, s.app.name, s.app.pinned, (s.app.windows || []).map(w => [w.id, w.title, w.front, (w.png || '').length]), s.lang, edge, light, s.endTask])
     if (key === drawn && !opening) return sendThumbs()
     drawn = key
     pop.replaceChildren(...rows(s))
@@ -159,7 +163,7 @@
     const act = e.target.closest('[data-act]')?.dataset.act
     if (!act) return
     close()
-    if (act === 'close') for (const w of app.windows || []) invoke('taskbar_window', { id: Number(w.id), what: 'close' }).catch(() => {})
+    if (act === 'close' || act === 'end') for (const w of app.windows || []) invoke('taskbar_window', { id: Number(w.id), what: act }).catch(() => {})
     else invoke('taskbar_app', { path: String(app.path), what: act, id: app.id ? String(app.id) : null }).catch(() => {})
   })
   document.addEventListener('contextmenu', e => e.preventDefault())
