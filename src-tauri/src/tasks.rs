@@ -24,8 +24,10 @@ pub struct Keys {
     pub caps: bool,
 }
 
-// The clear taskbar (taskbar.rs fills_display): a window maximized on its display.
-pub use imp::maximized;
+// The clear taskbar (taskbar.rs fills_display): a window maximized on its
+// display; her island at the top of the screen (island.rs look_over_max):
+// one on its display.
+pub use imp::{maximized, maximized_on};
 
 #[cfg(windows)]
 mod imp {
@@ -441,6 +443,24 @@ mod imp {
                 Task { hwnd: h, title: title_of(hwnd), path, min }
             })
             .collect()
+    }
+
+    // A window with a button maximized on this display (x, y, w, h): its
+    // middle there.
+    pub fn maximized_on(mon: (i32, i32, i32, i32)) -> bool {
+        let mut all: Vec<isize> = Vec::new();
+        // SAFETY: collect() only pushes, while all lives.
+        unsafe { EnumWindows(collect, &mut all as *mut Vec<isize> as isize) };
+        let me = std::process::id();
+        all.into_iter().any(|h| {
+            let hwnd = h as Hwnd;
+            if !maximized(h) || !is_task(hwnd, me) {
+                return false;
+            }
+            let r = rect_of(hwnd);
+            let (x, y) = ((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+            x >= mon.0 && x < mon.0 + mon.2 && y >= mon.1 && y < mon.1 + mon.3
+        })
     }
 
     // Its icon (the window's own, else its class's), the big one first: a
@@ -895,6 +915,9 @@ mod imp {
         [("mic", Vec::new()), ("cam", Vec::new()), ("loc", Vec::new())]
     }
     pub fn maximized(_hwnd: isize) -> bool {
+        false
+    }
+    pub fn maximized_on(_mon: (i32, i32, i32, i32)) -> bool {
         false
     }
     pub fn is_start(_hwnd: isize) -> bool {

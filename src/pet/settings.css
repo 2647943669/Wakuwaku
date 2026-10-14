@@ -1726,6 +1726,39 @@
   backdrop-filter: var(--pv-blur);
 }
 
+/* At the top of the screen (her home the island): a pill at the top of the
+   desktop, no strip; open, it grows down. */
+#island-settings .ilook-pv.top::before {
+  display: none;
+}
+
+#island-settings .ilook-pv.top .cap {
+  top: 5px;
+  bottom: auto;
+  left: 18%;
+  right: 18%;
+}
+
+#island-settings .ilook-card .ilook-pv.top .cap {
+  top: 4px;
+  left: 12%;
+  right: 12%;
+}
+
+#island-settings .ilook-pv.big.top .cap {
+  top: 7px;
+  left: calc(50% - 100px);
+  right: calc(50% - 100px);
+}
+
+#island-settings .ilook-pv.big.top:hover .cap {
+  left: calc(50% - 130px);
+  right: calc(50% - 130px);
+  border-radius: 22px;
+  -webkit-backdrop-filter: var(--pv-blur);
+  backdrop-filter: var(--pv-blur);
+}
+
 #island-settings .ilook-pv.big:hover .more {
   display: flex;
 }

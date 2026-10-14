@@ -505,9 +505,39 @@ fn create(sh: &Arc<Shared>) {
     });
 }
 
+// At the top of the screen, a see-through look (islandTopLook) that
+// Windows' acrylic does not blur (none set under 90 %, or it cannot be:
+// backplate.rs) deepens over a maximized window on her display (island.js
+// setDeep, zhoupengjie/Wakuwaku#27): looked at with the full screen's look
+// (every 1.5 s, or a window to the front), told the page as it changes
+// (island:over-max). Windows' mode with it: the page has it in pet:update
+// alone there (no taskbar to hear it from), so a change of it draws anew.
+// Nothing for the default black look, nor while she is quiet.
+static OVER_MAX: AtomicBool = AtomicBool::new(false);
+static TOP_LIGHT: AtomicU8 = AtomicU8::new(2);
+
+pub fn look_over_max(sh: &Arc<Shared>) {
+    let looks = sh.setting("islandTopLook");
+    if sh.home() == "taskbar" || sh.is_quiet() || !looks.as_object().is_some_and(|m| m.values().any(Value::is_object)) {
+        return;
+    }
+    let light = crate::wallpaper::look().0;
+    if TOP_LIGHT.swap(light as u8, Ordering::SeqCst) != light as u8 {
+        sh.redraw();
+    }
+    let look = &looks[if light { "light" } else { "dark" }];
+    let deepens = look["bg"].is_string() && look["op"].as_u64().is_some_and(|op| op < 90) && (look["blur"].as_u64().unwrap_or(0) == 0 || !crate::backplate::available());
+    let on = deepens && display(sh).is_some_and(crate::tasks::maximized_on);
+    if OVER_MAX.swap(on, Ordering::SeqCst) != on {
+        let _ = sh.app.emit_to("island", "island:over-max", json!({ "on": on }));
+    }
+}
+
 // Its page has its listeners up: draw, show, say hello.
 pub fn ready(sh: &Arc<Shared>) {
     sh.log("island: page ready");
+    // A new page knows of no maximized window yet (look_over_max).
+    OVER_MAX.store(false, Ordering::SeqCst);
     let pending = {
         let mut isl = sh.island.lock().unwrap();
         isl.ready = true;

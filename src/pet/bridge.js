@@ -82,6 +82,8 @@
     onLookHere: on('island:look-here'),
     // Up over an app full screen for the prompts alone ({ on }, island.rs over_full): her island only.
     onOverFull: on('island:over-full'),
+    // A maximized window on her display, at the top of the screen ({ on }, island.rs look_over_max).
+    onOverMax: on('island:over-max'),
     // The settings in the island (settings.js): open them here or from
     // anywhere else (the tray, her double-click), what they show, what they change.
     onSettings: on('island:settings'),

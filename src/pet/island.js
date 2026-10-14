@@ -850,8 +850,9 @@
   // for the spring before it shows.
   let plateSent = ''
   let plateWait = null
-  // Windows' mode, for the plate's own tint.
-  const modeNow = () => look.mode
+  // A maximized window on her display, at the top of the screen (island.rs
+  // look_over_max; on the taskbar, its windows' list says).
+  let overMaxTop = false
 
   function plateWanted() {
     if (!isOn() || now.plate !== true || quiet || view === 'settings' || body.classList.contains('pulling')) return false
@@ -902,7 +903,12 @@
   // see-through ground the plate does not blur goes to DEEP_OP while open,
   // over DEEP_MS (at once as it opens), and back as it closes or the window
   // is no longer maximized.
-  const overMax = () => home() === 'taskbar' && taskWindows.some(a => (a.windows || []).some(w => w.max && !w.min))
+  const overMax = () => (home() === 'taskbar' ? taskWindows.some(a => (a.windows || []).some(w => w.max && !w.min)) : overMaxTop)
+  window.pet.onOverMax(({ on } = {}) => {
+    overMaxTop = on === true
+    if (isOn()) setDeep(true)
+  })
+
   function deepWanted() {
     if (!isOn() || view === 'settings' || (home() === 'taskbar' && view === 'compact')) return false
     const { op, blur } = groundOf(lookNow())
@@ -2196,10 +2202,16 @@
     drawIslandLook()
   }
 
-  // The look as the settings give it now (none: the defaults), and its
+  // Windows' mode: as taskbar.rs tells the taskbar (taskbar:look), and in
+  // pet:update at the top of the screen (winLight), where there is no
+  // taskbar to hear it from.
+  const modeNow = () => (home() === 'taskbar' ? look.mode : now.winLight === true ? 'light' : 'dark')
+  // The look as the settings give it now (none: the defaults): on the
+  // taskbar where her end is a capsule (islandLook), at the top of the
+  // screen its own (islandTopLook, zhoupengjie/Wakuwaku#27); and its
   // ground's colour (null: none given), how solid (0.2 to 1; solid when no
   // colour is given) and blurred.
-  const lookNow = () => (isCapsule() && config.islandLook?.[look.mode]) || {}
+  const lookNow = () => (home() === 'taskbar' ? (isCapsule() && config.islandLook?.[look.mode]) || {} : config.islandTopLook?.[modeNow()] || {})
   function groundOf(mine) {
     const bg = /^#[0-9a-f]{6}$/i.test(mine.bg || '') ? parseInt(mine.bg.slice(1), 16) : null
     const op = bg !== null && Number.isFinite(mine.op) ? Math.min(100, Math.max(20, mine.op)) / 100 : 1
@@ -2212,7 +2224,10 @@
   // to 100, blur: 0 to 60, edge: 'line' | 'ring' | 'none', bare }), over
   // Windows' own flyout grey (style.css --i-bg, --i-blur, --i-edge,
   // island-bare); a part left out keeps its default. The ring is the
-  // session's colour (--ring, as the island draws).
+  // session's colour (--ring, as the island draws). At the top of the
+  // screen the same from its own (islandTopLook), over black; there the
+  // page has nothing behind the island to blur: only Windows' acrylic
+  // blurs it (placePlate).
   function drawIslandLook() {
     const mine = lookNow()
     const { bg, op, blur } = groundOf(mine)
@@ -2222,7 +2237,7 @@
     // Deeper over a maximized window, with nothing to blur it (setDeep).
     if (bg === null || op >= DEEP_OP) body.style.removeProperty('--i-bg-deep')
     else body.style.setProperty('--i-bg-deep', rgba(DEEP_OP))
-    if (blur) island.style.setProperty('--i-blur', `blur(${blur}px) saturate(1.25)`)
+    if (blur && home() === 'taskbar') island.style.setProperty('--i-blur', `blur(${blur}px) saturate(1.25)`)
     else island.style.removeProperty('--i-blur')
     const edge = {
       ring: '0 0 0 1.5px var(--ring), 0 0 12px color-mix(in srgb, var(--ring) 35%, transparent)',

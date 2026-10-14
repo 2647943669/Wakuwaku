@@ -2633,6 +2633,40 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   background: rgba(0, 0, 0, 0.05);
 }
 
+/* --- Her island at the top of the screen (home-island) ---------------------------
+   Black as the iPhone's, its faint line, unless the settings give it a look
+   of its own (islandTopLook, island.js drawIslandLook,
+   zhoupengjie/Wakuwaku#27): --i-bg, --i-edge as on the taskbar, the line
+   dark on a light ground; deeper over a maximized window (isl-deep). No
+   blur of the page's: behind it is other programs' windows, only Windows'
+   acrylic under it blurs them (backplate.rs). The settings as ever. */
+.home-island {
+  --i-bg: #000;
+  --i-line: rgba(255, 255, 255, 0.07);
+  --i-edge: 0 0 0 1px var(--i-line);
+}
+
+.isl-light.home-island {
+  --i-line: rgba(0, 0, 0, 0.08);
+}
+
+.home-island #island:not([data-view='settings']) {
+  background: var(--i-bg);
+  box-shadow: var(--i-edge);
+}
+
+.home-island #goo div {
+  background: var(--i-bg);
+}
+
+.isl-deep.home-island #island:not([data-view='settings']) {
+  background: var(--i-bg-deep, var(--i-bg));
+}
+
+.home-island #island .hint-dot {
+  box-shadow: 0 0 0 2px var(--i-bg);
+}
+
 /* The settings as Windows' own Settings in the dark mode too, as they are
    in the light: its grey ground, the cards a step lighter. */
 .home-taskbar.tb-capsule:not(.tb-light) #island[data-view='settings'] {

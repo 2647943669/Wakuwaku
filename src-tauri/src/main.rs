@@ -294,6 +294,11 @@ impl Shared {
         // Whether a blur of what is behind the island can be put under it
         // (backplate.rs): Windows 11, transparency effects on.
         now["plate"] = json!(backplate::available());
+        // Windows' mode, for her island's look at the top of the screen (the
+        // taskbar hears it from taskbar.rs, taskbar:look).
+        if self.home() != "taskbar" {
+            now["winLight"] = json!(wallpaper::look().0);
+        }
         // The widgets that have something to say: those on take their turns
         // in the island while nothing needs you; any may be on the taskbar.
         now["widgets"] = self.widgets_said();
@@ -1441,6 +1446,7 @@ fn main() {
             spawn_named("fullscreen", move || loop {
                 let asked = fullscreen::wait(Duration::from_millis(1500));
                 watcher.look_fullscreen(asked);
+                island::look_over_max(&watcher);
             });
 
             // Endings held for a while; prompts out of time; sessions gone

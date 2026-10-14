@@ -226,7 +226,9 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "connectHintOff" => is_bool,
         // Her island's look on the taskbar, by Windows' mode (island.js
         // drawIslandLook): none, or a mode's none, is Windows' own grey.
-        "islandLook" => v.is_null() || v.as_object().is_some_and(|m| m.iter().all(|(mode, look)| matches!(mode.as_str(), "dark" | "light") && is_island_look(look))),
+        // And at the top of the screen (island.js lookNow), kept apart:
+        // none is black, as it always was.
+        "islandLook" | "islandTopLook" => v.is_null() || v.as_object().is_some_and(|m| m.iter().all(|(mode, look)| matches!(mode.as_str(), "dark" | "light") && is_island_look(look))),
         "mailAgent" => matches!(v.as_str(), Some("claude" | "codex")),
         // The Mail page in two panes (list, letter), or one.
         "mailPanes" => matches!(v.as_str(), Some("one" | "two")),
