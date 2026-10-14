@@ -166,10 +166,13 @@
     // account's; filter all | unseen | flagged), a star put on or off, one
     // letter opened (and marked read), one handed to an agent (agent claude
     // | codex, how talk | open), more asked in its talk; a letter sent
-    // (send.rs); Re-test of the outgoing server (kind smtp).
+    // (send.rs); Re-test of the outgoing server (kind smtp). The lookup and
+    // Re-test go the way the account being set up does (proxy: its own, or
+    // null for the Mail page's; mail/proxy.rs).
     mail: {
-      discover: address => invoke('mail_discover', { address: String(address || '') }),
-      probe: (host, port, security, kind) => invoke('mail_probe', { host: String(host || ''), port: String(port ?? ''), security: String(security || 'auto'), kind: kind === 'smtp' ? 'smtp' : 'imap' }),
+      discover: (address, proxy) => invoke('mail_discover', { address: String(address || ''), proxy: proxy || null }),
+      probe: (host, port, security, kind, proxy) =>
+        invoke('mail_probe', { host: String(host || ''), port: String(port ?? ''), security: String(security || 'auto'), kind: kind === 'smtp' ? 'smtp' : 'imap', proxy: proxy || null }),
       send: letter => invoke('mail_send', { letter }),
       save: (account, password) => invoke('mail_save', { account, password: String(password || '') }),
       remove: id => invoke('mail_remove', { id: String(id) }),

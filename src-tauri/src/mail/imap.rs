@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use io_imap::client::{ImapClient, ImapClientError, ImapClientStd, ImapStream};
 use io_imap::coroutine::{ImapCoroutine, ImapCoroutineState};
@@ -30,6 +30,7 @@ use io_imap::types::search::SearchKey;
 use io_imap::types::sequence::SequenceSet;
 use serde_json::{json, Value};
 
+use super::proxy::Proxy;
 use super::{Auth, Security, Server};
 
 // How long a read or a write may wait once connected; in IDLE, how often
@@ -37,6 +38,10 @@ use super::{Auth, Security, Server};
 const IO_WAIT: Duration = Duration::from_secs(20);
 // (and to see whether it is asked to stop waiting, idle's `kick`).
 const IDLE_WAKE: Duration = Duration::from_secs(5);
+// Through a proxy, how often the IDLE is renewed meanwhile: a proxy, or the
+// server beyond it, may drop a connection quiet for longer (V2Ray's after
+// five minutes, by default; shadowsocks-libev's after one).
+const PROXIED_IDLE: Duration = Duration::from_secs(50);
 
 #[derive(Debug, PartialEq)]
 pub enum Fail {
@@ -58,6 +63,28 @@ pub enum Fail {
     Refused(String),
     // The connection broke, or something else on the way.
     Other(String),
+    // Through a proxy (proxy.rs): it was not reached; something there did
+    // not answer as a proxy of the kind set; it said no to the server's
+    // address; it did not reach the server.
+    ProxyDown(Hop),
+    NotProxy(Hop),
+    ProxyRefused(Hop),
+    ProxyServer(Hop),
+}
+
+// A hop through a proxy that failed: the proxy's address, why, and what the
+// page may suggest ("socks": SOCKS5; "http": HTTP; or nothing).
+#[derive(Debug, PartialEq)]
+pub struct Hop {
+    pub at: String,
+    pub why: String,
+    pub hint: &'static str,
+}
+
+impl Hop {
+    fn json(&self, kind: &str) -> Value {
+        json!({ "kind": kind, "text": self.why, "proxy": self.at, "hint": self.hint })
+    }
 }
 
 impl Fail {
@@ -72,6 +99,10 @@ impl Fail {
             Fail::Recipient(t) => ("recipient", t.as_str()),
             Fail::Refused(t) => ("refused", t.as_str()),
             Fail::Other(t) => ("other", t.as_str()),
+            Fail::ProxyDown(h) => return h.json("proxyDown"),
+            Fail::NotProxy(h) => return h.json("notProxy"),
+            Fail::ProxyRefused(h) => return h.json("proxyRefused"),
+            Fail::ProxyServer(h) => return h.json("proxyServer"),
         };
         json!({ "kind": kind, "text": text })
     }
@@ -148,20 +179,27 @@ pub(super) fn tls(host: &str, tcp: TcpStream) -> Result<Stream, Fail> {
     connector.connect(host, tcp).map(|s| Stream::Tls(Box::new(s))).map_err(|e| Fail::Tls(e.to_string()))
 }
 
-// A server reached: the connection (encrypted at once for SSL/TLS), and its
-// socket, to be shut down from elsewhere.
-pub(super) fn connect(server: &Server, timeout: Duration) -> Result<(Stream, TcpStream), Fail> {
-    let addr = (server.host.as_str(), server.port)
-        .to_socket_addrs()
-        .map_err(|e| Fail::Connect(e.to_string()))?
-        .next()
-        .ok_or_else(|| Fail::Connect("no address".into()))?;
-    let tcp = TcpStream::connect_timeout(&addr, timeout).map_err(|e| Fail::Connect(e.to_string()))?;
+// A server reached, straight or through the proxy on the way to it
+// (proxy.rs): the connection (encrypted at once for SSL/TLS), its socket (to
+// be shut down from elsewhere), and the proxy it went through.
+pub(super) fn connect(server: &Server, timeout: Duration) -> Result<(Stream, TcpStream, Option<Proxy>), Fail> {
+    let proxy = super::proxy::route(&server.via, &server.host);
+    let tcp = match &proxy {
+        Some(p) => super::proxy::tunnel(p, &server.host, server.port, timeout)?,
+        None => {
+            let addr = (server.host.as_str(), server.port)
+                .to_socket_addrs()
+                .map_err(|e| Fail::Connect(e.to_string()))?
+                .next()
+                .ok_or_else(|| Fail::Connect("no address".into()))?;
+            TcpStream::connect_timeout(&addr, timeout).map_err(|e| Fail::Connect(e.to_string()))?
+        }
+    };
     let _ = tcp.set_read_timeout(Some(timeout.max(IO_WAIT)));
     let _ = tcp.set_write_timeout(Some(timeout.max(IO_WAIT)));
     let socket = tcp.try_clone().map_err(io_fail)?;
     let stream = if server.security == Security::Ssl { tls(&server.host, tcp)? } else { Stream::Plain(tcp) };
-    Ok((stream, socket))
+    Ok((stream, socket, proxy))
 }
 
 fn caps_of(list: &[Capability]) -> Vec<String> {
@@ -197,15 +235,19 @@ pub struct Session {
     // The same socket: shut down from elsewhere to stop.
     pub socket: TcpStream,
     caps: Vec<String>,
+    // The proxy it goes through, if any; and so how often an IDLE is renewed.
+    pub proxy: Option<Proxy>,
+    renew: Option<Duration>,
 }
 
 impl Session {
     // Connected, encrypted as asked, the greeting read, and what it can do.
     pub fn open(server: &Server, timeout: Duration) -> Result<Session, Fail> {
-        let (stream, socket) = connect(server, timeout)?;
+        let (stream, socket, proxy) = connect(server, timeout)?;
         let mut client = ImapClientStd::new(stream);
         let greeting = client.greeting().map_err(|e| Fail::NotImap(e.to_string()))?;
-        let mut s = Session { client, socket, caps: caps_of(&greeting.capability) };
+        let renew = proxy.as_ref().map(|_| PROXIED_IDLE);
+        let mut s = Session { client, socket, caps: caps_of(&greeting.capability), proxy, renew };
         if server.security == Security::StartTls {
             if !s.has("STARTTLS") {
                 return Err(Fail::NoStartTls);
@@ -225,6 +267,12 @@ impl Session {
 
     pub fn has(&self, cap: &str) -> bool {
         self.caps.iter().any(|c| c.eq_ignore_ascii_case(cap))
+    }
+
+    // An IDLE renewed this often (a test's, sooner than PROXIED_IDLE).
+    #[cfg(test)]
+    pub fn renew_every(&mut self, every: Duration) {
+        self.renew = Some(every);
     }
 
     // What the server can do, as it said before signing in.
@@ -412,18 +460,24 @@ impl Session {
         self.client.noop().map_err(fail)
     }
 
-    // Waits for the server to say something changed (true), or `wait` to
-    // pass, or `kick` to be set (false); the IDLE ended either way. A socket
-    // shut down from elsewhere ends it at once, as a failure.
-    pub fn idle(&mut self, wait: Duration, kick: &AtomicBool) -> Result<bool, Fail> {
+    // Waits for the server to say something changed (true), or `kick` to be
+    // set (false); the IDLE ended either way. Meanwhile io-imap renews it
+    // every `every` (DONE, then IDLE again), through a proxy every
+    // PROXIED_IDLE. A server (or proxy) that leaves one of these unanswered
+    // for IO_WAIT is gone, and so is a socket shut down from elsewhere (at
+    // once): a failure, to connect again.
+    pub fn idle(&mut self, every: Duration, kick: &AtomicBool) -> Result<bool, Fail> {
+        let every = self.renew.map_or(every, |r| r.min(every));
         let done = Arc::new(AtomicBool::new(false));
-        let mut idle = ImapIdle::new(done.clone(), ImapIdleOptions { timeout: Some(wait) });
+        let mut idle = ImapIdle::new(done.clone(), ImapIdleOptions { timeout: Some(every) });
         // On the stream read from: one set through the copy of the socket
         // does not hold on Windows (it waited IO_WAIT).
-        let _ = self.client.stream.set_read_timeout(Some(IDLE_WAKE.min(wait)));
+        let _ = self.client.stream.set_read_timeout(Some(IDLE_WAKE.min(every)));
         let mut buf = vec![0u8; 16 * 1024];
         let mut got: Option<usize> = None;
         let mut changed = false;
+        // Since when something written waits for its answer.
+        let mut asked: Option<Instant> = None;
         let result = loop {
             match idle.resume(&mut self.client.fragmentizer, got.take().map(|n| &buf[..n])) {
                 ImapCoroutineState::Yielded(ImapIdleYield::Event(_)) => {
@@ -434,13 +488,20 @@ impl Session {
                     if let Err(e) = self.client.stream.write_all(&bytes) {
                         break Err(io_fail(e));
                     }
+                    asked.get_or_insert_with(Instant::now);
                 }
                 ImapCoroutineState::Yielded(ImapIdleYield::WantsRead) => match self.client.stream.read(&mut buf) {
                     Ok(0) => break Err(Fail::Other("the server closed the connection".into())),
-                    Ok(n) => got = Some(n),
+                    Ok(n) => {
+                        got = Some(n);
+                        asked = None;
+                    }
                     // Quiet a while: a chance to refresh the IDLE when it is
                     // due, or to stop when asked to.
                     Err(e) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => {
+                        if asked.is_some_and(|at| at.elapsed() > IO_WAIT) {
+                            break Err(Fail::Other("the server stopped answering".into()));
+                        }
                         if kick.load(Ordering::SeqCst) {
                             done.store(true, Ordering::SeqCst);
                         }

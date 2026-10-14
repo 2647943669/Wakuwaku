@@ -280,7 +280,7 @@ fn send(sh: &Arc<Shared>, mut d: Draft) -> Value {
     // Its outgoing server; for an account from before, the one found.
     let (server, found) = match d.account.smtp.clone() {
         Some(s) => (s, false),
-        None => match discover::outgoing_for(&d.account.address) {
+        None => match discover::outgoing_for(&d.account.address, &d.account.server.via) {
             Some(s) => (Server { username: d.account.server.username.clone(), ..s }, true),
             None => return refused("noSmtp", ""),
         },
@@ -344,7 +344,7 @@ pub async fn mail_send(app: AppHandle, letter: Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mail::{Auth, Security};
+    use crate::mail::{proxy::Via, Auth, Security};
 
     #[test]
     fn people_are_read_as_one_types_them() {
@@ -358,8 +358,8 @@ mod tests {
     }
 
     fn draft() -> Draft {
-        let server = Server { host: "imap.example.test".into(), port: 993, security: Security::Ssl, username: "me".into(), auth: Auth::Auto };
-        let account = Account { id: "a1".into(), address: "me@example.test".into(), name: "周 Me".into(), server, smtp: None, on: true };
+        let server = Server { host: "imap.example.test".into(), port: 993, security: Security::Ssl, username: "me".into(), auth: Auth::Auto, via: Via::Straight };
+        let account = Account { id: "a1".into(), address: "me@example.test".into(), name: "周 Me".into(), server, smtp: None, on: true, proxy: None };
         Draft {
             account,
             to: people_in("Zhang San <zs@vendor.example>").unwrap(),

@@ -223,11 +223,11 @@ fn thread_view(account: &Account, items: &[Item], members: &[usize]) -> Value {
 mod tests {
     use super::*;
     use crate::mail::store::Person;
-    use crate::mail::{Auth, Security, Server};
+    use crate::mail::{proxy::Via, Auth, Security, Server};
 
     fn account() -> Account {
-        let server = Server { host: "h".into(), port: 993, security: Security::Ssl, username: "me".into(), auth: Auth::Auto };
-        Account { id: "a1".into(), address: "me@example.test".into(), name: String::new(), server, smtp: None, on: true }
+        let server = Server { host: "h".into(), port: 993, security: Security::Ssl, username: "me".into(), auth: Auth::Auto, via: Via::Straight };
+        Account { id: "a1".into(), address: "me@example.test".into(), name: String::new(), server, smtp: None, on: true, proxy: None }
     }
 
     fn letter(uid: u32, from: &str, date: i64, id: &str, parent: &str, refs: &[&str]) -> Entry {

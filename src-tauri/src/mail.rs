@@ -17,13 +17,16 @@
 // as any mail program does), hands a letter to Claude Code or Codex
 // (agent.rs), and writes letters: new ones, replies, letters passed on
 // (send.rs, over SMTP: smtp.rs). IMAP is io-imap's (imap.rs), the library
-// under himalaya; finding the servers is discover.rs.
+// under himalaya; finding the servers is discover.rs; reaching them through
+// a proxy, proxy.rs.
 //
 // Settings: "mail": [{ id, address, name, host, port, security: ssl |
 // starttls | plain, username, auth, smtp: { host, port, security, username,
-// auth } | null, on }], changed only through the commands below (smtp null:
-// one set up before the pet sent mail, or none to send with); one password
-// for both servers;
+// auth } | null, on, proxy }], changed only through the commands below (smtp
+// null: one set up before the pet sent mail, or none to send with; proxy
+// null: as the Mail page has it); one password for both servers;
+// "mailProxy": { mode: system | manual | none, kind, address }, how mail
+// reaches its servers (proxy.rs; Windows' proxy unless set);
 // "mailAgent": "claude" | "codex", who a letter goes to first;
 // "mailAgentConf": { claude | codex: { access, model, effort, sumModel,
 // sumEffort } }, what a session may do and the models (agent.rs);
@@ -46,14 +49,15 @@ pub mod agent;
 mod discover;
 mod imap;
 pub mod letters;
+pub mod proxy;
 pub mod send;
 mod smtp;
 mod store;
 mod sync;
 mod threads;
 
-pub use discover::discover;
 use imap::Fail;
+use proxy::Via;
 
 // How long a connection may take, how long the server may be quiet while it
 // pushes (then the push is asked for again), how often one that cannot push
@@ -125,6 +129,9 @@ pub struct Server {
     pub security: Security,
     pub username: String,
     pub auth: Auth,
+    // How it is reached (proxy.rs): the account's own way, else the Mail
+    // page's. Not kept with the server: the account keeps its own.
+    pub via: Via,
 }
 
 // A host name as one is written: letters, digits, dots, dashes.
@@ -142,14 +149,16 @@ impl Server {
         json!({ "host": self.host, "port": self.port, "security": self.security.name(), "username": self.username, "auth": self.auth.name() })
     }
 
-    // As the page sent it, checked: a host name, a port, a way, a user, how to sign in.
-    fn from_json(v: &Value) -> Option<Server> {
+    // As the page sent it, checked: a host name, a port, a way, a user, how
+    // to sign in; reached as `via` says.
+    fn from_json(v: &Value, via: &Via) -> Option<Server> {
         let host = host_of(&v["host"])?;
         let port = port_of(&v["port"])?;
         let username = v["username"].as_str()?.trim();
         let is_user = !username.is_empty() && username.chars().count() <= 320 && !username.chars().any(char::is_control);
         let security = Security::parse(v["security"].as_str().unwrap_or("")).unwrap_or(Security::Ssl);
-        is_user.then(|| Server { host, port, security, username: username.into(), auth: Auth::parse(v["auth"].as_str().unwrap_or("")) })
+        let auth = Auth::parse(v["auth"].as_str().unwrap_or(""));
+        is_user.then(|| Server { host, port, security, username: username.into(), auth, via: via.clone() })
     }
 }
 
@@ -163,6 +172,9 @@ pub struct Account {
     // The outgoing server.
     pub smtp: Option<Server>,
     pub on: bool,
+    // Its own way to its servers; none, the Mail page's (both servers go as
+    // `via` in them says).
+    pub proxy: Option<Via>,
 }
 
 impl Account {
@@ -173,6 +185,7 @@ impl Account {
         v["name"] = json!(self.name);
         v["smtp"] = self.smtp.as_ref().map_or(Value::Null, Server::json);
         v["on"] = json!(self.on);
+        v["proxy"] = self.proxy.as_ref().map_or(Value::Null, Via::json);
         v
     }
 }
@@ -184,17 +197,21 @@ fn name_of(v: &Value) -> String {
 
 fn accounts(sh: &Shared) -> Vec<Account> {
     let all = sh.setting("mail");
+    let page = proxy::setting(sh);
     all.as_array()
         .into_iter()
         .flatten()
         .filter_map(|a| {
+            let own = Via::of(&a["proxy"]);
+            let via = own.clone().unwrap_or_else(|| page.clone());
             Some(Account {
                 id: a["id"].as_str()?.into(),
                 address: a["address"].as_str()?.into(),
                 name: name_of(&a["name"]),
-                server: Server::from_json(a)?,
-                smtp: Server::from_json(&a["smtp"]),
+                server: Server::from_json(a, &via)?,
+                smtp: Server::from_json(&a["smtp"], &via),
                 on: a["on"] != false,
+                proxy: own,
             })
         })
         .collect()
@@ -263,6 +280,8 @@ struct Watch {
     kick: AtomicBool,
     // The connection's socket, shut down to stop at once.
     socket: Mutex<Option<TcpStream>>,
+    // The proxy it went through (its address), if any.
+    via: Mutex<Option<String>>,
     // connecting | ok | error, the unread count, what went wrong.
     status: Mutex<Value>,
 }
@@ -478,21 +497,35 @@ fn keep_accounts(sh: &Arc<Shared>, all: &[Account]) {
     }
 }
 
+// The way an account being set up goes (its own in the form, or null: the
+// Mail page's); a way that is not one, said so.
+fn way_of(sh: &Shared, own: &Value) -> Result<Via, Value> {
+    proxy::chosen(sh, own).ok_or_else(|| json!({ "ok": false, "error": { "kind": "proxyFields", "text": "" } }))
+}
+
 #[tauri::command]
-pub async fn mail_discover(address: String) -> Value {
-    tauri::async_runtime::spawn_blocking(move || discover(&address)).await.unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() }))
+pub async fn mail_discover(app: AppHandle, address: String, proxy: Option<Value>) -> Value {
+    let via = match way_of(&shared(&app), &proxy.unwrap_or(Value::Null)) {
+        Ok(via) => via,
+        Err(refused) => return refused,
+    };
+    tauri::async_runtime::spawn_blocking(move || discover::discover(&address, &via)).await.unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() }))
 }
 
 // "Re-test", as Thunderbird has it: the server tried without signing in,
 // the port and the way as given or (empty, "auto") found; the incoming
 // one, or ("smtp") the outgoing.
 #[tauri::command]
-pub async fn mail_probe(host: Value, port: Value, security: String, kind: Option<String>) -> Value {
+pub async fn mail_probe(app: AppHandle, host: Value, port: Value, security: String, kind: Option<String>, proxy: Option<Value>) -> Value {
     let Some(host) = host_of(&host) else { return json!({ "ok": false, "error": { "kind": "fields", "text": "" } }) };
+    let via = match way_of(&shared(&app), &proxy.unwrap_or(Value::Null)) {
+        Ok(via) => via,
+        Err(refused) => return refused,
+    };
     let port = port_of(&port);
     let security = Security::parse(&security);
     let smtp = kind.as_deref() == Some("smtp");
-    tauri::async_runtime::spawn_blocking(move || discover::probe_server(&host, port, security, smtp)).await.unwrap_or_else(|e| json!({ "ok": false, "error": { "kind": "other", "text": e.to_string() } }))
+    tauri::async_runtime::spawn_blocking(move || discover::probe_server(&host, port, security, smtp, &via)).await.unwrap_or_else(|e| json!({ "ok": false, "error": { "kind": "other", "text": e.to_string() } }))
 }
 
 // An account added or changed: signed in once on each server to see that
@@ -503,12 +536,21 @@ pub async fn mail_probe(host: Value, port: Value, security: String, kind: Option
 pub async fn mail_save(app: AppHandle, account: Value, password: String) -> Value {
     let sh = shared(&app);
     let address = account["address"].as_str().unwrap_or("").trim().to_string();
-    let Some(server) = Server::from_json(&account).filter(|_| split(&address).is_some()) else {
+    // Its own way to its servers, or (null) the Mail page's.
+    let own = match &account["proxy"] {
+        Value::Null => None,
+        v => match Via::of(v) {
+            Some(via) => Some(via),
+            None => return json!({ "ok": false, "error": { "kind": "proxyFields", "text": "" } }),
+        },
+    };
+    let via = own.clone().unwrap_or_else(|| proxy::setting(&sh));
+    let Some(server) = Server::from_json(&account, &via).filter(|_| split(&address).is_some()) else {
         return json!({ "ok": false, "error": { "kind": "fields", "text": "" } });
     };
     // The outgoing server: none (no host), or one whole.
     let out = &account["smtp"];
-    let smtp = Server::from_json(out);
+    let smtp = Server::from_json(out, &via);
     if smtp.is_none() && !out["host"].as_str().unwrap_or("").trim().is_empty() {
         return json!({ "ok": false, "out": true, "error": { "kind": "fields", "text": "" } });
     }
@@ -548,7 +590,7 @@ pub async fn mail_save(app: AppHandle, account: Value, password: String) -> Valu
         if let Err(e) = secret::write(&id, &password) {
             return json!({ "ok": false, "error": { "kind": "keep", "text": e } });
         }
-        let kept = Account { id: id.clone(), address, name, server, smtp, on: true };
+        let kept = Account { id: id.clone(), address, name, server, smtp, on: true, proxy: own };
         match all.iter_mut().find(|a| a.id == id) {
             Some(a) => *a = kept,
             None => all.push(kept),
@@ -698,29 +740,32 @@ mod tests {
 
     #[test]
     fn two_accounts_at_once_get_ids_of_their_own() {
-        let server = Server { host: "h".into(), port: 993, security: Security::Ssl, username: "u".into(), auth: Auth::Auto };
+        let server = Server { host: "h".into(), port: 993, security: Security::Ssl, username: "u".into(), auth: Auth::Auto, via: Via::Straight };
         let mut all = Vec::new();
         for _ in 0..2000 {
             let id = new_id(&all);
             assert!(id.len() == 8 && !all.iter().any(|a: &Account| a.id == id), "{id}");
-            all.push(Account { id, address: "a@b.c".into(), name: String::new(), server: server.clone(), smtp: None, on: true });
+            all.push(Account { id, address: "a@b.c".into(), name: String::new(), server: server.clone(), smtp: None, on: true, proxy: None });
         }
     }
 
     #[test]
     fn what_the_page_sends_is_checked() {
         let ok = json!({ "host": "IMAP.Example.com ", "port": "993", "security": "ssl", "username": "me@example.com" });
-        assert_eq!(Server::from_json(&ok).map(|s| (s.host, s.port)), Some(("imap.example.com".into(), 993)));
-        assert!(Server::from_json(&json!({ "host": "a b", "port": 993, "username": "x" })).is_none());
-        assert!(Server::from_json(&json!({ "host": "a.b", "port": 0, "username": "x" })).is_none());
+        assert_eq!(Server::from_json(&ok, &Via::System).map(|s| (s.host, s.port)), Some(("imap.example.com".into(), 993)));
+        assert!(Server::from_json(&json!({ "host": "a b", "port": 993, "username": "x" }), &Via::System).is_none());
+        assert!(Server::from_json(&json!({ "host": "a.b", "port": 0, "username": "x" }), &Via::System).is_none());
         assert_eq!(split("x@TU-Dresden.de").map(|(_, d)| d), Some("tu-dresden.de".into()));
         assert!(split("no-at-sign").is_none());
         // An account as kept: its name and outgoing server, or none.
         let kept = json!({ "id": "a1", "address": "me@example.com", "name": " Me\n ", "host": "imap.example.com", "port": 993, "security": "ssl", "username": "me", "smtp": { "host": "smtp.example.com", "port": 587, "security": "starttls", "username": "me" } });
-        let a = Account { id: "a1".into(), address: "me@example.com".into(), name: name_of(&kept["name"]), server: Server::from_json(&kept).unwrap(), smtp: Server::from_json(&kept["smtp"]), on: true };
+        let a = Account { id: "a1".into(), address: "me@example.com".into(), name: name_of(&kept["name"]), server: Server::from_json(&kept, &Via::System).unwrap(), smtp: Server::from_json(&kept["smtp"], &Via::System), on: true, proxy: None };
         assert_eq!((a.name.as_str(), a.smtp.as_ref().map(|s| s.port)), ("Me", Some(587)));
         assert_eq!(a.json()["smtp"]["security"], "starttls");
-        assert!(Server::from_json(&json!(null)).is_none());
+        // Its own way to its servers kept with it; none, the Mail page's.
+        assert_eq!(a.json()["proxy"], Value::Null);
+        assert_eq!(Account { proxy: Some(Via::Straight), ..a }.json()["proxy"], json!({ "mode": "none" }));
+        assert!(Server::from_json(&json!(null), &Via::System).is_none());
     }
 
     #[cfg(windows)]

@@ -479,10 +479,10 @@ pub fn forget(sh: &Shared, id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mail::{imap::Flags, Auth, Security};
+    use crate::mail::{imap::Flags, proxy::Via, Auth, Security};
 
     fn server(user: &str) -> Server {
-        Server { host: "imap.example.test".into(), port: 993, security: Security::Ssl, username: user.into(), auth: Auth::Auto }
+        Server { host: "imap.example.test".into(), port: 993, security: Security::Ssl, username: user.into(), auth: Auth::Auto, via: Via::Straight }
     }
 
     const HEAD: &[u8] = b"From: \"Zhang San\" <zs@vendor.example>\r\nTo: me@example.test\r\nSubject: =?UTF-8?B?5ZCI5ZCM?=\r\nDate: Fri, 09 Oct 2026 10:15:00 +0800\r\nMessage-ID: <c4@vendor.example>\r\nIn-Reply-To: <c3@example.test>\r\nReferences: <c1@example.test> <c3@example.test>\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n";

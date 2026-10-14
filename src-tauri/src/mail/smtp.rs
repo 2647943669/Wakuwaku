@@ -47,7 +47,7 @@ pub struct Smtp {
 impl Smtp {
     // Connected, encrypted as asked, greeted, and what it can do.
     pub fn open(server: &Server, timeout: Duration) -> Result<Smtp, Fail> {
-        let (stream, _) = connect(server, timeout)?;
+        let (stream, ..) = connect(server, timeout)?;
         let mut s = Smtp { stream, got: Vec::new(), exts: Vec::new() };
         let hello = s.reply()?;
         if hello.code != 220 {
@@ -275,6 +275,7 @@ pub fn session(server: &Server, password: &str, timeout: Duration) -> Result<Smt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mail::proxy::Via;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
 
@@ -324,7 +325,7 @@ mod tests {
             ("<data>", "250 queued\r\n"),
             ("QUIT", "221 bye\r\n"),
         ]);
-        let server = Server { host: "127.0.0.1".into(), port, security: Security::Plain, username: "me".into(), auth: Auth::Auto };
+        let server = Server { host: "127.0.0.1".into(), port, security: Security::Plain, username: "me".into(), auth: Auth::Auto, via: Via::Straight };
         let mut s = session(&server, "pw", Duration::from_secs(5)).unwrap();
         assert_eq!(s.auths(), ["LOGIN", "PLAIN"]);
         s.send("me@a.test", &["you@b.test".into(), "them@c.test".into()], b"Subject: hi\r\n\r\n.dot\r\n").unwrap();
@@ -344,7 +345,7 @@ mod tests {
             ("RCPT TO:<nobody@b.test>", "550 5.1.1 no such user\r\n"),
             ("RSET", "250 ok\r\n"),
         ]);
-        let server = Server { host: "127.0.0.1".into(), port, security: Security::Plain, username: "me".into(), auth: Auth::Auto };
+        let server = Server { host: "127.0.0.1".into(), port, security: Security::Plain, username: "me".into(), auth: Auth::Auto, via: Via::Straight };
         let mut s = session(&server, "pw", Duration::from_secs(5)).unwrap();
         assert_eq!(s.send("me@a.test", &["nobody@b.test".into()], b"x\r\n"), Err(Fail::Recipient("nobody@b.test: 5.1.1 no such user".into())));
         drop(s);
@@ -354,7 +355,7 @@ mod tests {
     #[test]
     fn a_password_said_no_to_says_why() {
         let (port, heard) = server(&[("EHLO", "250-fake\r\n250 AUTH PLAIN\r\n"), ("AUTH PLAIN", "535 5.7.8 Username and Password not accepted\r\n")]);
-        let server = Server { host: "127.0.0.1".into(), port, security: Security::Plain, username: "me".into(), auth: Auth::Auto };
+        let server = Server { host: "127.0.0.1".into(), port, security: Security::Plain, username: "me".into(), auth: Auth::Auto, via: Via::Straight };
         assert_eq!(session(&server, "pw", Duration::from_secs(5)).err(), Some(Fail::Login("5.7.8 Username and Password not accepted".into())));
         heard.join().unwrap();
     }

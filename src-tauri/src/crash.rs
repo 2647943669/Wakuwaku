@@ -500,7 +500,7 @@ fn post(url: &str, body: &str) -> Result<Value, Fail> {
     let mut ways: Vec<Option<String>> = Vec::new();
     #[cfg(windows)]
     if !is_loopback(url) && ureq::Proxy::try_from_env().is_none() {
-        if let Some(p) = win::system_proxy() {
+        if let Some(p) = crate::proxy::system().and_then(|s| s.for_web()) {
             ways.push(Some(p));
         }
     }

@@ -84,6 +84,9 @@
   let mailForm = null
   // An account's delete asked once: asked again, it goes.
   let mailDelete = ''
+  // The Mail page's proxy address as typed and not yet kept: being typed,
+  // or (bad) not read as address:port.
+  let proxyTyped = null
   // The Mail page's inbox: whose (an account id), its newest letters and how
   // many there are, how many asked for, busy, what went wrong. The letter
   // open ({ uid, busy | letter, summary | error }), null while the list
@@ -706,13 +709,15 @@
       </div>`
   }
 
-  // What went wrong with a mail account, in words.
+  // What went wrong with a mail account, in words: through a proxy, which
+  // hop (mail/proxy.rs), and what to try then.
   function mailError(err, server) {
     const kind = err?.kind || 'other'
     const where = server ? `${server.host}:${server.port}` : ''
-    // The server's own words, where they say why.
-    const detail = err?.text && ['login', 'refused', 'other', 'recipient'].includes(kind) ? (lang === 'zh' ? '：' : ': ') + err.text : ''
-    return T(`mail.err.${kind}`, { where }) + detail
+    // The server's own words (or the proxy's), where they say why.
+    const detail = err?.text && ['login', 'refused', 'other', 'recipient', 'notProxy', 'proxyRefused', 'proxyServer'].includes(kind) ? (lang === 'zh' ? '：' : ': ') + err.text : ''
+    const hint = err?.hint ? (lang === 'zh' ? '。' : '. ') + T(`mail.err.${kind === 'notProxy' ? 'kind' : 'try'}.${err.hint}`) : ''
+    return T(`mail.err.${kind}`, { where, proxy: err?.proxy || '' }) + detail + hint
   }
 
   // An account's line: how its inbox is, or why it is not.
@@ -722,7 +727,9 @@
     // How much is kept whole on this computer, while it is still coming down.
     const off = st.offline || {}
     const down = off.total && off.have < off.total ? ` · ${T('mail.offline', { have: off.have, total: off.total })}` : ''
-    if (st.state === 'ok') return { text: (st.unread ? T('mail.unread', { n: st.unread }) : T('mail.none')) + down }
+    // Through a proxy: which.
+    const via = st.via ? ` · ${T('mail.via', { proxy: st.via })}` : ''
+    if (st.state === 'ok') return { text: (st.unread ? T('mail.unread', { n: st.unread }) : T('mail.none')) + down + via }
     if (st.state === 'error') return { text: mailError(st.error, a), bad: true }
     return { text: T('mail.connecting') }
   }
@@ -769,6 +776,23 @@
     o
       ? { smtpHost: o.host, smtpPort: o.port, smtpSecurity: o.security, smtpAuth: o.auth || 'auto', smtpUser: o.username }
       : { smtpHost: '', smtpPort: '', smtpSecurity: 'auto', smtpAuth: 'auto', smtpUser: '' }
+
+  // An account's own way to its servers (its "proxy", mail/proxy.rs) as the
+  // form has it: a mode ('' for the Mail page's), and a manual one's kind
+  // and address; and back, as sent (null: the Mail page's).
+  const proxyFields = p => ({ proxyMode: p?.mode || '', proxyKind: p?.kind === 'socks5' ? 'socks5' : 'http', proxyAddress: p?.address || '' })
+  const formProxy = f =>
+    !f.proxyMode ? null : f.proxyMode === 'manual' ? { mode: 'manual', kind: f.proxyKind || 'http', address: String(f.proxyAddress || '').trim() } : { mode: f.proxyMode }
+  const PROXY_KINDS = [
+    ['http', 'HTTP'],
+    ['socks5', 'SOCKS5'],
+  ]
+  const PROXY_MODES = () => [
+    ['', T('mail.proxy.page', { what: T(`mail.proxy.${proxySetting().mode}Long`) })],
+    ['system', T('mail.proxy.systemLong')],
+    ['manual', T('mail.proxy.manualLong')],
+    ['none', T('mail.proxy.noneLong')],
+  ]
 
   // Setting an account up: the address, a name to send with, the password;
   // then the servers found (a line each) or not, and what the provider
@@ -833,6 +857,11 @@
       f.smtpHost && f.smtpSecurity === 'plain' ? `<div class="note err">${esc(T('mail.adv.plainWarn'))}</div>` : '',
       probedHTML(f.probedOut),
       `<div class="note">${esc(T('mail.adv.outNote'))}</div>`,
+      `<div class="adv-sec">${esc(T('mail.proxy'))}</div>`,
+      `<div class="fr"><span class="fl">${esc(T('mail.adv.proxyWay'))}</span><button class="pick" data-mfpick="proxyMode">${esc(labelOf(PROXY_MODES(), f.proxyMode || ''))} ▾</button></div>`,
+      f.proxyMode === 'manual' ? `<div class="fr"><span class="fl">${esc(T('mail.proxy.kind'))}</span><button class="pick" data-mfpick="proxyKind">${esc(labelOf(PROXY_KINDS, f.proxyKind || 'http'))} ▾</button></div>` : '',
+      f.proxyMode === 'manual' ? field('proxyAddress', T('mail.proxy.address'), 'placeholder="127.0.0.1:7890"') : '',
+      `<div class="note">${esc(T('mail.adv.proxyNote'))}</div>`,
     ]
     return `<div class="adv on">${toggle}<div class="adv-b">${rows.join('')}</div></div>`
   }
@@ -1376,7 +1405,7 @@
       .join('')
     const add = mailForm ? '' : `<div class="r"><button class="pbtn wide" data-mail-add>${esc(T('mail.add'))}</button></div>`
     return `${sec(T('mail.section'))}<div class="grp"><div class="note">${esc(T('mail.note'))}</div>${rows}${add}</div>
-      ${accounts.length ? offlineHTML() : ''}${mailForm ? mailFormHTML() : ''}`
+      ${accounts.length ? offlineHTML() : ''}${proxyHTML()}${mailForm ? mailFormHTML() : ''}`
   }
 
   // How much is kept whole on this computer (the setting mailOffline: the
@@ -1387,6 +1416,62 @@
     const note = T(`mail.keep.${value}Note`) + (used ? ` ${T('mail.keep.used', { size: mailSize(used) })}` : '')
     const choices = ['90d', 'year', 'all', 'opened'].map(v => [v, T(`mail.keep.${v}`)])
     return `<div class="grp keep">${row(esc(T('mail.keep')), esc(note), seg('mailOffline', choices, value))}</div>`
+  }
+
+  // How mail reaches its servers (the setting mailProxy, mail/proxy.rs):
+  // through Windows' proxy (the default; straight while none is set),
+  // through one typed in (HTTP or SOCKS5), or straight. A manual one's kind
+  // and address are kept while another is on.
+  function proxySetting() {
+    const p = snap.settings.mailProxy || {}
+    return { mode: ['system', 'manual', 'none'].includes(p.mode) ? p.mode : 'system', kind: p.kind === 'socks5' ? 'socks5' : 'http', address: p.address || '' }
+  }
+
+  function proxyHTML() {
+    const p = proxySetting()
+    const sys = snap.mailSystemProxy
+    const now = p.mode === 'system' ? (sys ? T('mail.proxy.systemNow', { proxy: sys.address, kind: labelOf(PROXY_KINDS, sys.kind) }) : T('mail.proxy.systemNone')) : T(`mail.proxy.${p.mode}Note`)
+    const modes = ['system', 'manual', 'none'].map(m => [m, T(`mail.proxy.${m}`)])
+    const typed = proxyTyped ? proxyTyped.text : p.address
+    const manual =
+      p.mode === 'manual'
+        ? `<div class="r">${seg('mailProxy.kind', PROXY_KINDS, p.kind)}<input class="in grow" data-proxy-at value="${esc(typed)}" placeholder="127.0.0.1:7890" spellcheck="false" autocomplete="off"></div>${proxyTyped?.bad ? `<div class="note err">${esc(T('mail.proxy.bad'))}</div>` : ''}`
+        : ''
+    return `<div class="grp proxy">${row(esc(T('mail.proxy')), esc(`${now} ${T('mail.proxy.perAccount')}`), seg('mailProxy.mode', modes, p.mode))}${manual}</div>`
+  }
+
+  // The Mail page's proxy changed, kept whole; manual for the first time,
+  // Windows' proxy's address, else Clash's usual port, to change.
+  function setProxy(change) {
+    const next = { ...proxySetting(), ...change }
+    if (next.mode === 'manual' && !next.address) {
+      const sys = snap.mailSystemProxy
+      Object.assign(next, sys ? { kind: sys.kind, address: sys.address } : { address: '127.0.0.1:7890' })
+    }
+    proxyTyped = null
+    patch({ mailProxy: next })
+  }
+
+  // Its address as typed (Enter, or leaving the box): a scheme before it
+  // (socks5://, http://) says the kind; kept once it reads as address:port.
+  function proxyAddress(text) {
+    let address = String(text || '').trim()
+    let kind = proxySetting().kind
+    const scheme = /^([a-z0-9]+):\/\//i.exec(address)
+    if (scheme) {
+      kind = /^socks/i.test(scheme[1]) ? 'socks5' : 'http'
+      address = address.slice(scheme[0].length).replace(/\/+$/, '')
+    }
+    const port = Number(address.split(':').pop())
+    if (!/^(\[[0-9a-f:.]+\]|[a-z0-9._-]+):\d{1,5}$/i.test(address) || !(port > 0 && port < 65536)) {
+      proxyTyped = { text, bad: true }
+      return draw()
+    }
+    if (address === proxySetting().address && kind === proxySetting().kind) {
+      proxyTyped = null
+      return draw()
+    }
+    setProxy({ kind, address })
   }
 
   // The letters as the list shows them: a conversation folded in is the
@@ -1934,13 +2019,13 @@
   }
 
   // The page, kept as it is when nothing changed; redrawn, the box being
-  // typed in (the download box, a plugin's setting) gets the focus and the
-  // caret back.
+  // typed in (the download box, a plugin's setting, the mail proxy's
+  // address) gets the focus and the caret back.
   function drawBody(reset) {
     const box = body.contains(document.activeElement) && document.activeElement.matches('input, textarea') ? document.activeElement : null
     const which =
       box &&
-      (box.id ? `#${box.id}` : box.dataset.field ? `[data-field="${box.dataset.field}"]` : box.dataset.mf ? `[data-mf="${box.dataset.mf}"]` : box.dataset.w ? `[data-w="${box.dataset.w}"]` : null)
+      (box.id ? `#${box.id}` : box.dataset.field ? `[data-field="${box.dataset.field}"]` : box.dataset.mf ? `[data-mf="${box.dataset.mf}"]` : box.dataset.w ? `[data-w="${box.dataset.w}"]` : box.dataset.proxyAt !== undefined ? '[data-proxy-at]' : null)
     const caret = which ? box.selectionStart : null
     const changed = setHTML(body, PAGES[tab]())
     if (reset) {
@@ -2430,6 +2515,12 @@
       openPicker(picker)
       return true
     }
+    // The Mail page's proxy: its mode, a manual one's kind.
+    const way = at('[data-seg^="mailProxy."] > span')
+    if (way) {
+      setProxy({ [way.parentElement.dataset.seg.slice(10)]: way.dataset.value })
+      return true
+    }
     const access = at('[data-seg^="mconf."] > span')
     if (access) {
       setConf(access.parentElement.dataset.seg.slice(6), 'access', access.dataset.value)
@@ -2536,7 +2627,7 @@
       return true
     }
     if (at('[data-mail-add]')) {
-      mailForm = { id: '', address: '', name: '', password: '', host: '', port: 993, security: 'ssl', auth: 'auto', username: '', ...outFields(null), step: 'start', advanced: false, probed: null, probedOut: null, busy: '', result: null }
+      mailForm = { id: '', address: '', name: '', password: '', host: '', port: 993, security: 'ssl', auth: 'auto', username: '', ...outFields(null), ...proxyFields(null), step: 'start', advanced: false, probed: null, probedOut: null, busy: '', result: null }
       mailDelete = ''
       redrawMail('[data-mf="address"]')
       return true
@@ -2545,7 +2636,7 @@
     if (change) {
       const a = (snap.mail || []).find(x => x.id === change.dataset.mailEdit)
       if (a) {
-        mailForm = { id: a.id, address: a.address, name: a.name || '', password: '', host: a.host, port: a.port, security: a.security, auth: a.auth || 'auto', username: a.username, ...outFields(a.smtp), step: 'found', source: '', advanced: true, probed: null, probedOut: null, busy: '', result: null }
+        mailForm = { id: a.id, address: a.address, name: a.name || '', password: '', host: a.host, port: a.port, security: a.security, auth: a.auth || 'auto', username: a.username, ...outFields(a.smtp), ...proxyFields(a.proxy), step: 'found', source: '', advanced: true, probed: null, probedOut: null, busy: '', result: null }
         // One from before the pet sent mail: its outgoing server looked up.
         if (!a.smtp) findOutgoing(mailForm)
       }
@@ -2568,6 +2659,21 @@
     if (mfpick && mailForm) {
       const f = mailForm
       const key = mfpick.dataset.mfpick
+      // The account's own way to its servers; manual for the first time,
+      // the address the Mail page or Windows has.
+      if (key === 'proxyMode' || key === 'proxyKind') {
+        const mode = key === 'proxyMode'
+        openChoices(mfpick, mode ? PROXY_MODES() : PROXY_KINDS, f[key] || (mode ? '' : 'http'), value => {
+          f[key] = value
+          if (value === 'manual' && !String(f.proxyAddress || '').trim()) {
+            const known = proxySetting().address ? proxySetting() : snap.mailSystemProxy
+            Object.assign(f, known ? { proxyKind: known.kind, proxyAddress: known.address } : { proxyAddress: '127.0.0.1:7890' })
+          }
+          f.probed = f.probedOut = null
+          redrawMail(value === 'manual' ? '[data-mf="proxyAddress"]' : null)
+        }, !mode)
+        return true
+      }
       const out = key.startsWith('smtp')
       const isWay = /security$/i.test(key)
       openChoices(mfpick, isWay ? SECURITIES() : AUTHS(), f[key] || 'auto', value => {
@@ -2715,11 +2821,16 @@
     f.busy = 'find'
     f.result = null
     redrawMail()
-    const got = await window.pet.mail.discover(f.address.trim())
+    const got = await window.pet.mail.discover(f.address.trim(), formProxy(f))
     if (mailForm !== f) return
     f.busy = ''
     f.probed = null
     f.probedOut = null
+    // The proxy on the way is not there, or not written right: said so.
+    if (!got.ok && got.error?.kind) {
+      f.result = { bad: true, text: mailError(got.error) }
+      return redrawMail()
+    }
     if (got.ok && got.found) {
       Object.assign(f, got.server, outFields(got.smtp), { step: 'found', source: got.source, notFound: false, oauth: false, advanced: false })
     } else {
@@ -2733,7 +2844,7 @@
   // looked up while its settings are open; filled in if none was typed.
   async function findOutgoing(f) {
     f.findingOut = true
-    const got = await window.pet.mail.discover(f.address)
+    const got = await window.pet.mail.discover(f.address, formProxy(f))
     f.findingOut = false
     if (mailForm !== f) return
     if (got.ok && got.smtp && !String(f.smtpHost || '').trim()) Object.assign(f, outFields(got.smtp), { smtpUser: f.username || got.smtp.username })
@@ -2753,7 +2864,7 @@
     f.busy = 'probe'
     f.probedOut = null
     redrawMail()
-    const got = await window.pet.mail.probe(String(f.smtpHost).trim(), String(f.smtpPort ?? '').trim(), f.smtpSecurity || 'auto', 'smtp')
+    const got = await window.pet.mail.probe(String(f.smtpHost).trim(), String(f.smtpPort ?? '').trim(), f.smtpSecurity || 'auto', 'smtp', formProxy(f))
     if (mailForm !== f) return false
     f.busy = ''
     if (got.ok && got.found) {
@@ -2779,7 +2890,7 @@
     f.result = null
     f.probed = null
     redrawMail()
-    const got = await window.pet.mail.probe(String(f.host).trim(), String(f.port ?? '').trim(), f.security || 'auto')
+    const got = await window.pet.mail.probe(String(f.host).trim(), String(f.port ?? '').trim(), f.security || 'auto', 'imap', formProxy(f))
     if (mailForm !== f) return false
     f.busy = ''
     if (got.ok && got.found) {
@@ -2811,7 +2922,7 @@
     redrawMail()
     const username = String(f.username || f.address).trim()
     const smtp = outHost ? { host: outHost, port: Number(f.smtpPort), security: f.smtpSecurity, auth: f.smtpAuth || 'auto', username: String(f.smtpUser || username).trim() } : null
-    const account = { id: f.id, address: f.address.trim(), name: String(f.name || '').trim(), host: String(f.host).trim(), port: Number(f.port), security: f.security, auth: f.auth || 'auto', username, smtp }
+    const account = { id: f.id, address: f.address.trim(), name: String(f.name || '').trim(), host: String(f.host).trim(), port: Number(f.port), security: f.security, auth: f.auth || 'auto', username, smtp, proxy: formProxy(f) }
     // Google's app password as it shows it, in fours: the spaces left out.
     const typed = String(f.password || '')
     const password = providerOf(account.host) === 'google' && /^[a-z]{4}(\s?[a-z]{4}){3}$/i.test(typed.trim()) ? typed.replace(/\s/g, '') : typed
@@ -2831,6 +2942,7 @@
 
   layer.addEventListener('input', e => {
     if (e.target.dataset.mf && mailForm) mailForm[e.target.dataset.mf] = e.target.value
+    if (e.target.dataset.proxyAt !== undefined) proxyTyped = { text: e.target.value, bad: false }
     if (e.target.dataset.w && draft) {
       draft[e.target.dataset.w] = e.target.value
       draft.touched = true
@@ -2858,6 +2970,7 @@
   layer.addEventListener('change', e => {
     if (e.target.matches('[data-w-file]')) return addFiles(e.target)
     if (e.target.dataset.ilook) return ilookInput(e.target, true)
+    if (e.target.dataset.proxyAt !== undefined) return proxyAddress(e.target.value)
     const key = e.target.dataset.field
     if (!key || !(key in drafts)) return
     const value = drafts[key].trim()
@@ -2888,7 +3001,7 @@
         return sendDraft()
       }
       if (e.key === 'Enter' && e.target.id === 's-ref' && !e.isComposing) layer.querySelector('[data-fetch]')?.click()
-      if (e.key === 'Enter' && e.target.dataset.field) e.target.blur()
+      if (e.key === 'Enter' && (e.target.dataset.field || e.target.dataset.proxyAt !== undefined)) e.target.blur()
       if (e.key === 'Enter' && e.target.dataset.mf) layer.querySelector('[data-mail-find]:not([disabled]), [data-mail-save]:not([disabled])')?.click()
       if (e.key === 'Enter' && e.target.dataset.talk && !e.isComposing) say(e.target)
       return
