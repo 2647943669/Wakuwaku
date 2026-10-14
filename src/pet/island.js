@@ -109,6 +109,7 @@
   let peek = false
   let peekTimer = 0
   const PEEK_MS = 6000
+  let settingsIdleTimer = 0
   const slotWidth = () => (screenTop?.notch ? screenTop.notch + 2 * EAR : WIDTHS[config.islandWidth] || WIDTHS.normal)
   // The window without extra room (main's ISLAND), and the island's distance
   // from the top of it. As wide as a pull needs (PULL_ROOM), so the window
@@ -2062,12 +2063,14 @@
   // goes back. Open, it goes back once the pointer has been in it and left,
   // or after a while if the pointer never comes.
   function setPeek(on) {
+    if (on !== peek) console.log(`island: peek ${on ? 'open' : 'closed'}`)
     peek = on
     clearTimeout(peekTimer)
     if (peek) peekTimer = setTimeout(() => !isHover && setPeek(false), PEEK_MS)
     update()
   }
-  window.pet.onPeek(() => setPeek(!peek))
+  // Her tray icon toggles it; a double-click on her only opens it ({ open }).
+  window.pet.onPeek(p => setPeek(p?.open === true ? true : !peek))
   window.pet.onTop(({ height, notch } = {}) => {
     const next = height > 0 ? { height, notch: notch > 0 ? notch : 0 } : null
     if (JSON.stringify(next) === JSON.stringify(screenTop)) return
@@ -2918,6 +2921,12 @@
     // In the notch and closed it is out of the way: the pointer passes to
     // what is under it (the notch's own app), and a hover opens nothing.
     body.classList.toggle('aside', !!screenTop?.notch && view === 'compact')
+    // Opened in the notch (from her menu) and the pointer never comes: back
+    // after a while, as a peek goes back (PEEK_MS).
+    clearTimeout(settingsIdleTimer)
+    if (screenTop?.notch && view === 'settings' && !isHover) {
+      settingsIdleTimer = setTimeout(() => !isHover && isSetting() && window.Settings?.close('unused'), PEEK_MS)
+    }
     island.dataset.view = view
     setInk()
     island.style.setProperty('--ring', hue()[now.mood])
@@ -3388,7 +3397,11 @@
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
         isHover = false
-        // Dropped open from the notch: back into it once left.
+        // In the notch, whatever was open goes back once the pointer has
+        // left, as a notch app's does: the settings too, unless a field in
+        // them is being typed in (the user's call, 2026-10-14).
+        const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')
+        if (screenTop?.notch && isSetting() && !typing) window.Settings?.close('left')
         if (peek) setPeek(false)
         else update()
       }, HOVER_CLOSE_MS)
