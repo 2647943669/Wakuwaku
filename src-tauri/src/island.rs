@@ -162,6 +162,12 @@ pub fn origin(sh: &Shared) -> ((i32, i32), f64) {
     (isl.pos, isl.sf())
 }
 
+// Where its window is and its size (physical), and its scale.
+pub fn frame(sh: &Shared) -> ((i32, i32), (i32, i32), f64) {
+    let isl = sh.island.lock().unwrap();
+    (isl.pos, isl.size, isl.sf())
+}
+
 fn set_ignore(sh: &Shared, ignore: Option<bool>) {
     if let (Some(ignore), Some(win)) = (ignore, window(sh)) {
         sh.log(&format!("island: mouse {}", if ignore { "passes through" } else { "caught" }));
@@ -600,6 +606,12 @@ fn show_or_hide(sh: &Arc<Shared>) {
     }
     if let Some(win) = window(sh) {
         let _ = if want { win.show() } else { win.hide() };
+    }
+    // The blur under the island goes with it, and comes back with it (backplate.rs).
+    if want {
+        crate::backplate::again();
+    } else {
+        crate::backplate::hide();
     }
     // Her taskbar on the other displays, as the settings say (bars.rs).
     crate::bars::sync(sh);

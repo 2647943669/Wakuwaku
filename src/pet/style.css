@@ -2612,6 +2612,12 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
     var(--i-edge);
 }
 
+/* Open over a maximized window, a see-through ground with nothing to blur
+   what is behind it deepens (island.js setDeep, zhoupengjie/Wakuwaku#20). */
+.isl-deep.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+  background: var(--i-bg-deep, var(--i-bg));
+}
+
 .island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   background: transparent;
   -webkit-backdrop-filter: none;

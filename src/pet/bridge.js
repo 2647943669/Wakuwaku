@@ -71,6 +71,10 @@
     holding: isHolding => send('island_holding', { isHolding: isHolding === true }),
     // Her seat on the taskbar, where the page has laid her island out (logical px from its left).
     seat: x => send('island_seat', { x: Number(x) || 0 }),
+    // A blur of what is behind her island, under it (backplate.rs): where
+    // the island is ({ x, y, width, height, radius, vw, vh, dark }), faded
+    // in over fade ms; none, faded out.
+    plate: (rect, fade) => send('island_plate', { rect: rect || null, fade: Math.max(0, Math.round(Number(fade) || 0)) }),
     onReach: on('island:reach'),
     onAbsorb: on('island:absorb'),
     onLanded: on('island:landed'),

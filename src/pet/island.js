@@ -784,7 +784,7 @@
   // fn once the island's size spring is over: its width's or height's
   // transitionend, or a little after the spring's length should none come
   // (the size unchanged, a spring cut short). Returns what calls it off.
-  function afterSpring(fn) {
+  function afterSpring(fn, late = 0) {
     let timer
     const stop = () => {
       clearTimeout(timer)
@@ -796,7 +796,7 @@
       fn()
     }
     island.addEventListener('transitionend', done)
-    timer = setTimeout(done, SPRING_MS + 50)
+    timer = setTimeout(done, SPRING_MS + 50 + late)
     return stop
   }
 
@@ -809,11 +809,11 @@
   let groundWait = null
   const stillMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  function holdGround(was) {
+  function holdGround(was, late) {
     if (home() === 'taskbar' && view === 'compact' && was && was !== 'compact') {
       groundWait?.()
       island.classList.add('shrinking')
-      groundWait = afterSpring(fadeGround)
+      groundWait = afterSpring(fadeGround, late)
       return
     }
     if (view === 'compact' && home() === 'taskbar') return
@@ -829,6 +829,92 @@
     const from = { offset: 0, backgroundColor: held.backgroundColor, boxShadow: held.boxShadow, backdropFilter: held.backdropFilter }
     island.classList.remove('shrinking')
     if (!stillMotion()) island.animate([from], { id: 'ground', duration: GROUND_FADE_MS, easing: 'ease-out' })
+  }
+
+  // --- Behind the island: a blur, or a deeper ground (zhoupengjie/Wakuwaku#20) ------
+  // The page's own blur (--i-blur) blurs only what the page draws: open
+  // above the strip, a see-through look had other programs' windows sharp
+  // behind it. Under it, then, a window of Windows' acrylic (backplate.rs)
+  // in the island's shape: for a look both see-through and blurred, while
+  // the island is open (at the top of the screen, while it is up at all)
+  // and someone is about; faded in once its spring is over, out as it
+  // closes, before it shrinks; gone at once while it changes size, back
+  // once it has. Without it (Windows 10, transparency effects off, a look
+  // not blurred), over a maximized window the ground deepens (setDeep) so
+  // its words read.
+  const PLATE_IN_MS = 150
+  const PLATE_OUT_MS = 100
+  const DEEP_OP = 0.9
+  const DEEP_MS = 150
+  // What the plate was last told (where, as JSON; '': none), and the wait
+  // for the spring before it shows.
+  let plateSent = ''
+  let plateWait = null
+  // Windows' mode, for the plate's own tint.
+  const modeNow = () => look.mode
+
+  function plateWanted() {
+    if (!isOn() || now.plate !== true || quiet || view === 'settings' || body.classList.contains('pulling')) return false
+    const { op, blur } = groundOf(lookNow())
+    if (!(op < 1 && blur > 0)) return false
+    return home() !== 'taskbar' || view !== 'compact'
+  }
+
+  // After the island is laid out (resized: its size changing).
+  function placePlate(resized) {
+    if (!plateWanted()) return hidePlate(PLATE_OUT_MS)
+    if (resized || (!plateSent && !plateWait)) {
+      hidePlate(0)
+      plateWait = afterSpring(() => {
+        plateWait = null
+        showPlate(PLATE_IN_MS)
+      })
+      return
+    }
+    if (!plateWait) showPlate(0)
+  }
+
+  // Where the island is now (moved: told again, no fade).
+  function showPlate(fade) {
+    if (!plateWanted()) return hidePlate(0)
+    const r = island.getBoundingClientRect()
+    const radius = parseFloat(getComputedStyle(island).borderTopLeftRadius) || 0
+    const rect = { x: r.left, y: r.top, width: r.width, height: r.height, radius, vw: innerWidth, vh: innerHeight, dark: modeNow() !== 'light' }
+    const sent = JSON.stringify(rect)
+    if (sent === plateSent) return
+    const first = !plateSent
+    plateSent = sent
+    window.pet.plate(rect, first && !stillMotion() ? fade : 0)
+  }
+
+  function hidePlate(fade) {
+    plateWait?.()
+    plateWait = null
+    if (!plateSent) return
+    plateSent = ''
+    window.pet.plate(null, stillMotion() ? 0 : fade)
+  }
+
+  // Resized for its room, the window moves the island in the page.
+  window.addEventListener('resize', () => plateSent && !plateWait && showPlate(0))
+
+  // Over a maximized window (one on her display, taskbar.rs "max"), a
+  // see-through ground the plate does not blur goes to DEEP_OP while open,
+  // over DEEP_MS (at once as it opens), and back as it closes or the window
+  // is no longer maximized.
+  const overMax = () => home() === 'taskbar' && taskWindows.some(a => (a.windows || []).some(w => w.max && !w.min))
+  function deepWanted() {
+    if (!isOn() || view === 'settings' || (home() === 'taskbar' && view === 'compact')) return false
+    const { op, blur } = groundOf(lookNow())
+    return op < DEEP_OP && !(now.plate === true && blur > 0) && overMax()
+  }
+
+  function setDeep(fades) {
+    const on = deepWanted()
+    if (body.classList.contains('isl-deep') === on) return
+    const from = getComputedStyle(island).backgroundColor
+    body.classList.toggle('isl-deep', on)
+    if (fades && !stillMotion()) island.animate([{ offset: 0, backgroundColor: from }], { id: 'deep', duration: DEEP_MS, easing: 'ease' })
   }
 
   function setSize({ width, height }) {
@@ -2110,6 +2196,17 @@
     drawIslandLook()
   }
 
+  // The look as the settings give it now (none: the defaults), and its
+  // ground's colour (null: none given), how solid (0.2 to 1; solid when no
+  // colour is given) and blurred.
+  const lookNow = () => (isCapsule() && config.islandLook?.[look.mode]) || {}
+  function groundOf(mine) {
+    const bg = /^#[0-9a-f]{6}$/i.test(mine.bg || '') ? parseInt(mine.bg.slice(1), 16) : null
+    const op = bg !== null && Number.isFinite(mine.op) ? Math.min(100, Math.max(20, mine.op)) / 100 : 1
+    const blur = Number.isFinite(mine.blur) ? Math.min(60, Math.max(0, mine.blur)) : 0
+    return { bg, op, blur }
+  }
+
   // Her island's look on the taskbar, as the settings may set it for each of
   // Windows' modes (islandLook: { dark, light }, each { bg: '#rrggbb', op: 20
   // to 100, blur: 0 to 60, edge: 'line' | 'ring' | 'none', bare }), over
@@ -2117,12 +2214,14 @@
   // island-bare); a part left out keeps its default. The ring is the
   // session's colour (--ring, as the island draws).
   function drawIslandLook() {
-    const mine = (isCapsule() && config.islandLook?.[look.mode]) || {}
-    const bg = /^#[0-9a-f]{6}$/i.test(mine.bg || '') ? parseInt(mine.bg.slice(1), 16) : null
-    const op = Number.isFinite(mine.op) ? Math.min(100, Math.max(20, mine.op)) / 100 : 1
+    const mine = lookNow()
+    const { bg, op, blur } = groundOf(mine)
+    const rgba = a => `rgba(${(bg >> 16) & 255}, ${(bg >> 8) & 255}, ${bg & 255}, ${a})`
     if (bg === null) body.style.removeProperty('--i-bg')
-    else body.style.setProperty('--i-bg', `rgba(${(bg >> 16) & 255}, ${(bg >> 8) & 255}, ${bg & 255}, ${op})`)
-    const blur = Number.isFinite(mine.blur) ? Math.min(60, Math.max(0, mine.blur)) : 0
+    else body.style.setProperty('--i-bg', rgba(op))
+    // Deeper over a maximized window, with nothing to blur it (setDeep).
+    if (bg === null || op >= DEEP_OP) body.style.removeProperty('--i-bg-deep')
+    else body.style.setProperty('--i-bg-deep', rgba(DEEP_OP))
     if (blur) island.style.setProperty('--i-blur', `blur(${blur}px) saturate(1.25)`)
     else island.style.removeProperty('--i-blur')
     const edge = {
@@ -2188,6 +2287,7 @@
       alignApps()
       snapStart()
       drawMica()
+      setDeep(true)
     }
   })
 
@@ -2923,7 +3023,11 @@
     const was = view
     view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() ? 'expanded' : 'compact'
     island.dataset.view = view
-    holdGround(was)
+    // Closing on the taskbar, the blur under it goes first, then it shrinks.
+    const late = plateSent && home() === 'taskbar' && view === 'compact' && was !== 'compact' && !stillMotion() ? PLATE_OUT_MS : 0
+    holdGround(was, late)
+    // The deeper ground at once as it opens; changing, over a moment.
+    setDeep(was === view || view === 'compact')
     setInk()
     island.style.setProperty('--ring', hue()[now.mood])
     island.classList.toggle('wants', now.mood === 'waiting')
@@ -2945,6 +3049,7 @@
     const grows = setRoom(isReaching ? PULL_ROOM : roomFor(want))
     // The window has its room before the island (and she) grow into it.
     const grow = () => {
+      const resized = island.style.width !== `${want.width}px` || island.style.height !== `${want.height}px`
       setSize(want)
       const snap = isHome() && !herShown
       if (snap) her.classList.add('snap')
@@ -2955,9 +3060,13 @@
       }
       herShown = isHome()
       animateHer()
+      placePlate(resized)
     }
     if (grows) setTimeout(grow, 40)
-    else grow()
+    else if (late) {
+      hidePlate(PLATE_OUT_MS)
+      setTimeout(grow, late)
+    } else grow()
 
     // The clocks run: the turn's, the step's, the other sessions'. Their words
     // may grow (a step timed once it has run a while), so the shape follows.
@@ -3047,6 +3156,7 @@
     setRoom(PULL_ROOM)
     startDropHer()
     body.classList.add('pulling')
+    hidePlate(0)
   }
 
   function startDropHer() {
@@ -3299,6 +3409,7 @@
     seatPanel()
     if (!isOn() && panel.parentElement !== stage) stage.prepend(panel)
     if (!isOn()) {
+      hidePlate(0)
       clearInterval(clockTimer)
       clearTimeout(herTimer)
       clearTimeout(dropTimer)
@@ -3357,6 +3468,8 @@
     herClip = null
     animateHer()
     playPortraits()
+    // The blur behind the island too: none while nobody is about.
+    if (isOn()) placePlate(false)
   })
 
   // A hello, or something to fix: the island opens to say it, and she waves.

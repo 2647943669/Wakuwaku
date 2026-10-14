@@ -424,8 +424,9 @@
   }
 
   // The island as the look makes it, on a strip over a desktop; big, it
-  // opens under the pointer (open, above the strip, there is no Mica behind
-  // it to blur: its ground alone, as on the taskbar).
+  // opens under the pointer (open, above the strip, the page has nothing
+  // behind it to blur: its ground alone, as on the taskbar; blurred where
+  // Windows' acrylic goes under it, island.js placePlate).
   function ilookPreview(mode, look, big = false) {
     const [r, g, b] = [1, 3, 5].map(i => parseInt(look.bg.slice(i, i + 2), 16))
     // Its words, and the moods' colours, as light or dark as its ground is.
@@ -435,7 +436,8 @@
     const edge = look.edge === 'ring' ? `0 0 0 1.5px ${ring}, 0 0 12px ${ring}59` : look.edge === 'none' ? '0 0 0 0 transparent' : `0 0 0 1px ${mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`
     const style = `--pv-bg:rgba(${r},${g},${b},${look.op / 100});--pv-blur:${look.blur ? `blur(${look.blur}px) saturate(1.25)` : 'none'};--pv-edge:${edge};--pv-ring:${ring}`
     const more = big ? `<span class="more"><span>${esc(T('s.ilookSample2'))}</span><span>${esc(T('s.ilookSample3'))}</span></span>` : ''
-    return `<div class="ilook-pv ${mode}${inkDark ? ' ink-dark' : ''}${look.bare ? ' bare' : ''}${big ? ' big' : ''}" style="${style}"><span class="cap"><span class="top"><i class="face"></i><span class="w">${esc(T('s.ilookSample'))}</span><span class="t">1:42</span></span>${more}</span></div>`
+    const plate = snap.plate === true && look.op < 100 && look.blur > 0
+    return `<div class="ilook-pv ${mode}${inkDark ? ' ink-dark' : ''}${look.bare ? ' bare' : ''}${big ? ' big' : ''}${plate ? ' plate' : ''}" style="${style}"><span class="cap"><span class="top"><i class="face"></i><span class="w">${esc(T('s.ilookSample'))}</span><span class="t">1:42</span></span>${more}</span></div>`
   }
 
   function ilookPanel() {

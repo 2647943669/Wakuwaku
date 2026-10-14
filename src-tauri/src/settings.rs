@@ -82,6 +82,8 @@ pub fn snapshot(sh: &Shared) -> Value {
         // Her crash reports: as set, those waiting, the last sent (crash.rs).
         "crash": crate::crash::view(sh),
         "fullscreenAvailable": fullscreen::AVAILABLE,
+        // Whether Windows' acrylic can go under the open island (backplate.rs).
+        "plate": crate::backplate::available(),
         "widgets": sh.widgets_view(),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
