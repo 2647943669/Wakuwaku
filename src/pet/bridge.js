@@ -168,6 +168,9 @@
     // once it has left). Tauri's drop handler has the window's drags, so the
     // page hears no dragenter of its own.
     onFileDrag: fn => fileDrags.push(fn),
+    // Win+T, Win+B (winkeys.rs): the keyboard, given her window already, on
+    // her programs' buttons or her tray ({ part: apps | tray, back }).
+    onFocusBar: on('taskbar:focus'),
     // The desktop's picture under the strip, for its Mica ({ url, position,
     // color, mon, screen, sf }; mica.js).
     onWallpaper: on('taskbar:wallpaper'),

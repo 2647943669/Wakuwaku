@@ -75,6 +75,7 @@ mod tray;
 mod updates;
 mod wallpaper;
 mod widgets;
+mod winkeys;
 
 use std::fs::OpenOptions;
 use std::io::Write;
