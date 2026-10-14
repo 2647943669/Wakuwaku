@@ -342,11 +342,6 @@ mod imp {
         fn GetTickCount() -> u32;
     }
 
-    #[link(name = "shell32")]
-    extern "system" {
-        fn ShellExecuteW(hwnd: Hwnd, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
-    }
-
     const WH_KEYBOARD_LL: i32 = 13;
     const HC_ACTION: i32 = 0;
     const LLKHF_UP: u32 = 0x80;
@@ -367,7 +362,6 @@ mod imp {
     const WM_ACT: u32 = 0x8001;
     const WM_LATE: u32 = 0x8002;
     const PM_NOREMOVE: u32 = 0;
-    const SW_SHOWNORMAL: i32 = 1;
     // A key this late into the hook, or the hook this long on it: Windows
     // may have given up waiting (LowLevelHooksTimeout, 300 ms to 1 s) and
     // taken the hook away. The hook's thread looked at this often, to tell
@@ -623,9 +617,11 @@ mod imp {
         let to = target(how, &windows, front, &stack(&windows));
         log(&format!("{key}: {name} ({} window(s)): {to:?}", windows.len()));
         match to {
-            Target::Start if how == How::Admin => as_admin(sh, &path, id.as_deref()),
+            // Another of it, or as administrator (Win+Ctrl+Shift+digit), as
+            // Ctrl, Shift and a press on its button start one (taskbar.rs
+            // app: by the shortcut it was pinned from, Windows asking first).
             Target::Start => {
-                crate::taskbar::app(sh, "launch", &path, id.as_deref());
+                crate::taskbar::app(sh, if how == How::Admin { "admin" } else { "launch" }, &path, id.as_deref());
             }
             // As a press on its button (Start, should it be open, closed
             // first); the next key waits for it to land, so a quick second
@@ -645,33 +641,6 @@ mod imp {
             // Windows' own does not open another program's.
             Target::Nothing => {}
         }
-    }
-
-    // Another of it as administrator (Win+Ctrl+Shift+digit), as Windows'
-    // taskbar starts one: by the shell's "runas", Windows asking first; by
-    // the shortcut it was pinned from where there is one (its arguments
-    // with it). An app by its id (a store app) never runs so: started as
-    // it is.
-    fn as_admin(sh: &Arc<Shared>, path: &str, id: Option<&str>) {
-        if id.is_some() || path.is_empty() {
-            crate::taskbar::app(sh, "launch", path, id);
-            return;
-        }
-        let lnk = sh
-            .setting("taskbarPinned")
-            .as_array()
-            .and_then(|all| all.iter().find(|p| p["path"].as_str().is_some_and(|p| p.eq_ignore_ascii_case(path))).and_then(|p| p["lnk"].as_str().map(str::to_string)))
-            .filter(|l| std::path::Path::new(l).exists());
-        let target = lnk.unwrap_or_else(|| path.to_string());
-        let dir = path.rsplit_once('\\').map(|(d, _)| d.to_string()).unwrap_or_default();
-        let log_sh = sh.clone();
-        crate::spawn_named("launch", move || {
-            tasks::with_com();
-            let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
-            // SAFETY: strings of our own, null-terminated; the shell's own window for the asking.
-            let code = unsafe { ShellExecuteW(std::ptr::null_mut(), wide("runas").as_ptr(), wide(&target).as_ptr(), std::ptr::null(), wide(&dir).as_ptr(), SW_SHOWNORMAL) };
-            log_sh.log(&format!("winkeys: started {target} as administrator: {}", if code > 32 { "yes".to_string() } else { format!("no ({code})") }));
-        });
     }
 }
 
