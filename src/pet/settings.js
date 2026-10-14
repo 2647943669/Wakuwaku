@@ -322,17 +322,20 @@
     dark: { bg: '#2c2c2c', op: 100, blur: 0, edge: 'line', bare: true },
     light: { bg: '#f3f3f3', op: 100, blur: 0, edge: 'line', bare: false },
   }
+  // Each preset its own look: the dark grey was the default's, the bare look
+  // once that became the default, and a press on the bare one lit the grey
+  // (zhoupengjie/Wakuwaku#17).
   const ILOOK_PRESETS = {
     dark: [
       ['black', { bg: '#000000', op: 100, blur: 0, edge: 'line', bare: false }],
-      ['gray', ILOOK_DEFAULT.dark],
+      ['gray', { bg: '#2c2c2c', op: 100, blur: 0, edge: 'line', bare: false }],
       ['mica', { bg: '#242424', op: 62, blur: 40, edge: 'line', bare: false }],
       ['ring', { bg: '#2c2c2c', op: 100, blur: 0, edge: 'ring', bare: false }],
       ['bare', { bg: '#2c2c2c', op: 100, blur: 0, edge: 'line', bare: true }],
     ],
     light: [
       ['white', { bg: '#fbfbfb', op: 100, blur: 0, edge: 'line', bare: false }],
-      ['gray', ILOOK_DEFAULT.light],
+      ['gray', { bg: '#f3f3f3', op: 100, blur: 0, edge: 'line', bare: false }],
       ['mica', { bg: '#f6f6f6', op: 62, blur: 40, edge: 'line', bare: false }],
       ['ring', { bg: '#fbfbfb', op: 100, blur: 0, edge: 'ring', bare: false }],
       ['bare', { bg: '#f3f3f3', op: 100, blur: 0, edge: 'line', bare: true }],
