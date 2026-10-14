@@ -1872,8 +1872,38 @@ mod imp {
         }
         if event == EVENT_SYSTEM_FOREGROUND {
             start_seen(tasks::is_start(hwnd as isize));
+            if tasks::is_desktop(hwnd as isize) {
+                over_desktop();
+            }
         }
         wake_tasks();
+    }
+
+    // The desktop to the front: "show the desktop" (Win+D, four fingers
+    // down on the touchpad, the sliver at the strip's end) lifts its window
+    // over every other, hers kept on top too, and her taskbar went with the
+    // windows (Windows' own stays, in the shell's own band:
+    // zhoupengjie/Wakuwaku#33). Hers raised over it again, the keyboard left
+    // with the desktop (or Win+D would not bring the windows back): at once,
+    // and twice more while its animation ends; the clock's look sees to it
+    // later on (tick).
+    static RAISING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    fn over_desktop() {
+        if RAISING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        log("the desktop to the front: her windows raised over it");
+        std::thread::spawn(|| {
+            for wait in [0, 300, 500] {
+                std::thread::sleep(Duration::from_millis(wait));
+                if let Some(sh) = sh() {
+                    let own = sh.own.lock().unwrap().clone();
+                    tasks::raise_own(&own);
+                }
+            }
+            RAISING.store(false, Ordering::SeqCst);
+        });
     }
 
     // Windows' Start menu opened or closed (its window came to the front,
@@ -1970,6 +2000,16 @@ mod imp {
         }
         if shell::visible() {
             put_away_again("seen by the timer");
+        }
+        // The desktop lifted over her taskbar after the raises that followed
+        // it to the front (over_desktop): raised again.
+        if let Some(sh) = sh() {
+            let me = crate::island::hwnd(&sh);
+            if me != 0 && !RAISING.load(Ordering::SeqCst) && tasks::under_desktop(me) {
+                log("the desktop lay over her windows (show the desktop): raised again");
+                let own = sh.own.lock().unwrap().clone();
+                tasks::raise_own(&own);
+            }
         }
         // The work area reaching into the strip: Windows has not counted it.
         // Its side on the strip's edge is set where the strip starts (after

@@ -574,6 +574,47 @@ mod imp {
         unsafe { SetWindowPos(hwnd as Hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) };
     }
 
+    // The desktop's window (Progman, or a WorkerW behind its icons).
+    pub fn is_desktop(hwnd: isize) -> bool {
+        matches!(class_of(hwnd as Hwnd).as_str(), "Progman" | "WorkerW")
+    }
+
+    // The desktop's window lying over this one: lifted by "show the desktop".
+    pub fn under_desktop(hwnd: isize) -> bool {
+        let mut at = hwnd as Hwnd;
+        for _ in 0..2000 {
+            // SAFETY: plain queries about the windows above this one.
+            unsafe {
+                at = GetWindow(at, GW_HWNDPREV);
+                if at.is_null() {
+                    return false;
+                }
+                if IsWindowVisible(at) != 0 && is_desktop(at as isize) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    // Her windows kept on top and in sight raised to the top again, each
+    // where it lay among them (the lowest first), the keyboard where it is;
+    // not waiting on the thread that has them (SWP_ASYNCWINDOWPOS).
+    pub fn raise_own(own: &[isize]) {
+        const SWP_ASYNCWINDOWPOS: u32 = 0x4000;
+        const WS_EX_TOPMOST: isize = 0x8;
+        for h in in_stack(own).into_iter().rev() {
+            // SAFETY: plain queries and a move in the z-order, by handle; a
+            // window gone since only makes them fail.
+            unsafe {
+                if IsWindowVisible(h as Hwnd) == 0 || GetWindowLongPtrW(h as Hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST == 0 {
+                    continue;
+                }
+                SetWindowPos(h as Hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+            }
+        }
+    }
+
     // Shown and hidden at once, without the system's own fade and growing
     // from the middle (DWMWA_TRANSITIONS_FORCEDISABLED), as Windows' own
     // taskbar is: shown for the handover it grew from a smaller, see-through
@@ -889,6 +930,13 @@ mod imp {
         false
     }
     pub fn raise_top(_hwnd: isize) {}
+    pub fn is_desktop(_hwnd: isize) -> bool {
+        false
+    }
+    pub fn under_desktop(_hwnd: isize) -> bool {
+        false
+    }
+    pub fn raise_own(_own: &[isize]) {}
     pub fn no_transitions(_hwnd: isize) {}
     pub fn dwm_flush() {}
     pub fn in_use() -> [(&'static str, Vec<String>); 3] {
@@ -944,7 +992,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_top, shift_down, title, toggle_native, with_com};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, launch, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, with_com};
 
 #[cfg(test)]
 mod tests {
