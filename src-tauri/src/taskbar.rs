@@ -594,10 +594,23 @@ mod imp {
         sh.log(&format!("taskbar: Windows' put away; guard started: {guarded} (put away {} ms, guard {} ms, host {} ms)", hidden.as_millis(), guard.as_millis(), host.as_millis()));
         TASKS_STOP.store(false, Ordering::SeqCst);
         let sh = crate::shared(&sh.app);
-        let keys_sh = sh.clone();
+        let (keys_sh, input_sh) = (sh.clone(), sh.clone());
         *TASKS.lock().unwrap() = Some(crate::spawn_named("taskbar buttons", move || tasks_loop(sh)));
+        // Which input method is in front, told by Windows' input switcher
+        // (inputs.rs): its mark read again at once when it changes.
+        crate::inputs::set_size(icon_px(&keys_sh));
+        let changed = || {
+            KEYS_NOW.store(true, Ordering::SeqCst);
+            wake_keys();
+        };
+        crate::inputs::start(png_of, Box::new(changed), Box::new(move |line: &str| input_sh.log(&format!("taskbar: {line}"))));
         *KEYS.lock().unwrap() = Some(crate::spawn_named("taskbar keys", move || keys_loop(keys_sh)));
         true
+    }
+
+    // A small icon's size on the main display (physical px), as Windows' taskbar draws its tray's.
+    fn icon_px(sh: &Shared) -> i32 {
+        (16.0 * sh.screens().primary.map_or(1.0, |a| a.sf)).round() as i32
     }
 
     // The keyboard (tasks::keys) and the volume (audio.rs) looked at four
@@ -609,7 +622,10 @@ mod imp {
     // Windows' audio service) once a second, and at once when another
     // window comes to the front; the network's way out and what is using
     // the microphone, camera or location every two seconds. All of it was
-    // asked four times a second (2026-10-11).
+    // asked four times a second (2026-10-11). Which input method it is
+    // (inputs.rs) as last told by Windows' input switcher, read there only
+    // when it or the layout changes; its icons sent once each
+    // (taskbar:imeIcons, { key: png }), named by key in the keys' ime.
     fn keys_loop(sh: Arc<Shared>) {
         crate::power::thread_eco();
         let _com = crate::audio::Com::new();
@@ -625,8 +641,10 @@ mod imp {
                 net = tasks::net();
                 used = using();
                 battery = crate::widgets::battery_state();
+                crate::inputs::set_size(icon_px(&sh));
             }
             let keys = tasks::keys_cheap();
+            crate::inputs::layout(keys.hkl);
             let now_front = tasks::front();
             // Shift let go (it switches many IMEs between scripts), or our
             // own IME button pressed: the mark read now.
@@ -638,7 +656,8 @@ mod imp {
                 native = tasks::ime_native();
                 volume = speakers.read().map(|(level, muted)| json!([level, muted]));
             }
-            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "net": net, "use": used, "volume": volume, "battery": battery });
+            send_ime_icons(&sh, false);
+            let now = json!({ "lang": keys.lang, "native": native, "caps": keys.caps, "ime": crate::inputs::now(), "net": net, "use": used, "volume": volume, "battery": battery });
             if now != sent {
                 let _ = sh.app.emit_to("island", "taskbar:keys", now.clone());
                 *SENT_KEYS.lock().unwrap() = now.clone();
@@ -660,6 +679,15 @@ mod imp {
         let (woken, cv) = &KEYS_WAKE;
         *woken.lock().unwrap() = true;
         cv.notify_one();
+    }
+
+    // The input methods' icons the page has not had (all of them for a page
+    // just come up), before the keys that name them.
+    fn send_ime_icons(sh: &Shared, all: bool) {
+        let icons = crate::inputs::icons(all);
+        if !icons.is_empty() {
+            let _ = sh.app.emit_to("island", "taskbar:imeIcons", Value::Object(icons.into_iter().map(|(k, png)| (k, json!(png))).collect()));
+        }
     }
 
     // A thread asked to stop, waited for two seconds at most: on the way out
@@ -692,6 +720,9 @@ mod imp {
         if let Some(thread) = KEYS.lock().unwrap().take() {
             wake_keys();
             stop_within("the keys' thread", thread);
+        }
+        if let Some(thread) = crate::inputs::stop() {
+            stop_within("the input switcher's thread", thread);
         }
         let host = HOST.lock().unwrap().take();
         if let Some(host) = host {
@@ -1609,6 +1640,7 @@ mod imp {
         }
         let keys = SENT_KEYS.lock().unwrap().clone();
         if !keys.is_null() {
+            send_ime_icons(sh, true);
             let _ = sh.app.emit_to("island", "taskbar:keys", keys);
         }
         let paper = PAPER.lock().unwrap().clone();
@@ -1693,11 +1725,13 @@ mod imp {
             return done;
         }
         // A press on what shows the microphone, camera or location in use:
-        // its page in Windows' privacy settings.
+        // its page in Windows' privacy settings. From the input methods' list,
+        // Windows' languages and their keyboards.
         let page = match what {
             "privacy-mic" => Some("ms-settings:privacy-microphone"),
             "privacy-cam" => Some("ms-settings:privacy-webcam"),
             "privacy-loc" => Some("ms-settings:privacy-location"),
+            "languages" => Some("ms-settings:regionlanguage"),
             _ => None,
         };
         if let Some(page) = page {
@@ -2096,7 +2130,7 @@ mod imp {
         for line in systray::notes() {
             sh.log(&format!("taskbar: {line}"));
         }
-        let size = (16.0 * sh.screens().primary.map_or(1.0, |a| a.sf)).round() as i32;
+        let size = icon_px(&sh);
         let shown = systray::shown();
         let kept = windows_kept();
         let (whole, light): (Vec<Value>, Vec<Value>) = {
@@ -2682,6 +2716,18 @@ pub fn taskbar_tray(app: tauri::AppHandle, key: u64, press: String) -> bool {
 #[tauri::command]
 pub fn taskbar_open(what: String) -> bool {
     imp::open(&what)
+}
+
+// The input methods to pick from (the mark's right press), each with its
+// icon, the one in front marked (inputs.rs list); one of them picked.
+#[tauri::command]
+pub async fn taskbar_inputs() -> serde_json::Value {
+    crate::inputs::list()
+}
+
+#[tauri::command]
+pub fn taskbar_input(id: String) -> bool {
+    crate::inputs::pick(&id)
 }
 
 // Windows' own battery font, for the page to draw the battery as Windows'

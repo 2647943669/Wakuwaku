@@ -47,6 +47,7 @@ mod fullscreen;
 mod gpu;
 mod i18n;
 mod icons;
+mod inputs;
 mod island;
 mod jump;
 mod mail;
@@ -1223,6 +1224,8 @@ fn main() {
             mail::mail_keep_draft,
             taskbar::taskbar_tray,
             taskbar::taskbar_open,
+            taskbar::taskbar_inputs,
+            taskbar::taskbar_input,
             taskbar::taskbar_battery_font,
             taskbar_handoff,
             taskbar::taskbar_tray_rects,
