@@ -339,6 +339,13 @@ body {
   opacity: 0;
 }
 
+/* Closed in the notch, the pointer goes through it to what is under it (the
+   notch's own app): nothing here is under the pointer (bridge.js chainAt). */
+.aside #island,
+.aside #island * {
+  pointer-events: none;
+}
+
 /* The clock (or a widget's value) within the right ear (island.js EAR),
    never under the notch. */
 .notched #island-compact .clock {

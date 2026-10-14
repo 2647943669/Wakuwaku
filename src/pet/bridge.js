@@ -128,6 +128,9 @@
     // A Mac's screen top, the island over its menu bar (notch.rs):
     // { height, notch } in px, the notch's width 0 without one.
     onTop: on('island:top'),
+    // Her tray icon clicked on a Mac: the island in the notch drops open, or
+    // goes back (island.js peek).
+    onPeek: on('island:peek'),
     // The windows' buttons as they change ({ id, title, exe, png, front, min, flash, sessions }).
     onWindows: on('taskbar:windows'),
     // The keyboard as it changes ({ lang, native, caps }).

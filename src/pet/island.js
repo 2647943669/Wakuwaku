@@ -104,6 +104,11 @@
   // its right, the words (which the notch would hide) left out.
   let screenTop = null
   const EAR = 64
+  // Dropped open from the notch by her tray icon (setPeek), for PEEK_MS at
+  // most if the pointer never comes.
+  let peek = false
+  let peekTimer = 0
+  const PEEK_MS = 6000
   const slotWidth = () => (screenTop?.notch ? screenTop.notch + 2 * EAR : WIDTHS[config.islandWidth] || WIDTHS.normal)
   // The window without extra room (main's ISLAND), and the island's distance
   // from the top of it. As wide as a pull needs (PULL_ROOM), so the window
@@ -515,12 +520,11 @@
     compact.classList.toggle('bare', isBare)
     // As wide as set, and the readings' width more when pinned (their own,
     // fixed); just her (and the readings) with nothing to say.
-    // Round a notch: tucked into it, just as wide, while nothing goes on (no
-    // session at work, waiting, done or failed; the widgets' turns too), so
-    // the menu bar's own icons by it stay in sight (the user's call,
-    // 2026-10-14); out at both its ears once something does. A hover still
-    // opens it.
-    const tucked = !!screenTop?.notch && now.mood === 'idle' && !isHinting()
+    // Round a notch: always tucked into it, just as wide and empty, whatever
+    // goes on, so the menu bar's icons by it stay in sight and the notch is
+    // left to the app that lives there (Atoll and the like: the user's call,
+    // 2026-10-14). Her tray icon drops it open (peek); a prompt opens it.
+    const tucked = !!screenTop?.notch
     body.classList.toggle('tucked', tucked)
     compact.style.width = tucked
       ? `${screenTop.notch}px`
@@ -2054,6 +2058,16 @@
       console.log(`taskbar: strip in the page ${[r.left, r.top, r.right, r.bottom].map(v => +(v * dpr).toFixed(2)).join(', ')} (x ${dpr}, told ${stripThick} px)`)
     }, 400)
   }
+  // Her tray icon clicked on a Mac: the island in the notch drops open, or
+  // goes back. Open, it goes back once the pointer has been in it and left,
+  // or after a while if the pointer never comes.
+  function setPeek(on) {
+    peek = on
+    clearTimeout(peekTimer)
+    if (peek) peekTimer = setTimeout(() => !isHover && setPeek(false), PEEK_MS)
+    update()
+  }
+  window.pet.onPeek(() => setPeek(!peek))
   window.pet.onTop(({ height, notch } = {}) => {
     const next = height > 0 ? { height, notch: notch > 0 ? notch : 0 } : null
     if (JSON.stringify(next) === JSON.stringify(screenTop)) return
@@ -2900,7 +2914,10 @@
     if (!isOn() || (pull?.started && !pull.carrying) || isAbsorbing) return
     // A prompt answered: the island closes rather than lingering open.
     if (view === 'ask' && !isAsking()) nudge = null
-    view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() ? 'expanded' : 'compact'
+    view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() || peek ? 'expanded' : 'compact'
+    // In the notch and closed it is out of the way: the pointer passes to
+    // what is under it (the notch's own app), and a hover opens nothing.
+    body.classList.toggle('aside', !!screenTop?.notch && view === 'compact')
     island.dataset.view = view
     setInk()
     island.style.setProperty('--ring', hue()[now.mood])
@@ -2962,6 +2979,9 @@
   }
 
   function nudgeFor(clip, text, ms = NUDGE_MS, widget = null) {
+    // In the notch nothing opens by itself (done, failed, a hello, a widget):
+    // only a prompt, which Claude waits on (the user's call, 2026-10-14).
+    if (screenTop?.notch) return update()
     nudge = { until: Date.now() + ms, clip, text, widget }
     clearTimeout(nudgeTimer)
     nudgeTimer = setTimeout(() => {
@@ -3368,7 +3388,9 @@
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
         isHover = false
-        update()
+        // Dropped open from the notch: back into it once left.
+        if (peek) setPeek(false)
+        else update()
       }, HOVER_CLOSE_MS)
     })
     // One click opens the settings (no double-click to wait for), except on a
