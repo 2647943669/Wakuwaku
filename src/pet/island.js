@@ -121,7 +121,7 @@
         if (view !== 'settings') return
         if (type !== 'pointermove') settingsUsed = true
         else if (!settingsFrom) settingsFrom = { x: e.screenX, y: e.screenY }
-        else if (Math.hypot(e.screenX - settingsFrom.x, e.screenY - settingsFrom.y) > 3) settingsUsed = true
+        else if (Math.hypot(e.screenX - settingsFrom.x, e.screenY - settingsFrom.y) > 8) settingsUsed = true
       },
       true,
     )

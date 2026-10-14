@@ -134,6 +134,17 @@ fn set_ignore(sh: &Shared, ignore: Option<bool>) {
 
 fn place(sh: &Shared, (x, y): (i32, i32)) {
     if let Some(win) = window(sh) {
+        // On a Mac a window's physical place is in its own display's scale,
+        // which changes as she crosses to a display of another: placed in
+        // points, from the scale her place was reckoned in (Win::sf), she
+        // stays under the pointer across (dragged over, she drifted away
+        // from it, 2026-10-14). Elsewhere the physical place is one space.
+        #[cfg(target_os = "macos")]
+        {
+            let sf = sh.win.lock().unwrap().sf();
+            let _ = win.set_position(tauri::LogicalPosition::new(x as f64 / sf, y as f64 / sf));
+        }
+        #[cfg(not(target_os = "macos"))]
         let _ = win.set_position(PhysicalPosition::new(x, y));
     }
 }

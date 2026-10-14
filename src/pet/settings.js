@@ -54,6 +54,11 @@
 
   const layer = document.getElementById('island-settings')
   let isOpen = false
+  // When they last opened: the loss of focus that comes with taking the
+  // keyboard is not a click outside (opened from her menu on a Mac, the menu
+  // going away gave a blur at once, and they shut as they opened, 2026-10-14).
+  let openedAt = 0
+  const BLUR_GRACE_MS = 500
   let tab = 'now'
   let snap = null
   let lang = 'en'
@@ -2032,6 +2037,7 @@
     }
     const wasOpen = isOpen
     isOpen = true
+    if (!wasOpen) openedAt = Date.now()
     if (!wasOpen) {
       window.pet.keyboard(true)
       clearInterval(clockTimer)
@@ -2921,7 +2927,7 @@
   // picker (a letter's files, the desktop's picture: its own window takes
   // the focus).
   // Locked (the button by ✕), they stay.
-  window.pet.onBlur(() => !snap?.settings?.settingsPin && !picking && !pickingPaper && close('blur'))
+  window.pet.onBlur(() => !snap?.settings?.settingsPin && !picking && !pickingPaper && Date.now() - openedAt > BLUR_GRACE_MS && close('blur'))
   layer.addEventListener('cancel', e => e.target.matches?.('[data-w-file]') && (picking = false), true)
   window.addEventListener('focus', () => setTimeout(() => (picking = false), 1000))
 
