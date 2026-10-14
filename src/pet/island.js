@@ -2922,10 +2922,16 @@
     // what is under it (the notch's own app), and a hover opens nothing.
     body.classList.toggle('aside', !!screenTop?.notch && view === 'compact')
     // Opened in the notch (from her menu) and the pointer never comes: back
-    // after a while, as a peek goes back (PEEK_MS).
-    clearTimeout(settingsIdleTimer)
+    // after a while, as a peek goes back (PEEK_MS). Counted from their
+    // opening, not from each redraw (the widgets redraw every few seconds).
     if (screenTop?.notch && view === 'settings' && !isHover) {
-      settingsIdleTimer = setTimeout(() => !isHover && isSetting() && window.Settings?.close('unused'), PEEK_MS)
+      settingsIdleTimer ||= setTimeout(() => {
+        settingsIdleTimer = 0
+        if (!isHover && isSetting()) window.Settings?.close('unused')
+      }, PEEK_MS)
+    } else if (settingsIdleTimer) {
+      clearTimeout(settingsIdleTimer)
+      settingsIdleTimer = 0
     }
     island.dataset.view = view
     setInk()
