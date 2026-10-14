@@ -132,6 +132,9 @@
       // Shift and Ctrl held now, as Windows has them ({ shift, ctrl }; null
       // if it could not say): read at a press on a program's button.
       held: () => invoke('taskbar_held').catch(() => null),
+      // Win pressed while her window has the keyboard: given back while it
+      // is held (winkeys.rs pause), the keys' hook hears nothing meanwhile.
+      keysPause: () => send('taskbar_keys_pause'),
       // A window's own menu, or one for all of a program's windows, at the pointer.
       windowMenu: ids => invoke('taskbar_window_menu', { ids: (ids || []).map(Number) }).catch(() => false),
       // Presses anywhere told back (onPress) while something is open that closes on one.

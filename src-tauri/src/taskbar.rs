@@ -2954,6 +2954,14 @@ pub async fn taskbar_held() -> serde_json::Value {
     serde_json::json!({ "shift": shift, "ctrl": ctrl })
 }
 
+// Win pressed while her window has the keyboard (the keys on her strip, or
+// her settings): given back while Win is held, so that what comes with it
+// reaches the keys' hook (winkeys.rs pause).
+#[tauri::command]
+pub fn taskbar_keys_pause() {
+    crate::winkeys::pause();
+}
+
 // Shift and a right press on a program's button: its window's own menu, or
 // one for all its windows (Restore, Minimize, Close them all), at the pointer.
 // Answered once it has gone: till then the page opens no list of windows on

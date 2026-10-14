@@ -361,6 +361,9 @@ mod imp {
     // reached it this late (wParam, ms).
     const WM_ACT: u32 = 0x8001;
     const WM_LATE: u32 = 0x8002;
+    // To the work's thread: Win let go; the page's Win pressed (pause).
+    const WM_WIN_UP: u32 = 0x8003;
+    const WM_PAUSE: u32 = 0x8004;
     const PM_NOREMOVE: u32 = 0;
     // A key this late into the hook, or the hook this long on it: Windows
     // may have given up waiting (LowLevelHooksTimeout, 300 ms to 1 s) and
@@ -407,6 +410,11 @@ mod imp {
                 if let Verdict::Act(act) = verdict {
                     // SAFETY: a posted message to our own thread, no pointers.
                     unsafe { PostThreadMessageW(WORK_THREAD.load(Ordering::Relaxed), WM_ACT, encode(act), 0) };
+                }
+                // Win let go: the keyboard waited for it (focus).
+                if (k.vk == VK_LWIN as u32 || k.vk == VK_RWIN as u32) && k.flags & LLKHF_UP != 0 {
+                    // SAFETY: as above.
+                    unsafe { PostThreadMessageW(WORK_THREAD.load(Ordering::Relaxed), WM_WIN_UP, 0, 0) };
                 }
                 // Late in, or late out (the mask key held up by another's hook).
                 // SAFETY: a plain read.
@@ -518,15 +526,74 @@ mod imp {
         unsafe { PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_NOREMOVE) };
         WORK_THREAD.store(unsafe { GetCurrentThreadId() }, Ordering::SeqCst);
         let _ = ready.send(());
+        let mut waits = Waits::default();
         // SAFETY: our own struct, for this thread's loop.
         while unsafe { GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
-            if msg.message == WM_ACT {
-                if let Some(act) = decode(msg.wparam) {
-                    act_on(&sh, act);
+            match msg.message {
+                WM_ACT => {
+                    if let Some(act) = decode(msg.wparam) {
+                        act_on(&sh, act, &mut waits);
+                    }
                 }
+                WM_WIN_UP => win_up(&sh, &mut waits),
+                WM_PAUSE => paused(&sh, &mut waits),
+                _ => {}
             }
         }
         WORK_THREAD.store(0, Ordering::SeqCst);
+    }
+
+    // The keyboard and Win. While her own window has the keyboard, Windows
+    // shows no key to this hook (it is in the process of a WebView2 that has
+    // the focus: wudaming00/wh-keyboard-ll-chromium; tried 2026-10-14, the
+    // hook put in again or not), and Win+T went to Windows' put-away
+    // taskbar, the keyboard with it. So the keyboard is taken once Win is
+    // let go (wanted): Win held, T pressed again goes on to the next button
+    // as on Windows'. And Win pressed on her strip (the page tells it,
+    // island.js keysPause) gives the keyboard back for as long as Win is
+    // held (paused), the page keeping its place: let go after a Win+T or
+    // Win+B, taken again; after anything else (Win alone, Start opening;
+    // Win+D, Win+digit) the keys on her strip are over.
+    #[derive(Default)]
+    struct Waits {
+        wanted: bool,
+        paused: bool,
+    }
+
+    fn island(sh: &Arc<Shared>) -> Option<tauri::WebviewWindow> {
+        sh.app.get_webview_window("island")
+    }
+
+    fn win_up(sh: &Arc<Shared>, waits: &mut Waits) {
+        if std::mem::take(&mut waits.wanted) {
+            waits.paused = false;
+            if let Some(win) = island(sh) {
+                sh.set_keyboard(&win, true);
+            }
+        } else if std::mem::take(&mut waits.paused) {
+            let _ = sh.app.emit_to("island", "taskbar:focus", json!({ "part": "end" }));
+            log("Win let go with nothing of hers: the keys on her strip over");
+        }
+    }
+
+    fn paused(sh: &Arc<Shared>, waits: &mut Waits) {
+        let Some(win) = island(sh) else { return };
+        waits.paused = true;
+        sh.set_keyboard(&win, false);
+        log("Win pressed on her strip: the keyboard given back while it is held");
+        // Let go already (a quick press): no release will come by the hook.
+        if !(down(VK_LWIN) || down(VK_RWIN)) {
+            win_up(sh, waits);
+        }
+    }
+
+    // The page's Win pressed while her window has the keyboard.
+    pub fn pause() {
+        let id = WORK_THREAD.load(Ordering::SeqCst);
+        if id != 0 {
+            // SAFETY: a posted message, no pointers.
+            unsafe { PostThreadMessageW(id, WM_PAUSE, 0, 0) };
+        }
     }
 
     // Her taskbar holds the strip: the keys hers (taskbar.rs take).
@@ -578,26 +645,31 @@ mod imp {
         all.into_iter().filter(|h| of.contains(h)).collect()
     }
 
-    fn act_on(sh: &Arc<Shared>, act: Act) {
+    fn act_on(sh: &Arc<Shared>, act: Act, waits: &mut Waits) {
         let key = said(act);
         match act {
-            Act::Focus { tray, back } => focus(sh, &key, tray, back),
-            Act::App(slot, how) => app(sh, &key, slot, how),
+            Act::Focus { tray, back } => waits.wanted = focus(sh, &key, tray, back),
+            Act::App(slot, how) => {
+                // Win+digit with the keys paused on her strip: they are over.
+                if std::mem::take(&mut waits.paused) {
+                    let _ = sh.app.emit_to("island", "taskbar:focus", json!({ "part": "end" }));
+                }
+                app(sh, &key, slot, how)
+            }
         }
     }
 
-    // The keyboard on her strip (island.js keys): her window takes it here,
-    // at once, while what was pressed still lets it (the mask key just sent
-    // was ours); the page puts it on the button.
-    fn focus(sh: &Arc<Shared>, key: &str, tray: bool, back: bool) {
+    // The keyboard on her strip (island.js keys): the page puts the ring on
+    // the button at once; her window takes the keyboard once Win is let go
+    // (win_up). True when it is to.
+    fn focus(sh: &Arc<Shared>, key: &str, tray: bool, back: bool) -> bool {
         if sh.home() != "taskbar" || !crate::island::is_shown(sh) {
             log(&format!("{key}: her taskbar is not shown (full screen): nothing"));
-            return;
+            return false;
         }
-        let Some(win) = sh.app.get_webview_window("island") else { return };
-        sh.set_keyboard(&win, true);
         let _ = sh.app.emit_to("island", "taskbar:focus", json!({ "part": if tray { "tray" } else { "apps" }, "back": back }));
         log(&format!("{key}: the keyboard on her {}", if tray { "tray" } else { "programs' buttons" }));
+        true
     }
 
     // The program in that place on her strip, as its button shows it now.
@@ -652,9 +724,10 @@ mod imp {
 
     pub fn start(_sh: &Arc<Shared>) {}
     pub fn stop() {}
+    pub fn pause() {}
 }
 
-pub use imp::{start, stop};
+pub use imp::{pause, start, stop};
 
 #[cfg(test)]
 mod tests {

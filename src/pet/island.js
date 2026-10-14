@@ -2929,6 +2929,9 @@
   let keyAt = null
   let keyFrom = null
   let keyedAt = 0
+  // Win pressed on the strip: the keyboard given back while it is held
+  // (winkeys.rs pause), the ring kept for a Win+T or Win+B after it.
+  let keyPaused = false
   const keyId = node => node.dataset.app ?? node.dataset.tray ?? node.dataset.win ?? node.dataset.act ?? (node === chevron ? '^' : '')
   function keyNodes(part) {
     if (part === 'apps') return [...windowsBox.querySelectorAll('[data-app]')]
@@ -2984,6 +2987,7 @@
   }
 
   function keysOff() {
+    keyPaused = false
     if (!keyPart) return
     keyPart = keyAt = keyFrom = null
     keyRing()
@@ -2994,10 +2998,13 @@
   // Enter, Space: as a press with the pointer, by the same handlers (a
   // program started, its window to the front, its windows listed; a window
   // or an item picked from them; a tray icon's program told; ^ opening the
-  // folded ones).
+  // folded ones). A program's button pressed at once (pressApp), not by a
+  // click: the pointer's waits for the keys held (taskbar_held), and its
+  // list would not be open yet to go into.
   function keyPress(node) {
     if (keyPart === 'apps') {
-      node.click()
+      const app = appOf(node.dataset.app)
+      if (app) pressApp(app, 'press')
       if (popFor?.app === node.dataset.app && !pop.hidden) keyInto('pop')
       return
     }
@@ -3022,7 +3029,8 @@
   // in it; a tray icon's program's own).
   function keyMenu(node) {
     if (keyPart === 'apps') {
-      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }))
+      const app = appOf(node.dataset.app)
+      if (app) pressApp(app, 'menu')
       if (popFor?.kind === 'menu' && !pop.hidden) keyInto('pop')
     } else if (node.dataset.tray) {
       window.pet.taskbar.tray(node.dataset.tray, 'rightDown')
@@ -3039,14 +3047,17 @@
   }
 
   window.pet.onFocusBar(({ part, back } = {}) => {
+    // Win let go after something else than Win+T or Win+B (winkeys.rs win_up).
+    if (part === 'end') return keysOff()
+    keyPaused = false
     if (!isOn() || home() !== 'taskbar' || editLayout) return window.pet.keyboard(false)
-    // The settings open: closed, and the keyboard taken again (theirs went
-    // back to the window before as they closed, which blurs this one).
+    // The settings open: closed (theirs went back to the window before as
+    // they closed, which blurs this one); the keyboard comes once Win is let
+    // go (winkeys.rs).
     keyedAt = 0
     if (isSetting()) {
       keyedAt = Date.now()
       window.Settings?.close?.('keys')
-      window.pet.keyboard(true)
     }
     const want = part === 'tray' ? 'tray' : 'apps'
     // Win+T again with the keyboard on the buttons: the next one (Shift: the one before), as Windows' does.
@@ -3063,11 +3074,18 @@
   })
   // Gone to another window: over. Not for the settings closing as it began
   // (keyedAt: then).
-  window.pet.onBlur(() => keyPart && Date.now() - keyedAt > 600 && keysOff())
+  window.pet.onBlur(() => keyPart && !keyPaused && Date.now() - keyedAt > 600 && keysOff())
 
   document.addEventListener(
     'keydown',
     e => {
+      // Win pressed with the keyboard here (on the strip, or in the
+      // settings): given back while Win is held, for what comes with it
+      // reaches the hook only so (winkeys.rs); the settings close with it.
+      if (e.key === 'Meta' && !e.repeat && home() === 'taskbar' && (keyPart || isSetting())) {
+        keyPaused = !!keyPart
+        return window.pet.taskbar.keysPause()
+      }
       if (!keyPart) return
       // The settings opened meanwhile (a press on her capsule): the keys are theirs.
       if (isSetting()) return keysOff()

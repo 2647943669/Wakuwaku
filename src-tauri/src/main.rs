@@ -1276,6 +1276,7 @@ fn main() {
             taskbar::taskbar_window,
             taskbar::taskbar_windows,
             taskbar::taskbar_held,
+            taskbar::taskbar_keys_pause,
             taskbar::taskbar_window_menu,
             taskbar::taskbar_watch_presses,
             taskbar::taskbar_tray_pin,
