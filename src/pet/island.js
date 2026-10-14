@@ -839,10 +839,12 @@
   // the top of the screen, while it is up at all) and someone is about;
   // faded in once its spring is over, out as it closes on the taskbar,
   // before it shrinks. While the island changes size it stays, under the
-  // smaller of its two sizes, set in further (movePlate), and is set where
-  // the island has come to once it settles. Without it (Windows 10,
-  // transparency effects off, the acrylic refused, a look not blurred),
-  // over a maximized window the ground deepens (setDeep) so its words read.
+  // smaller of its two sizes, set in further, the ground as solid as
+  // DEEP_OP meanwhile (movePlate, isl-firm), and is set where the island has
+  // come to once it settles, the ground back as it does. Without it
+  // (Windows 10, transparency effects off, the acrylic refused, a look not
+  // blurred), over a maximized window the ground deepens (setDeep) so its
+  // words read.
   const PLATE_IN_MS = 150
   const PLATE_OUT_MS = 100
   const DEEP_OP = 0.9
@@ -905,8 +907,11 @@
   // Changing size: under the smaller of its two boxes (where they meet),
   // each edge set in further by the slack and by as much as the spring may
   // carry that edge past where it goes (an edge it grows from stays put),
-  // the rim as wide at once (plate-moving); where the island has come to
-  // once it settles, the rim narrowing back over a moment.
+  // and the ground at once as solid as DEEP_OP (isl-firm): what the plate
+  // no longer covers shows through no more than through the rim (at once,
+  // the open island's words stood clear over the desktop as it closed;
+  // the appearance session, 2026-10-14). Once it settles, the plate where
+  // the island has come to and the ground back over DEEP_MS, together.
   function movePlate(from, fromRadius) {
     const to = rectAt(from, parseFloat(island.style.width), parseFloat(island.style.height))
     const x = Math.max(from.left, to.x)
@@ -915,12 +920,15 @@
     const inset = plateInset(Math.max(fromRadius || 0, parseFloat(island.style.borderRadius) || 0))
     const edge = moved => inset + PLATE_SLACK + SPRING_OVER * Math.abs(moved)
     const sides = [edge(to.x - from.left), edge(to.y - from.top), edge(to.x + to.width - from.right), edge(to.y + to.height - from.bottom)]
-    island.classList.add('plate-moving')
-    sendPlate(box, sides, 0)
+    for (const a of island.getAnimations()) if (a.id === 'firm') a.cancel()
+    body.classList.add('isl-firm')
+    sendPlate(box, sides, inset, 0)
     plateMove?.()
     plateMove = afterSpring(() => {
       plateMove = null
-      island.classList.remove('plate-moving')
+      const firm = getComputedStyle(island).backgroundColor
+      body.classList.remove('isl-firm')
+      if (!stillMotion()) island.animate([{ offset: 0, backgroundColor: firm }], { id: 'firm', duration: DEEP_MS, easing: 'ease' })
       showPlate(0)
     })
   }
@@ -930,18 +938,18 @@
     if (!plateWanted()) return hidePlate(0)
     const r = island.getBoundingClientRect()
     const inset = plateInset(parseFloat(getComputedStyle(island).borderTopLeftRadius) || 0)
-    sendPlate({ x: r.left, y: r.top, width: r.width, height: r.height }, [inset, inset, inset, inset], fade)
+    sendPlate({ x: r.left, y: r.top, width: r.width, height: r.height }, [inset, inset, inset, inset], inset, fade)
   }
 
   // The plate in box, its edges set in by sides (left, top, right, bottom;
-  // never to nothing: it stays), the rim as wide as the widest; faded in
-  // when new.
-  function sendPlate(box, sides, fade) {
+  // never to nothing: it stays), the rim over the corners' band (rim wide);
+  // faded in when new.
+  function sendPlate(box, sides, rim, fade) {
     const across = Math.min(1, (box.width - 2) / (sides[0] + sides[2]))
     const down = Math.min(1, (box.height - 2) / (sides[1] + sides[3]))
     const [left, top, right, bottom] = [sides[0] * across, sides[1] * down, sides[2] * across, sides[3] * down]
     const rect = { x: box.x + left, y: box.y + top, width: box.width - left - right, height: box.height - top - bottom, vw: innerWidth, vh: innerHeight, dark: modeNow() !== 'light' }
-    island.style.setProperty('--rim', `${Math.max(left, top, right, bottom).toFixed(2)}px`)
+    island.style.setProperty('--rim', `${rim.toFixed(2)}px`)
     body.classList.add('plated')
     const sent = JSON.stringify(rect)
     if (sent === plateSent) return
@@ -955,8 +963,7 @@
     plateWait = null
     plateMove?.()
     plateMove = null
-    island.classList.remove('plate-moving')
-    body.classList.remove('plated')
+    body.classList.remove('plated', 'isl-firm')
     if (!plateSent) return
     plateSent = ''
     window.pet.plate(null, stillMotion() ? 0 : fade)
