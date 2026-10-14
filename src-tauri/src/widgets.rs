@@ -21,7 +21,7 @@
 //            value is { parts: [{ icon, text }] }, shown as icon and number
 //   today    turns today, how long the agents worked, approvals given on her
 //            (Antigravity's never come to her)
-//   tokens   today's tokens, Claude Code's and Codex's (tokens.rs)
+//   tokens   today's tokens, Claude Code's, Codex's and Antigravity's (tokens.rs)
 //
 // Hers too, never expiring and never a script's: each mail account's
 // (mail.rs, "inbox-<id>").

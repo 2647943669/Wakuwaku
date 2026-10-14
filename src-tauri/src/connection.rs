@@ -584,7 +584,7 @@ pub fn write_codex_hooks(action: &str, waiting: &str) -> Result<(), String> {
 const AGY_BLOCK: &str = "wakuwaku";
 const AGY_TIMEOUT: u64 = 10;
 
-fn gemini_dir() -> PathBuf {
+pub fn gemini_dir() -> PathBuf {
     PathBuf::from(std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).unwrap_or_default()).join(".gemini")
 }
 

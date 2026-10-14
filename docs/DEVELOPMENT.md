@@ -46,7 +46,7 @@ src-tauri/
     focus.rs              前台窗口：设置拿走键盘前记下，收起时还回去
     jump.rs               点会话就到它的窗口：会话的进程链、找窗口、叫到前面、桌面版的会话链接
     widgets.rs            岛上的插件（第一层）：脚本发来的、内置的（今天、今天的 token、监控），什么时候冒头
-    tokens.rs             今天的 token：读 Claude Code 和 Codex 自己的会话记录
+    tokens.rs             今天的 token：读 Claude Code、Codex 和 Antigravity 自己的会话记录
     scripts.rs            她替你在后台跑的插件：示例脚本的开关、参数、启动、重启、停下
     mail.rs, mail/        邮件：找服务器（像 Thunderbird 那样）、IMAP（io-imap）、每个邮箱一个线程盯着收件箱、收件箱和读信、写信和发信（SMTP）、交给 Claude / Codex、密码存进凭据管理器
     notify.rs             系统通知（登记 AppUserModelId 后发 toast）
@@ -214,7 +214,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 **内置的**（标题和数值是 `{ key, vars }`，按当前语言显示）：
 - `today`：今天开始了几轮（state 的 `Outcome.turns`）、结束的几轮一共用了多久（`Outcome.worked_ms`，几个会话同时跑会叠加；被人停下的一轮（Codex 的 Interrupt、Antigravity 的取消，`idle` 加 `turn-end`）也算到停下时；一轮没说结束、下一轮就开始了，算到它最后一个事件）、在宠物上批准了几次（`pet_answer` 的 allow / always）。时长按 `h:mm` 显示，不满一分钟按秒（`widget.todaySeconds`），免得几轮短的一直是 0:00。Antigravity 的批准不经过她，今天的轮次全是它的（`Today.agy_turns`）又没批准过时，批准显示「—」（`widget.todayValueAgy`）。存在数据目录的 `today.json`，按本地日期换天。
 - `monitor`（监控，`widgets::Monitor`）：CPU（两次 `GetSystemTimes` 之差）、内存（`GlobalMemoryStatusEx`）、网速（两次 `GetIfTable` 之差，只算开着的以太网和 Wi-Fi，Windows 会把一块网卡经过各层过滤器列好几遍，按 MAC 地址只算一次；计数是 32 位的，过 4 GB 会从头再来，按回绕相减）、电池（`GetSystemPowerStatus`，没有电池这项就没有）。每项一个开关，设置 `monitor: { cpu, mem, net, battery, every }`，`every` 是几秒读一次，1 到 10，默认 2，「插件」页那一行的「设置」里 − / + 调。它的数值是 `{ parts: [{ icon, text }] }`：`cpu 12%`、`memory 46%`、`down 1.2M`、`up 80K`（每秒字节，`rate`）、`battery 85%`（充电时图标是 `bolt`）；岛上收起时只显示这一串读数（`widgets.js` 的 `partsHTML`），没有标题。每个读数是一个小格（`cellHTML`，`style.css` 的 `.wcell`）：Windows 自己图标字体里的图标（`Segoe Fluent Icons`，Windows 10 上是 `Segoe MDL2 Assets`；处理器 E950、内存 E964、下行 E74B、上行 E74A，电池按电量 E850–E859/E83F，充电 E85A–E863/E83E）和数字装在一起，底色从左往右填到读数那么多（`shareOf`：CPU、内存、电量就是百分比；网速没有 100%，按数量级，1 KB/s 空、100 MB/s 满，每大十倍多五分之一）；颜色跟文字走（深底白、浅底黑，`--cell-ink`），像任务栏自己的托盘图标，只有 CPU、内存到 90% 以上（或电池低于 20%）填成橙色；每格一样宽（按「100%」），数字变了列也不动。监控自己的图标是 Windows 的 E9D9（任务管理器「性能」那种，`widgets.js` 的 `GLYPHS`）。要两次读数的（CPU、网速）从第二次起才有。一个线程单独读它（`main.rs`），每 0.25 秒看一眼设置，打开或改了频率马上读。默认关闭。以前的 `sys`、`net`、`battery` 三个插件读设置时并进来（`data::adopt_monitor`）：哪个开着，监控就开着、开着那几项。
-- `tokens`（`tokens.rs`）：今天的 token，每分钟读一次。Claude Code：`<配置目录>/projects/**/*.jsonl` 里每条回复的 `message.usage`（输入 + 缓存写 + 缓存读 + 输出），同一个 `message.id` 会按片段写好几行，只算一次。Codex：`~/.codex/sessions/**/*.jsonl` 的 `token_count` 事件是这个会话到那时的总数，今天的用量 = 今天最后一个 − 今天之前最后一个。只读今天改过的文件，每个文件从上次读到的地方接着读，只读完整的行；换天从头算。默认打开。
+- `tokens`（`tokens.rs`）：今天的 token，每分钟读一次。Claude Code：`<配置目录>/projects/**/*.jsonl` 里每条回复的 `message.usage`（输入 + 缓存写 + 缓存读 + 输出），同一个 `message.id` 会按片段写好几行，只算一次。Codex：`~/.codex/sessions/**/*.jsonl` 的 `token_count` 事件是这个会话到那时的总数，今天的用量 = 今天最后一个 − 今天之前最后一个。Antigravity：`~/.gemini/<产品>/brain/<会话>/.system_generated/logs/transcript.jsonl`（agy 是 `antigravity-cli`，2.0 桌面版是 `antigravity`，文档里 IDE 是 `antigravity-ide`），一行一步，模型的每次回答（`PLANNER_RESPONSE`）带 `input_tokens`、`cache_read_tokens`、`output_tokens`（含思考）和 `created_at`（UTC，到秒），按 `step_index` 每步只算一次（文件被重写、从头再读也不重复）；合计 = 输入 + 缓存读 + 输出（按 Claude Code 的意思理解：输入不含缓存读；目前见到的缓存读都是 0）。旁边的 `transcript_full.jsonl`（hook 的 `transcriptPath` 指的是它）步骤一样、内容完整，更大，不读；`chunks/` 下是分块的副本，也不读。这个格式没公开文档，按 agy 1.3.4 实测（2026-10-14）。只读今天改过的文件，每个文件从上次读到的地方接着读，只读完整的行；换天从头算。默认打开。
 
 **设置**：`widgetsOff`（关掉的 id，默认 `["monitor"]`）、`widgetOrder`（显示顺序，「插件」页的 ↑ 改它）、`widgetSpin`（0 / 5 / 8 / 15）、`widgetNudge`。
 
