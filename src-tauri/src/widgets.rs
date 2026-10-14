@@ -19,8 +19,9 @@
 //   monitor  the machine: CPU, memory, the network's pace, the battery, each
 //            on or off ("monitor" setting), read every 1 to 10 seconds; its
 //            value is { parts: [{ icon, text }] }, shown as icon and number
-//   today    turns today, how long Claude worked, approvals given on her
-//   tokens   today's tokens, Claude Code's and Codex's (tokens.rs)
+//   today    turns today, how long the agents worked, approvals given on her
+//            (Antigravity's never come to her)
+//   tokens   today's tokens, Claude Code's, Codex's and Antigravity's (tokens.rs)
 //
 // Hers too, never expiring and never a script's: each mail account's
 // (mail.rs, "inbox-<id>").
@@ -243,6 +244,8 @@ fn built_in(id: &str) -> Widget {
 pub struct Today {
     pub date: String,
     pub turns: u64,
+    // Of those, Antigravity's: its approvals never come to her.
+    pub agy_turns: u64,
     pub worked_ms: u64,
     pub approvals: u64,
 }
@@ -254,11 +257,11 @@ impl Today {
             return Today { date: date.into(), ..Today::default() };
         }
         let n = |k: &str| saved[k].as_u64().unwrap_or(0);
-        Today { date: date.into(), turns: n("turns"), worked_ms: n("workedMs"), approvals: n("approvals") }
+        Today { date: date.into(), turns: n("turns"), agy_turns: n("agyTurns"), worked_ms: n("workedMs"), approvals: n("approvals") }
     }
 
     pub fn save(&self, dir: &Path) {
-        let body = json!({ "date": self.date, "turns": self.turns, "workedMs": self.worked_ms, "approvals": self.approvals });
+        let body = json!({ "date": self.date, "turns": self.turns, "agyTurns": self.agy_turns, "workedMs": self.worked_ms, "approvals": self.approvals });
         let _ = std::fs::write(dir.join("today.json"), body.to_string());
     }
 
@@ -271,9 +274,16 @@ impl Today {
         true
     }
 
+    // Turns, the time as h:mm (under a minute, in seconds: a few short turns
+    // are no 0:00), approvals; with Antigravity's turns alone, "—" for them.
     pub fn words(&self) -> Value {
         let minutes = self.worked_ms / 60_000;
-        json!({ "key": "widget.todayValue", "vars": { "turns": self.turns.to_string(), "time": format!("{}:{:02}", minutes / 60, minutes % 60), "approvals": self.approvals.to_string() } })
+        let time = match self.worked_ms {
+            1..=59_999 => json!({ "key": "widget.todaySeconds", "vars": { "n": (self.worked_ms / 1000).max(1).to_string() } }),
+            _ => json!(format!("{}:{:02}", minutes / 60, minutes % 60)),
+        };
+        let key = if self.turns > 0 && self.agy_turns == self.turns && self.approvals == 0 { "widget.todayValueAgy" } else { "widget.todayValue" };
+        json!({ "key": key, "vars": { "turns": self.turns.to_string(), "time": time, "approvals": self.approvals.to_string() } })
     }
 }
 
@@ -742,6 +752,25 @@ mod tests {
         assert_eq!(t.words(), json!({ "key": "widget.todayValue", "vars": { "turns": "12", "time": "1:43", "approvals": "5" } }));
         assert_eq!(Today::load(&dir, "2026-10-10").turns, 0);
         assert!(t.roll("2026-10-10") && t.turns == 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn today_under_a_minute_in_seconds_and_antigravity_s_approvals_never_counted() {
+        let words = |turns, agy_turns, worked_ms, approvals| Today { date: String::new(), turns, agy_turns, worked_ms, approvals }.words();
+        let seconds = |n: &str| json!({ "key": "widget.todaySeconds", "vars": { "n": n } });
+        assert_eq!(words(3, 0, 45_600, 1)["vars"]["time"], seconds("45"));
+        assert_eq!(words(1, 0, 400, 0)["vars"]["time"], seconds("1"));
+        assert_eq!((words(0, 0, 0, 0)["vars"]["time"].clone(), words(9, 0, 60_000, 0)["vars"]["time"].clone()), (json!("0:00"), json!("0:01")));
+        // Antigravity's turns alone: no approvals to count, "—".
+        assert_eq!(words(2, 2, 45_000, 0)["key"], "widget.todayValueAgy");
+        assert_eq!(words(3, 2, 45_000, 0)["key"], "widget.todayValue");
+        assert_eq!(words(0, 0, 0, 0)["key"], "widget.todayValue");
+        let dir = std::env::temp_dir().join(format!("wakuwaku-today-agy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let t = Today { date: "2026-10-14".into(), turns: 4, agy_turns: 3, worked_ms: 1, approvals: 0 };
+        t.save(&dir);
+        assert_eq!(Today::load(&dir, "2026-10-14"), t);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

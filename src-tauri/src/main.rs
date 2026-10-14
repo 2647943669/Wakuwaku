@@ -27,7 +27,7 @@
 //                  events_codex.rs (Codex) hook events into messages
 //   data.rs        her folder, settings and pets
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
-//   tokens.rs      today's tokens, from Claude Code's and Codex's own records
+//   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod appbar;
@@ -370,8 +370,12 @@ impl Shared {
         let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
+            let is_agy = msg["agent"] == "agy";
             self.count_today(|t| {
                 t.turns += out.turns;
+                if is_agy {
+                    t.agy_turns += out.turns;
+                }
                 t.worked_ms += out.worked_ms;
             });
         }
@@ -1330,7 +1334,7 @@ fn main() {
             spawn_named("widgets", move || {
                 power::thread_eco();
                 let mut tokens = tokens::Tokens::default();
-                let (claude_dir, codex_dir) = (tokens::claude_dir(), tokens::codex_dir());
+                let (claude_dir, codex_dir, agy_dirs) = (tokens::claude_dir(), tokens::codex_dir(), tokens::agy_dirs());
                 let mut tokens_at: Option<std::time::Instant> = None;
                 loop {
                     let now = now_ms();
@@ -1348,7 +1352,7 @@ fn main() {
                     if tokens_at.is_none_or(|t| t.elapsed() >= tokens::EVERY) || unread("tokens") {
                         tokens_at = Some(std::time::Instant::now());
                         let count = watcher.is_widget_wanted("tokens").then(|| {
-                            tokens.update(&claude_dir, &codex_dir, widgets::local_midnight());
+                            tokens.update(&claude_dir, &codex_dir, &agy_dirs, widgets::local_midnight());
                             tokens::words(tokens.count())
                         });
                         built_in("tokens", count);

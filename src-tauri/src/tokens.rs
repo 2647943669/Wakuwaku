@@ -1,9 +1,18 @@
-// Today's tokens, from what Claude Code and Codex write down as they go:
+// Today's tokens, from what Claude Code, Codex and Antigravity write down as
+// they go:
 //   Claude Code  <config>/projects/**/*.jsonl: each reply's usage, counted
 //                once per message id (a reply is written once per part)
 //   Codex        <codex home>/sessions/**/*.jsonl: token_count events, each
 //                the session's total so far; today's share is its last total
 //                today less its last one before today
+//   Antigravity  ~/.gemini/<product>/brain/<conversation>/.system_generated/
+//                logs/transcript.jsonl (agy's antigravity-cli, the 2.0 app's
+//                antigravity): a step a line, each answer of the model
+//                (PLANNER_RESPONSE) with its input_tokens, cache_read_tokens
+//                and output_tokens (its thinking in them) and created_at;
+//                counted once per step. Undocumented, as agy 1.3.4 writes it
+//                (2026-10-14); the transcript_full.jsonl beside it, the one
+//                the hooks name, has the same steps with all their words.
 // Only files written to today are read, each from where the last reading
 // stopped (and only whole lines). A new day starts from nothing.
 use std::collections::{HashMap, HashSet};
@@ -37,6 +46,9 @@ pub struct Tokens {
     claude_ids: HashSet<String>,
     claude: Count,
     codex: HashMap<PathBuf, Codex>,
+    // Antigravity's steps counted, per transcript.
+    agy_steps: HashMap<PathBuf, HashSet<u64>>,
+    agy: Count,
 }
 
 // "2026-10-09T07:25:43.995Z" in ms since 1970.
@@ -80,6 +92,19 @@ fn written_since(dir: &Path, since: u64, depth: u32, out: &mut Vec<PathBuf>) {
     }
 }
 
+// Antigravity's transcripts written to since a moment: one a conversation,
+// in each brain folder (the steps without their words, transcript.jsonl).
+fn agy_written_since(brain: &Path, since: u64, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(brain) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path().join(".system_generated").join("logs").join("transcript.jsonl");
+        let modified = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok());
+        if modified.is_some_and(|d| d.as_millis() as u64 >= since) {
+            out.push(path);
+        }
+    }
+}
+
 // The whole lines added to a file since the last reading.
 fn new_lines(path: &Path, from: u64) -> Option<(String, u64)> {
     let mut file = File::open(path).ok()?;
@@ -94,8 +119,9 @@ fn new_lines(path: &Path, from: u64) -> Option<(String, u64)> {
 }
 
 impl Tokens {
-    // Read what is new. day_start: local midnight (ms since 1970).
-    pub fn update(&mut self, claude_dir: &Path, codex_dir: &Path, day_start: u64) {
+    // Read what is new. agy_brains: Antigravity's brain folders (agy_dirs).
+    // day_start: local midnight (ms since 1970).
+    pub fn update(&mut self, claude_dir: &Path, codex_dir: &Path, agy_brains: &[PathBuf], day_start: u64) {
         if day_start != self.day_start {
             *self = Tokens { day_start, ..Tokens::default() };
         }
@@ -103,6 +129,10 @@ impl Tokens {
         written_since(claude_dir, day_start, 4, &mut files);
         let claude_count = files.len();
         written_since(codex_dir, day_start, 5, &mut files);
+        let codex_count = files.len();
+        for brain in agy_brains {
+            agy_written_since(brain, day_start, &mut files);
+        }
         for (i, path) in files.into_iter().enumerate() {
             let from = self.read_to.get(&path).copied().unwrap_or(0);
             let Some((text, to)) = new_lines(&path, from) else { continue };
@@ -110,8 +140,10 @@ impl Tokens {
             for line in text.lines() {
                 if i < claude_count {
                     self.claude_line(line);
-                } else {
+                } else if i < codex_count {
                     self.codex_line(&path, line);
+                } else {
+                    self.agy_line(&path, line);
                 }
             }
         }
@@ -153,8 +185,29 @@ impl Tokens {
         }
     }
 
+    // A step of Antigravity's: an answer of the model's, with what it used.
+    // Its input taken to leave out what was read from the cache, as Claude
+    // Code's does, the names being the same (every step seen so far read
+    // nothing from it).
+    fn agy_line(&mut self, path: &Path, line: &str) {
+        if !line.contains("\"output_tokens\"") {
+            return;
+        }
+        let Ok(step) = serde_json::from_str::<Value>(line) else { return };
+        let at = step["created_at"].as_str().and_then(parse_time).unwrap_or(0);
+        let (Some(index), Some(output)) = (step["step_index"].as_u64(), step["output_tokens"].as_u64()) else { return };
+        if at < self.day_start || !self.agy_steps.entry(path.to_path_buf()).or_default().insert(index) {
+            return;
+        }
+        let n = |k: &str| step[k].as_u64().unwrap_or(0);
+        self.agy.total += n("input_tokens") + n("cache_read_tokens") + output;
+        self.agy.output += output;
+    }
+
     pub fn count(&self) -> Count {
         let mut sum = self.claude;
+        sum.total += self.agy.total;
+        sum.output += self.agy.output;
         for s in self.codex.values() {
             if let Some(today) = s.today {
                 sum.total += today.total.saturating_sub(s.before.total);
@@ -194,6 +247,13 @@ pub fn codex_dir() -> PathBuf {
     std::env::var_os("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".codex")).join("sessions")
 }
 
+// Antigravity's, a brain folder for each of its products: agy's, the 2.0
+// app's, and (by its docs, which name the folders) the IDE's.
+pub fn agy_dirs() -> Vec<PathBuf> {
+    let gemini = crate::connection::gemini_dir();
+    ["antigravity-cli", "antigravity", "antigravity-ide"].iter().map(|product| gemini.join(product).join("brain")).collect()
+}
+
 pub const EVERY: Duration = Duration::from_secs(60);
 
 #[cfg(test)]
@@ -204,6 +264,8 @@ mod tests {
     fn times_and_short_numbers() {
         assert_eq!(parse_time("1970-01-01T00:00:01.250Z"), Some(1250));
         assert_eq!(parse_time("2026-10-09T07:25:43.995Z"), Some(1_791_530_743_995));
+        // Antigravity's, to the second.
+        assert_eq!(parse_time("2026-10-09T07:25:43Z"), Some(1_791_530_743_000));
         assert_eq!(parse_time("nope"), None);
         assert_eq!((short(999), short(85_000), short(1_234_567), short(250_000_000), short(3_400_000_000)), ("999".into(), "85K".into(), "1.2M".into(), "250M".into(), "3.4B".into()));
     }
@@ -226,17 +288,37 @@ mod tests {
         std::fs::write(claude.join("s.jsonl"), lines.join("\n") + "\n").unwrap();
         let token = |at: &str, total: u64, out: u64| format!(r#"{{"timestamp":"{at}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"total_tokens":{total},"output_tokens":{out}}}}}}}}}"#);
         std::fs::write(codex.join("rollout.jsonl"), [token("2026-10-08T22:00:00.000Z", 1000, 100), token("2026-10-09T09:00:00.000Z", 1500, 130)].join("\n") + "\n").unwrap();
+        // Antigravity's: a conversation's steps, the model's answers with
+        // what they used; the same steps again beside them, not counted.
+        let brains = [dir.join("agy").join("brain")];
+        let logs = brains[0].join("5d94c80b").join(".system_generated").join("logs");
+        std::fs::create_dir_all(logs.join("chunks").join("transcript")).unwrap();
+        let answer = |i: u64, at: &str, input: u64, out: u64| format!(r#"{{"step_index":{i},"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"{at}","input_tokens":{input},"cache_read_tokens":200,"output_tokens":{out},"content":"ok"}}"#);
+        let steps = [
+            r#"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-10-08T23:59:00Z","content":"say \"output_tokens\""}"#.to_string(),
+            answer(1, "2026-10-08T23:59:30Z", 1000, 10), // yesterday
+            answer(2, "2026-10-09T08:00:00Z", 1100, 20),
+        ];
+        for at in [logs.join("transcript.jsonl"), logs.join("transcript_full.jsonl"), logs.join("chunks").join("transcript").join("00000000.jsonl")] {
+            std::fs::write(at, steps.join("\n") + "\n").unwrap();
+        }
 
         let mut t = Tokens::default();
-        t.update(&dir.join("claude"), &dir.join("codex"), day);
-        assert_eq!(t.count(), Count { total: 132 + 500, output: 20 + 30 });
+        t.update(&dir.join("claude"), &dir.join("codex"), &brains, day);
+        assert_eq!(t.count(), Count { total: 132 + 500 + 1320, output: 20 + 30 + 20 });
         // More is written: only the new lines are read; a half-written one waits.
         let mut f = std::fs::OpenOptions::new().append(true).open(claude.join("s.jsonl")).unwrap();
         std::io::Write::write_all(&mut f, (reply("c", "2026-10-09T10:00:00.000Z", 5) + "\n{\"type\":\"assist").as_bytes()).unwrap();
-        t.update(&dir.join("claude"), &dir.join("codex"), day);
-        assert_eq!(t.count(), Count { total: 632 + 117, output: 55 });
+        let mut f = std::fs::OpenOptions::new().append(true).open(logs.join("transcript.jsonl")).unwrap();
+        std::io::Write::write_all(&mut f, (answer(3, "2026-10-09T08:01:00Z", 50, 5) + "\n").as_bytes()).unwrap();
+        t.update(&dir.join("claude"), &dir.join("codex"), &brains, day);
+        assert_eq!(t.count(), Count { total: 632 + 117 + 1320 + 255, output: 55 + 25 });
+        // Written anew, shorter: read again from its start, each step still once.
+        std::fs::write(logs.join("transcript.jsonl"), steps.join("\n") + "\n").unwrap();
+        t.update(&dir.join("claude"), &dir.join("codex"), &brains, day);
+        assert_eq!(t.count(), Count { total: 632 + 117 + 1320 + 255, output: 55 + 25 });
         // A new day: nothing yet.
-        t.update(&dir.join("claude"), &dir.join("codex"), day + 86_400_000);
+        t.update(&dir.join("claude"), &dir.join("codex"), &brains, day + 86_400_000);
         assert_eq!(t.count(), Count::default());
         assert_eq!(words(Count { total: 1_234_567, output: 85_000 })["vars"], json!({ "total": "1.2M", "output": "85K" }));
         let _ = std::fs::remove_dir_all(&dir);
