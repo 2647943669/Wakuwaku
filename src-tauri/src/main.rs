@@ -56,6 +56,7 @@ mod pet;
 mod pins;
 mod pointer;
 mod power;
+mod proxy;
 mod screen;
 mod scripts;
 mod server;

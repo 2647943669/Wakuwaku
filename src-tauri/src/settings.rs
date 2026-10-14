@@ -91,8 +91,10 @@ pub fn snapshot(sh: &Shared) -> Value {
         // letters being read in the background or read this time.
         "mailAgents": mail::agent::available(),
         // The models each can be asked for, with the efforts they take.
-        "mailModels": mail::agent::models(),
+        "mailModels": mail::agent::models(sh),
         "mailTalks": mail::agent::talks(sh),
+        // Windows' proxy as mail would take it (the Mail page's "follow the system").
+        "mailSystemProxy": mail::proxy::system_view(),
         // The mail kept changed: the Mail page asks for its list again.
         "mailRev": mail::rev(),
         "waku": scripts::waku_path(sh).to_string_lossy(),
@@ -225,12 +227,14 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // Her island's look on the taskbar, by Windows' mode (island.js
         // drawIslandLook): none, or a mode's none, is Windows' own grey.
         "islandLook" => v.is_null() || v.as_object().is_some_and(|m| m.iter().all(|(mode, look)| matches!(mode.as_str(), "dark" | "light") && is_island_look(look))),
-        "mailAgent" => matches!(v.as_str(), Some("claude" | "codex")),
+        "mailAgent" => matches!(v.as_str(), Some("claude" | "codex" | "agy")),
         // The Mail page in two panes (list, letter), or one.
         "mailPanes" => matches!(v.as_str(), Some("one" | "two")),
         // How much mail is kept whole offline (mail/store.rs Offline).
         "mailOffline" => matches!(v.as_str(), Some("90d" | "year" | "all" | "opened")),
         "mailAgentConf" => mail::agent::is_conf_ok(v),
+        // How mail reaches its servers (mail/proxy.rs).
+        "mailProxy" => mail::proxy::Via::of(v).is_some(),
         _ => false,
     }
 }
@@ -267,6 +271,7 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     }
     let plugins = rest.contains_key("plugins");
     let offline = rest.contains_key("mailOffline");
+    let mail_way = rest.contains_key("mailProxy");
     let crash_auto = rest.get("crashReports").and_then(Value::as_str) == Some("auto");
     if !rest.is_empty() {
         sh.change(Value::Object(rest));
@@ -282,6 +287,10 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     // once the setting is there to be read.
     if offline {
         mail::kick_all(sh);
+    }
+    // Mail through another way: the accounts that follow the page's, connected again.
+    if mail_way && mail::sync(sh) {
+        sh.redraw();
     }
     snapshot(sh)
 }

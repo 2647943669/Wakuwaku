@@ -1,6 +1,7 @@
 // Windows' side of crash reports: the unhandled-exception filter, a stack
 // as module+offset, the box the guard asks in, WebView2's ProcessFailed,
-// and what Windows says of itself (its version, WebView2's, its proxy).
+// and what Windows says of itself (its version, WebView2's; its proxy is
+// proxy.rs's).
 use std::ffi::c_void;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -301,29 +302,6 @@ pub fn webview_version() -> Option<String> {
         let v: String = RegKey::predef(*root).open_subkey(path).ok()?.get_value("pv").ok()?;
         (v.chars().all(|c| c.is_ascii_digit() || c == '.') && !v.is_empty() && v != "0.0.0.0").then(|| v.chars().take(24).collect())
     })
-}
-
-// The proxy Windows is set to (Settings, Network, Proxy: as Clash or v2rayN
-// set it), as a URL; none when off, or only a PAC script.
-pub fn system_proxy() -> Option<String> {
-    use winreg::enums::HKEY_CURRENT_USER;
-    use winreg::RegKey;
-    let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings").ok()?;
-    if key.get_value::<u32, _>("ProxyEnable").ok()? == 0 {
-        return None;
-    }
-    let server: String = key.get_value("ProxyServer").ok()?;
-    // "host:port", or "http=host:port;https=host:port;socks=…".
-    let pick = if server.contains('=') {
-        let of = |scheme: &str| server.split(';').find_map(|p| p.trim().strip_prefix(scheme).map(str::to_string));
-        of("https=").or_else(|| of("http="))?
-    } else {
-        server.trim().to_string()
-    };
-    if pick.is_empty() {
-        return None;
-    }
-    Some(if pick.contains("://") { pick } else { format!("http://{pick}") })
 }
 
 // One of WebView2's processes gone, for this window: told (crash.rs

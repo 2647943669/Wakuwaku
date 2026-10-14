@@ -14,7 +14,11 @@
 //   ones that came down ahead and are no longer to be kept, let go.
 // - Then it waits on the inbox: IDLE where the server pushes, else a look
 //   every minute; when the server says anything, all again. The Sent folder
-//   every ten minutes, or at once when a letter was sent (kick).
+//   every ten minutes, or at once when a letter was sent (kick). Through a
+//   proxy the IDLE is renewed every 50 seconds (imap.rs PROXIED_IDLE).
+// - A connection that breaks (a proxy restarted with it) is made again after
+//   15 s, 30 s… up to 5 minutes; at once when the way there changed
+//   meanwhile (Windows' proxy switched on or off).
 // Nothing is marked read here: folders are EXAMINEd and letters PEEKed.
 // The account's widget (unread, the newest unread letter, new mail opening
 // the island) comes from the store, at once from what was kept.
@@ -27,6 +31,7 @@ use io_imap::types::mailbox::Mailbox;
 use serde_json::json;
 
 use super::imap::{self, session, Fail, Session};
+use super::proxy;
 use super::store::{self, Entry, Folder, Offline, Store};
 use super::{password_of, show, Account, Watch, CONNECT, IDLE_FOR, POLL};
 use crate::{now_ms, Shared};
@@ -52,6 +57,7 @@ pub fn run(sh: &Arc<Shared>, account: &Account, watch: &Watch) {
         let result = (|| -> Result<(), Fail> {
             let mut conn = session(&account.server, &password_of(account)?, CONNECT)?;
             *watch.socket.lock().unwrap() = conn.socket.try_clone().ok();
+            *watch.via.lock().unwrap() = conn.proxy.as_ref().map(|p| p.at());
             failures = 0;
             let mut sent_at: Option<Instant> = None;
             loop {
@@ -127,7 +133,23 @@ pub fn run(sh: &Arc<Shared>, account: &Account, watch: &Watch) {
         // to try again at once: cleared, so the wait is waited; one during
         // it (Refresh pressed now) tries once more, then it waits again.
         watch.kick.store(false, Ordering::SeqCst);
-        watch.rest(Duration::from_secs(wait));
+        rest_or_new_way(account, watch, Duration::from_secs(wait));
+    }
+}
+
+// The wait after a failure, ended early when the way to the server is not
+// the one that failed: Windows' proxy turned on, off or changed meanwhile
+// (Clash's "system proxy" switched), looked at every two seconds.
+fn rest_or_new_way(account: &Account, watch: &Watch, wait: Duration) {
+    let host = &account.server.host;
+    let tried = proxy::route(&account.server.via, host);
+    let until = Instant::now() + wait;
+    while !watch.stopped() && !watch.kick.load(Ordering::SeqCst) {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || proxy::route(&account.server.via, host) != tried {
+            return;
+        }
+        watch.rest(left.min(Duration::from_secs(2)));
     }
 }
 
@@ -165,7 +187,9 @@ fn tell(sh: &Shared, account: &Account, watch: &Watch, st: &Mutex<Store>, state:
         show(sh, account, Some(unread), letter.as_ref(), is_new);
     }
     let (have, total, bytes) = offline;
-    watch.set(json!({ "state": state, "unread": unread, "offline": { "have": have, "total": total, "bytes": bytes } }));
+    // Through a proxy: which (the page says so on the account's line).
+    let via = watch.via.lock().unwrap().clone();
+    watch.set(json!({ "state": state, "unread": unread, "offline": { "have": have, "total": total, "bytes": bytes }, "via": via }));
     sh.push_settings();
 }
 

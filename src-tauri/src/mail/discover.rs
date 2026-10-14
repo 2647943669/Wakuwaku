@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::imap::{Fail, Session};
+use super::proxy::{self, Via};
 use super::smtp::Smtp;
 use super::{split, Auth, Security, Server};
 
@@ -23,9 +24,9 @@ const KNOWN: [Known; 2] = [
     ("mailbox.tu-dresden.de", ("msx.tu-dresden.de", 993, Security::Ssl), ("msx.tu-dresden.de", 587, Security::StartTls)),
 ];
 
-fn known(domain: &str, address: &str) -> Option<(Server, Server)> {
+fn known(domain: &str, address: &str, via: &Via) -> Option<(Server, Server)> {
     let (_, imap, smtp) = KNOWN.iter().find(|(d, ..)| *d == domain)?;
-    let server = |(host, port, security): (&str, u16, Security)| Server { host: host.to_string(), port, security, username: address.into(), auth: Auth::Auto };
+    let server = |(host, port, security): (&str, u16, Security)| Server { host: host.to_string(), port, security, username: address.into(), auth: Auth::Auto, via: via.clone() };
     Some((server(*imap), server(*smtp)))
 }
 
@@ -35,16 +36,22 @@ fn found(source: &str, server: &Server, smtp: Option<Server>) -> Value {
     json!({ "ok": true, "found": true, "source": source, "server": server.json(), "smtp": smtp.map(|s| s.json()) })
 }
 
-// What was found for an address: the servers, and where they came from
-// (builtin, autoconfig, wellknown, ispdb, mx, guess); oauth when the provider
-// takes only a browser sign-in for IMAP.
-pub fn discover(address: &str) -> Value {
+// What was found for an address, its servers reached as `via` says: the
+// servers, and where they came from (builtin, autoconfig, wellknown, ispdb,
+// mx, guess); oauth when the provider takes only a browser sign-in for IMAP.
+// A proxy on the way that is not there is said so (else nothing would be
+// found, for no reason the page could give).
+pub fn discover(address: &str, via: &Via) -> Value {
     let Some((_, domain)) = split(address) else { return json!({ "ok": false, "error": "address" }) };
     let address = address.trim();
-    if let Some((server, smtp)) = known(&domain, address) {
+    if let Some((server, smtp)) = known(&domain, address, via) {
         return found("builtin", &server, Some(smtp));
     }
-    let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(6))).build().new_agent();
+    let through = proxy::route(via, &domain);
+    if let Some(Err(fail)) = through.as_ref().map(|p| proxy::reach(p, Duration::from_secs(3))) {
+        return json!({ "ok": false, "error": fail.json() });
+    }
+    let agent = proxy::agent(through.as_ref(), Duration::from_secs(6));
     let get = |url: &str| -> Option<String> {
         let mut res = agent.get(url).header("user-agent", "wakuwaku").call().ok()?;
         res.body_mut().with_config().limit(256 * 1024).read_to_string().ok()
@@ -57,8 +64,8 @@ pub fn discover(address: &str) -> Value {
     ];
     for (source, url) in configs {
         if let Some(xml) = get(&url) {
-            match from_config(&xml, address) {
-                Some(Ok(server)) => return found(source, &server, outgoing(&xml, address)),
+            match from_config(&xml, address, via) {
+                Some(Ok(server)) => return found(source, &server, outgoing(&xml, address, via)),
                 Some(Err(())) => oauth = true,
                 None => {}
             }
@@ -73,8 +80,8 @@ pub fn discover(address: &str) -> Value {
             continue;
         }
         if let Some(xml) = get(&format!("https://autoconfig.thunderbird.net/v1.1/{base}")) {
-            match from_config(&xml, address) {
-                Some(Ok(server)) => return found("mx", &server, outgoing(&xml, address)),
+            match from_config(&xml, address, via) {
+                Some(Ok(server)) => return found("mx", &server, outgoing(&xml, address, via)),
                 Some(Err(())) => oauth = true,
                 None => {}
             }
@@ -85,9 +92,9 @@ pub fn discover(address: &str) -> Value {
     }
     // A guess, where something answers as IMAP (and as SMTP).
     for host in [format!("imap.{domain}"), format!("mail.{domain}"), domain.clone()] {
-        if let Some((security, port)) = probe(&host, false) {
-            let server = Server { host, port, security, username: address.into(), auth: Auth::Auto };
-            return found("guess", &server, guess_outgoing(&domain, address));
+        if let Some((security, port)) = probe(&host, false, via) {
+            let server = Server { host, port, security, username: address.into(), auth: Auth::Auto, via: via.clone() };
+            return found("guess", &server, guess_outgoing(&domain, address, via));
         }
     }
     json!({ "ok": true, "found": false })
@@ -95,24 +102,24 @@ pub fn discover(address: &str) -> Value {
 
 // The outgoing server for an address, looked up as above: for an account
 // set up before the pet sent mail.
-pub fn outgoing_for(address: &str) -> Option<Server> {
-    Server::from_json(&discover(address)["smtp"])
+pub fn outgoing_for(address: &str, via: &Via) -> Option<Server> {
+    Server::from_json(&discover(address, via)["smtp"], via)
 }
 
 // The IMAP server in an autoconfig file: Some(Ok) one that takes a password,
 // Some(Err) when they all take only OAuth, None when there is none.
-fn from_config(xml: &str, address: &str) -> Option<Result<Server, ()>> {
-    server_in(xml, "incomingServer", "imap", address)
+fn from_config(xml: &str, address: &str, via: &Via) -> Option<Result<Server, ()>> {
+    server_in(xml, "incomingServer", "imap", address, via)
 }
 
 // Its SMTP server that takes a password, if it has one.
-fn outgoing(xml: &str, address: &str) -> Option<Server> {
-    server_in(xml, "outgoingServer", "smtp", address)?.ok()
+fn outgoing(xml: &str, address: &str, via: &Via) -> Option<Server> {
+    server_in(xml, "outgoingServer", "smtp", address, via)?.ok()
 }
 
 // The first server of a kind in an autoconfig file that takes a password
 // and is encrypted, as from_config says.
-fn server_in(xml: &str, tag: &str, kind: &str, address: &str) -> Option<Result<Server, ()>> {
+fn server_in(xml: &str, tag: &str, kind: &str, address: &str, via: &Via) -> Option<Result<Server, ()>> {
     let (local, domain) = split(address)?;
     let fill = |s: &str| s.replace("%EMAILADDRESS%", address).replace("%EMAILLOCALPART%", local).replace("%EMAILDOMAIN%", &domain);
     let (open, close, of_kind) = (format!("<{tag}"), format!("</{tag}>"), format!("type=\"{kind}\""));
@@ -141,7 +148,7 @@ fn server_in(xml: &str, tag: &str, kind: &str, address: &str) -> Option<Result<S
         let host = fill(tags(body, "hostname").first()?);
         let port = tags(body, "port").first().and_then(|p| p.parse().ok()).unwrap_or(if security == Security::Ssl { ssl_port } else { starttls_port });
         let username = tags(body, "username").first().map(|u| fill(u)).unwrap_or_else(|| address.into());
-        return Some(Ok(Server { host: host.to_ascii_lowercase(), port, security, username, auth: Auth::Auto }));
+        return Some(Ok(Server { host: host.to_ascii_lowercase(), port, security, username, auth: Auth::Auto, via: via.clone() }));
     }
     oauth_only.then_some(Err(()))
 }
@@ -171,9 +178,9 @@ fn base_domain(host: &str) -> String {
 
 // Something answering as IMAP at a host (over TLS on 993, else with
 // STARTTLS on 143), or as SMTP (465, else 587).
-fn probe(host: &str, smtp: bool) -> Option<(Security, u16)> {
+fn probe(host: &str, smtp: bool, via: &Via) -> Option<(Security, u16)> {
     tries(None, None, smtp).into_iter().find(|&(security, port)| {
-        let server = Server { host: host.into(), port, security, username: String::new(), auth: Auth::Auto };
+        let server = Server { host: host.into(), port, security, username: String::new(), auth: Auth::Auto, via: via.clone() };
         if smtp {
             Smtp::open(&server, Duration::from_secs(4)).map(Smtp::quit).is_ok()
         } else {
@@ -183,10 +190,10 @@ fn probe(host: &str, smtp: bool) -> Option<(Security, u16)> {
 }
 
 // The outgoing server guessed, where something answers as SMTP.
-fn guess_outgoing(domain: &str, address: &str) -> Option<Server> {
+fn guess_outgoing(domain: &str, address: &str, via: &Via) -> Option<Server> {
     [format!("smtp.{domain}"), format!("mail.{domain}"), domain.to_string()]
         .into_iter()
-        .find_map(|host| probe(&host, true).map(|(security, port)| Server { host, port, security, username: address.into(), auth: Auth::Auto }))
+        .find_map(|host| probe(&host, true, via).map(|(security, port)| Server { host, port, security, username: address.into(), auth: Auth::Auto, via: via.clone() }))
 }
 
 // How a server lets one sign in, by what it can do, in Thunderbird's terms:
@@ -245,12 +252,12 @@ fn tries(port: Option<u16>, security: Option<Security>, smtp: bool) -> Vec<(Secu
     }
 }
 
-// A server tried without signing in: the first way that answers as IMAP
-// (or SMTP), and how it lets one sign in; else why not.
-pub fn probe_server(host: &str, port: Option<u16>, security: Option<Security>, smtp: bool) -> Value {
+// A server tried without signing in, reached as `via` says: the first way
+// that answers as IMAP (or SMTP), and how it lets one sign in; else why not.
+pub fn probe_server(host: &str, port: Option<u16>, security: Option<Security>, smtp: bool, via: &Via) -> Value {
     let mut why = Fail::Connect("nothing to try".into());
     for (security, port) in tries(port, security, smtp) {
-        let server = Server { host: host.into(), port, security, username: String::new(), auth: Auth::Auto };
+        let server = Server { host: host.into(), port, security, username: String::new(), auth: Auth::Auto, via: via.clone() };
         let opened = if smtp {
             Smtp::open(&server, Duration::from_secs(6)).map(|s| {
                 let auths = smtp_auths(&s.auths());
@@ -344,15 +351,15 @@ mod tests {
 
     #[test]
     fn a_config_gives_its_imap_server_that_takes_a_password() {
-        let server = from_config(QQ, "Me@qq.com").unwrap().unwrap();
-        assert_eq!(server, Server { host: "imap.qq.com".into(), port: 993, security: Security::Ssl, username: "Me@qq.com".into(), auth: Auth::Auto });
+        let server = from_config(QQ, "Me@qq.com", &Via::Straight).unwrap().unwrap();
+        assert_eq!(server, Server { host: "imap.qq.com".into(), port: 993, security: Security::Ssl, username: "Me@qq.com".into(), auth: Auth::Auto, via: Via::Straight });
         let local = QQ.replace("%EMAILADDRESS%", "%EMAILLOCALPART%");
-        assert_eq!(from_config(&local, "me@qq.com").unwrap().unwrap().username, "me");
+        assert_eq!(from_config(&local, "me@qq.com", &Via::Straight).unwrap().unwrap().username, "me");
         let oauth = QQ.replace("password-cleartext", "OAuth2");
-        assert_eq!(from_config(&oauth, "me@qq.com"), Some(Err(())));
+        assert_eq!(from_config(&oauth, "me@qq.com", &Via::Straight), Some(Err(())));
         let both = QQ.replace("<authentication>password-cleartext</authentication>", "<authentication>OAuth2</authentication><authentication>password-cleartext</authentication>");
-        assert!(matches!(from_config(&both, "me@qq.com"), Some(Ok(_))));
-        assert_eq!(from_config("<clientConfig/>", "me@qq.com"), None);
+        assert!(matches!(from_config(&both, "me@qq.com", &Via::Straight), Some(Ok(_))));
+        assert_eq!(from_config("<clientConfig/>", "me@qq.com", &Via::Straight), None);
     }
 
     #[test]
@@ -361,25 +368,25 @@ mod tests {
           <incomingServer type="imap"><hostname>imap.gmail.com</hostname><port>993</port><socketType>SSL</socketType><username>%EMAILADDRESS%</username><authentication>OAuth2</authentication><authentication>password-cleartext</authentication></incomingServer>
           <outgoingServer type="smtp"><hostname>smtp.gmail.com</hostname><port>465</port><socketType>SSL</socketType><username>%EMAILADDRESS%</username><authentication>OAuth2</authentication><authentication>password-cleartext</authentication></outgoingServer>
         </emailProvider></clientConfig>"#;
-        let smtp = outgoing(gmail, "me@gmail.com").unwrap();
+        let smtp = outgoing(gmail, "me@gmail.com", &Via::Straight).unwrap();
         assert_eq!((smtp.host.as_str(), smtp.port, smtp.security, smtp.username.as_str()), ("smtp.gmail.com", 465, Security::Ssl, "me@gmail.com"));
-        assert_eq!(from_config(gmail, "me@gmail.com").unwrap().unwrap().host, "imap.gmail.com");
+        assert_eq!(from_config(gmail, "me@gmail.com", &Via::Straight).unwrap().unwrap().host, "imap.gmail.com");
         // Unencrypted, none; no port said, the usual one for the way.
-        assert!(outgoing(&gmail.replace("<port>465</port><socketType>SSL</socketType>", "<port>25</port><socketType>plain</socketType>"), "me@gmail.com").is_none());
-        assert_eq!(outgoing(&gmail.replace("<port>465</port><socketType>SSL", "<socketType>STARTTLS"), "me@gmail.com").unwrap().port, 587);
-        assert!(outgoing(QQ, "me@qq.com").is_none());
+        assert!(outgoing(&gmail.replace("<port>465</port><socketType>SSL</socketType>", "<port>25</port><socketType>plain</socketType>"), "me@gmail.com", &Via::Straight).is_none());
+        assert_eq!(outgoing(&gmail.replace("<port>465</port><socketType>SSL", "<socketType>STARTTLS"), "me@gmail.com", &Via::Straight).unwrap().port, 587);
+        assert!(outgoing(QQ, "me@qq.com", &Via::Straight).is_none());
     }
 
     #[test]
     fn some_mailboxes_are_known() {
-        let (tud, out) = known("tu-dresden.de", "vorname.name@tu-dresden.de").unwrap();
+        let (tud, out) = known("tu-dresden.de", "vorname.name@tu-dresden.de", &Via::Straight).unwrap();
         assert_eq!((tud.host.as_str(), tud.port, tud.security, tud.username.as_str()), ("msx.tu-dresden.de", 993, Security::Ssl, "vorname.name@tu-dresden.de"));
         assert_eq!((out.host.as_str(), out.port, out.security, out.username.as_str()), ("msx.tu-dresden.de", 587, Security::StartTls, "vorname.name@tu-dresden.de"));
-        assert_eq!(known("mailbox.tu-dresden.de", "a.b@mailbox.tu-dresden.de").unwrap().0.host, "msx.tu-dresden.de");
-        assert!(known("tu-dresden.de.evil.example", "x@tu-dresden.de.evil.example").is_none());
-        let found = discover("Vorname.Name@TU-Dresden.de");
+        assert_eq!(known("mailbox.tu-dresden.de", "a.b@mailbox.tu-dresden.de", &Via::Straight).unwrap().0.host, "msx.tu-dresden.de");
+        assert!(known("tu-dresden.de.evil.example", "x@tu-dresden.de.evil.example", &Via::Straight).is_none());
+        let found = discover("Vorname.Name@TU-Dresden.de", &Via::Straight);
         assert_eq!((found["source"].as_str(), found["server"]["host"].as_str(), found["smtp"]["port"].as_u64()), (Some("builtin"), Some("msx.tu-dresden.de"), Some(587)));
-        assert_eq!(outgoing_for("x@tu-dresden.de").map(|s| s.security), Some(Security::StartTls));
+        assert_eq!(outgoing_for("x@tu-dresden.de", &Via::Straight).map(|s| s.security), Some(Security::StartTls));
     }
 
     #[test]
