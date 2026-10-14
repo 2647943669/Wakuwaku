@@ -2689,10 +2689,12 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   opacity: 1;
 }
 
-/* While the island springs to another size the acrylic lies further in
-   (island.js movePlate): the rim as wide at once, back over a moment. */
-#island.plate-moving::before {
-  transition: opacity 0.15s ease;
+/* While the island springs to another size, the acrylic further in under
+   it (island.js movePlate), its ground as solid as over a maximized window
+   (--i-bg-deep, 90 %; solider stays as it is), at once; back once it settles. */
+.isl-firm.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.isl-firm.home-island #island:not([data-view='settings']) {
+  background: var(--i-bg-deep, var(--i-bg));
 }
 
 /* Open over a maximized window, a see-through ground with nothing to blur
