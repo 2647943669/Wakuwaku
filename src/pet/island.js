@@ -578,11 +578,13 @@
     }
     const lines = el('span', 'lines')
     if (isHinting() && !isNudging()) {
-      // Not connected: what it is for, and a row to go and connect.
+      // Not connected: what it is for, and a row to go and connect. The
+      // tools by name only in its tip and the welcome card: three of them
+      // cut the line short in the open island, its meaning with them.
       const card = el('span', 'me')
       const top = el('span', 'head')
       top.append(el('span', 'title', t(lang, 'hint.title')))
-      card.append(top, el('span', 'sub', t(lang, 'hint.sub', { list: toolNames() })))
+      card.append(top, el('span', 'sub', t(lang, 'hint.sub')))
       const go = el('span', 'hintgo')
       go.dataset.connect = '1'
       go.append(el('span', '', t(lang, 'hint.go')), el('span', '', '›'))
