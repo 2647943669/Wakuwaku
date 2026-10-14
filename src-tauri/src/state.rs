@@ -42,6 +42,9 @@ const ENDED_TURNS: usize = 4;
 pub const STALE_MS: u64 = 15 * 60 * 1000;
 // An ending nobody came to see, or a session gone quiet, after this.
 pub const FORGET_MS: u64 = 2 * 60 * 60 * 1000;
+// A session at rest, out of sight after this many minutes with nothing new
+// from it, unless set otherwise (idleHideMin; 0 never).
+pub const IDLE_HIDE_MIN: u64 = 30;
 // Never more than this many of a list kept for a session.
 const MAX_KEPT: usize = 100;
 // How long a name goes into a notification.
@@ -60,6 +63,22 @@ fn priority(mood: &str) -> u8 {
 
 fn is_ending(mood: &str) -> bool {
     matches!(mood, "done" | "review" | "error")
+}
+
+// Whether a session is in sight (Pet::hide_quiet). At work or waiting on
+// you, always (STALE_MS gives up on one stuck); an ending, until it is seen
+// (FORGET_MS at most: check_stale). At rest, until nothing has come from it
+// for `hide_ms` (0: always), counted from its last event, or from when its
+// ending was seen or its held time ran out, whichever came later. One out of
+// sight is still kept, and its next event brings it back as it was.
+pub fn is_shown(mood: &str, event_at: u64, seen_at: Option<u64>, now: u64, hide_ms: u64) -> bool {
+    match mood {
+        "idle" => {
+            let quiet_since = seen_at.map_or(event_at, |seen| seen.max(event_at));
+            hide_ms == 0 || now.saturating_sub(quiet_since) < hide_ms
+        }
+        _ => true,
+    }
 }
 
 // How long done / review / error stay: until seen, or this many seconds.
@@ -128,6 +147,12 @@ struct Session {
     // The turn under way, and the last few that ended (Codex).
     turn: String,
     ended_turns: Vec<String>,
+    // When its last event came (`at` moves too as an ending goes back to
+    // rest), and when its ending was seen or its held time ran out: how
+    // long it has been quiet. Out of sight as last looked at (is_shown).
+    event_at: u64,
+    seen_at: Option<u64>,
+    hidden: bool,
 }
 
 impl Session {
@@ -155,6 +180,9 @@ impl Session {
             chain: Vec::new(),
             turn: String::new(),
             ended_turns: Vec::new(),
+            event_at: now,
+            seen_at: None,
+            hidden: false,
         }
     }
 
@@ -347,6 +375,9 @@ impl Pet {
                     }
                     return Some(out);
                 }
+                // Something new from it: back in sight at once, if it was out.
+                s.event_at = now;
+                s.hidden = false;
                 for (key, field) in [("title", &mut s.title), ("task", &mut s.task)] {
                     let value = str_field(msg, key, 80);
                     if !value.is_empty() {
@@ -447,22 +478,41 @@ impl Pet {
         Some(out)
     }
 
-    // You looked: every ending goes back to rest. True when anything did.
+    // You looked: every ending goes back to rest, quiet from now on. True
+    // when anything did.
     pub fn seen(&mut self, now: u64, hold: Hold) -> bool {
         let mut changed = false;
         for s in self.sessions.values_mut().filter(|s| is_ending(&s.mood)) {
             set(s, "idle", Value::String(String::new()), now, hold);
+            s.seen_at = Some(now);
             changed = true;
         }
         changed
     }
 
-    // Endings held for a number of seconds go back to rest when it is up.
+    // Endings held for a number of seconds go back to rest when it is up:
+    // the island folds them away then, so they count as seen.
     pub fn tick(&mut self, now: u64, hold: Hold) -> bool {
         let mut changed = false;
         for s in self.sessions.values_mut() {
             if s.settle_at.is_some_and(|t| t <= now) {
                 set(s, "idle", Value::String(String::new()), now, hold);
+                s.seen_at = Some(now);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    // Sessions gone quiet for `hide_ms` (the idleHideMin setting) out of
+    // sight, and those it lets back (a longer setting): left out of what the
+    // pages are given, but kept. True when any changed.
+    pub fn hide_quiet(&mut self, now: u64, hide_ms: u64) -> bool {
+        let mut changed = false;
+        for s in self.sessions.values_mut() {
+            let hidden = !is_shown(&s.mood, s.event_at, s.seen_at, now, hide_ms);
+            if s.hidden != hidden {
+                s.hidden = hidden;
                 changed = true;
             }
         }
@@ -483,11 +533,16 @@ impl Pet {
         changed
     }
 
-    // What the pet shows: the session that most wants you, and the rest.
+    // The sessions in sight (hide_quiet).
+    fn shown(&self) -> impl Iterator<Item = &Session> {
+        self.sessions.values().filter(|s| !s.hidden)
+    }
+
+    // What the pet shows: the session that most wants you, and the rest in
+    // sight.
     pub fn get(&self, now: u64) -> Value {
         let top = self
-            .sessions
-            .values()
+            .shown()
             .fold(None::<&Session>, |best, s| match best {
                 Some(b) if priority(&s.mood) < priority(&b.mood) => Some(b),
                 Some(b) if priority(&s.mood) == priority(&b.mood) && s.at < b.at => Some(b),
@@ -500,14 +555,15 @@ impl Pet {
             return empty;
         };
         let mut now = view(top);
-        now["others"] = json!(self.sessions.values().filter(|s| s.id != top.id && s.mood != "idle").count());
-        now["sessions"] = json!(self.sessions.len());
+        now["others"] = json!(self.shown().filter(|s| s.id != top.id && s.mood != "idle").count());
+        now["sessions"] = json!(self.shown().count());
         now
     }
 
-    // Every session, the one that most wants you first.
+    // Every session in sight, the one that most wants you first: the island's
+    // open lines, the settings' list, the marks on the taskbar's buttons.
     pub fn list(&self) -> Value {
-        let mut all: Vec<&Session> = self.sessions.values().filter(|s| !s.id.is_empty() || s.mood != "idle").collect();
+        let mut all: Vec<&Session> = self.shown().filter(|s| !s.id.is_empty() || s.mood != "idle").collect();
         all.sort_by(|a, b| priority(&b.mood).cmp(&priority(&a.mood)).then(b.at.cmp(&a.at)));
         Value::Array(all.into_iter().map(view).collect())
     }
@@ -515,7 +571,7 @@ impl Pet {
     // The mood of the next session that wants something, after the one shown:
     // for the island's second bubble.
     pub fn second(&self) -> Option<String> {
-        let mut busy: Vec<&Session> = self.sessions.values().filter(|s| s.mood != "idle").collect();
+        let mut busy: Vec<&Session> = self.shown().filter(|s| s.mood != "idle").collect();
         busy.sort_by(|a, b| priority(&b.mood).cmp(&priority(&a.mood)).then(b.at.cmp(&a.at)));
         busy.get(1).map(|s| s.mood.clone())
     }
@@ -779,5 +835,92 @@ mod tests {
         // Rest that ends no turn counts nothing.
         pet.apply(&msg(json!({ "session": "b", "mood": "working", "event": "turn-start" })), 200_000, Hold::Seen);
         assert_eq!(pet.apply(&msg(json!({ "session": "b", "mood": "idle" })), 210_000, Hold::Seen).unwrap().worked_ms, 0);
+    }
+
+    const HIDE: u64 = IDLE_HIDE_MIN * 60 * 1000;
+
+    fn ids(pet: &Pet) -> Vec<String> {
+        let mut ids: Vec<String> = pet.list().as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap().to_string()).collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn only_a_session_at_rest_goes_out_of_sight() {
+        // At work, waiting on you, an ending not yet seen: in sight however long.
+        for mood in ["working", "waiting", "done", "review", "error"] {
+            assert!(is_shown(mood, 0, None, FORGET_MS * 10, HIDE), "{mood}");
+        }
+        // At rest: until quiet that long since its last event,
+        assert!(is_shown("idle", 1_000, None, 1_000 + HIDE - 1, HIDE));
+        assert!(!is_shown("idle", 1_000, None, 1_000 + HIDE, HIDE));
+        // or since its ending was seen, whichever came later.
+        assert!(is_shown("idle", 1_000, Some(5_000), 1_000 + HIDE, HIDE));
+        assert!(!is_shown("idle", 1_000, Some(5_000), 5_000 + HIDE, HIDE));
+        assert!(!is_shown("idle", 9_000, Some(5_000), 9_000 + HIDE, HIDE));
+        // Always, when set so.
+        assert!(is_shown("idle", 0, None, FORGET_MS * 10, 0));
+    }
+
+    #[test]
+    fn a_seen_ending_goes_out_of_sight_and_comes_back_as_it_was() {
+        let mut pet = Pet::default();
+        pet.apply(&msg(json!({ "session": "a", "project": "pet", "mood": "working", "event": "turn-start", "task": "修复岛" })), 1_000, Hold::Seen);
+        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 61_000, Hold::Seen);
+        pet.apply(&msg(json!({ "session": "b", "mood": "working", "event": "turn-start" })), 61_000, Hold::Seen);
+        // Not seen yet: kept past the time, as is the one at work.
+        let seen = 61_000 + HIDE * 2;
+        assert!(!pet.hide_quiet(seen, HIDE));
+        assert_eq!(ids(&pet), ["a", "b"]);
+        // Seen: quiet from then on, and out of sight once it has been that long.
+        pet.seen(seen, Hold::Seen);
+        assert!(!pet.hide_quiet(seen + HIDE - 1, HIDE));
+        assert!(pet.hide_quiet(seen + HIDE, HIDE));
+        assert_eq!(ids(&pet), ["b"]);
+        let now = pet.get(seen + HIDE);
+        assert_eq!((now["id"].as_str(), now["sessions"].as_u64(), now["others"].as_u64()), (Some("b"), Some(1), Some(0)));
+        // Kept all the same: its names stay out of a crash report.
+        assert!(pet.names().contains(&"修复岛".to_string()));
+        // Its next event brings it back at once, as it was.
+        let back = seen + HIDE + 10;
+        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), back, Hold::Seen);
+        assert!(!pet.hide_quiet(back, HIDE));
+        let a = pet.list().as_array().unwrap().iter().find(|s| s["id"] == "a").cloned().unwrap();
+        assert_eq!((a["name"].as_str(), a["project"].as_str(), a["mood"].as_str()), (Some("修复岛"), Some("pet"), Some("working")));
+        assert_eq!(pet.get(back)["sessions"], 2);
+    }
+
+    #[test]
+    fn an_ending_folded_away_counts_from_then() {
+        let mut pet = Pet::default();
+        pet.apply(&msg(json!({ "session": "a", "mood": "error" })), 0, Hold::Secs(8));
+        assert!(pet.tick(8_000, Hold::Secs(8)));
+        assert!(!pet.hide_quiet(8_000 + HIDE - 1, HIDE));
+        assert!(pet.hide_quiet(8_000 + HIDE, HIDE));
+        assert!(ids(&pet).is_empty());
+        assert_eq!(pet.get(8_000 + HIDE)["sessions"], 0);
+        // Always shown, set so: back in sight.
+        assert!(pet.hide_quiet(8_000 + HIDE, 0));
+        assert_eq!(ids(&pet), ["a"]);
+    }
+
+    #[test]
+    fn work_given_up_and_endings_never_seen_count_from_their_last_event() {
+        let mut pet = Pet::default();
+        pet.apply(&msg(json!({ "session": "a", "mood": "working" })), 0, Hold::Seen);
+        pet.apply(&msg(json!({ "session": "b", "mood": "done" })), 0, Hold::Seen);
+        // Stuck work gone to rest stays in sight until quiet the time from its last event.
+        pet.check_stale(STALE_MS + 1, Hold::Seen);
+        assert!(!pet.hide_quiet(STALE_MS + 1, HIDE));
+        assert!(pet.hide_quiet(HIDE, HIDE));
+        assert_eq!(ids(&pet), ["b"]);
+        // The ending nobody saw, given up after FORGET_MS: out of sight at once.
+        pet.check_stale(FORGET_MS + 1, Hold::Seen);
+        assert!(pet.hide_quiet(FORGET_MS + 1, HIDE));
+        assert!(ids(&pet).is_empty());
+        // Forgotten as before, out of sight or not.
+        assert_eq!(pet.sessions.len(), 2);
+        pet.check_stale(STALE_MS + 1 + FORGET_MS + 1, Hold::Seen);
+        assert_eq!(pet.sessions.len(), 1);
     }
 }

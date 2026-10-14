@@ -99,6 +99,7 @@ cd .. && node --test "test/*.test.js"   # 页面的单元测试
 | `CLAUDE_CONFIG_DIR` | Claude Code 的配置目录（测试里指向临时目录，不碰真实设置） |
 | `CODEX_HOME` | Codex 的配置目录（`hooks.json`、`pets/`），默认 `~/.codex` |
 | `WAKUWAKU_DEBUG=1` | `/health` 带上两个窗口和设置，开放 `/debug/eval`、`/debug/walk` |
+| `WAKUWAKU_IDLE_HIDE_MS` | 空闲会话多久不再显示（毫秒，`0` 一直显示），代替设置 `idleHideMin` |
 
 ## 插件
 
@@ -157,9 +158,11 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 
 **会话名**：hook 自带的 `session_title`（只有 UserPromptSubmit、SessionStart 带，而且只是自定义标题：`/rename` 或桌面版起的名字）；没有时，在一轮开始和结束时读 `transcript_path` 末尾 256 KB 里最后一条 `custom-title`，没有再用 `ai-title`。**项目名**：从 `cwd` 往上找 `.git`，是目录就取它所在文件夹的名字；是文件（worktree）就按里面的 `gitdir: <仓库>/.git/worktrees/<名字>` 取仓库名；不在 git 里就用 `cwd` 的文件夹名。按 `cwd` 缓存。
 
-页面拿到的每个会话（`state.rs` 的 `view`）还有 `name`、`step`（只在干活时有，没有在跑的工具就是「思考中」）、`stepSince`、`todo`（`{ done, total, active }`）、`files`、`reply`（只在结束时有）、`error`、`agent`。`payload` 里的 `list` 是所有会话，展开的岛用它列出别的会话。设置里的「显示具体内容」（`details`）关掉时，页面只显示项目、状态和工具名，和以前一样。
+页面拿到的每个会话（`state.rs` 的 `view`）还有 `name`、`step`（只在干活时有，没有在跑的工具就是「思考中」）、`stepSince`、`todo`（`{ done, total, active }`）、`files`、`reply`（只在结束时有）、`error`、`agent`。`payload` 里的 `list` 是所有显示着的会话（见下面「不再显示的会话」），展开的岛用它列出别的会话。设置里的「显示具体内容」（`details`）关掉时，页面只显示项目、状态和工具名，和以前一样。
 
 显示哪个会话：等你确认 > 出错 > 改好了 > 做完 > 干活 > 空闲，同级取最新。做完、改好、出错默认停留 8 秒（设置 `hold`）；设置里可以改成 30 / 120 秒，或者一直保持到鼠标经过她（或离开灵动岛，`seen`）。干活和等你超过 15 分钟没有新事件就当作结束；做完的状态 2 小时没人看就回空闲，空闲会话 2 小时后被忘掉。
+
+**不再显示的会话**（#39，`state.rs` 的 `is_shown`，`ticker` 每秒调一次 `hide_quiet`）：干活和等你确认的一直显示；做完、改好、出错在被看到之前一直显示（最多到上面的 2 小时）；空闲的会话从最后一个事件、或者它的结束被看到 / 停留时间到了收起（`seen_at`）算起，取较晚的那个，安静满设置 `idleHideMin` 分钟（15 / 30 / 60 / 120，默认 30，`0` 是一直显示）就不再显示。不显示的会话只是不进 `get()` 的 `others` / `sessions`、`list()` 和 `second()`，所以「+N」、展开的岛、设置里的会话列表、托盘提示和任务栏按钮上的会话标记（`mark_sessions`）都不算它；窗口的按钮照常在。它还在 `sessions` 里，什么都不丢：再来一个事件就立刻回来（`apply` 里清掉 `hidden`），名字、项目、「今天」的统计都在；真正删掉还是按上面的 2 小时。测试时用环境变量 `WAKUWAKU_IDLE_HIDE_MS` 代替设置（毫秒，`0` 是一直显示）。
 
 ## HTTP 接口
 

@@ -116,6 +116,9 @@ fn defaults() -> Map<String, Value> {
         "look": true,
         // Done, changed or failed: shown 8 s, or until seen (8, 30, 120, "seen").
         "hold": 8,
+        // A session at rest out of sight after this many minutes with nothing
+        // new from it (15, 30, 60, 120; 0 never: state.rs is_shown).
+        "idleHideMin": crate::state::IDLE_HIDE_MIN,
         "notify": { "waiting": false, "done": false, "error": false },
         "sound": false,
         "promptWaitSec": 290,
