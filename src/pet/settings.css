@@ -1704,8 +1704,9 @@
   opacity: 0.75;
 }
 
-/* Open: above the strip there is nothing to blur (a see-through window),
-   its ground alone; a capsule bare collapsed has its ground then. */
+/* Open: above the strip the page has nothing to blur (a see-through
+   window), its ground alone; a capsule bare collapsed has its ground then.
+   With Windows' acrylic under it (plate: island.js placePlate), blurred. */
 #island-settings .ilook-pv.big:hover .cap {
   right: calc(100% - 260px);
   height: 112px;
@@ -1718,6 +1719,44 @@
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.4),
     var(--pv-edge);
+}
+
+#island-settings .ilook-pv.big.plate:hover .cap {
+  -webkit-backdrop-filter: var(--pv-blur);
+  backdrop-filter: var(--pv-blur);
+}
+
+/* At the top of the screen (her home the island): a pill at the top of the
+   desktop, no strip; open, it grows down. */
+#island-settings .ilook-pv.top::before {
+  display: none;
+}
+
+#island-settings .ilook-pv.top .cap {
+  top: 5px;
+  bottom: auto;
+  left: 18%;
+  right: 18%;
+}
+
+#island-settings .ilook-card .ilook-pv.top .cap {
+  top: 4px;
+  left: 12%;
+  right: 12%;
+}
+
+#island-settings .ilook-pv.big.top .cap {
+  top: 7px;
+  left: calc(50% - 100px);
+  right: calc(50% - 100px);
+}
+
+#island-settings .ilook-pv.big.top:hover .cap {
+  left: calc(50% - 130px);
+  right: calc(50% - 130px);
+  border-radius: 22px;
+  -webkit-backdrop-filter: var(--pv-blur);
+  backdrop-filter: var(--pv-blur);
 }
 
 #island-settings .ilook-pv.big:hover .more {

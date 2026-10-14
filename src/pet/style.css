@@ -1168,8 +1168,10 @@ body.home-taskbar {
 }
 
 /* Grown up from the strip, black on black: no outline, which would cut a
-   line down through the strip where the two meet. */
-.home-taskbar #island:not([data-view='compact']) {
+   line down through the strip where the two meet. Shrinking back
+   (island.js holdGround), it keeps its shadow until the spring is over. */
+.home-taskbar #island:not([data-view='compact']),
+.home-taskbar #island.shrinking {
   box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.45);
 }
 
@@ -2204,13 +2206,14 @@ body.home-taskbar {
   color: #1b1b1b;
 }
 
-.tb-light.home-taskbar.tb-capsule #island[data-view='compact'] {
+.tb-light.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.08),
     0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.tb-light.home-taskbar.tb-capsule #island.shrinking {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.18),
     0 0 0 1px rgba(0, 0, 0, 0.08);
@@ -2633,41 +2636,87 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   backdrop-filter: var(--i-blur);
 }
 
-.home-taskbar.tb-capsule #island[data-view='compact'] {
+/* Collapsing, the open island's ground, edge and shadow are kept while it
+   shrinks (island.js holdGround, shrinking), then fade to the capsule's: a
+   bare one's ground gone at once left the open island's words over the
+   desktop as it shrank (zhoupengjie/Wakuwaku#16). */
+.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   box-shadow: var(--i-edge);
 }
 
-.tb-light.home-taskbar.tb-capsule #island[data-view='compact'] {
+.tb-light.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   box-shadow:
     var(--i-edge),
     0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.home-taskbar.tb-capsule #island.shrinking {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.5),
     var(--i-edge);
 }
 
-.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+.tb-light.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']),
+.tb-light.home-taskbar.tb-capsule #island.shrinking {
   box-shadow:
     0 8px 30px rgba(0, 0, 0, 0.18),
     var(--i-edge);
 }
 
-.island-bare.home-taskbar.tb-capsule #island[data-view='compact'] {
+/* Open over a maximized window, a see-through ground with nothing to blur
+   what is behind it deepens (island.js setDeep, zhoupengjie/Wakuwaku#20). */
+.isl-deep.home-taskbar.tb-capsule #island:not([data-view='compact']):not([data-view='settings']) {
+  background: var(--i-bg-deep, var(--i-bg));
+}
+
+.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking) {
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
 }
 
-.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:hover {
+.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking):hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.tb-light.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:hover {
+.tb-light.island-bare.home-taskbar.tb-capsule #island[data-view='compact']:not(.shrinking):hover {
   background: rgba(0, 0, 0, 0.05);
+}
+
+/* --- Her island at the top of the screen (home-island) ---------------------------
+   Black as the iPhone's, its faint line, unless the settings give it a look
+   of its own (islandTopLook, island.js drawIslandLook,
+   zhoupengjie/Wakuwaku#27): --i-bg, --i-edge as on the taskbar, the line
+   dark on a light ground; deeper over a maximized window (isl-deep). No
+   blur of the page's: behind it is other programs' windows, only Windows'
+   acrylic under it blurs them (backplate.rs). The settings as ever. */
+.home-island {
+  --i-bg: #000;
+  --i-line: rgba(255, 255, 255, 0.07);
+  --i-edge: 0 0 0 1px var(--i-line);
+}
+
+.isl-light.home-island {
+  --i-line: rgba(0, 0, 0, 0.08);
+}
+
+.home-island #island:not([data-view='settings']) {
+  background: var(--i-bg);
+  box-shadow: var(--i-edge);
+}
+
+.home-island #goo div {
+  background: var(--i-bg);
+}
+
+.isl-deep.home-island #island:not([data-view='settings']) {
+  background: var(--i-bg-deep, var(--i-bg));
+}
+
+.home-island #island .hint-dot {
+  box-shadow: 0 0 0 2px var(--i-bg);
 }
 
 /* The settings as Windows' own Settings in the dark mode too, as they are

@@ -71,6 +71,10 @@
     holding: isHolding => send('island_holding', { isHolding: isHolding === true }),
     // Her seat on the taskbar, where the page has laid her island out (logical px from its left).
     seat: x => send('island_seat', { x: Number(x) || 0 }),
+    // A blur of what is behind her island, under it (backplate.rs): where
+    // the island is ({ x, y, width, height, radius, vw, vh, dark }), faded
+    // in over fade ms; none, faded out.
+    plate: (rect, fade) => send('island_plate', { rect: rect || null, fade: Math.max(0, Math.round(Number(fade) || 0)) }),
     onReach: on('island:reach'),
     onAbsorb: on('island:absorb'),
     onLanded: on('island:landed'),
@@ -78,6 +82,8 @@
     onLookHere: on('island:look-here'),
     // Up over an app full screen for the prompts alone ({ on }, island.rs over_full): her island only.
     onOverFull: on('island:over-full'),
+    // A maximized window on her display, at the top of the screen ({ on }, island.rs look_over_max).
+    onOverMax: on('island:over-max'),
     // The settings in the island (settings.js): open them here or from
     // anywhere else (the tray, her double-click), what they show, what they change.
     onSettings: on('island:settings'),

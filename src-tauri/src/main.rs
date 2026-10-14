@@ -33,6 +33,7 @@
 mod appbar;
 mod asks;
 mod audio;
+mod backplate;
 mod bars;
 mod connection;
 mod crash;
@@ -292,6 +293,14 @@ impl Shared {
         now["islandTemp"] = json!(temp);
         now["settingsOpen"] = json!(settings_open);
         now["quiet"] = json!(self.is_quiet());
+        // Whether a blur of what is behind the island can be put under it
+        // (backplate.rs): Windows 11, transparency effects on.
+        now["plate"] = json!(backplate::available());
+        // Windows' mode, for her island's look at the top of the screen (the
+        // taskbar hears it from taskbar.rs, taskbar:look).
+        if self.home() != "taskbar" {
+            now["winLight"] = json!(wallpaper::look().0);
+        }
         // The widgets that have something to say: those on take their turns
         // in the island while nothing needs you; any may be on the taskbar.
         now["widgets"] = self.widgets_said();
@@ -850,6 +859,29 @@ async fn island_seat(app: AppHandle, x: f64) {
     island::set_seat(&shared(&app), x);
 }
 
+// Under her island, a blur of what is behind it (backplate.rs): where the
+// page laid the island out ({ x, y, width, height } in its px, its corners'
+// radius, the size of the page it measured in, Windows' mode), faded in
+// over fade ms; none, faded out. Measured in a window of another size
+// (resized meanwhile), it is not shown: the page sends it again once resized.
+#[tauri::command]
+async fn island_plate(app: AppHandle, rect: Option<Value>, fade: u32) {
+    let sh = shared(&app);
+    let Some(r) = rect else { return backplate::set(&sh, None, fade) };
+    let ((ox, oy), (ww, wh), sf) = island::frame(&sh);
+    let num = |key: &str| r[key].as_f64().unwrap_or(0.0);
+    if (num("vw") * sf - ww as f64).abs() > 2.0 || (num("vh") * sf - wh as f64).abs() > 2.0 {
+        sh.log(&format!("plate: measured in a {}x{} page, the window {ww}x{wh} at {sf}: not shown", num("vw"), num("vh")));
+        return;
+    }
+    let px = |v: f64| (v * sf).round() as i32;
+    let radius = num("radius") * sf;
+    let inset = backplate::inset(radius, sf);
+    let (w, h) = (px(num("width")) - 2 * inset, px(num("height")) - 2 * inset);
+    let plate = (w > 0 && h > 0).then(|| backplate::Plate { x: ox + px(num("x")) + inset, y: oy + px(num("y")) + inset, w, h, radius, dark: r["dark"].as_bool() != Some(false) });
+    backplate::set(&sh, plate, fade);
+}
+
 // The drop pinched off: she is out, under the cursor, her middle this far
 // from it. The button is still held on the island; island_drop says when it
 // is let go.
@@ -1184,6 +1216,7 @@ fn main() {
             pet_walk_stop,
             island_holding,
             island_seat,
+            island_plate,
             island_release,
             island_drop,
             debug_result,
@@ -1421,6 +1454,7 @@ fn main() {
             spawn_named("fullscreen", move || loop {
                 let asked = fullscreen::wait(Duration::from_millis(1500));
                 watcher.look_fullscreen(asked);
+                island::look_over_max(&watcher);
             });
 
             // Endings held for a while; prompts out of time; sessions gone
