@@ -1107,10 +1107,15 @@
 
   // The layout: the one being edited, or as kept, or before any as
   // taskbarAlign had it; each part once, one it lacks (new since) where the
-  // default has it; the widgets put there (widgets.js layoutOf).
+  // default has it; the widgets put there (widgets.js layoutOf). The gear
+  // only while taskbarGear is not off (zhoupengjie/Wakuwaku#25: the
+  // settings are a press on her capsule away); turned on again, it is back
+  // where it was, or where the default has it.
   function tbLayout(saved = editLayout || config.taskbarLayout) {
     const base = saved && typeof saved === 'object' ? saved : config.taskbarAlign === 'left' ? TB_PRESETS.left : TB_PRESETS.win11
-    return Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11)
+    const layout = Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11)
+    if (config.taskbarGear === false) for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== 'gear')
+    return layout
   }
   // Which preset its parts are as ('custom': none), whatever widgets are there.
   const presetOf = layout => {

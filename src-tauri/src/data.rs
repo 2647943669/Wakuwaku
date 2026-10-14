@@ -87,6 +87,8 @@ fn defaults() -> Map<String, Value> {
         // middle of the screen or after her end (island.js alignApps).
         "taskbarButtons": "icons",
         "taskbarAlign": "center",
+        // The gear at its end (the settings are a press on her capsule away).
+        "taskbarGear": true,
         // The screen's edge it is along: bottom (Windows' own place), top,
         // left or right (side bars: an upright capsule, icons alone).
         "taskbarEdge": "bottom",

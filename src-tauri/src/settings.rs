@@ -219,7 +219,7 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
                 _ => false,
             })
         }),
-        "widgetNudge" => is_bool,
+        "widgetNudge" | "taskbarGear" => is_bool,
         // Not to be reminded that nothing is connected (island.js isHinting).
         "connectHintOff" => is_bool,
         // Her island's look on the taskbar, by Windows' mode (island.js
