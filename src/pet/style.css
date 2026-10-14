@@ -1147,21 +1147,6 @@ body {
   gap: 6px;
 }
 
-#bar-rest .gear {
-  display: flex;
-  padding: 4px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-#bar-rest .gear:hover {
-  background: #2c2c2e;
-}
-
-#bar-rest .gear .fi {
-  font-size: 15px;
-}
-
 /* The taskbar: a strip along the bottom of the screen in place of Windows'
    own (as high, 48px); her end at the left, what opens from it growing up
    into the room kept above it. Its right part is the bar's, with the Start
@@ -1322,23 +1307,6 @@ body.home-taskbar {
 
 .home-taskbar #bar-rest .faces:not(:empty) {
   margin-right: 10px;
-}
-
-/* The settings, a button like the others. */
-.home-taskbar #bar-rest .gear {
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 40px;
-  padding: 0;
-}
-
-.home-taskbar #bar-rest .gear:hover {
-  background: rgba(255, 255, 255, 0.11);
-}
-
-.home-taskbar #bar-rest .gear .fi {
-  font-size: 16px;
 }
 
 /* Show the desktop: a sliver at the screen's right edge, its line showing
@@ -2175,8 +2143,7 @@ body.home-taskbar {
 .tb-light #bar-rest .tclock:hover,
 .tb-light #bar-rest .win:hover,
 .tb-light #bar-rest .kbd .ime:hover,
-.tb-light #bar-rest .tchev:hover,
-.tb-light #bar-rest .gear:hover {
+.tb-light #bar-rest .tchev:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
@@ -2499,8 +2466,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
 .home-taskbar #bar-rest .tpriv:hover,
 .home-taskbar #bar-rest .kbd .ime:hover,
 .home-taskbar #bar-rest .tquick:hover,
-.home-taskbar #bar-rest .tclock:hover,
-.home-taskbar #bar-rest .gear:hover {
+.home-taskbar #bar-rest .tclock:hover {
   background: transparent;
   box-shadow: none;
 }
@@ -3839,12 +3805,6 @@ html.handoff-wait body.home-taskbar #island-row {
   height: 40px;
   padding: 0;
   font-size: 12px;
-}
-
-.tb-side.home-taskbar #bar-rest .gear {
-  width: 32px;
-  height: 32px;
-  margin: 2px 0;
 }
 
 /* Show the desktop: a sliver along the bar's foot, its line on its top. */

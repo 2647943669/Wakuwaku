@@ -109,8 +109,8 @@ test('a colour deepened until it reads on the light island, its hue kept', () =>
 
 // --- On the taskbar ---------------------------------------------------------------------
 
-const PARTS = ['her', 'start', 'apps', 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
-const WIN11 = { left: ['her'], center: ['start', 'apps'], right: ['monitor', 'tray', 'keys', 'quick', 'clock', 'gear'] }
+const PARTS = ['her', 'start', 'apps', 'monitor', 'tray', 'keys', 'quick', 'clock']
+const WIN11 = { left: ['her'], center: ['start', 'apps'], right: ['monitor', 'tray', 'keys', 'quick', 'clock'] }
 
 test('a widget put on the taskbar is checked as settings.rs checks it', () => {
   assert.ok(Widgets.isEntry({ id: 'wa1', type: 'widget', of: 'today', size: 'M' }))
@@ -130,14 +130,15 @@ test('a layout made whole: each part once, the missing ones where Windows has th
   const got = Widgets.layoutOf({ left: ['start', 'her', 'start', 'nope', w], right: ['clock', { ...w }, { id: 'wb', type: 'flex' }] }, PARTS, WIN11)
   assert.deepEqual(got.left, ['start', 'her', w])
   assert.deepEqual(got.center, ['apps'])
-  assert.deepEqual(got.right, ['clock', { id: 'wb', type: 'flex' }, 'monitor', 'tray', 'keys', 'quick', 'gear'])
+  assert.deepEqual(got.right, ['clock', { id: 'wb', type: 'flex' }, 'monitor', 'tray', 'keys', 'quick'])
   // A copy: changing it changes not what was kept.
   got.left[2].size = 'M'
   assert.equal(w.size, 'S')
   // Nothing kept: Windows' own.
   assert.deepEqual(Widgets.layoutOf(null, PARTS, WIN11), WIN11)
-  // A part there is no longer (the sessions' tags): dropped.
+  // A part there is no longer (the sessions' tags, the settings' gear): dropped.
   assert.deepEqual(Widgets.layoutOf({ center: ['start', 'apps', 'tags'] }, PARTS, WIN11).center, ['start', 'apps'])
+  assert.deepEqual(Widgets.layoutOf({ right: ['clock', 'gear'] }, PARTS, WIN11).right, ['clock', 'monitor', 'tray', 'keys', 'quick'])
   // 32 widgets at most.
   const many = Array.from({ length: 40 }, (_, i) => ({ id: `w${i}`, type: 'gap' }))
   assert.equal(Widgets.layoutOf({ right: many }, PARTS, WIN11).right.filter(p => typeof p !== 'string').length, 32)
@@ -146,7 +147,7 @@ test('a layout made whole: each part once, the missing ones where Windows has th
 test('a preset takes the parts, and the widgets stay in their runs', () => {
   const weather = { id: 'wa', type: 'plugin', of: 'weather' }
   const sep = { id: 'wb', type: 'sep' }
-  const old = { left: ['her', weather], center: ['start', 'apps'], right: [sep, 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear'] }
+  const old = { left: ['her', weather], center: ['start', 'apps'], right: [sep, 'monitor', 'tray', 'keys', 'quick', 'clock'] }
   const left = { left: ['her', 'start', 'apps'], center: [], right: WIN11.right }
   assert.deepEqual(Widgets.withParts(left, old), { left: ['her', 'start', 'apps', weather], center: [], right: [sep, ...WIN11.right] })
   // Which preset: by the parts alone.

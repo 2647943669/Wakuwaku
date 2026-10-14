@@ -1120,14 +1120,6 @@
     return faces
   }
 
-  // The settings: Windows' own settings cog, from its icon font (style.css .fi).
-  function gearNode() {
-    const gear = el('span', 'gear')
-    gear.dataset.bar = 'settings'
-    gear.append(el('span', 'fi', ''))
-    return gear
-  }
-
   function fillBar() {
     if (home() === 'taskbar') fillTaskbar()
   }
@@ -1348,7 +1340,6 @@
   }
   const clockBox = el('span', 'tclock')
   clockBox.dataset.bar = 'notifications'
-  const taskGear = gearNode()
   // Show the desktop: a sliver at the screen's right edge, as Windows' own (Win+D).
   const deskEdge = el('span', 'tdesk')
   deskEdge.dataset.bar = 'desktop'
@@ -1365,8 +1356,8 @@
   // the island laid over it (placeSlot), growing from it the way there is
   // room (body.isl-right: from its right edge, leftwards). Edited by
   // dragging the parts about on the strip itself (editTaskbar).
-  const TB_PARTS = ['her', 'start', 'apps', 'monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
-  const TB_RIGHT = ['monitor', 'tray', 'keys', 'quick', 'clock', 'gear']
+  const TB_PARTS = ['her', 'start', 'apps', 'monitor', 'tray', 'keys', 'quick', 'clock']
+  const TB_RIGHT = ['monitor', 'tray', 'keys', 'quick', 'clock']
   const TB_PRESETS = {
     win11: { left: ['her'], center: ['start', 'apps'], right: TB_RIGHT },
     left: { left: ['her', 'start', 'apps'], center: [], right: TB_RIGHT },
@@ -1377,7 +1368,7 @@
   // location: one part.
   const trayPart = el('span', 'tpair')
   trayPart.append(trayBox, privBox)
-  const PART_NODES = { her: herSlot, start: startButton, apps: windowsBox, monitor: facesBox, tray: trayPart, keys: keysBox, quick: quickBox, clock: clockBox, gear: taskGear }
+  const PART_NODES = { her: herSlot, start: startButton, apps: windowsBox, monitor: facesBox, tray: trayPart, keys: keysBox, quick: quickBox, clock: clockBox }
   for (const [part, node] of Object.entries(PART_NODES)) node.dataset.part = part
   const zones = { left: el('span', 'tzone tz-left'), center: el('span', 'tzone tz-center'), right: el('span', 'tzone tz-right') }
   // While the layout is being edited: the one being made, not yet kept.
@@ -1387,15 +1378,13 @@
 
   // The layout: the one being edited, or as kept, or before any as
   // taskbarAlign had it; each part once, one it lacks (new since) where the
-  // default has it; the widgets put there (widgets.js layoutOf). The gear
-  // only while taskbarGear is not off (zhoupengjie/Wakuwaku#25: the
-  // settings are a press on her capsule away); turned on again, it is back
-  // where it was, or where the default has it.
+  // default has it; the widgets put there (widgets.js layoutOf). No gear
+  // (zhoupengjie/Wakuwaku#38): the settings are a press on her capsule, or
+  // her menus', away, as Windows 11's taskbar has none; one kept in an old
+  // layout is left out, as a part no longer there.
   function tbLayout(saved = editLayout || config.taskbarLayout) {
     const base = saved && typeof saved === 'object' ? saved : config.taskbarAlign === 'left' ? TB_PRESETS.left : TB_PRESETS.win11
-    const layout = Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11)
-    if (config.taskbarGear === false) for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== 'gear')
-    return layout
+    return Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11)
   }
   // Which preset its parts are as ('custom': none), whatever widgets are there.
   const presetOf = layout => {
@@ -1670,7 +1659,7 @@
   // place, jumps rather than slides a long way, and gives a little under a
   // press. Not over what opens above the buttons, nor while a tray icon or
   // a program's button is being dragged.
-  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tclock, .gear'
+  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tclock'
   const GLIDE_FAR = 360
   const glide = el('span', 'hdrop')
   let glideOn = null
@@ -2924,11 +2913,6 @@
     trayOver = null
   })
 
-  // A press on the gear: the settings.
-  barRest.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return
-    if (e.target.closest('[data-bar="settings"]')) window.pet.openSettings()
-  })
   // The taskbar's own buttons open what Windows' do: Start, and from the
   // clock the notifications and the calendar (once the button is up).
   barRest.addEventListener('click', e => {

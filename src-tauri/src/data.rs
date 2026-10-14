@@ -88,8 +88,6 @@ fn defaults() -> Map<String, Value> {
         // middle of the screen or after her end (island.js alignApps).
         "taskbarButtons": "icons",
         "taskbarAlign": "center",
-        // The gear at its end (the settings are a press on her capsule away).
-        "taskbarGear": true,
         // The screen's edge it is along: bottom (Windows' own place), top,
         // left or right (side bars: an upright capsule, icons alone).
         "taskbarEdge": "bottom",
@@ -159,12 +157,16 @@ pub fn load(dir: &Path) -> Map<String, Value> {
     settings.remove("bubble");
     adopt_monitor(&mut settings);
     drop_part(&mut settings, "tags");
+    // The gear, gone on 2026-10-14 (zhoupengjie/Wakuwaku#38), and its switch.
+    drop_part(&mut settings, "gear");
+    settings.remove("taskbarGear");
     settings
 }
 
 // A part the taskbar no longer has taken out of a layout kept with it, the
 // rest kept as it was (the sessions' tags, gone from the taskbar on
-// 2026-10-12: settings.rs would turn down the whole layout for it).
+// 2026-10-12, and the settings' gear on 2026-10-14: settings.rs would turn
+// down the whole layout for either).
 fn drop_part(settings: &mut Map<String, Value>, part: &str) {
     if let Some(Value::Object(runs)) = settings.get_mut("taskbarLayout") {
         for run in runs.values_mut() {
@@ -411,6 +413,10 @@ mod tests {
         let mut s = settings(json!({ "taskbarLayout": { "left": ["her"], "center": ["start", "apps", "tags"], "right": [w, "clock"] } }));
         drop_part(&mut s, "tags");
         assert_eq!(s["taskbarLayout"], json!({ "left": ["her"], "center": ["start", "apps"], "right": [w, "clock"] }));
+        // The gear too (#38), wherever it was moved to.
+        let mut s = settings(json!({ "taskbarLayout": { "left": ["gear", "her"], "center": ["start", "apps"], "right": ["clock", "gear"] } }));
+        drop_part(&mut s, "gear");
+        assert_eq!(s["taskbarLayout"], json!({ "left": ["her"], "center": ["start", "apps"], "right": ["clock"] }));
         // None kept: nothing to do.
         let mut s = settings(json!({ "taskbarLayout": null }));
         drop_part(&mut s, "tags");

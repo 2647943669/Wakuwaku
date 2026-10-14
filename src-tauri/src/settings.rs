@@ -124,7 +124,7 @@ fn is_island_look(v: &Value) -> bool {
 // The taskbar's layout: { left, center, right }, each a list of its parts
 // (island.js TB_PARTS), none twice and nothing else; one left out goes where
 // the default has it.
-const TASKBAR_PARTS: [&str; 9] = ["her", "start", "apps", "monitor", "tray", "keys", "quick", "clock", "gear"];
+const TASKBAR_PARTS: [&str; 8] = ["her", "start", "apps", "monitor", "tray", "keys", "quick", "clock"];
 
 // A widget put on the taskbar (widgets.js isEntry): { id, type, of, size,
 // name, icon }, its id "w" and up to 15 of a-z 0-9; a widget's or a
@@ -224,7 +224,7 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
                 _ => false,
             })
         }),
-        "widgetNudge" | "taskbarGear" => is_bool,
+        "widgetNudge" => is_bool,
         // Not to be reminded that nothing is connected (island.js isHinting).
         "connectHintOff" => is_bool,
         // Her island's look on the taskbar, by Windows' mode (island.js
@@ -566,7 +566,7 @@ mod layout_tests {
 
     #[test]
     fn taskbar_layouts() {
-        assert!(super::is_taskbar_layout(&json!({ "left": ["her"], "center": ["start", "apps"], "right": ["monitor", "tray", "keys", "quick", "clock", "gear"] })));
+        assert!(super::is_taskbar_layout(&json!({ "left": ["her"], "center": ["start", "apps"], "right": ["monitor", "tray", "keys", "quick", "clock"] })));
         // The sessions' tags are no part any more (data.rs drops them as it reads).
         assert!(!super::is_taskbar_layout(&json!({ "center": ["start", "apps", "tags"] })));
         assert!(super::is_taskbar_layout(&json!({ "left": ["start", "apps"], "right": ["clock", "her"] })));
