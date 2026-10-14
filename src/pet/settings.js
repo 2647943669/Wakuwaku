@@ -1117,9 +1117,16 @@
     patch({ mailAgentConf: { ...all, [ag]: next } })
   }
 
-  // A little markdown, as agents write: lines, **bold**, `code`, headings,
-  // lists, quotes, ``` blocks (a reply it wrote, often). The text is escaped
-  // first.
+  // A little markdown, as agents write: lines, **bold**, *italic*, `code`,
+  // headings, lists, quotes (indented under a list item too, or within
+  // bold: **> …**), ``` blocks (a reply it wrote, often). The text is
+  // escaped first.
+  const inline = s =>
+    s
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?![*\w])/g, '$1<i>$2</i>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+
   function md(text) {
     let html = ''
     let block = null
@@ -1134,11 +1141,15 @@
         block.push(raw)
         continue
       }
-      const line = raw.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
       let m
+      if ((m = /^\s*(\*\*)?&gt;\s?(.*)$/.exec(raw))) {
+        // GitHub's [!NOTE] and the like: the quote says it already.
+        if (!/^\[!(note|tip|important|warning|caution)\]$/i.test(m[2].trim())) html += `<div class="md-q">${inline((m[1] || '') + m[2]) || '&nbsp;'}</div>`
+        continue
+      }
+      const line = inline(raw)
       if ((m = /^\s*([-*•]|\d+[.)])\s+(.*)$/.exec(line))) html += `<div class="md-li"><span>${m[1] === '*' ? '•' : m[1]}</span><span>${m[2]}</span></div>`
       else if ((m = /^#{1,4}\s+(.*)$/.exec(line))) html += `<div class="md-h">${m[1]}</div>`
-      else if ((m = /^&gt;\s?(.*)$/.exec(line))) html += `<div class="md-q">${m[1] || '&nbsp;'}</div>`
       else html += line.trim() ? `<div>${line}</div>` : '<div class="md-gap"></div>'
     }
     return block ? html + pre(block) : html

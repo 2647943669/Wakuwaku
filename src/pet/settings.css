@@ -1314,14 +1314,10 @@
   color: #34d27b;
 }
 
-/* How a letter goes to an agent: a model or an effort, picked from the menu. */
-#island-settings .agent-conf .seg {
-  flex: none;
-}
-
+/* Wide enough for 「和邮件页一样（手动）」 and Claude Sonnet 4.6 (Thinking). */
 #island-settings .pick {
   flex: none;
-  max-width: 130px;
+  max-width: 210px;
   overflow: hidden;
   padding: 4px 10px;
   border: 0;
