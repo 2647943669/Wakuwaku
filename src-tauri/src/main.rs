@@ -163,6 +163,15 @@ impl Shared {
         }
     }
 
+    // How long a session at rest stays in sight with nothing new from it (ms,
+    // 0 always): the idleHideMin setting, or WAKUWAKU_IDLE_HIDE_MS, for a
+    // test that cannot wait (state.rs is_shown).
+    pub fn idle_hide_ms(&self) -> u64 {
+        static TEST: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
+        let test = *TEST.get_or_init(|| std::env::var("WAKUWAKU_IDLE_HIDE_MS").ok().and_then(|s| s.parse().ok()));
+        test.unwrap_or_else(|| self.setting("idleHideMin").as_u64().unwrap_or(state::IDLE_HIDE_MIN) * 60 * 1000)
+    }
+
     pub fn screens(&self) -> screen::Screens {
         self.screens.lock().unwrap().clone()
     }
@@ -1477,7 +1486,7 @@ fn main() {
             });
 
             // Endings held for a while; prompts out of time; sessions gone
-            // quiet; the windows on screen.
+            // quiet, out of sight and forgotten; the windows on screen.
             let ticker = sh.clone();
             spawn_named("ticker", move || {
                 for n in 1u64.. {
@@ -1486,10 +1495,12 @@ fn main() {
                     let hold = ticker.hold();
                     if n % 2 == 0 {
                         ticker.check_quiet();
+                        let hide = ticker.idle_hide_ms();
                         let mut changed = ticker.pet.lock().unwrap().tick(now, hold);
                         if n % 120 == 0 {
                             changed |= ticker.pet.lock().unwrap().check_stale(now, hold);
                         }
+                        changed |= ticker.pet.lock().unwrap().hide_quiet(now, hide);
                         if changed {
                             ticker.redraw();
                         }

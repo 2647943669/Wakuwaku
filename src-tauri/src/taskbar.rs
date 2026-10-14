@@ -823,7 +823,9 @@ mod imp {
         }
     }
 
-    // Each session with a window of its own to go to, by that window.
+    // Each session with a window of its own to go to, by that window; one
+    // gone out of sight (state.rs is_shown) marks none, its window's button
+    // there as ever.
     fn mark_sessions(sh: &Shared) {
         let targets: Vec<(String, String, jump::Chain, Vec<String>)> = {
             let pet = sh.pet.lock().unwrap();

@@ -5,7 +5,8 @@
 //   pets      the pets downloaded, a download by link or id, the gallery
 //   look      her home (island, taskbar), size, strolls, eyes, language; Windows'
 //             own mode and accent colour
-//   alerts    how long endings stay, notifications, sound, prompts, quiet
+//   alerts    how long endings stay, and idle sessions in sight; notifications,
+//             sound, prompts, quiet
 //   widgets   plugins: the built-in ones, those she runs for you (a switch, their settings folded under), their order, turns, nudges, waku, and how to write one
 //   mail      mail accounts, and setting one up as Thunderbird does: an address and a password, the server found or typed
 //   connect   how Claude Code and Codex reach her, start at login, the hooks, about
@@ -43,6 +44,8 @@
   const HOMES = ['island', 'taskbar']
   const HOME_KEY = { island: 's.displayIsland', taskbar: 's.displayTaskbar' }
   const HOLDS = ['seen', 8, 30, 120]
+  // Minutes a session at rest stays in sight; 0 always (state.rs is_shown).
+  const IDLE_HIDES = [15, 30, 60, 120, 0]
   const WAITS = [30, 60, 120, 290]
   const SPINS = [0, 5, 8, 15]
   const ICON = {
@@ -651,8 +654,10 @@
     const s = snap.settings
     const holds = HOLDS.map(h => [h, h === 'seen' ? T('s.holdSeen') : h >= 60 ? T('settings.minutes', { n: h / 60 }) : T('settings.seconds', { n: h })])
     const waits = WAITS.map(w => [w, w >= 60 ? T('settings.minutes', { n: Math.round(w / 60) }) : T('settings.seconds', { n: w })])
+    const idles = IDLE_HIDES.map(m => [m, !m ? T('s.idleAlways') : m >= 60 ? T('s.paperHours', { n: m / 60 }) : T('s.minutesShort', { n: m })])
     const notify = s.notify || {}
     return `${sec(T('s.holdTitle'))}<div class="grp">${row(esc(T('s.hold')), '', seg('hold', holds, s.hold))}</div>
+      ${sec(T('s.idleTitle'))}<div class="grp">${row(esc(T('s.idleHide')), esc(T('s.idleHideNote')), seg('idleHideMin', idles, s.idleHideMin))}</div>
       ${sec(T('settings.notify'))}<div class="grp">
         ${row(esc(T('settings.notifyWaiting')), '', sw('notify.waiting', notify.waiting))}
         ${row(esc(T('settings.notifyDone')), '', sw('notify.done', notify.done))}
