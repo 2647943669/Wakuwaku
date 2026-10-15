@@ -169,10 +169,9 @@ ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwak
 
 支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；它自带一个运行 Claude Code hooks.json 的「兼容桥」插件（`@deepseek-ai/dsh-hooks-claude-code`）。在「连接」页的 DeepSeek Harness 一栏点「安装」：她把这个桥接进 `~/.dsh/cordis.patch.yml`（所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着），桥要运行的 hook 列表写在她的数据文件夹里（`dsh-hooks.json`）。然后**重开一次 DeepSeek Harness**，它只在启动时读这些。
 
-能做的：会话开始、干活、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、改了哪些文件、任务清单，它向你提问时显示「在等你」；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。做不到的：
+能做的：会话开始、干活、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、它最后说的话、改了哪些文件、任务清单，它向你提问时显示「在等你」；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。最后说的话不在桥给的事件里：一轮结束时，她从这个会话的记录（`~/.dsh/sessions/…/session.v4.jsonl.zstd`，Zstandard 压缩的 JSONL）末尾读出来，读不到就不显示。做不到的：
 
 - **批准还在 DSH 自己的窗口里点**：这个桥不支持 `PermissionRequest`，她不知道它在等你批准（这时岛上显示的是「在干活」）。
-- **岛上显示不了它最后说的话**：桥给的事件里没有回复，DSH 的会话记录是 Zstandard 压缩的。
 - 每一步用的什么工具不显示：DSH 用 PowerShell 跑 hook，而且是在它的沙箱里，每条大约 1 秒，所以只挂了一轮的开始和结束、改文件、任务清单、提问这几处，别的工具不挂，免得每次调用都慢一秒。
 - 新会话开始时不会把她拉起来：hook 在 DSH 的沙箱里运行，从那里启动的她什么都存不下。
 

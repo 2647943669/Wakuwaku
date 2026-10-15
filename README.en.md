@@ -171,10 +171,9 @@ ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.ex
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) is supported: the desktop app (tried with 0.2.0-rc.2) and the `dsh` CLI. DSH has no hooks file of its own, everything is a plugin; it ships a bridge plugin that runs a Claude Code hooks.json (`@deepseek-ai/dsh-hooks-claude-code`). Click Install in the DeepSeek Harness part of the Connect page: she hooks that bridge in through `~/.dsh/cordis.patch.yml` (a layer every profile applies, the desktop app's own too; backed up first, and removing takes out only our lines, which sit between `# wakuwaku begin` and `# wakuwaku end`), with the hook list it runs in her data folder (`dsh-hooks.json`). Then **restart DeepSeek Harness**, which reads these only as it starts.
 
-What works: sessions starting, working and finishing (an edit makes it "edited"), with DSH's own session name, the files changed and the to-do list on the island, "waiting for you" while it asks you a question; Today counts its turns and time; a click on its session goes to DSH's window. What doesn't:
+What works: sessions starting, working and finishing (an edit makes it "edited"), with DSH's own session name, its last words, the files changed and the to-do list on the island, "waiting for you" while it asks you a question; Today counts its turns and time; a click on its session goes to DSH's window. The last words aren't in the bridge's events: as a turn ends she reads them from the end of that session's log (`~/.dsh/sessions/…/session.v4.jsonl.zstd`, Zstandard-compressed JSONL), and shows none when they can't be read. What doesn't:
 
 - **Approvals stay in DSH's own window**: the bridge has no `PermissionRequest`, so she can't tell it is waiting for your approval (the island shows it working then).
-- **The island can't show its last words**: the bridge's events carry no reply, and DSH's session log is Zstandard-compressed.
 - Not every step's tool: DSH runs hooks through PowerShell in its sandbox, about 1 s each, so only a turn's start and end, edits, the to-do list and questions have one, to keep other tool calls from waiting a second each.
 - A new session doesn't start her: the hook runs in DSH's sandbox, and she couldn't keep anything if started from there.
 

@@ -38,6 +38,11 @@ base64 = "0.22"
 sha2 = "0.10"
 # Tauri's async runtime made with fewer threads (main.rs); already in the tree, under Tauri.
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# DeepSeek Harness's session log read for its last reply (events_dsh.rs):
+# a Zstandard decoder in plain Rust, nothing under it (no checksums: "hash"
+# off). New to the tree: 78,848 bytes of the release exe with the reading
+# of the log (11,452,416 before; 2026-10-16).
+ruzstd = { version = "=0.9.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Her tests make a connection's split fail (server.rs); her builds never have it.

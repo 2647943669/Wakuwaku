@@ -1164,7 +1164,8 @@ pub fn write_zcode_hooks(action: &str) -> Result<(), String> {
 // `@deepseek-ai/dsh` CLI) is a bridge that runs a Claude Code hooks.json's
 // command hooks (`@deepseek-ai/dsh-hooks-claude-code`): SessionStart,
 // UserPromptSubmit, PreToolUse, PostToolUse, Stop (and Subagent*), with
-// Claude Code's payloads; no PermissionRequest, no last reply, and an empty
+// Claude Code's payloads; no PermissionRequest, no last reply (read from
+// its session log instead: events_dsh.rs last_reply), and an empty
 // transcript_path (events_dsh.rs). Install inserts that bridge, pointed at
 // dsh-hooks.json in her data folder, into the home-level patch layer
 // ($DSH_HOME/cordis.patch.yml, ~/.dsh by default), which every profile
