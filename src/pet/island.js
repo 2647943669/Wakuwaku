@@ -926,9 +926,16 @@
     if (!plateSent) {
       if (resized || !plateWait) {
         plateWait?.()
+        // Opening from the capsule, the plate comes once the spring is
+        // over: the ground as solid as DEEP_OP till then (isl-firm), as
+        // while it moves, back as the plate fades in. It stood see-through
+        // and clear over the windows behind for the whole spring, then went
+        // white (zhoupengjie/Wakuwaku#43).
+        if (resized) firmGround()
         plateWait = afterSpring(() => {
           plateWait = null
           showPlate(PLATE_IN_MS)
+          softenGround(PLATE_IN_MS)
         })
       }
       return
@@ -963,17 +970,28 @@
     const inset = plateInset(Math.max(fromRadius || 0, parseFloat(island.style.borderRadius) || 0))
     const edge = moved => inset + PLATE_SLACK + SPRING_OVER * Math.abs(moved)
     const sides = [edge(to.x - from.left), edge(to.y - from.top), edge(to.x + to.width - from.right), edge(to.y + to.height - from.bottom)]
-    for (const a of island.getAnimations()) if (a.id === 'firm') a.cancel()
-    body.classList.add('isl-firm')
+    firmGround()
     sendPlate(box, sides, inset, 0)
     plateMove?.()
     plateMove = afterSpring(() => {
       plateMove = null
-      const firm = getComputedStyle(island).backgroundColor
-      body.classList.remove('isl-firm')
-      if (!stillMotion()) island.animate([{ offset: 0, backgroundColor: firm }], { id: 'firm', duration: DEEP_MS, easing: 'ease' })
+      softenGround(DEEP_MS)
       showPlate(0)
     })
+  }
+
+  // The ground as solid as DEEP_OP while the plate is not yet where the
+  // island is (isl-firm), and back over ms.
+  function firmGround() {
+    for (const a of island.getAnimations()) if (a.id === 'firm') a.cancel()
+    body.classList.add('isl-firm')
+  }
+
+  function softenGround(ms) {
+    if (!body.classList.contains('isl-firm')) return
+    const firm = getComputedStyle(island).backgroundColor
+    body.classList.remove('isl-firm')
+    if (!stillMotion()) island.animate([{ offset: 0, backgroundColor: firm }], { id: 'firm', duration: ms, easing: 'ease' })
   }
 
   // Under the island as it is now (moved: told again, no fade).
