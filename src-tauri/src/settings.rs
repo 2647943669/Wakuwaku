@@ -23,7 +23,7 @@ pub fn snapshot(sh: &Shared) -> Value {
     let (win_light, win_accent) = crate::wallpaper::look();
     // Whether either is connected, as the island tells it (connection.rs).
     let conn = connection::connection(sh.port);
-    if connection::note_connected(conn != "none" || connection::is_codex_connected() || connection::is_agy_connected()) {
+    if connection::note_connected(conn != "none" || connection::is_codex_connected() || connection::is_agy_connected() || connection::is_opencode_connected(sh.port)) {
         sh.redraw();
     }
     json!({
@@ -67,6 +67,15 @@ pub fn snapshot(sh: &Shared) -> Value {
             "fileShown": connection::shown_path(&connection::agy_hooks_file()),
             "backup": connection::backup_of(&connection::agy_hooks_file()).exists(),
             "seen": sh.agy_seen.load(Ordering::SeqCst) > 0,
+        },
+        // Our plugin in OpenCode's plugin folder (connection.rs): absent (no
+        // OpenCode here), missing, ok, stale (another port or version), and
+        // whether any of its events came since she started.
+        "opencode": {
+            "plugin": connection::opencode_status(sh.port),
+            "file": connection::opencode_plugin_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::opencode_plugin_file()),
+            "seen": sh.opencode_seen.load(Ordering::SeqCst) > 0,
         },
         // How many displays there are: her taskbar on all of them is offered
         // only with more than one (Look, taskbarDisplays).
@@ -453,6 +462,16 @@ pub async fn settings_agy_hooks(app: AppHandle, action: String) -> Value {
             let folder = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.to_string_lossy().into_owned())).unwrap_or_default();
             json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "folder": folder, "snapshot": snapshot(&sh) })
         }
+    }
+}
+
+// install, remove: our plugin in OpenCode's plugin folder.
+#[tauri::command]
+pub async fn settings_opencode(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_opencode_plugin(&action, sh.port) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 

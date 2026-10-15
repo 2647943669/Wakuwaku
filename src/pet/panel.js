@@ -2,7 +2,8 @@
 // questions from Claude Code, answered with a click (or typed). The first
 // waiting one is shown; the terminal can still answer it, whichever comes first.
 // Codex's permission prompts too (allow or deny): Codex shows its own dialog
-// only once the panel hands it over.
+// only once the panel hands it over. And OpenCode's (allow, always, deny),
+// which OpenCode asks in its own window all the while.
 //
 // Everything shown comes from the tool call, so it is set as text, never HTML.
 ;(function () {
@@ -12,6 +13,8 @@
   // its way to where the panel opens cannot answer it.
   const ARM_MS = 600
   const STEP_ARM_MS = 150
+  // Whose a prompt is, when not Claude Code's: a chip with its name.
+  const FROM = { codex: 'Codex', opencode: 'OpenCode' }
 
   const panel = document.getElementById('panel')
   let lang = 'en'
@@ -93,7 +96,7 @@
       'div',
       { class: 'head' },
       el('span', { class: 'title' }, title),
-      ask.from === 'codex' ? el('span', { class: 'chip' }, 'Codex') : null,
+      FROM[ask.from] ? el('span', { class: 'chip' }, FROM[ask.from]) : null,
       ask.project ? el('span', { class: 'chip' }, ask.project) : null,
     )
   }

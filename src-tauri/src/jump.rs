@@ -8,6 +8,8 @@
 //                 (server.rs), found in the TCP table
 //   Codex         the hook command's own parents, from Codex up, past the
 //                 shell it runs hooks in (main.rs codex_hook)
+//   OpenCode      a program connected to its background service, where her
+//                 plugin runs (front_chain): its TUI, or the run
 // Going there, while the session's own process (the chain's first) still
 // runs: the first process up the chain, still the same one, that has
 // a window of its own (or a console window, kept by a conhost under it);
@@ -234,6 +236,64 @@ mod imp {
         }
     }
 
+    // The TCP table's rows with their processes: { state, local address,
+    // local port, remote address, remote port, pid }, ports as numbers.
+    fn tcp_rows() -> Vec<[u32; 6]> {
+        let port = |v: u32| u32::from(u16::from_be(v as u16));
+        let mut size = 0u32;
+        // SAFETY: first asking the size, then filling a buffer of that size.
+        unsafe {
+            GetExtendedTcpTable(std::ptr::null_mut(), &mut size, 0, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+            let mut table = vec![0u32; size as usize / 4 + 64];
+            size = (table.len() * 4) as u32;
+            if GetExtendedTcpTable(table.as_mut_ptr().cast(), &mut size, 0, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0) != 0 {
+                return Vec::new();
+            }
+            let count = table[0] as usize;
+            table[1..].chunks_exact(6).take(count).map(|r| [r[0], r[1], port(r[2]), r[3], port(r[4]), r[5]]).collect()
+        }
+    }
+
+    // The processes connected to one that serves them on this computer
+    // (OpenCode's background service: its TUIs and runs): those on the other
+    // end of a connection to a port it listens on. Each once, itself never.
+    fn clients_of(server: u32) -> Vec<u32> {
+        const LISTEN: u32 = 2;
+        const ESTABLISHED: u32 = 5;
+        let rows = tcp_rows();
+        let ports: Vec<u32> = rows.iter().filter(|r| r[5] == server && r[0] == LISTEN).map(|r| r[2]).collect();
+        let mut out: Vec<u32> = Vec::new();
+        for r in rows.iter().filter(|r| r[0] == ESTABLISHED && r[5] != server && ports.contains(&r[4]) && r[3] == u32::from_ne_bytes([127, 0, 0, 1])) {
+            if !out.contains(&r[5]) {
+                out.push(r[5]);
+            }
+        }
+        out
+    }
+
+    // Where a session OpenCode's service runs is shown: the chain of the
+    // program connected to it whose window's title names the session or its
+    // project, else of the one started last that has a window (a run just
+    // begun, the one TUI), else of the one started last; with none connected
+    // (one run standalone serves itself), the server's own.
+    pub fn front_chain(server: u32, hints: &[&str]) -> Chain {
+        let all = processes();
+        let chain = |pid: u32| -> Chain { named_chain(pid, &all).into_iter().map(|(pid, at, _)| (pid, at)).collect() };
+        let mut chains: Vec<Chain> = clients_of(server).into_iter().map(chain).filter(|c| !c.is_empty()).collect();
+        if chains.is_empty() {
+            return chain(server);
+        }
+        // The newest first.
+        chains.sort_by_key(|c| std::cmp::Reverse(c[0].1));
+        let windows = windows();
+        let shown: Vec<(usize, isize)> = chains.iter().enumerate().filter_map(|(i, c)| window_in(c, hints, true, &all, &windows).map(|w| (i, w))).collect();
+        let named = shown.iter().find(|(_, hwnd)| {
+            windows.iter().find(|w| w.hwnd == *hwnd).is_some_and(|w| hints.iter().any(|h| !h.is_empty() && w.title.contains(h)))
+        });
+        let at = named.or(shown.first()).map_or(0, |(i, _)| *i);
+        chains.swap_remove(at)
+    }
+
     // Whether something listens on 127.0.0.1:port (or every address) now, as
     // Windows' table of them says: a hook's way to know she is up without
     // trying her port, which Windows gives up on only after 2 s when no one
@@ -362,8 +422,8 @@ mod imp {
         None
     }
 
-    // The window a process's console shows in: the console's own, or the
-    // terminal's that hosts it (it owns the console's hidden window). Never
+    // The window a process's console shows in: the terminal's that hosts it
+    // (it owns the console's window), or the console's own. Never
     // while this program has a console of its own (a debug build): it would
     // have to let go of it to look.
     fn console_window(pid: u32) -> Option<isize> {
@@ -379,11 +439,14 @@ mod imp {
             if console.is_null() {
                 return None;
             }
-            if IsWindowVisible(console) != 0 {
-                return Some(console as isize);
-            }
+            // A terminal's that owns it first: Windows Terminal 1.24's says
+            // it is visible too (seen in the test VM, 2026-10-15), and to the
+            // front it is nothing to see, its terminal left minimized.
             let owner = GetAncestor(console, GA_ROOTOWNER);
-            (!owner.is_null() && owner != console && IsWindowVisible(owner) != 0).then_some(owner as isize)
+            if !owner.is_null() && owner != console && IsWindowVisible(owner) != 0 {
+                return Some(owner as isize);
+            }
+            (IsWindowVisible(console) != 0).then_some(console as isize)
         }
     }
 
@@ -505,6 +568,9 @@ mod imp {
     pub fn client_of(_client_port: u16, _server_port: u16) -> Option<u32> {
         None
     }
+    pub fn front_chain(_server: u32, _hints: &[&str]) -> Chain {
+        Vec::new()
+    }
     pub fn is_listening(_port: u16) -> bool {
         true
     }
@@ -531,7 +597,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, hook_chain, is_listening, still_running, still_there, windows_for};
+pub use imp::{chain_of, client_of, front_chain, hook_chain, is_listening, still_running, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {

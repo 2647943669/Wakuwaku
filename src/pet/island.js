@@ -379,7 +379,7 @@
   const isHinting = () => now.unconnected === true && config.connectHintOff !== true
   // The tools on this computer by name, as one says them (main.rs: with
   // unconnected): 「Claude Code、Codex 或 Antigravity」.
-  const toolNames = () => nameList(lang, now.tools || ['Claude Code', 'Codex', 'Antigravity'], 'or')
+  const toolNames = () => nameList(lang, now.tools || ['Claude Code', 'Codex', 'Antigravity', 'OpenCode'], 'or')
   // Windows' accent as it reads on the island's ground: its light shade on a
   // dark one, its dark shade on a light one.
   const hintAccent = () => (isLight() ? look.accent?.dark || '#0067c0' : look.accent?.light || '#4cc2ff')

@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
 ## 她能做什么
 
-- **认识你所有 AI 会话。** Claude Code 和 Codex 在干什么、跑了多久，任务栏最左边的胶囊里一眼看到。同时开好几个也分得清。
+- **认识你所有 AI 会话。** Claude Code、Codex、Antigravity 和 OpenCode 在干什么、跑了多久，任务栏最左边的胶囊里一眼看到。同时开好几个也分得清。
 - **要批准？任务栏上点一下。** 允许、以后都允许、拒绝，回答 Claude 的问题，批准计划。终端那边照常弹，谁先答算谁的。
 - **做完了自己弹出来。** 改了几个文件、Claude 回了什么，都写在上面。点一下会话，直接跳到它的窗口：终端、VS Code，或者 Claude 桌面版。
 - **和 Windows 11 一样顺手。** 开始按钮、固定的程序、窗口缩略图、托盘、输入法、快速设置、时钟，用的都是 Windows 自己的图标和面板。
@@ -84,6 +84,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
   - `claude -p` 这类非交互模式会先等 hook 回复再做决定，没人点的话最多会卡到面板等待时间结束。
   - MCP 弹出的表单（Elicitation）只做提醒。
 - Codex 的授权请求也会弹到面板上，但只有**允许** / **拒绝**（Codex 不接受 hook 加规则）。Codex 要等面板交出才会弹自己的确认框，所以面板最多等 1 分钟；想在终端里答，点「去终端处理」。
+- OpenCode 要你批准时也会弹到面板上：**允许** / **以后都允许** / **拒绝**。OpenCode 自己同时也在问，两边哪边先答算哪边的；「以后都允许」由 OpenCode 记在这个项目里。
 
 ## 安装
 
@@ -134,6 +135,14 @@ Codex 桌面版里装过的宠物（`~/.codex/pets`）格式相同，会直接�
 和 Claude Code 的区别：Antigravity 没有「等你批准」的事件，所以她能跟着开始、干活、调用工具、做完和出错，但提醒不了批准，也不能在她这里确认。
 
 Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：程序的路径里有空格时，用它的 8.3 短路径写进去；连短路径也没有（有的盘关掉了短文件名），就装不上，把程序放到路径没有空格的文件夹即可。agy 每一步都会等 hook 跑完，大约 0.1–0.2 秒。
+
+### 5. 连上 OpenCode（可选）
+
+支持 [OpenCode](https://opencode.ai/) 2.0 或更新的版本。在「连接」页的 OpenCode 一栏点「安装」，会在 OpenCode 的插件文件夹里放一个 `wakuwaku.js`（`~/.config/opencode/plugins/`；设了 `OPENCODE_CONFIG_DIR` 或 `XDG_CONFIG_HOME` 时跟着 OpenCode 自己找；移除时删掉它）。OpenCode 会自己载入，已经开着的也一样，不用重开。
+
+她能跟着开始、干活、调用工具、做完和出错，显示最后的回复，「今天」也算上它的轮数；OpenCode 要你批准时，面板上能允许、以后都允许或拒绝，OpenCode 自己同时也在问，先答的算。子代理的会话不单独显示，它要的批准算在主会话上。点会话会跳到 OpenCode 所在的终端（同时开着几个 OpenCode 时可能跳错）。
+
+和 Claude Code 的区别：OpenCode 的会话跑在它的后台服务里，插件也在那里，直接把事件发到她的端口，不运行任何程序；所以 OpenCode 不会把她叫醒（打开「开机自动启动」就行），她没开时插件什么都不做，OpenCode 照常自己问。「今天的 token」还不算 OpenCode 的。
 
 ### 从源码运行
 
@@ -209,7 +218,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：在 OpenCode 一栏点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
@@ -221,6 +230,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 Claude Code ──HTTP hooks──▶ 宠物窗口 (127.0.0.1:47213/hook)
             └─SessionStart─▶ 程序本身 --wakuwaku-ensure-running（后台运行，她没开就启动）
 Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ 宠物窗口 (/hook?agent=codex)
+OpenCode ──它后台服务里的插件 wakuwaku.js──▶ 宠物窗口 (/hook?agent=opencode)
 ```
 
 - 所有事件都用 Claude Code 的 **HTTP hook** 直接发给她，调用工具时不启动任何进程（本机实测每次约 0.3ms）。她立刻回 `{}`，表示不做任何决定；只有确认请求会等你在面板上点了再回。
@@ -232,6 +242,7 @@ Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ �
 | `WAKUWAKU_PORT` | 换端口（默认 47213），她和 hooks 两边都要设 |
 | `CLAUDE_CONFIG_DIR` | Claude Code 的配置目录不在 `~/.claude` 时 |
 | `CODEX_HOME` | Codex 的配置目录不在 `~/.codex` 时 |
+| `OPENCODE_CONFIG_DIR`、`XDG_CONFIG_HOME` | OpenCode 的配置目录不在 `~/.config/opencode` 时（和 OpenCode 自己一样找） |
 
 ## 测试
 

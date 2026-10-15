@@ -271,7 +271,7 @@
           .map(x => {
             const name = Status.nameOf(x, detailed)
             const what = [
-              x.agent === 'codex' ? 'Codex' : x.agent === 'agy' ? 'Antigravity' : '',
+              ({ codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode' })[x.agent] || '',
               Status.status(lang, x, { detailed, withClock: false }),
               detailed && x.name && x.project !== name ? x.project : '',
               detailed && Status.isEnding(x) ? x.reply : '',
@@ -1869,9 +1869,27 @@
         : ['ok', 'stale', 'off'].includes(agy.hooks)
           ? `<button class="pbtn" data-agy="install">${esc(T(agy.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-agy="remove">${esc(T('settings.remove'))}</button>`
           : ''
+    // OpenCode: our plugin in its plugin folder (OpenCode 2), which it loads by itself.
+    const oc = snap.opencode || {}
+    const ocConn = opencodeIn() && oc.seen ? 's.opencodeConnOk' : oc.plugin === 'ok' ? 's.opencodeConnWait' : opencodeIn() ? 's.opencodeConnRepair' : 's.opencodeConnNone'
+    const ocColor = ocConn === 's.opencodeConnOk' ? COLOR.done : opencodeIn() ? COLOR.waiting : COLOR.idle
+    const ocWord = {
+      ok: 'settings.hooksOk',
+      missing: 'settings.hooksMissing',
+      stale: 's.opencodeStale',
+      unreadable: 's.opencodeUnreadable',
+      absent: 's.opencodeAbsent',
+    }[oc.plugin]
+    const ocButtons =
+      oc.plugin === 'missing'
+        ? `<button class="pbtn" data-opencode="install">${esc(T('settings.install'))}</button>`
+        : opencodeIn()
+          ? `<button class="pbtn" data-opencode="install">${esc(T(oc.plugin === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-opencode="remove">${esc(T('settings.remove'))}</button>`
+          : ''
     return `${sec(T('s.status'))}<div class="grp"><div class="r"><span class="dot" style="background:${isOk ? COLOR.done : snap.connection === 'both' ? COLOR.waiting : COLOR.idle}"></span><div class="grow">${esc(T(conn))}</div><span class="d">${esc(T('s.sessionsOnline', { n: sessions }))}</span></div>
         <div class="r"><span class="dot" style="background:${codexColor}"></span><div class="grow">${esc(T(codexConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${agyColor}"></span><div class="grow">${esc(T(agyConn))}</div></div></div>
+        <div class="r"><span class="dot" style="background:${agyColor}"></span><div class="grow">${esc(T(agyConn))}</div></div>
+        <div class="r"><span class="dot" style="background:${ocColor}"></span><div class="grow">${esc(T(ocConn))}</div></div></div>
       ${sec(T('home.plugin'))}<div class="grp"><div class="note">${esc(T('home.pluginWhy'))}</div>
         ${snap.pluginCommands.map(c => `<div class="r"><span class="cmd mono">${esc(c)}</span><button class="pbtn" data-copy="${esc(c)}">${esc(T('home.copy'))}</button></div>`).join('')}
       </div>
@@ -1889,6 +1907,10 @@
       ${sec(T('s.agy'))}<div class="grp">
         <div class="note">${esc(T('s.agyWhy'))}</div>
         <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(agyWord))}</div><div class="d mono ellip">${esc(agy.file || '')}</div></div>${agyButtons}</div>
+      </div>
+      ${sec(T('s.opencode'))}<div class="grp">
+        <div class="note">${esc(T('s.opencodeWhy'))}</div>
+        <div class="r"><div class="grow"><div>${esc(T('s.opencodePlugin'))}: ${esc(T(ocWord))}</div><div class="d mono ellip">${esc(oc.file || '')}</div></div>${ocButtons}</div>
       </div>
       ${sec(T('settings.about'))}<div class="grp">
         <div class="r"><div class="grow">${esc(T('s.version', { version: snap.version }))}</div><span class="link" data-site="repo">${esc(T('home.repo'))} ›</span></div>
@@ -1977,22 +1999,24 @@
   // 不用提醒) and nothing connected: the welcome folded to one row at the
   // page's top; opened again by its 去连接, or by asking for connecting.
   let welcomeOpen = false
-  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' }
+  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode' }
   // What each one's buttons say they are for (the handlers below).
-  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy' }
+  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy', opencode: 'data-opencode' }
   const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
   const claudeIn = () => snap.connection !== 'none'
   const agyIn = () => ['ok', 'stale'].includes(snap.agy?.hooks)
-  const anyIn = () => claudeIn() || codexIn() || agyIn()
+  const opencodeIn = () => ['ok', 'stale'].includes(snap.opencode?.plugin)
+  const anyIn = () => claudeIn() || codexIn() || agyIn() || opencodeIn()
   const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !anyIn()
   const showWelcome = () => !anyIn() || !snap.settings.onboarded
 
   // The ones on this computer, in this order: Claude Code by its folder (or
-  // connected), Codex and Antigravity by theirs. None found: all (it cannot
-  // be told).
+  // connected), Codex, Antigravity and OpenCode by theirs. None found: all
+  // (it cannot be told).
   function toolsHere() {
-    const here = ['claude', 'codex', 'agy'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap[tool]?.hooks !== 'absent'))
-    return here.length ? here : ['claude', 'codex', 'agy']
+    const isHere = tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : tool === 'opencode' ? snap.opencode?.plugin !== 'absent' : snap[tool]?.hooks !== 'absent')
+    const here = ['claude', 'codex', 'agy', 'opencode'].filter(isHere)
+    return here.length ? here : ['claude', 'codex', 'agy', 'opencode']
   }
 
   // Their names as one says them: 「A、B 或 C」, "A, B and C".
@@ -2005,6 +2029,7 @@
     if (tool === 'claude' && claudeIn()) return snap.claudeSeen || snap.connection === 'plugin' ? 'seen' : 'set'
     if (tool === 'codex' && codexIn()) return snap.codex?.seen ? 'seen' : 'set'
     if (tool === 'agy' && agyIn()) return snap.agy?.seen ? 'seen' : 'set'
+    if (tool === 'opencode' && opencodeIn()) return snap.opencode?.seen ? 'seen' : 'set'
     return failed[tool] ? 'failed' : 'none'
   }
 
@@ -2031,7 +2056,12 @@
 
   // The file each one's hooks go in, as read (~ for the home folder), and its name.
   const toolFile = tool =>
-    ({ claude: snap.settingsShown || snap.settingsFile, codex: snap.codex?.fileShown || snap.codex?.file, agy: snap.agy?.fileShown || snap.agy?.file })[tool] || ''
+    ({
+      claude: snap.settingsShown || snap.settingsFile,
+      codex: snap.codex?.fileShown || snap.codex?.file,
+      agy: snap.agy?.fileShown || snap.agy?.file,
+      opencode: snap.opencode?.fileShown || snap.opencode?.file,
+    })[tool] || ''
 
   // Under the buttons: what each still needs (Claude Code and Antigravity
   // where it was written, and undone), or why it could not be written.
@@ -2045,13 +2075,16 @@
       return `<div class="wc-tnote"><div>${T(tool === 'claude' ? 'wc.claudeLeft' : 'wc.agyLeft')}</div><div class="wc-where">${where}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
     }
     if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
+    if (tool === 'opencode' && state === 'set') {
+      return `<div class="wc-tnote"><div>${T('wc.opencodeLeft')}</div><div class="wc-where">${T('wc.created', { path: mono(file) })}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
+    }
     if (state !== 'failed') return ''
     const { error, kind, folder } = failed[tool]
     // Her folder's path has a space, which agy can't run: not a file not
     // written, but where she is (the appearance session's words).
     if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name: TOOL[tool] }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
-    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: tool === 'claude' ? 'settings.json' : 'hooks.json' }))}</b></div>
+    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: { claude: 'settings.json', opencode: 'wakuwaku.js' }[tool] || 'hooks.json' }))}</b></div>
         <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
   }
 
@@ -2079,7 +2112,9 @@
     const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
     // A nudge to approve only where one of them can ask (Antigravity can not).
     const sub = `${T('wc.sub1')}${tools.some(tool => tool !== 'agy') ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
-    const safe = [many ? 'wc.safeMany' : `wc.safe.${tools[0]}`, 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
+    // OpenCode alone: a file of ours, nothing backed up, and she is not woken by it.
+    const safeKeys = many ? ['wc.safeMany', 'wc.safe2', 'wc.safe3'] : tools[0] === 'opencode' ? ['wc.safe.opencode', 'wc.safeOc2', 'wc.safeOc3'] : [`wc.safe.${tools[0]}`, 'wc.safe2', 'wc.safe3']
+    const safe = safeKeys.map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
     // Claude Code's plugin, while it is here and not written.
     const commands = snap.pluginCommands || []
     const plugBody = pluginOpen
@@ -2631,6 +2666,22 @@
         connecting = ''
         snap = got.snapshot
         if (action === 'install' && !got.ok) failed.codex = { error: got.error || '', kind: got.kind || 'other' }
+        draw()
+        relayout()
+      })
+    }
+    const opencode = at('[data-opencode]')
+    if (opencode) {
+      const action = opencode.dataset.opencode
+      if (action === 'install') {
+        connecting = 'opencode'
+        delete failed.opencode
+        draw()
+      }
+      return window.pet.settings.opencode(action).then(got => {
+        connecting = ''
+        snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.opencode = { error: got.error || '', kind: got.kind || 'other' }
         draw()
         relayout()
       })

@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
 ## What she can do
 
-- **She knows all your AI sessions.** What Claude Code and Codex are doing, and for how long, right in the capsule at the taskbar's left end. Several at once, each kept apart.
+- **She knows all your AI sessions.** What Claude Code, Codex, Antigravity and OpenCode are doing, and for how long, right in the capsule at the taskbar's left end. Several at once, each kept apart.
 - **Needs your OK? Click it on the taskbar.** Allow, always allow, deny; answer Claude's questions; approve a plan. The terminal asks too, and whichever answers first counts.
 - **Done, and she tells you.** How many files changed and what Claude said. Click a session to go straight to its window: a terminal, VS Code, or the Claude desktop app.
 - **As easy as Windows 11's own.** Start, pinned programs, window thumbnails, the tray, the input method, quick settings, the clock, all with Windows' own icons and flyouts.
@@ -86,6 +86,7 @@ Each pet has 11 animations, and every one of them has a job:
   - Non-interactive runs such as `claude -p` wait for the hook before deciding, so with nobody clicking they wait until the panel gives up.
   - MCP forms (Elicitation) are announced, not filled in.
 - Codex's permission prompts come to the panel too, with **Allow** / **Deny** only (Codex takes no rules from a hook). Codex shows its own dialog only once the panel lets go, so the panel waits 1 minute at most; to answer in the terminal, click Handle in terminal.
+- OpenCode's permission asks come to the panel too: **Allow** / **Always allow** / **Deny**. OpenCode asks in its own window at the same time, and the first answer counts; OpenCode keeps an "always" for that project.
 
 ## Install
 
@@ -136,6 +137,14 @@ Google's Antigravity is supported: the `agy` CLI and the Antigravity 2.0 desktop
 How it differs from Claude Code: Antigravity has no "needs your approval" event, so she follows its sessions starting, working, using tools, finishing and failing, but can't remind you to approve, and you can't approve on her.
 
 Antigravity hooks can only be commands, run by `cmd` without reading quotes: if the app's path has a space, its 8.3 short path is written instead; with no short path either (some drives have short names turned off), installing fails, and moving the app to a folder with no spaces in its path fixes it. agy waits for the hook at each step, about 0.1–0.2 s.
+
+### 5. Connect OpenCode (optional)
+
+[OpenCode](https://opencode.ai/) 2.0 or later is supported. Click Install in the OpenCode part of the Connect page: it puts a `wakuwaku.js` in OpenCode's plugin folder (`~/.config/opencode/plugins/`; with `OPENCODE_CONFIG_DIR` or `XDG_CONFIG_HOME` set, wherever OpenCode itself looks; Remove deletes it). OpenCode loads it by itself, even while it runs; nothing to restart.
+
+She follows its turns starting, working, using tools, finishing and failing, shows the last reply, and Today counts its turns; when OpenCode asks for your approval, the panel can allow, always allow or deny, while OpenCode asks in its own window too, and the first answer counts. Sub-agents' sessions aren't shown on their own; what they ask for comes under their main session. Clicking a session goes to the terminal OpenCode runs in (with several OpenCodes open it may pick the wrong one).
+
+How it differs from Claude Code: OpenCode runs its sessions in a background service, and the plugin there sends their events straight to her port, with no program of hers run; so OpenCode doesn't wake her (turn on Start at login), and with her not running the plugin does nothing and OpenCode asks as usual. Today's tokens don't count OpenCode's yet.
 
 ### From source
 
@@ -211,7 +220,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 ### Uninstall
 
 1. If you turned on **Start at login**, turn it off on the Connect page (the `Wakuwaku` Run entry and the `Wakuwaku at logon-…` task both go).
-2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`.
+2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`. With OpenCode: click Remove in its part; it deletes `~/.config/opencode/plugins/wakuwaku.js`.
 3. Quit her, then delete the exe or the project folder. Notifications register her name in `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`; delete that key too.
 4. Delete her settings and downloaded pets: the `wakuwaku-data` folder beside the exe, or the project's `data/` when run from source.
 
@@ -223,6 +232,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 Claude Code ──HTTP hooks──▶ the pet (127.0.0.1:47213/hook)
             └─SessionStart─▶ the app itself --wakuwaku-ensure-running (in the background; starts her if she's not up)
 Codex ──command hooks──▶ the app itself --wakuwaku-codex-hook ──▶ the pet (/hook?agent=codex)
+OpenCode ──the plugin wakuwaku.js in its background service──▶ the pet (/hook?agent=opencode)
 ```
 
 - Every event is a Claude Code **HTTP hook** sent straight to her, so a tool call starts no process (about 0.3 ms here). She answers `{}` at once, meaning no decision; only a prompt waits until you answer on the panel.
@@ -234,6 +244,7 @@ Codex ──command hooks──▶ the app itself --wakuwaku-codex-hook ──�
 | `WAKUWAKU_PORT` | Another port (default 47213); set it for both her and the hooks |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config folder, when it isn't `~/.claude` |
 | `CODEX_HOME` | Codex's config folder, when it isn't `~/.codex` |
+| `OPENCODE_CONFIG_DIR`, `XDG_CONFIG_HOME` | OpenCode's config folder, when it isn't `~/.config/opencode` (found as OpenCode finds it) |
 
 ## Tests
 

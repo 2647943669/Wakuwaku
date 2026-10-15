@@ -43,7 +43,7 @@ src-tauri/
     pointer.rs            两个窗口共用的点击穿透
     screen.rs             各个显示器的工作区
     asks.rs               确认请求：显示什么、每个选择回给 Claude Code 什么、排队和超时
-    connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json（安装 / 移除 / 状态）、开机自启
+    connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json、Antigravity 的 hooks.json、OpenCode 的插件文件（安装 / 移除 / 状态）、开机自启
     logon.rs              开机自启的计划任务（任务栏模式，Task Scheduler 的 COM）、这次登录是什么时候
     fetch.rs              codex-pets.net：解析地址、下载宠物、图库
     fullscreen.rs         别的程序是否全屏（user32）
@@ -62,12 +62,14 @@ src-tauri/
     state.rs              状态机：按会话记 mood、名字、在跑的工具、任务清单、改过的文件、结果，挑最需要你的那个显示
     events.rs             Claude Code 的 hook 事件 → 消息；会话名（session_title 或会话记录）、项目名（git 仓库名）
     events_codex.rs       Codex 的 hook 事件 → 消息（步骤、任务、回复、项目名的说法用 events.rs 的）
+    events_opencode.rs    OpenCode 插件发来的事件 → 和 Claude Code 一样名字的 hook 事件（确认、找窗口用）→ 消息
     data.rs               数据目录、设置读写、已下载的宠物和 Codex 的宠物
     detach.rs             她启动的进程：更新、重启、守护进程按普通方式启动；hook 拉起她、启动时自查要脱离启动者的作业，作业不放行时才以资源管理器为父进程
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
   capabilities/           页面能用的 Tauri 权限：两个窗口都要列进去
   vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic（见 README.md）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
+integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装时写上端口放进 OpenCode 的插件文件夹）
 .claude-plugin/           插件市场入口 marketplace.json（位置是 Claude Code 规定的）
 scripts/make-icons.js     画图标（node + ImageMagick），输出提交在 src-tauri/icons
 test/                     页面的单元测试（node --test，不需要 npm install）；fake-imap.js、fake-smtp.js 是试邮件用的假 IMAP、SMTP 服务器；fake-relay.js 是假的崩溃报告中转；fake-lhm.js 是假的 LibreHardwareMonitor 网页服务器
@@ -138,6 +140,18 @@ Codex（CLI 0.114 起）的 hooks 和 Claude Code 很像，但**只有 command �
 
 Codex 桌面版的宠物在 `~/.codex/pets/<id>/`（`pet.json` + `spritesheet.webp`，格式和 codex-pets.net 下载的一样），`data.rs` 把它排在自己的宠物之后一起读，只读不写，也不替它建文件夹。
 
+## OpenCode
+
+OpenCode 2（zhoupengjie/Wakuwaku#31；2026-10-15 在测试机的 2.0.29 上做的、测的）没有命令式的 hooks，靠 JavaScript 插件，而且插件跑在它的**后台服务**（`opencode serve --service`，第一次用时起来，之后一直在）里，不在终端的 TUI 里；TUI、`opencode run`、`opencode api` 都是连服务的客户端。1.x 文档里的写法（导出函数、返回 `event` / `tool.execute.*` 钩子）2.0 不认：2.0 的插件是默认导出 `{ id, setup(ctx) }`（`packages/core/src/plugin/module.ts`；也可以是 Effect 写法的 `effect`），`setup` 拿到的 `ctx` 有 `location`（这一份插件管的文件夹）、`event.subscribe()`（事件流）、`permission.reply()` 等。
+
+- **装在哪**：`<配置文件夹>/plugins/` 里的 `.js` / `.ts` 自动载入，文件一变就重新载入，正在跑的服务也是（`PluginSourceDirectory`；`plugin/` 也算）。配置文件夹：`OPENCODE_CONFIG_DIR`，否则 `$XDG_CONFIG_HOME/opencode`，否则 `~/.config/opencode`（Windows 也是）。`opencode debug paths` 能看到。`connection.rs` 的 OpenCode 部分把 `integrations/opencode/wakuwaku.js`（`include_str!` 打进 exe）写成 `plugins/wakuwaku.js`，把模板里唯一的 `const PORT = 47213` 换成她的端口；状态 `ok`（和这份程序会写的一样，不管换行）、`stale`（端口或版本不同：修复）、`missing`、`absent`（配置文件夹和 `~/.local/share/opencode` 都没有）、`unreadable`。认"是我们的"靠第一行 `// wakuwaku-opencode-plugin`；同名的别人的文件先备份成 `.wakuwaku.bak` 再覆盖，移除时不删别人的。
+- **一个文件夹一份**：服务给它工作过的每个文件夹（Location）各载入一份插件，模块各自求值，状态不共享；但事件总线是全局的，每一份都收到所有文件夹的事件。所以每一份只报自己文件夹的会话：带 `location` 的事件看 `location.directory`，不带的（`session.execution.*` 就不带）看会话是不是已经在这个文件夹见过。
+- **报什么**：插件把事件原样（`{ type, ...data }`）POST 到 `/hook?from=wakuwaku&agent=opencode`，再加上只有它知道的：`directory`、会话名（`session.created` / `session.renamed` 的 `title`）、这一轮你说的话（`session.inbox.enqueued` 里 user 的文字，在 `session.execution.started` 时带上）、工具调用的工具名（`session.tool.input.started` 的 `name`，按调用 id 记着，给 `tool.called` / `tool.success` / `tool.failed` / `permission.asked`）、这一轮最后一段文字（`session.text.ended`，在 `session.execution.succeeded` 时带上）。子 agent 的会话（`session.created` 带 `parentID`）不单独报，它要的确认按主会话报，带 `agentID`。按顺序一条一条发，每条最多等 2 秒；没人应答（她没开）就 5 秒内什么都不发，不会排着队等，也不会影响 OpenCode。
+- **翻译**：`events_opencode.rs` 的 `normalize` 先换成 Claude Code hook 的名字和字段（`session.created` → SessionStart、`execution.started` → UserPromptSubmit、`tool.called` / `success` / `failed` → Pre / PostToolUse(Failure)、`permission.asked` → PermissionRequest、`permission.replied` → PermissionReplied、`execution.succeeded` / `failed` / `interrupted` → Stop / StopFailure / Interrupt、`session.deleted` → SessionEnd、`form.created`（它的 question 工具）→ 等你），确认和找窗口都按这些名字读；工具按 Claude Code 的叫法（shell → Bash、edit → Edit、write → Write、patch → apply_patch、read、glob、grep、webfetch、websearch、subagent → Agent、skill）。被你拒掉的调用 2.0.29 报成 `tool.failed`（`aborted`，"The user declined this tool call"），不算工具失败；这一轮随后 `interrupted`，算停下。`superseded`（被新的一轮顶掉）不改状态。错误类型 `provider.auth` / `rate-limit` / `quota` / `internal` / `invalid-request` / `unknown` 换成她的 `error.*`，其余显示原话的第一行。
+- **确认**：OpenCode 自己一直在问（TUI 里），她的面板和它同时问，先答的算。在她身上答：插件拿到 `{ decision: "once" | "always" | "reject" }`，用 `ctx.permission.reply` 回给 OpenCode（必须是那个文件夹的那份插件：确认挂在 Location 上）。"以后都允许"只在请求带 `save`（比如 `echo *`）时有，OpenCode 把它记在这个项目里。去终端处理、超时（290 秒）、看不见、勿扰：回 `{}`，插件什么都不做，OpenCode 那边照常等你。在 OpenCode 里先答了：`permission.replied` 按请求 id 关掉她的。OpenCode 会同时问几个调用，所以同一个会话的新请求不关掉旧的。插件把一个请求先压 0.4 秒，这期间已经答了的（`opencode run` 不能问人，会立刻拒掉）不交给她，免得白叫你一声。她没开：OpenCode 照常自己问。
+- **没有的**：OpenCode 不会把她叫醒（插件不知道 exe 在哪，也不该从服务里起进程），靠开机自启；今天的 token 不算 OpenCode 的（它记在 `~/.local/share/opencode/opencode.db`，`session.step.ended` 里也有用量，可以另做）；1.x 的 OpenCode 不认这个插件。
+- **测试**：`opencode run` 遇到确认会自己拒掉（noninteractive.ts：不能问人），测不了确认；用 `opencode api` 走服务：`POST /api/session`（`{ location: { directory }, model, permissions: [{ action: "shell", resource: "*", effect: "ask" }] }` 让这个会话每条命令都问）、`POST /api/session/<id>/prompt`（`{ text }`）、`GET /api/session/<id>/permission`、`POST /api/session/<id>/permission/<请求 id>/reply`（`{ decision }`，就是 TUI 答的那一下）。`test/opencode.test.js` 用假的她和假的 `ctx` 测插件本身（端口换掉，不会打到真的她）。
+
 ## 消息
 
 hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，`/state` 也收这个格式：
@@ -158,7 +172,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 | `todo` | 任务清单的变化：TodoWrite 给 `{ set }`，TaskCreate / TaskUpdate 给 `{ add }` / `{ update }` |
 | `file` | 刚改过的文件（这一轮改了几个文件） |
 | `reply` / `error` | Stop / StopFailure 的 `last_assistant_message` 摘前一两句；StopFailure 的 `error`（`error.*`）或 `error_details` |
-| `agent` / `turn` | Codex 的消息带 `agent: "codex"` 和回合 id（见上面的 Codex 一节） |
+| `agent` / `turn` | Codex 的消息带 `agent: "codex"` 和回合 id（见上面的 Codex 一节）；Antigravity 的 `"agy"`，OpenCode 的 `"opencode"` |
 
 **会话名**：hook 自带的 `session_title`（只有 UserPromptSubmit、SessionStart 带，而且只是自定义标题：`/rename` 或桌面版起的名字）；没有时，在一轮开始和结束时读 `transcript_path` 末尾 256 KB 里最后一条 `custom-title`，没有再用 `ai-title`。**项目名**：从 `cwd` 往上找 `.git`，是目录就取它所在文件夹的名字；是文件（worktree）就按里面的 `gitdir: <仓库>/.git/worktrees/<名字>` 取仓库名；不在 git 里就用 `cwd` 的文件夹名。按 `cwd` 缓存。
 
@@ -173,7 +187,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 | 请求 | 说明 |
 | --- | --- |
 | `GET /health` | `{ ok, app: "wakuwaku", runtime: "tauri", state }`；调试模式下还有 `window`、`island`、`settings` |
-| `POST /hook` | Claude Code 的 hook 事件；一般立刻回 `{}`，`PermissionRequest` 等面板上的回答。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来） |
+| `POST /hook` | Claude Code 的 hook 事件；一般立刻回 `{}`，`PermissionRequest` 等面板上的回答。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来），`?agent=opencode` 的是 OpenCode 里她的插件发来的（见 OpenCode 一节） |
 | `POST /state` | 一条消息 |
 | `POST /widget` | 岛上的一个插件（见"岛上的插件"）；回 `{ ok: true }`，或者 400 和 `{ error }` |
 | `POST /come-home` | 再次启动时用：她重新出现 |
@@ -194,7 +208,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 | 回答问题 | `{ behavior: "allow", updatedInput: { ...tool_input, answers } }`；选项、自己输入的文字、数字题都按题目文字作键 |
 | 去终端处理 / 超时 / 终端已答 / 勿扰 / 全屏 | `{}` |
 
-面板什么时候收起：同一个调用的 `PostToolUse` / `PostToolUseFailure` 到达（比较输入时忽略 `answers`）；同一个会话的 `UserPromptSubmit`、`Stop`、`StopFailure`、`SessionEnd`、`Interrupt`（Codex）；同一个 agent 又来了新请求；等待时间到。每个请求怎么结束的，日志里都有一行：`answer N`（在她身上答的）、`prompt N handed to the terminal: its time is up`（超时）、`… asked to on her`（去终端处理）、`prompt N settled in the terminal (事件名)`（终端已答）、`… out of sight`（看不见）。`asks.rs` 的 `expire` 和 `seen` 返回结束了的 id，供调用的地方写日志。以前超时、终端已答都不写，等满 290 秒退回终端的那次在日志里看不出来（2026-10-13 测试会话）。
+面板什么时候收起：同一个调用的 `PostToolUse` / `PostToolUseFailure` 到达（比较输入时忽略 `answers`）；同一个会话的 `UserPromptSubmit`、`Stop`、`StopFailure`、`SessionEnd`、`Interrupt`（Codex、OpenCode）；OpenCode 的：它那边已答（`PermissionReplied`，按请求 id）、同一个调用（按 `tool_use_id`）结束；同一个 agent 又来了新请求（OpenCode 除外：它会同时问几个调用，各自等）；等待时间到。每个请求怎么结束的，日志里都有一行：`answer N`（在她身上答的）、`prompt N handed to the terminal: its time is up`（超时）、`… asked to on her`（去终端处理）、`prompt N settled in the terminal (事件名)`（终端已答）、`… out of sight`（看不见）。`asks.rs` 的 `expire` 和 `seen` 返回结束了的 id，供调用的地方写日志。以前超时、终端已答都不写，等满 290 秒退回终端的那次在日志里看不出来（2026-10-13 测试会话）。
 
 面板在哪：灵动岛模式在岛里（岛的 `ask` 形状）；设置开着时是设置里的横幅（`panel.js` 的 `holdsPanel()` 看 `settingsOpen`）；只有宠物时在她头顶，她的窗口向上、向两侧长大，她本人不动（`pet.rs` 的 `set_panel`，挡在屏幕边上时用 `pet:shift` 把她挪回原位）。
 
@@ -205,9 +219,10 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 **会话在哪个进程里**（`state.rs` 的 `chain`，消息里是 `[[pid, 启动时间], …]`）：
 - Claude Code 的 HTTP hook：`server.rs` 用请求的对端端口查 TCP 表（`GetExtendedTcpTable`），连接另一头就是 Claude Code 自己的进程，再往上找父进程。会话还没有进程链、或者一轮开始（UserPromptSubmit / SessionStart，可能换了进程续上）时才查。
 - Codex：hook 命令（`--wakuwaku-codex-hook`）在自己里面算好父进程链，跳过它自己和 Codex 用来跑它的 shell，从 Codex 开始，放进事件的 `wakuwaku_chain` 字段。
+- OpenCode：插件在它的后台服务（`opencode serve --service`，没有窗口）里，连接另一头是服务。`jump.rs` 的 `front_chain` 再查 TCP 表里连着服务监听端口的进程（它的 TUI、`opencode run`、`opencode api`），取窗口标题带会话名或项目名的那个，没有就取最新启动、找得到窗口的那个（刚开始的 run、唯一的 TUI），再没有就取最新的；一个都没有（`--standalone` 自己当服务）就是服务自己的链。同时开着几个 TUI 时可能认错（OpenCode 2.0.29 的 TUI 标题都是「OpenCode」）。
 - 每个进程都记启动时间，父进程不会比子进程晚启动：对不上的就是 pid 被复用了。走到 explorer、sihost、svchost 这类所有程序都在其下的进程就停。
 
-**找哪个窗口**：会话自己的进程（链的第一个）还在才算（桌面版的会话除外，见下）。然后沿着链往上，第一个还活着（启动时间对得上）、有可见顶层窗口的进程：它自己的窗口，或者它下面 conhost / OpenConsole 的控制台窗口；有好几个（VS Code、Windows Terminal 都是一个进程好几个窗口）时取标题里有会话名、你的话或项目名的那个，没有就取最前面的。都没有时问控制台：`AttachConsole` → `GetConsoleWindow`，可见就是它，不可见就取它的根拥有者（Windows Terminal 托管从外面启动的控制台时，拥有那个隐藏的伪控制台窗口）。程序自己有控制台时（debug 版）不做这一步，否则要先放掉自己的。
+**找哪个窗口**：会话自己的进程（链的第一个）还在才算（桌面版的会话除外，见下）。然后沿着链往上，第一个还活着（启动时间对得上）、有可见顶层窗口的进程：它自己的窗口，或者它下面 conhost / OpenConsole 的控制台窗口；有好几个（VS Code、Windows Terminal 都是一个进程好几个窗口）时取标题里有会话名、你的话或项目名的那个，没有就取最前面的。都没有时问控制台：`AttachConsole` → `GetConsoleWindow`，它有别的根拥有者（Windows Terminal 托管从外面启动的控制台时，拥有那个伪控制台窗口）且可见就取根拥有者，否则它自己可见就是它。先看拥有者：Windows Terminal 1.24 的伪控制台窗口也说自己可见，叫它到前面什么也看不到，最小化的终端留在那里（2026-10-15 测试机里点 OpenCode 的会话时碰到）。程序自己有控制台时（debug 版）不做这一步，否则要先放掉自己的。
 
 **叫到前面**：最小化的先还原，再 `SetForegroundWindow`；不给（前台锁）就 `AttachThreadInput` 借一下前台窗口的输入再试。以 `SetForegroundWindow` 的返回值为准：真正切过去可能晚一点。
 

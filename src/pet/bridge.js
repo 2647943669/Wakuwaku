@@ -211,6 +211,8 @@
       hooks: action => invoke('settings_hooks', { action }),
       codexHooks: action => invoke('settings_codex_hooks', { action }),
       agyHooks: action => invoke('settings_agy_hooks', { action }),
+      // Our plugin in OpenCode's plugin folder: install, remove.
+      opencode: action => invoke('settings_opencode', { action }),
       fetch: reference => invoke('settings_fetch', { reference: String(reference || '') }),
       gallery: (page, sort, query) => invoke('settings_gallery', { page, sort, query }),
       openSite: place => invoke('settings_open_site', { place }),

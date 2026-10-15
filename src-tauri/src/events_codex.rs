@@ -18,7 +18,7 @@ fn s<'a>(e: &'a Value, key: &str) -> &'a str {
 }
 
 // The files a patch adds, changes or deletes.
-fn patched(patch: &str) -> Vec<&str> {
+pub(crate) fn patched(patch: &str) -> Vec<&str> {
     patch
         .lines()
         .filter_map(|line| ["*** Add File: ", "*** Update File: ", "*** Delete File: "].iter().find_map(|p| line.strip_prefix(p)))

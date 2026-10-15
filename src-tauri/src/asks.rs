@@ -12,6 +12,12 @@
 // Codex's prompts come the same way (events_codex.rs), but Codex shows its
 // own dialog only once the hook has answered with no decision, and takes
 // only allow or deny: no rules to add, so never "always".
+//
+// OpenCode's too, from her plugin (events_opencode.rs): OpenCode asks the
+// person in its own window all the while, and the plugin gives her answer
+// to OpenCode as its reply, { decision: once | always | reject }; "always"
+// allows what the permission's save patterns say, in this project. Answered
+// in OpenCode first, PermissionReplied with its id closes hers.
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
@@ -176,7 +182,8 @@ pub fn view_of(e: &Value) -> Option<Value> {
     let input = input_of(e);
     let cwd = s(e, "cwd");
     let project = if cwd.is_empty() { String::new() } else { Path::new(cwd).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() };
-    // agent: the subagent asking (Claude Code); from: "codex", or "" for Claude Code.
+    // agent: the subagent asking (Claude Code, OpenCode); from: "codex",
+    // "opencode", or "" for Claude Code.
     let mut view = json!({ "session": s(e, "session_id"), "agent": s(e, "agent_id"), "from": s(e, "agent"), "project": project, "tool": tool });
 
     if tool == "AskUserQuestion" {
@@ -188,6 +195,18 @@ pub fn view_of(e: &Value) -> Option<Value> {
     } else if tool == "ExitPlanMode" {
         view["kind"] = json!("plan");
         view["summary"] = json!(clip(s(&input, "plan"), MAX_SUMMARY));
+    } else if is_opencode(e) {
+        // What OpenCode asks about (the commands, the files), and what
+        // "always" would allow from now on in this project.
+        let resources: Vec<&str> = e.get("resources").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+        let save = opencode_save(e);
+        view["kind"] = json!("permission");
+        view["summary"] = json!(if resources.is_empty() { summarize(tool, &input) } else { clip(&resources.join("\n"), MAX_SUMMARY) });
+        view["always"] = if save.is_empty() {
+            Value::Null
+        } else {
+            json!({ "rules": save.iter().map(|p| format!("{tool}({p})")).collect::<Vec<_>>(), "dirs": [], "modes": [], "where": ["projectSettings"] })
+        };
     } else {
         let always = allow_suggestions(e.get("permission_suggestions"));
         view["kind"] = json!("permission");
@@ -195,6 +214,15 @@ pub fn view_of(e: &Value) -> Option<Value> {
         view["always"] = if always.is_empty() { Value::Null } else { describe_always(&always) };
     }
     Some(view)
+}
+
+fn is_opencode(e: &Value) -> bool {
+    s(e, "agent") == "opencode"
+}
+
+// The patterns an OpenCode permission's "always" saves.
+fn opencode_save(e: &Value) -> Vec<&str> {
+    e.get("save").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).filter(|p| !p.is_empty()).collect()
 }
 
 fn output(decision: Value) -> Value {
@@ -244,6 +272,16 @@ pub fn reply_for(e: &Value, choice: &Value, lang: &str) -> Option<Value> {
     let view = view_of(e)?;
     let input = input_of(e);
     let kind = s(&view, "kind");
+    // OpenCode's reply, which her plugin hands it.
+    if is_opencode(e) {
+        let decision = match s(choice, "action") {
+            "allow" => "once",
+            "always" if !opencode_save(e).is_empty() => "always",
+            "deny" => "reject",
+            _ => return None,
+        };
+        return Some(json!({ "decision": decision }));
+    }
     match s(choice, "action") {
         "deny" => Some(output(json!({ "behavior": "deny", "message": i18n::t(lang, "deny.message") }))),
         "allow" if kind == "question" => None,
@@ -323,10 +361,11 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
 
     // A new ask, waiting wait_ms at most; Err(respond) when the event is not
     // one that can be shown (answer it yourself). A newer prompt from the
-    // same agent means the last one closed.
+    // same agent means the last one closed (but OpenCode's: it asks for
+    // calls side by side, each open till answered).
     pub fn add(&mut self, event: Value, respond: R, now: u64, wait_ms: u64) -> Result<u64, R> {
         let Some(view) = view_of(&event) else { return Err(respond) };
-        while let Some(i) = self.list.iter().position(|a| a.view["session"] == view["session"] && a.view["agent"] == view["agent"]) {
+        while let Some(i) = self.list.iter().position(|a| !is_opencode(&event) && a.view["session"] == view["session"] && a.view["agent"] == view["agent"]) {
             self.finish(i, Some(json!({})));
         }
         let id = self.next_id;
@@ -371,11 +410,15 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
         let mut settled = Vec::new();
         while let Some(i) = self.list.iter().position(|a| {
             a.view["session"] == session && {
-                let is_same_call = (name == "PostToolUse" || name == "PostToolUseFailure")
+                let is_done = name == "PostToolUse" || name == "PostToolUseFailure";
+                let is_same_call = is_done
                     && s(e, "agent_id") == s(&a.view, "agent")
                     && s(e, "tool_name") == s(&a.view, "tool")
                     && same_input(e.get("tool_input"), a.event.get("tool_input"));
-                is_same_call || MOVED_ON.contains(&name)
+                // OpenCode's: its call by id, and the permission answered by id.
+                let is_same_id = |key: &str| !s(e, key).is_empty() && s(e, key) == s(&a.event, key);
+                let is_answered = name == "PermissionReplied" && is_same_id("permission_id");
+                is_same_call || (is_done && is_same_id("tool_use_id")) || is_answered || MOVED_ON.contains(&name)
             }
         }) {
             settled.push(self.list[i].id);
@@ -515,6 +558,59 @@ mod tests {
 
         let patch = "*** Begin Patch\n*** Add File: note.txt\n+x\n*** Update File: src/a.rs\n@@\n-a\n+b\n*** End Patch";
         assert_eq!(view_of(&codex_permission("apply_patch", patch)).unwrap()["summary"], "Add File: note.txt\nUpdate File: src/a.rs");
+    }
+
+    // As events_opencode.rs makes it of her plugin's, tagged by the server.
+    fn opencode_permission(id: &str, save: Value) -> Value {
+        let raw = json!({
+            "type": "permission.asked", "id": id, "sessionID": "ses_1", "directory": "D:\\work\\oc3", "action": "shell",
+            "resources": ["echo hi"], "save": save, "source": { "type": "tool", "id": format!("call_{id}") }, "tool": "shell", "input": { "command": "echo hi" }
+        });
+        let mut e = crate::events_opencode::normalize(&raw);
+        e["agent"] = json!("opencode");
+        e
+    }
+
+    #[test]
+    fn an_opencode_permission_is_once_always_or_reject() {
+        let e = opencode_permission("per_1", json!(["echo *"]));
+        let view = view_of(&e).unwrap();
+        assert_eq!((view["kind"].as_str(), view["from"].as_str(), view["tool"].as_str(), view["summary"].as_str()), (Some("permission"), Some("opencode"), Some("shell"), Some("echo hi")));
+        assert_eq!(view["always"], json!({ "rules": ["shell(echo *)"], "dirs": [], "modes": [], "where": ["projectSettings"] }));
+        assert_eq!(reply_for(&e, &json!({ "action": "allow" }), "en"), Some(json!({ "decision": "once" })));
+        assert_eq!(reply_for(&e, &json!({ "action": "always" }), "en"), Some(json!({ "decision": "always" })));
+        assert_eq!(reply_for(&e, &json!({ "action": "deny" }), "zh"), Some(json!({ "decision": "reject" })));
+        assert!(reply_for(&e, &json!({ "action": "answer", "answers": [] }), "en").is_none());
+        // Nothing to save: no "always".
+        let e = opencode_permission("per_2", json!([]));
+        assert_eq!(view_of(&e).unwrap()["always"], Value::Null);
+        assert!(reply_for(&e, &json!({ "action": "always" }), "en").is_none());
+    }
+
+    #[test]
+    fn opencode_permissions_wait_side_by_side_till_each_is_answered() {
+        let got = Rc::new(RefCell::new(Vec::new()));
+        let mut asks: Asks<Box<dyn FnOnce(Option<Value>)>> = Asks::default();
+        let reply = |got: &Rc<RefCell<Vec<Option<Value>>>>| {
+            let got = got.clone();
+            Box::new(move |v: Option<Value>| got.borrow_mut().push(v)) as Box<dyn FnOnce(Option<Value>)>
+        };
+        let one = asks.add(opencode_permission("per_1", json!(["echo *"])), reply(&got), 0, 1000).ok().unwrap();
+        let two = asks.add(opencode_permission("per_2", json!(["echo *"])), reply(&got), 0, 1000).ok().unwrap();
+        assert_eq!(asks.views().as_array().unwrap().len(), 2);
+        // The second answered in OpenCode: that one goes, the first stays.
+        let replied = |id: &str| {
+            let mut e = crate::events_opencode::normalize(&json!({ "type": "permission.replied", "sessionID": "ses_1", "requestID": id, "reply": "once" }));
+            e["agent"] = json!("opencode");
+            e
+        };
+        assert_eq!(asks.seen(&replied("per_2")), vec![two]);
+        assert_eq!(asks.seen(&replied("per_9")), Vec::<u64>::new());
+        // Its call done (by its id): the first goes too.
+        let mut done = crate::events_opencode::normalize(&json!({ "type": "session.tool.success", "sessionID": "ses_1", "id": "call_per_1", "tool": "shell", "input": { "command": "echo hi" } }));
+        done["agent"] = json!("opencode");
+        assert_eq!(asks.seen(&done), vec![one]);
+        assert_eq!(got.borrow().as_slice(), &[Some(json!({})), Some(json!({}))]);
     }
 
     #[test]

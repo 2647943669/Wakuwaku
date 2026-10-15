@@ -25,8 +25,9 @@
 //   jump.rs        to a session's window, when you click the session
 //   tray.rs        the tray icon and the menu
 //   server.rs      the port the hooks report to
-//   state.rs       per-session moods; events.rs (Claude Code) and
-//                  events_codex.rs (Codex) hook events into messages
+//   state.rs       per-session moods; events.rs (Claude Code),
+//                  events_codex.rs (Codex), events_agy.rs (Antigravity) and
+//                  events_opencode.rs (OpenCode) hook events into messages
 //   data.rs        her folder, settings and pets
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
@@ -45,6 +46,7 @@ mod detach;
 mod events;
 mod events_agy;
 mod events_codex;
+mod events_opencode;
 mod fetch;
 mod focus;
 mod fullscreen;
@@ -134,6 +136,8 @@ pub struct Shared {
     pub codex_seen: std::sync::atomic::AtomicU64,
     // The same for Antigravity's.
     pub agy_seen: std::sync::atomic::AtomicU64,
+    // And OpenCode's, from her plugin in it.
+    pub opencode_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -554,7 +558,7 @@ impl Shared {
         if self.greeted.swap(true, Ordering::SeqCst) {
             return;
         }
-        let is_stale = connection::hooks_status(self.port) == "stale" || connection::codex_hooks_status() == "stale";
+        let is_stale = connection::hooks_status(self.port) == "stale" || connection::codex_hooks_status() == "stale" || connection::opencode_status(self.port) == "stale";
         self.apply(&json!({ "react": "wave", "say": { "key": if is_stale { "say.hooksStale" } else { "say.arrived" } } }));
     }
 
@@ -1335,6 +1339,7 @@ fn main() {
             settings::settings_hooks,
             settings::settings_codex_hooks,
             settings::settings_agy_hooks,
+            settings::settings_opencode,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1426,6 +1431,7 @@ fn main() {
                 greeted: AtomicBool::new(false),
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
                 agy_seen: std::sync::atomic::AtomicU64::new(0),
+                opencode_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),
