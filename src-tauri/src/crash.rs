@@ -883,12 +883,12 @@ pub fn webview_failed(sh: &Arc<Shared>, label: &str, kind: i32, reason: i32, cod
     static RESTARTING: AtomicBool = AtomicBool::new(false);
     if kind == 0 && STARTED.get().is_some_and(|s| now > s + 60_000) && !RESTARTING.swap(true, Ordering::SeqCst) {
         let sh = sh.clone();
-        std::thread::spawn(move || match crate::updates::start_again() {
-            Ok(()) => {
-                sh.log("crash: WebView2's browser process gone: starting anew");
-                sh.quit();
+        std::thread::spawn(move || {
+            sh.log("crash: WebView2's browser process gone: starting anew");
+            match crate::updates::start_again(&sh) {
+                Ok(()) => sh.quit(),
+                Err(e) => sh.log(&format!("crash: could not start anew: {e}")),
             }
-            Err(e) => sh.log(&format!("crash: could not start anew: {e}")),
         });
     }
     matches!(kind, 1 | 2)

@@ -60,6 +60,24 @@ pub fn from_source() -> bool {
     std::env::current_exe().unwrap_or_default().starts_with(Path::new(SOURCE_TREE).join("target"))
 }
 
+// Her exe where it is now. Windows goes on giving the path she was started
+// from after her file is renamed (GetModuleFileName), so a rename of her
+// own while she runs is told here (updates.rs: an update's old exe taking
+// its name back, or kept as <name>.old.exe), for what starts her or names
+// her (her Run value, the hooks, her guard, her next update).
+static EXE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+pub fn exe() -> std::io::Result<PathBuf> {
+    match EXE.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        Some(exe) => Ok(exe),
+        None => std::env::current_exe(),
+    }
+}
+
+pub fn exe_moved(to: PathBuf) {
+    *EXE.lock().unwrap_or_else(|e| e.into_inner()) = Some(to);
+}
+
 // --- Settings ----------------------------------------------------------------------
 
 fn defaults() -> Map<String, Value> {

@@ -25,6 +25,13 @@ mod appbar;
 mod detach;
 #[path = "../src/shell.rs"]
 mod shell;
+// What shell.rs asks of the pet's data.rs: the exe its guard is started
+// from (the pet's may have been renamed as it ran; this one is not).
+mod data {
+    pub fn exe() -> std::io::Result<std::path::PathBuf> {
+        std::env::current_exe()
+    }
+}
 // The tray as the pet has it; what only the pet uses of it (the icons only
 // Explorer's tray holds, Windows' placement of them) left unused here.
 #[path = "../src/systray.rs"]

@@ -15,11 +15,19 @@
 // GitHub gives for it, or Gitee's <exe>.sha256 when GitHub gives none (none
 // at all, the two differing, or the download another: not installed), put
 // where hers is, hers kept beside it as <name>.old.exe, and started with
-// --after-update <her pid>: it waits for her to be gone (the port, the
-// taskbar), and she quits as the menu does. A prompt waiting for an answer
-// is answered first. The old exe goes once the new one has run a minute;
-// should the new one not start, the old one is still there to be renamed
-// back (DEVELOPMENT.md).
+// --after-update <her pid>, plainly, as any program starts another
+// (detach::start). It says on her port that it is up (POST /after-update),
+// then waits for her to be gone (the port, the taskbar); she quits as the
+// menu does once it has said so and run a few seconds more (hand_over).
+// Should it end first, its exe go, or no word come (an antivirus taking it
+// for a dropper: Kaspersky's behaviour protection took it away as she
+// started it with Explorer borrowed as its parent, and she had quit at
+// once, zhoupengjie/Wakuwaku#48), it is ended, hers put back, and she
+// stays, saying so on the island. A prompt waiting for an answer is
+// answered first. The old exe goes once the new one has run a minute; that
+// one taken after all before then, the old one started again takes its
+// name back (take_name_back, by the note an update leaves in her data
+// folder: NOTE). DEVELOPMENT.md says more.
 //
 // For tests: WAKUWAKU_UPDATE_URL, GitHub's release JSON from elsewhere, and
 // WAKUWAKU_UPDATE_GITEE_URL, a Gitee repo elsewhere (its <url>.git/info/refs
@@ -30,7 +38,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -45,6 +53,14 @@ const GITEE_TEST: &str = "WAKUWAKU_UPDATE_GITEE_URL";
 pub const AFTER_UPDATE: &str = "--after-update";
 const DAY_MS: u64 = 86_400_000;
 const HOUR_MS: u64 = 3_600_000;
+// How long a new one started by her has to say it is up, and to run on
+// after it has (an antivirus that objects to it ends it in its first
+// moments) before she goes.
+const WORD_WAIT: Duration = Duration::from_secs(20);
+const SETTLE: Duration = Duration::from_secs(3);
+// In her data folder from the new one's start till it has run a minute:
+// what an update put where ({ from, to, exe, old, at }).
+const NOTE: &str = "update.json";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Source {
@@ -118,8 +134,15 @@ struct State {
 }
 
 static STATE: Mutex<State> = Mutex::new(State { checked_at: 0, next_at: 0, checking: false, latest: None, error: None, stage: None, from: None, got: 0, total: 0 });
-// Started by an update, after this pid: said in the log once she is up.
-static AFTER: Mutex<Option<u32>> = Mutex::new(None);
+// Started by an update, after this pid, and whether that one heard her
+// say she was up: said in the log once she is up.
+static AFTER: Mutex<Option<(u32, Result<(), String>)>> = Mutex::new(None);
+// The word of a new one she started (POST /after-update): its pid and version.
+static HEARD: Mutex<Option<(u32, String)>> = Mutex::new(None);
+// An update that did not last, its version: told on the island once.
+static BLOCKED: Mutex<Option<String>> = Mutex::new(None);
+// Her name taken back as she started (take_name_back): said in the log once she is up.
+static NAMED_BACK: Mutex<Option<String>> = Mutex::new(None);
 
 pub fn current() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -371,11 +394,13 @@ pub fn check_now(sh: &Arc<Shared>) {
         let mut s = STATE.lock().unwrap();
         s.checking = false;
         s.checked_at = now;
+        // An update that did not last says so till Update is pressed again.
+        let blocked = s.error.as_ref().is_some_and(|e| e["code"] == "blocked");
         match &got {
             Ok(release) => {
                 s.latest = release.clone();
                 s.next_at = now + DAY_MS;
-                if s.stage.is_none() {
+                if s.stage.is_none() && !blocked {
                     // GitHub and Gitee not agreeing on a newer one's SHA-256.
                     s.error = release.as_ref().filter(|r| r.conflict && newer(&r.version, current())).map(|r| error("mismatch", r.version.clone()));
                 }
@@ -383,7 +408,9 @@ pub fn check_now(sh: &Arc<Shared>) {
             // Quietly again in an hour.
             Err(e) => {
                 s.next_at = now + HOUR_MS;
-                s.error = Some(error("check", e.clone()));
+                if !blocked {
+                    s.error = Some(error("check", e.clone()));
+                }
             }
         }
     }
@@ -402,14 +429,25 @@ pub fn check_now(sh: &Arc<Shared>) {
     sh.push_settings();
 }
 
-// A newer one told on the island, once for each: only while she is in
-// sight and no session needs you (else at a later look).
+// A newer one told on the island, once for each, and an update that did
+// not last, once (before anything else): only while she is in sight and
+// no session needs you (else at a later look).
 fn tell(sh: &Arc<Shared>) {
-    let Some(r) = STATE.lock().unwrap().latest.clone().filter(|r| newer(&r.version, current())) else { return };
-    if sh.setting("updateTold").as_str() == Some(r.version.as_str()) || !sh.is_visible() || sh.pet.lock().unwrap().wants_you() {
+    if !sh.is_visible() || sh.pet.lock().unwrap().wants_you() {
         return;
     }
     let lang = sh.lang();
+    let blocked = BLOCKED.lock().unwrap().take();
+    if let Some(version) = blocked {
+        let words = crate::i18n::t(lang, "update.blocked").replace("{version}", &version);
+        sh.to_pages("pet:nudge", json!({ "id": "update", "icon": "flag", "words": words, "label": crate::i18n::t(lang, "update.blockedTap"), "value": "", "private": false, "open": { "tab": "update" } }));
+        sh.log(&format!("update: v{version} not lasting told on the island"));
+        return;
+    }
+    let Some(r) = STATE.lock().unwrap().latest.clone().filter(|r| newer(&r.version, current())) else { return };
+    if sh.setting("updateTold").as_str() == Some(r.version.as_str()) {
+        return;
+    }
     let words = crate::i18n::t(lang, "update.out").replace("{version}", &r.version);
     sh.to_pages("pet:nudge", json!({ "id": "update", "icon": "star", "words": words, "label": crate::i18n::t(lang, "update.tap"), "value": "", "private": false, "open": { "tab": "update" } }));
     sh.change(json!({ "updateTold": r.version }));
@@ -419,10 +457,25 @@ fn tell(sh: &Arc<Shared>) {
 // As she starts: a download cut off cleared away, the old exe gone after a
 // minute's run, and the looks
 // (twenty seconds in, then as due; every ten minutes it is seen whether a
-// look is due, or a newer one waits to be told).
+// look is due, or a newer one waits to be told). Her name taken back
+// (take_name_back): told on the island a few seconds in, once her pages
+// are up.
 pub fn start(sh: &Arc<Shared>) {
-    if let Some(pid) = *AFTER.lock().unwrap() {
-        sh.log(&format!("update: v{} up, after pid {pid} ended", current()));
+    if let Some((pid, told)) = AFTER.lock().unwrap().clone() {
+        match told {
+            Ok(()) => sh.log(&format!("update: v{} up, after pid {pid} ended (told it she was up)", current())),
+            Err(e) => sh.log(&format!("update: v{} up, after pid {pid} ended (could not tell it she was up: {e})", current())),
+        }
+    }
+    if let Some(line) = NAMED_BACK.lock().unwrap().take() {
+        sh.log(&line);
+    }
+    if BLOCKED.lock().unwrap().is_some() {
+        let soon = sh.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(5));
+            tell(&soon);
+        });
     }
     // A download cut off (she quit in the middle of it): its .part gone.
     for entry in std::fs::read_dir(&sh.dir).into_iter().flatten().flatten() {
@@ -523,6 +576,8 @@ pub fn update_now(sh: &Arc<Shared>) {
             s.error = Some(e);
             drop(s);
             sh.push_settings();
+            // One that did not last, said on the island.
+            tell(&sh);
         }
     });
 }
@@ -594,15 +649,160 @@ fn install(sh: &Arc<Shared>, r: &Release) -> Result<(), Value> {
         let _ = std::fs::remove_file(&part);
         error("replace", e)
     })?;
-    if let Err(e) = start_new(&exe) {
-        // Hers back where it was.
-        let _ = std::fs::remove_file(&exe);
-        let _ = std::fs::rename(old_path(&exe), &exe);
-        return Err(error("start", e));
+    sh.log(&format!("update: v{} in place of v{} ({}), hers kept as {}", r.version, current(), exe.display(), old_path(&exe).display()));
+    write_note(sh, &r.version, &exe);
+    match hand_over(sh, &exe, &r.version) {
+        Ok(()) => {
+            sh.log(&format!("update: v{} up; she quits for it", r.version));
+            sh.quit();
+            Ok(())
+        }
+        Err(Failed::Start(e)) => {
+            put_back(sh, &exe);
+            Err(error("start", e))
+        }
+        Err(Failed::Lost(why)) => {
+            sh.log(&format!("update: v{} did not last ({why}); she stays", r.version));
+            put_back(sh, &exe);
+            *BLOCKED.lock().unwrap() = Some(r.version.clone());
+            Err(error("blocked", r.version.clone()))
+        }
     }
-    sh.log(&format!("update: v{} in place of v{} ({}), started; she quits for it", r.version, current(), exe.display()));
-    sh.quit();
-    Ok(())
+}
+
+// Why a new one did not take over from her: it would not start at all, or
+// it did and did not last.
+enum Failed {
+    Start(String),
+    Lost(String),
+}
+
+// The new one started (plainly: detach::start) and waited for, as she must
+// not be gone before it is up: its word (POST /after-update, said as it
+// starts: wait_after_update), then SETTLE more with it still running and
+// its exe still there. Should it end first, its exe go, or no word come in
+// WORD_WAIT, it is ended if it still runs: an antivirus ends what it takes
+// for a dropper, and takes its exe away, in its first moments.
+fn hand_over(sh: &Shared, exe: &Path, version: &str) -> Result<(), Failed> {
+    *HEARD.lock().unwrap() = None;
+    let me = std::process::id().to_string();
+    // Refused by Windows for a virus (ERROR_VIRUS_INFECTED, _DELETED: an
+    // antivirus scanning it as it starts), or gone already: blocked too.
+    let mut new = crate::detach::start(exe, &[AFTER_UPDATE, &me]).map_err(|e| {
+        let why = format!("{} would not start ({e})", exe.display());
+        if matches!(e.raw_os_error(), Some(225 | 226)) || !exe.is_file() { Failed::Lost(why) } else { Failed::Start(why) }
+    })?;
+    sh.log(&format!("update: v{version} started, pid {}; waiting for its word", new.pid));
+    let began = Instant::now();
+    let mut heard_at: Option<Instant> = None;
+    let why = loop {
+        let ended = new.ended_within(100);
+        let ms = began.elapsed().as_millis();
+        if let Some(code) = ended {
+            break format!("it ended {ms} ms in, {} its word, exit code 0x{code:08X}", if heard_at.is_some() { "after" } else { "before" });
+        }
+        if !exe.is_file() {
+            break format!("{} gone {ms} ms in", exe.display());
+        }
+        match heard_at {
+            None => {
+                let heard = HEARD.lock().unwrap().clone().filter(|(pid, _)| *pid == new.pid);
+                if let Some((_, said)) = heard {
+                    let other = if same_version(&said, version) { String::new() } else { format!(" (not v{version})") };
+                    sh.log(&format!("update: pid {} says v{said} is up{other}, {ms} ms in", new.pid));
+                    heard_at = Some(Instant::now());
+                } else if began.elapsed() >= WORD_WAIT {
+                    break format!("no word from it in {} s", WORD_WAIT.as_secs());
+                }
+            }
+            Some(at) if at.elapsed() >= SETTLE => {
+                sh.log(&format!("update: pid {} still running {} s after its word, its exe in place", new.pid, SETTLE.as_secs()));
+                return Ok(());
+            }
+            Some(_) => {}
+        }
+    };
+    if new.ended_within(0).is_none() {
+        new.end();
+        let gone = new.ended_within(5000).is_some();
+        sh.log(&format!("update: pid {} ended by her{}", new.pid, if gone { "" } else { ", and still not gone 5 s later" }));
+    }
+    Err(Failed::Lost(why))
+}
+
+// A new one's word that it is up (server.rs: POST /after-update).
+pub fn heard(pid: u32, version: &str) {
+    *HEARD.lock().unwrap() = Some((pid, version.to_string()));
+}
+
+// Hers back where it was, and what is left of the new one gone; should the
+// rename fail, she runs on as <name>.old.exe, and says so (data::exe).
+fn put_back(sh: &Shared, exe: &Path) {
+    let old = old_path(exe);
+    match std::fs::remove_file(exe) {
+        Ok(()) => sh.log(&format!("update: {} removed", exe.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => sh.log(&format!("update: {} already gone", exe.display())),
+        Err(e) => sh.log(&format!("update: could not remove {}: {e}", exe.display())),
+    }
+    match std::fs::rename(&old, exe) {
+        Ok(()) => sh.log(&format!("update: {} back as {}", old.display(), exe.display())),
+        Err(e) => {
+            sh.log(&format!("update: could not rename {} back to {}: {e}; she runs on as it", old.display(), exe.display()));
+            crate::data::exe_moved(old);
+        }
+    }
+    let _ = std::fs::remove_file(sh.dir.join(NOTE));
+}
+
+// The note of an update under way: what it put where.
+fn write_note(sh: &Shared, version: &str, exe: &Path) {
+    let note = json!({ "from": current(), "to": version, "exe": exe, "old": old_path(exe), "at": crate::now_ms() });
+    if let Err(e) = std::fs::write(sh.dir.join(NOTE), note.to_string()) {
+        sh.log(&format!("update: could not write {NOTE}: {e}"));
+    }
+}
+
+// The same file, as Windows names them: either slash, any case.
+fn same_path(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| {
+        let p = p.to_string_lossy().replace('/', "\\");
+        if cfg!(windows) { p.to_lowercase() } else { p }
+    };
+    norm(a) == norm(b)
+}
+
+// Whether, started as `me` with her data folder's note saying `note`, she is
+// an update's old exe whose new one is gone: the note naming her as the
+// old one, its new one not there. The path to take back then.
+fn left_behind(me: &Path, note: &Value, exists: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    let is_old = me.file_name().map(|n| n.to_string_lossy().to_lowercase()).is_some_and(|n| n.ends_with(".old.exe"));
+    let exe = PathBuf::from(note["exe"].as_str()?);
+    let old = PathBuf::from(note["old"].as_str()?);
+    (is_old && same_path(&old, me) && same_path(&old_path(&exe), me) && !exists(&exe)).then_some(exe)
+}
+
+// Started as the exe an update left (<name>.old.exe), its new one gone from
+// where it was put (taken by an antivirus after it had started, most
+// likely), as the update's note says: her name taken back, so that her Run
+// value, the sessions' hooks and her next update find her; said in the log
+// and on the island once she is up (start), and in the settings. Before
+// anything names her exe (main.rs, once she holds her port).
+pub fn take_name_back(dir: &Path) {
+    let Ok(me) = std::env::current_exe() else { return };
+    let Some(note) = std::fs::read_to_string(dir.join(NOTE)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { return };
+    let Some(exe) = left_behind(&me, &note, |p| p.is_file()) else { return };
+    let to = note["to"].as_str().unwrap_or("?").to_string();
+    let line = match std::fs::rename(&me, &exe) {
+        Ok(()) => {
+            crate::data::exe_moved(exe.clone());
+            format!("update: v{to} gone from {} after it started (an antivirus?): {} renamed back to it", exe.display(), me.display())
+        }
+        Err(e) => format!("update: v{to} gone from {} after it started (an antivirus?); could not rename {} back to it: {e}", exe.display(), me.display()),
+    };
+    *BLOCKED.lock().unwrap() = Some(to.clone());
+    STATE.lock().unwrap().error = Some(error("blocked", to));
+    let _ = std::fs::remove_file(dir.join(NOTE));
+    *NAMED_BACK.lock().unwrap() = Some(line);
 }
 
 // Downloaded to `to`, its SHA-256 as it comes (lowercase hex); the progress
@@ -642,7 +842,7 @@ fn old_path(exe: &Path) -> PathBuf {
 // The new exe where hers is (a running exe can be renamed, not removed),
 // hers kept as <name>.old.exe. Its path.
 fn replace(part: &Path) -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = crate::data::exe().map_err(|e| e.to_string())?;
     let old = old_path(&exe);
     let _ = std::fs::remove_file(&old);
     std::fs::rename(&exe, &old).map_err(|e| format!("{} → {}: {e}", exe.display(), old.display()))?;
@@ -655,27 +855,26 @@ fn replace(part: &Path) -> Result<PathBuf, String> {
     Ok(exe)
 }
 
-// Started on its own (out of her process tree and any job, as if opened
-// from Explorer: detach.rs), to wait for her.
-fn start_new(exe: &Path) -> Result<(), String> {
-    let pid = std::process::id().to_string();
-    if crate::detach::spawn(exe, &[AFTER_UPDATE, &pid]) {
-        Ok(())
-    } else {
-        Err(format!("{} would not start ({})", exe.display(), std::io::Error::last_os_error()))
-    }
-}
-
 // Her own exe started again, to wait for her to end (crash.rs: WebView2's
-// browser process gone, her pages with it).
-pub fn start_again() -> Result<(), String> {
-    start_new(&std::env::current_exe().map_err(|e| e.to_string())?)
+// browser process gone, her pages with it); as an update's, she goes only
+// once it is up (hand_over), and stays should it not come up.
+pub fn start_again(sh: &Shared) -> Result<(), String> {
+    let exe = crate::data::exe().map_err(|e| e.to_string())?;
+    hand_over(sh, &exe, current()).map_err(|failed| match failed {
+        Failed::Start(why) | Failed::Lost(why) => why,
+    })
 }
 
 // After a minute's run, the exe an update left: gone (tried a few times:
-// the old one's taskbar guard may still have it open a moment).
+// the old one's taskbar guard may still have it open a moment), and the
+// update's note with it. Not while an update of hers is under way (her own
+// exe is <name>.old.exe then).
 fn remove_old(sh: &Shared) {
-    let Ok(exe) = std::env::current_exe() else { return };
+    if STATE.lock().unwrap().stage.is_some() {
+        return;
+    }
+    let _ = std::fs::remove_file(sh.dir.join(NOTE));
+    let Ok(exe) = crate::data::exe() else { return };
     let old = old_path(&exe);
     for _ in 0..6 {
         if !old.exists() {
@@ -690,11 +889,13 @@ fn remove_old(sh: &Shared) {
     sh.log(&format!("update: could not remove {}", old.display()));
 }
 
-// Started by an update (--after-update <pid>): that one waited for, at most
-// a minute, before she takes the port and the taskbar.
-pub fn wait_after_update(args: &[String]) {
+// Started by an update or a restart (--after-update <pid>): said to that
+// one on her port, where it still listens, that she is up (it goes only
+// then: hand_over), and it waited for, at most a minute, before she takes
+// the port and the taskbar. One before 2026-10-15 had quit already, and
+// knows no such word (404), or is too busy going to answer.
+pub fn wait_after_update(args: &[String], port: u16) {
     let Some(pid) = args.iter().position(|a| a == AFTER_UPDATE).and_then(|i| args.get(i + 1)).and_then(|p| p.parse::<u32>().ok()) else { return };
-    *AFTER.lock().unwrap() = Some(pid);
     #[cfg(windows)]
     {
         #[link(name = "kernel32")]
@@ -704,15 +905,43 @@ pub fn wait_after_update(args: &[String]) {
             fn CloseHandle(handle: isize) -> i32;
         }
         const SYNCHRONIZE: u32 = 0x0010_0000;
-        // SAFETY: a handle we close.
+        // SAFETY: a handle we close; waits on it alone.
         unsafe {
             let process = OpenProcess(SYNCHRONIZE, 0, pid);
+            let told = say_up(port, || process == 0 || WaitForSingleObject(process, 0) == 0);
+            *AFTER.lock().unwrap() = Some((pid, told));
             if process != 0 {
                 WaitForSingleObject(process, 60_000);
                 CloseHandle(process);
             }
         }
     }
+    #[cfg(not(windows))]
+    {
+        let told = say_up(port, || false);
+        *AFTER.lock().unwrap() = Some((pid, told));
+    }
+}
+
+// POST /after-update { pid, version } on her port, never through a proxy;
+// tried again a moment later should it not get through, while that one is
+// still there (`gone`).
+fn say_up(port: u16, gone: impl Fn() -> bool) -> Result<(), String> {
+    let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(2))).proxy(None).build().new_agent();
+    let word = json!({ "pid": std::process::id(), "version": current() });
+    let mut why = String::new();
+    for _ in 0..3 {
+        match agent.post(&format!("http://127.0.0.1:{port}/after-update")).send_json(&word) {
+            Ok(_) => return Ok(()),
+            Err(ureq::Error::StatusCode(code)) => return Err(format!("it answered {code}")),
+            Err(e) => why = e.to_string(),
+        }
+        if gone() {
+            return Err(format!("{why}; it had gone"));
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    Err(why)
 }
 
 #[cfg(test)]
@@ -887,6 +1116,29 @@ mod tests {
         set("giteeEmpty=0&giteeOld=1");
         assert_eq!(look().from.len(), 1);
         set("giteeOld=0");
+    }
+
+    // The exe an update left takes its name back only when the update's
+    // note names it as the old one and its new one is not there.
+    #[test]
+    fn name_taken_back_only_when_left_behind() {
+        use std::path::{Path, PathBuf};
+        let note = json!({ "from": "0.3.0", "to": "0.3.1", "exe": r"D:\Apps\Waku\wakuwaku.exe", "old": r"D:\Apps\Waku\wakuwaku.old.exe" });
+        let gone = |_: &Path| false;
+        let there = |_: &Path| true;
+        let me = Path::new(r"D:\Apps\Waku\wakuwaku.old.exe");
+        assert_eq!(super::left_behind(me, &note, gone), Some(PathBuf::from(r"D:\Apps\Waku\wakuwaku.exe")));
+        if cfg!(windows) {
+            assert!(super::left_behind(Path::new("d:/apps/waku/WAKUWAKU.OLD.EXE"), &note, gone).is_some(), "as Windows names it");
+        }
+        // The new one there after all; or another exe; or another update's note.
+        assert_eq!(super::left_behind(me, &note, there), None);
+        assert_eq!(super::left_behind(Path::new(r"D:\Apps\Waku\wakuwaku.exe"), &note, gone), None);
+        assert_eq!(super::left_behind(Path::new(r"E:\Other\wakuwaku.old.exe"), &note, gone), None);
+        let mut other = note.clone();
+        other["exe"] = json!(r"D:\Apps\Waku\pet.exe");
+        assert_eq!(super::left_behind(me, &other, gone), None);
+        assert_eq!(super::left_behind(me, &json!({}), gone), None);
     }
 
     #[test]

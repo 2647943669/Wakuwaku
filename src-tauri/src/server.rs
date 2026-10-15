@@ -6,6 +6,8 @@
 //   POST /state        a message (state.rs)
 //   POST /widget       a widget for the island, from a script (widgets.rs)
 //   POST /come-home    started again while running: back into sight
+//   POST /after-update { pid, version }: a new version she started (an update, a restart) is
+//                      up, and waits for her to go (updates.rs hand_over)
 //   POST /debug/eval   { page, code }: run code in her page or the island's (WAKUWAKU_DEBUG=1 only)
 //   POST /debug/walk   { dx, ms }: take a walk now (WAKUWAKU_DEBUG=1 only)
 //   POST /quit         quit, as the menu does (a new build replacing her; killing her
@@ -186,6 +188,15 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             crate::come_home(sh);
             reply(req, 200, json!({ "ok": true }))
         }
+        // A new version she started says it is up (updates.rs).
+        ("POST", "/after-update") => match read_json(&mut req) {
+            Some(word) => {
+                let (pid, version) = (word["pid"].as_u64().unwrap_or(0) as u32, word["version"].as_str().unwrap_or(""));
+                crate::updates::heard(pid, version);
+                reply(req, 200, json!({ "ok": true }))
+            }
+            None => reply(req, 400, json!({ "error": "bad json" })),
+        },
         ("GET", "/health") => {
             let mut body = json!({ "ok": true, "app": "wakuwaku", "runtime": "tauri", "state": sh.pet.lock().unwrap().get(now_ms()) });
             if is_debug {

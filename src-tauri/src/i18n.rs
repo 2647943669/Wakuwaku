@@ -55,6 +55,9 @@ pub fn t(lang: &str, key: &str) -> String {
         "clock.local" => if zh { "本地时间" } else { "Local time" },
         "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
         "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },
+        // An update whose new version was stopped or taken away as it started (updates.rs).
+        "update.blocked" => if zh { "v{version} 没装上，多半是杀毒软件拦下了" } else { "v{version} was stopped, likely by an antivirus" },
+        "update.blockedTap" => if zh { "点一下看怎么办" } else { "Tap to see what to do" },
         "crash.out" => if zh { "她上次意外退出了，要发崩溃报告吗？" } else { "She quit unexpectedly. Send a crash report?" },
         "crash.tap" => if zh { "点一下看看" } else { "Tap to see" },
         "crash.box" => if zh {

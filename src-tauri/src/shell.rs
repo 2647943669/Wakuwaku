@@ -24,7 +24,6 @@ pub const GUARD_ARG: &str = "--taskbar-guard";
 #[cfg(windows)]
 mod imp {
     use std::ffi::c_void;
-    use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -92,9 +91,6 @@ mod imp {
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
     const WAIT_TIMEOUT: u32 = 0x102;
     const INFINITE: u32 = u32::MAX;
-    const DETACHED_PROCESS: u32 = 0x8;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x200;
-    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
     static GUARDED: AtomicBool = AtomicBool::new(false);
 
@@ -326,31 +322,22 @@ mod imp {
         restore(file)
     }
 
-    // Once per process: the guard, outside her process tree and her job: as
-    // if opened from Explorer (detach.rs); else broken away from her job,
-    // should it let it; else in it (and gone with her should it end them).
+    // Once per process: the guard, started as any program starts another
+    // (detach::start: out of her job should it let go, else in it, which
+    // for a downloaded exe is Explorer's or none: detach::should_leave saw
+    // to that as she started). Only while she is held in another program's
+    // job (run from the source tree in a terminal's or an app's) is it
+    // spawned with Explorer as its parent, as that job's end would take it
+    // with her (detach.rs).
     pub fn spawn_guard(file: &Path) -> bool {
         if GUARDED.swap(true, Ordering::SeqCst) {
             return true;
         }
-        let Ok(exe) = std::env::current_exe() else { return false };
-        let pid = std::process::id().to_string();
-        if crate::detach::spawn(&exe, &[super::GUARD_ARG, &pid, &file.to_string_lossy()]) {
-            return true;
-        }
-        let spawn = |flags: u32| {
-            std::process::Command::new(&exe)
-                .arg(super::GUARD_ARG)
-                .arg(std::process::id().to_string())
-                .arg(file)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .creation_flags(flags)
-                .spawn()
-        };
-        let flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
-        let ok = spawn(flags | CREATE_BREAKAWAY_FROM_JOB).or_else(|_| spawn(flags)).is_ok();
+        let ok = crate::data::exe().is_ok_and(|exe| {
+            let (pid, file) = (std::process::id().to_string(), file.to_string_lossy());
+            let args = [super::GUARD_ARG, pid.as_str(), file.as_ref()];
+            if crate::detach::held_elsewhere() { crate::detach::spawn(&exe, &args) } else { crate::detach::start(&exe, &args).is_ok() }
+        });
         GUARDED.store(ok, Ordering::SeqCst);
         ok
     }

@@ -139,7 +139,7 @@ fn write_json(file: &Path, value: &Value) -> Result<(), String> {
 
 // This program, as the hook command starts it.
 pub fn launch_command() -> String {
-    std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    crate::data::exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 fn hook_url(port: u16) -> String {
