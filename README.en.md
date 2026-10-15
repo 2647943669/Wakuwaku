@@ -107,7 +107,7 @@ In Claude Code, enter (the Connect page of the settings has copy buttons):
 /plugin install wakuwaku@wakuwaku
 ```
 
-Claude Code installs and removes the plugin itself, and **we don't touch your settings file** (Claude Code notes it in its own `enabledPlugins` and takes it out on uninstall). A plugin can't start the pet, so turn on Start at login on the Connect page.
+Claude Code installs and removes the plugin itself, and **we don't touch your settings file** (Claude Code notes it in its own `enabledPlugins` and takes it out on uninstall). A plugin can't start the pet, so turn on Start at login on the Connect page. Start at login is a Run entry in the registry; with the taskbar as her home it also adds a Task Scheduler task triggered at logon (`Wakuwaku at logon-<your SID>`), which starts her right after you log on instead of waiting in line behind the Run entries. If you rename or move the exe, her next start points both at where it is now (one you turned off stays off).
 
 If you'd rather not use a plugin, Advanced on the Connect page writes the hooks into `~/.claude/settings.json` (backed up first; removing takes out only our entries). In return, new sessions start the pet. With both on, the Connect page warns that events arrive twice.
 
@@ -209,7 +209,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 
 ### Uninstall
 
-1. If you turned on **Start at login**, turn it off on the Connect page.
+1. If you turned on **Start at login**, turn it off on the Connect page (the `Wakuwaku` Run entry and the `Wakuwaku at logon-…` task both go).
 2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`.
 3. Quit her, then delete the exe or the project folder. Notifications register her name in `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`; delete that key too.
 4. Delete her settings and downloaded pets: the `wakuwaku-data` folder beside the exe, or the project's `data/` when run from source.

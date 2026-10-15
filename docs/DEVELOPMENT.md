@@ -44,6 +44,7 @@ src-tauri/
     screen.rs             各个显示器的工作区
     asks.rs               确认请求：显示什么、每个选择回给 Claude Code 什么、排队和超时
     connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json（安装 / 移除 / 状态）、开机自启
+    logon.rs              开机自启的计划任务（任务栏模式，Task Scheduler 的 COM）、这次登录是什么时候
     fetch.rs              codex-pets.net：解析地址、下载宠物、图库
     fullscreen.rs         别的程序是否全屏（user32）
     power.rs              省电：后台线程一直、整个进程和 WebView2 的进程在静默时交给效率核（EcoQoS），静默时页面内存设为低；多久没碰键盘鼠标
@@ -238,7 +239,7 @@ examples/widgets 里的天气、股票、番茄钟、倒计时、久坐提醒、
 - **怎么跑**：有 PowerShell 7 就用它，否则用 Windows 自带的。每次启动都重新找（`scripts.rs` 的 `powershells`）：PATH 里真正的 pwsh、Program Files 里的、PATH 里商店版的应用执行别名（0 字节的重解析点）、Windows PowerShell，按这个顺序；上次成功的那个排最前，启动不了就换下一个，每次失败记一行 `plugins: <id> not started with <路径>: <错误>`，都启动不了时设置页写「PowerShell 启动不了」（`noShell`）。商店版 PowerShell 会自己在后台更新、挪走旧的程序包文件夹，之后同一个进程再用这个别名启动会报 os error 3（zhoupengjie/Wakuwaku#28），以前只找一次就一直失败到重启。`-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command`，先把输出改成 UTF-8、去掉颜色，再 `& '<脚本>' -City '上海' -Port <端口>`。参数值放在单引号里，里面的单引号（包括 PowerShell 也认的弯引号）都写两遍，所以填什么都只是文字。没有窗口（`CREATE_NO_WINDOW`）。
 - **一直开着**：主循环每 3 秒 `scripts::sync` 一次，改设置时也马上来一次：该跑没跑的启动，关掉的停下，参数变了的重启；自己结束的再启动，60 秒内就结束算失败，接连失败就等 10 秒、30 秒、1 分钟、5 分钟再试。停下（关掉或换参数）时它之前发的 widget 一起去掉，省得留着旧的（`owner_of` 按 id 认是谁发的：`weather`、`stock-*`、`ci-*` / `prs-*`……）。
 - **说了什么**：脚本的输出全写进 `plugins/<id>.log`（每次启动重写），最后一行有内容的（去掉"警告:"前缀）显示在那一行下面：开着但岛上还没有它的东西时说「还没显示：……」，自己停了说「停了：…… · N 秒后再试」。
-- **跟她一起走**：她启动时把开着的都启动，她开机启动（「连接」页的开关：注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 里的 `Wakuwaku`），插件也就开机就跑；插件自己不登记开机启动。所有插件进程都放进一个 job object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`），她退出时句柄关上，系统把它们全部结束，任务管理器里强行结束她也一样；正常退出时 `RunEvent::Exit` 还会先逐个结束。
+- **跟她一起走**：她启动时把开着的都启动，她开机启动（「连接」页的开关：注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 里的 `Wakuwaku`，任务栏模式下还有计划任务，见「开机自动启动」），插件也就开机就跑；插件自己不登记开机启动。所有插件进程都放进一个 job object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`），她退出时句柄关上，系统把它们全部结束，任务管理器里强行结束她也一样；正常退出时 `RunEvent::Exit` 还会先逐个结束。
 - **waku** 不是开关：它包住你在终端里跑的命令。页面上给一条复制用的命令，指向写出来的 `plugins/waku.ps1`。
 
 **邮件**：IMAP（`mail-imap.ps1`）、Microsoft Graph（`mail-microsoft.ps1`）、Thunderbird 扩展，都只往 `/widget` 发文字，账号和密码不经过宠物。找 IMAP 服务器照 Thunderbird 的顺序：内置的几家 → ISPDB（`autoconfig.thunderbird.net/v1.1/<域名>`）→ MX 记录所属域名的 ISPDB → `imap.<域名>:993`。网易的服务器要先收到 ID 命令（RFC 2971）才肯打开收件箱，登录前后各发一次。授权码和 Graph 的 refresh token 用 DPAPI（`ConvertFrom-SecureString`）加密存在 `%LOCALAPPDATA%\wakuwaku\secrets`。测试时 `mail-imap.ps1 -NoTls -Server 127.0.0.1` 配一个本地的假 IMAP 服务器，`mail-microsoft.ps1 -LoginBase/-GraphBase` 指向本地的假登录和 Graph。**注意 PowerShell 变量名不分大小写**：脚本里的 `$server` 和参数 `-Server` 是同一个变量。
@@ -420,6 +421,16 @@ mail/proxy.rs      代理：跟随系统 / 手动（HTTP CONNECT、SOCKS5，自�
 - **多屏不同缩放**：Tauri 给的鼠标位置按主屏的缩放，每个窗口的位置按它自己那块屏的，`screen::cursor` 按窗口所在屏换算；拖她时用逻辑坐标摆窗口（`pet.rs` 的 `place`）。
 - **互不影响**：Mac 的东西只在 Mac 上跑，Windows 的只在 Windows 上跑。Rust 用 `cfg(target_os = "macos")` / `cfg(windows)`，Windows 专有的模块（`inputs.rs`、`backplate.rs`、`tasks.rs`、`taskbar.rs` 等）在别处有空实现；页面上 Mac 的行为只在收到 `island:top`、`island:peek`（只有 Mac 会发）或 `window.pet.mac` 为真时才有（`bridge.js`：`navigator.platform` 以 Mac 开头，Apple Silicon 上也是 `MacIntel`）。例如设置刚打开 0.5 秒内的失焦不算点外面、记录设置有没有被用过的监听，都只在 Mac 上；指针线程在 Windows 上每轮只读一次鼠标位置，和以前一样。只在 Windows 上成立的单元测试标 `cfg(windows)`。
 - **Mac 上还没有的**：任务栏这个家、点会话跳到窗口、系统通知、邮件（密码在 Windows 凭据管理器，还没接钥匙串）、监控插件、PowerShell 插件、开机自启、打包和自动更新、跟随系统强调色和壁纸、WebView 崩溃监视和省电。
+
+## 开机自动启动（connection.rs 的 login、logon.rs）
+
+zhoupengjie/Wakuwaku#44：exe 改名后 Run 还指着旧文件，开机什么也不启动，设置里显示成关；路径对的时候，Run 里的程序也要等资源管理器起来后一个个启动，那台笔记本上登录 3 分钟后她才起来。
+
+- **开关**：注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 里的 `Wakuwaku` = `"<exe>" --wakuwaku-at-login run`。任务管理器「启动应用」里关掉的（`Explorer\StartupApproved\Run` 里同名的值，第一个字节是单数，`03`）也算关；在她的设置里再打开时删掉那一条，任务管理器里也就是开的。设置里显示开 = Run 的值指向现在这个 exe（带不带参数都算）、没被任务管理器关掉。
+- **计划任务**（任务栏模式才有）：根文件夹里的 `Wakuwaku at logon-<SID>`（根文件夹是整台电脑共用的，所以带上用户的 SID），只在这个用户登录时触发（任何用户登录的触发器要管理员），这个用户自己的权限、不延迟，参数 `--wakuwaku-at-login task`；优先级 4（普通，任务默认的 7 低于普通，进程会一直是这个优先级）、用电池也启动、拔电源不停、不限运行时间（默认 3 天后结束）。用 Task Scheduler 的 COM（`ITaskService`，以 XML 注册、读回），不调 schtasks（它的 XML 输出是控制台代码页，路径里的字会丢）。Run 留作后备：两个都启动时，后到的那个发现端口占着就直接退出，不发 `/come-home`（不然她出门在桌面上时会被拉回家）。在任务计划程序里把任务（或它的触发器）禁用了，她就不去动它。
+- **启动时修**（`login::at_start`，只在默认端口、没设 `WAKUWAKU_USER_DATA` 时：测试的副本不碰真的开机自启）：Run 里有值但指向别的 exe（文件不在了、改了名字或挪了位置，或者是另一份她），改成现在这个 exe，记一行 `login: start at login pointed at … (gone); now …`；没有值就不动，用户关掉的不会被打开。从源码树运行时不把别的 exe 的值改成 `target\` 下的路径，只把指向自己、0.3.0 那种不带参数的写法补上参数。然后按「开着、而且是任务栏模式」建、改或删计划任务（`login: her logon task made / pointed at … / removed (…)`）；岛和任务栏之间切换时也同步一次。计划任务启动的她如果发现开机自启已经关了（Run 的值没了，或被任务管理器关了），删掉任务就退出。
+- **日志**：每次启动写一行 `started 3.2 s after logon, by her logon task`（Run 启动的是 `by the Run value`，手动、hook、更新启动的不写来源）；登录时间是 `WTSQuerySessionInformation(WTSSessionInfo)` 的 `LogonTime`，普通用户能读自己的会话。
+- **测试**：纯判断在 `connection::tests::start_at_login_moves_with_her` 和 `logon::tests`；`cargo test -- --ignored start_at_login_kept_on_this_computer --nocapture` 在本机的注册表和任务计划程序里用测试名字（Run 的 `WakuwakuTest`、任务 `WakuwakuTest at logon-<SID>`）走一遍：失效路径被修、任务建好（打印 `schtasks /Query /V` 看到的样子）、切到岛时删掉、任务管理器关掉算关、开关关掉两处都删，最后全部清掉。
 
 ## 软件更新（updates.rs）
 
