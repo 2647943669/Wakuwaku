@@ -91,7 +91,7 @@ pub(crate) fn step_of(tool: &str, input: &Value) -> Value {
 }
 
 // A change to the session's to-do list, from the tools that keep it.
-fn todo_of(tool: &str, input: &Value) -> Option<Value> {
+pub(crate) fn todo_of(tool: &str, input: &Value) -> Option<Value> {
     let i = |key: &str| s(input, key);
     match tool {
         "TodoWrite" => {

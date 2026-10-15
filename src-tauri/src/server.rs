@@ -3,7 +3,8 @@
 //   GET  /health       { ok, app, runtime, state }; with WAKUWAKU_DEBUG=1, the windows and settings too
 //   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
 //                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook);
-//                      ?agent=agy, ?agent=zcode the same for Antigravity's and ZCode's
+//                      ?agent=agy, ?agent=zcode, ?agent=dsh the same for Antigravity's, ZCode's
+//                      and DeepSeek Harness's
 //   POST /state        a message (state.rs)
 //   POST /widget       a widget for the island, from a script (widgets.rs)
 //   POST /come-home    started again while running: back into sight
@@ -20,7 +21,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::{events, events_agy, events_codex, events_zcode, island, jump, now_ms, pet, Responder, Shared};
+use crate::{events, events_agy, events_codex, events_dsh, events_zcode, island, jump, now_ms, pet, Responder, Shared};
 
 // Hook events carry whole files (an Edit's PostToolUse has the file before
 // the edit), so this is generous.
@@ -30,13 +31,15 @@ const MAX_BODY: u64 = 16 * 1024 * 1024;
 const CODEX_ASK_MS: u64 = 60 * 1000;
 
 // Which agent's hook the request comes from (?agent=codex, ?agent=agy,
-// ?agent=zcode: handed on by this program, main.rs); none for Claude Code's.
+// ?agent=zcode, ?agent=dsh: handed on by this program, main.rs); none for
+// Claude Code's.
 fn agent_of(url: &str) -> Option<&'static str> {
     let (_, query) = url.split_once('?')?;
     query.split('&').find_map(|p| match p {
         "agent=codex" => Some("codex"),
         "agent=agy" => Some("agy"),
         "agent=zcode" => Some("zcode"),
+        "agent=dsh" => Some("dsh"),
         _ => None,
     })
 }
@@ -83,10 +86,16 @@ fn read_json(req: &mut Request) -> Option<Value> {
 
 // The process chain of the session an event comes from, looked up when the
 // session has none yet or a turn begins (it may have been resumed in another
-// process): Codex's and Antigravity's hook command brings its own; for
-// Claude Code, it is the process on the other end of this connection.
-fn chain_for(sh: &Shared, req: &Request, event: &Value, brings_own: bool) -> Option<jump::Chain> {
-    if brings_own {
+// process): Codex's, Antigravity's and ZCode's hook command brings its own;
+// for Claude Code, it is the process on the other end of this connection.
+// DeepSeek Harness's hook, in its sandbox, may not open the processes above
+// it, so it waits on this connection as a turn begins while she looks; the
+// nearest of them are its shell and DSH's hook runners, gone a moment later
+// (wakuwaku ← pwsh ← runner ← runner ← host ← DeepSeek Harness.exe, seen
+// 2026-10-16), so the chain is the app's, the outermost by the processes'
+// list.
+fn chain_for(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> Option<jump::Chain> {
+    if agent.is_some_and(|a| a != "dsh") {
         let chain = jump::chain_from_json(event.get(jump::CODEX_CHAIN));
         return (!chain.is_empty()).then_some(chain);
     }
@@ -96,7 +105,10 @@ fn chain_for(sh: &Shared, req: &Request, event: &Value, brings_own: bool) -> Opt
         return None;
     }
     let client = jump::client_of(req.remote_addr()?.port(), sh.port)?;
-    let chain = jump::chain_of(client);
+    let chain = match agent {
+        Some("dsh") => jump::chain_of(jump::outermost_of(client)),
+        _ => jump::chain_of(client),
+    };
     (!chain.is_empty()).then_some(chain)
 }
 
@@ -120,6 +132,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 Some("codex") => &sh.codex_seen,
                 Some("agy") => &sh.agy_seen,
                 Some("zcode") => &sh.zcode_seen,
+                Some("dsh") => &sh.dsh_seen,
                 _ => &sh.claude_seen,
             };
             seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
@@ -134,11 +147,18 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                     events_agy::to_message(&event)
                 }
                 Some("zcode") => events_zcode::to_message(&event),
+                Some("dsh") => events_dsh::to_message(&event, &crate::connection::dsh_home()),
                 _ => events::to_message(&event),
             };
             if let Some(mut msg) = msg {
                 // Where the session runs, for going to its window (jump.rs).
-                if let Some(chain) = chain_for(sh, &req, &event, agent.is_some()) {
+                let chain = chain_for(sh, &req, &event, agent);
+                if agent == Some("dsh") {
+                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0)) {
+                        sh.log(&line);
+                    }
+                }
+                if let Some(chain) = chain {
                     msg["chain"] = jump::chain_json(&chain);
                 }
                 sh.apply(&msg);
@@ -271,6 +291,7 @@ mod tests {
         assert_eq!(agent_of("/hook?agent=codex"), Some("codex"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=agy"), Some("agy"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=zcode"), Some("zcode"));
+        assert_eq!(agent_of("/hook?from=wakuwaku&agent=dsh"), Some("dsh"));
         assert_eq!(agent_of("/hook?from=wakuwaku"), None);
         assert_eq!(agent_of("/hook?agent=codexx"), None);
         assert_eq!(agent_of("/hook"), None);

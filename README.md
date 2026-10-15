@@ -144,6 +144,17 @@ Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：�
 
 ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwaku.exe --wakuwaku-zcode-hook <事件名>`（按参数直接启动，不经过 shell，路径里有空格也没关系），把事件转给她。ZCode 每一步都会等它跑完，大约 0.1 秒；确认请求的那条最多等 10 分钟（面板自己的等待时间更短，到时间就交回 ZCode）。新任务开始时她没开，也会把她拉起来（除非你从菜单里退出了她）。
 
+### 6. 连上 DeepSeek Harness（可选）
+
+支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；它自带一个运行 Claude Code hooks.json 的「兼容桥」插件（`@deepseek-ai/dsh-hooks-claude-code`）。在「连接」页的 DeepSeek Harness 一栏点「安装」：她把这个桥接进 `~/.dsh/cordis.patch.yml`（所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着），桥要运行的 hook 列表写在她的数据文件夹里（`dsh-hooks.json`）。然后**重开一次 DeepSeek Harness**，它只在启动时读这些。
+
+能做的：会话开始、干活、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、改了哪些文件、任务清单，它向你提问时显示「在等你」；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。做不到的：
+
+- **批准还在 DSH 自己的窗口里点**：这个桥不支持 `PermissionRequest`，她不知道它在等你批准（这时岛上显示的是「在干活」）。
+- **岛上显示不了它最后说的话**：桥给的事件里没有回复，DSH 的会话记录是 Zstandard 压缩的。
+- 每一步用的什么工具不显示：DSH 用 PowerShell 跑 hook，而且是在它的沙箱里，每条大约 1 秒，所以只挂了一轮的开始和结束、改文件、任务清单、提问这几处，别的工具不挂，免得每次调用都慢一秒。
+- 新会话开始时不会把她拉起来：hook 在 DSH 的沙箱里运行，从那里启动的她什么都存不下。
+
 ### 从源码运行
 
 需要 Rust（Windows 上用 MSVC 工具链）。目前只在 Windows 11 上测试过；Tauri 也能在 macOS / Linux 上构建，但全屏检测、开机自启、系统通知和按键状态只写了 Windows 的。
@@ -218,7 +229,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 ZCode 的：在 ZCode 一栏点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 ZCode 的：在 ZCode 一栏点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：在它那一栏点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
@@ -231,6 +242,7 @@ Claude Code ──HTTP hooks──▶ 宠物窗口 (127.0.0.1:47213/hook)
             └─SessionStart─▶ 程序本身 --wakuwaku-ensure-running（后台运行，她没开就启动）
 Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ 宠物窗口 (/hook?agent=codex)
 ZCode ──process hooks──▶ 程序本身 --wakuwaku-zcode-hook <事件> ──▶ 宠物窗口 (/hook?agent=zcode)
+DeepSeek Harness ──Claude Code 兼容桥（PowerShell）──▶ 程序本身 --wakuwaku-dsh-hook <事件> ──▶ 宠物窗口 (/hook?agent=dsh)
 ```
 
 - 所有事件都用 Claude Code 的 **HTTP hook** 直接发给她，调用工具时不启动任何进程（本机实测每次约 0.3ms）。她立刻回 `{}`，表示不做任何决定；只有确认请求会等你在面板上点了再回。

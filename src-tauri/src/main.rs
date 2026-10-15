@@ -45,6 +45,7 @@ mod detach;
 mod events;
 mod events_agy;
 mod events_codex;
+mod events_dsh;
 mod events_zcode;
 mod fetch;
 mod focus;
@@ -137,6 +138,8 @@ pub struct Shared {
     pub agy_seen: std::sync::atomic::AtomicU64,
     // And ZCode's.
     pub zcode_seen: std::sync::atomic::AtomicU64,
+    // And DeepSeek Harness's.
+    pub dsh_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -438,7 +441,8 @@ impl Shared {
         let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
-            let is_agy = msg["agent"] == "agy";
+            // Antigravity's and DeepSeek Harness's approvals never come to her.
+            let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh";
             self.count_today(|t| {
                 t.turns += out.turns;
                 if is_agy {
@@ -1249,6 +1253,31 @@ fn zcode_hook(port: u16, name: &str) {
     }
 }
 
+// DeepSeek Harness's hook (connection::DSH_FLAG and the event's name), run
+// by its Claude Code bridge through its PowerShell, in its sandbox: the event
+// handed to her port and let go. As a session starts or a turn begins it
+// waits for her answer instead (some ms), this connection held while she
+// looks up where the session runs from this process (server.rs chain_for:
+// in its sandbox it may not open the processes above itself). It never
+// starts her: she would run in DSH's sandbox (a low-integrity,
+// write-restricted token) and could keep nothing. Nothing printed: the
+// bridge would read it as a decision.
+fn dsh_hook(port: u16, name: &str) {
+    let Some(mut event) = read_event() else { return };
+    let name = event["hook_event_name"].as_str().unwrap_or(name).to_string();
+    if let Some(fields) = event.as_object_mut() {
+        fields.insert("hook_event_name".into(), json!(name));
+    }
+    if !matches!(name.as_str(), "SessionStart" | "UserPromptSubmit") {
+        post_and_go(port, "dsh", &event);
+        return;
+    }
+    if jump::is_listening(port) {
+        let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(3))).build().new_agent();
+        let _ = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=dsh")).send_json(&event);
+    }
+}
+
 fn main() {
     // Her exe again, as the taskbar's guard (shell.rs): it waits for her to
     // end, and gives Windows' taskbar back if she could not; and sees
@@ -1274,6 +1303,9 @@ fn main() {
     }
     if let Some(at) = args.iter().position(|a| a == connection::ZCODE_FLAG) {
         return zcode_hook(port, args.get(at + 1).map_or("", String::as_str));
+    }
+    if let Some(at) = args.iter().position(|a| a == connection::DSH_FLAG) {
+        return dsh_hook(port, args.get(at + 1).map_or("", String::as_str));
     }
 
     // Started at login (connection.rs): by her logon task, or by the Run value.
@@ -1382,6 +1414,7 @@ fn main() {
             settings::settings_codex_hooks,
             settings::settings_agy_hooks,
             settings::settings_zcode_hooks,
+            settings::settings_dsh_hooks,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1474,6 +1507,7 @@ fn main() {
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
                 agy_seen: std::sync::atomic::AtomicU64::new(0),
                 zcode_seen: std::sync::atomic::AtomicU64::new(0),
+                dsh_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),

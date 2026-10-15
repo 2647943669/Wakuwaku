@@ -271,7 +271,7 @@
           .map(x => {
             const name = Status.nameOf(x, detailed)
             const what = [
-              { codex: 'Codex', agy: 'Antigravity', zcode: 'ZCode' }[x.agent] || '',
+              { codex: 'Codex', agy: 'Antigravity', zcode: 'ZCode', dsh: 'DeepSeek Harness' }[x.agent] || '',
               Status.status(lang, x, { detailed, withClock: false }),
               detailed && x.name && x.project !== name ? x.project : '',
               detailed && Status.isEnding(x) ? x.reply : '',
@@ -1888,10 +1888,28 @@
         : ['ok', 'stale', 'partial', 'off'].includes(zcode.hooks)
           ? `<button class="pbtn" data-zcode="install">${esc(T(zcode.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-zcode="remove">${esc(T('settings.remove'))}</button>`
           : ''
+    // DeepSeek Harness: its Claude Code hook bridge, inserted in ~/.dsh/cordis.patch.yml.
+    const dsh = snap.dsh || {}
+    const dshConn = dshIn() && dsh.seen ? 's.dshConnOk' : dshIn() ? 's.dshConnWait' : 's.dshConnNone'
+    const dshColor = dshConn === 's.dshConnOk' ? COLOR.done : dshIn() ? COLOR.waiting : COLOR.idle
+    const dshWord = {
+      ok: 'settings.hooksOk',
+      missing: 'settings.hooksMissing',
+      stale: 'settings.hooksStale',
+      unreadable: 's.dshUnreadable',
+      absent: 's.dshAbsent',
+    }[dsh.hooks]
+    const dshButtons =
+      dsh.hooks === 'missing'
+        ? `<button class="pbtn" data-dsh="install">${esc(T('settings.install'))}</button>`
+        : ['ok', 'stale'].includes(dsh.hooks)
+          ? `<button class="pbtn" data-dsh="install">${esc(T(dsh.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-dsh="remove">${esc(T('settings.remove'))}</button>`
+          : ''
     return `${sec(T('s.status'))}<div class="grp"><div class="r"><span class="dot" style="background:${isOk ? COLOR.done : snap.connection === 'both' ? COLOR.waiting : COLOR.idle}"></span><div class="grow">${esc(T(conn))}</div><span class="d">${esc(T('s.sessionsOnline', { n: sessions }))}</span></div>
         <div class="r"><span class="dot" style="background:${codexColor}"></span><div class="grow">${esc(T(codexConn))}</div></div>
         <div class="r"><span class="dot" style="background:${agyColor}"></span><div class="grow">${esc(T(agyConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${zcodeColor}"></span><div class="grow">${esc(T(zcodeConn))}</div></div></div>
+        <div class="r"><span class="dot" style="background:${zcodeColor}"></span><div class="grow">${esc(T(zcodeConn))}</div></div>
+        <div class="r"><span class="dot" style="background:${dshColor}"></span><div class="grow">${esc(T(dshConn))}</div></div></div>
       ${sec(T('home.plugin'))}<div class="grp"><div class="note">${esc(T('home.pluginWhy'))}</div>
         ${snap.pluginCommands.map(c => `<div class="r"><span class="cmd mono">${esc(c)}</span><button class="pbtn" data-copy="${esc(c)}">${esc(T('home.copy'))}</button></div>`).join('')}
       </div>
@@ -1914,6 +1932,11 @@
         <div class="note">${esc(T('s.zcodeWhy'))}</div>
         <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(zcodeWord))}</div><div class="d mono ellip">${esc(zcode.file || '')}</div></div>${zcodeButtons}</div>
         ${zcode.hooks === 'off' ? `<div class="note">${esc(T('s.zcodeOffNote'))}</div>` : ''}
+      </div>
+      ${sec(T('s.dsh'))}<div class="grp">
+        <div class="note">${esc(T('s.dshWhy'))}</div>
+        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(dshWord))}</div><div class="d mono ellip">${esc(dsh.file || '')}</div></div>${dshButtons}</div>
+        ${dshIn() && !dsh.seen ? `<div class="note">${esc(T('s.dshRestart'))}</div>` : ''}
       </div>
       ${sec(T('settings.about'))}<div class="grp">
         <div class="r"><div class="grow">${esc(T('s.version', { version: snap.version }))}</div><span class="link" data-site="repo">${esc(T('home.repo'))} ›</span></div>
@@ -2002,22 +2025,23 @@
   // 不用提醒) and nothing connected: the welcome folded to one row at the
   // page's top; opened again by its 去连接, or by asking for connecting.
   let welcomeOpen = false
-  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', zcode: 'ZCode' }
+  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', zcode: 'ZCode', dsh: 'DeepSeek Harness' }
   // What each one's buttons say they are for (the handlers below).
-  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy', zcode: 'data-zcode' }
+  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy', zcode: 'data-zcode', dsh: 'data-dsh' }
   const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
   const claudeIn = () => snap.connection !== 'none'
   const agyIn = () => ['ok', 'stale'].includes(snap.agy?.hooks)
   const zcodeIn = () => ['ok', 'stale', 'partial'].includes(snap.zcode?.hooks)
-  const anyIn = () => claudeIn() || codexIn() || agyIn() || zcodeIn()
+  const dshIn = () => ['ok', 'stale'].includes(snap.dsh?.hooks)
+  const anyIn = () => claudeIn() || codexIn() || agyIn() || zcodeIn() || dshIn()
   const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !anyIn()
   const showWelcome = () => !anyIn() || !snap.settings.onboarded
 
   // The ones on this computer, in this order: Claude Code by its folder (or
-  // connected), Codex, Antigravity and ZCode by theirs. None found: the
-  // first three (it cannot be told).
+  // connected), Codex, Antigravity, ZCode and DeepSeek Harness by theirs.
+  // None found: the first three (it cannot be told).
   function toolsHere() {
-    const here = ['claude', 'codex', 'agy', 'zcode'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap[tool] && snap[tool].hooks !== 'absent'))
+    const here = ['claude', 'codex', 'agy', 'zcode', 'dsh'].filter(tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : snap[tool] && snap[tool].hooks !== 'absent'))
     return here.length ? here : ['claude', 'codex', 'agy']
   }
 
@@ -2032,6 +2056,7 @@
     if (tool === 'codex' && codexIn()) return snap.codex?.seen ? 'seen' : 'set'
     if (tool === 'agy' && agyIn()) return snap.agy?.seen ? 'seen' : 'set'
     if (tool === 'zcode' && zcodeIn()) return snap.zcode?.seen ? 'seen' : 'set'
+    if (tool === 'dsh' && dshIn()) return snap.dsh?.seen ? 'seen' : 'set'
     return failed[tool] ? 'failed' : 'none'
   }
 
@@ -2058,7 +2083,7 @@
 
   // The file each one's hooks go in, as read (~ for the home folder), and its name.
   const toolFile = tool =>
-    ({ claude: snap.settingsShown || snap.settingsFile, codex: snap.codex?.fileShown || snap.codex?.file, agy: snap.agy?.fileShown || snap.agy?.file, zcode: snap.zcode?.fileShown || snap.zcode?.file })[tool] || ''
+    ({ claude: snap.settingsShown || snap.settingsFile, codex: snap.codex?.fileShown || snap.codex?.file, agy: snap.agy?.fileShown || snap.agy?.file, zcode: snap.zcode?.fileShown || snap.zcode?.file, dsh: snap.dsh?.fileShown || snap.dsh?.file })[tool] || ''
 
   // Under the buttons: what each still needs (Claude Code, Antigravity and
   // ZCode where it was written, and undone), or why it could not be written.
@@ -2066,7 +2091,7 @@
     const state = toolState(tool)
     const mono = text => `<span class="mono">${esc(text)}</span>`
     const file = toolFile(tool)
-    if (['claude', 'agy', 'zcode'].includes(tool) && state === 'set') {
+    if (['claude', 'agy', 'zcode', 'dsh'].includes(tool) && state === 'set') {
       const backed = tool === 'claude' ? snap.settingsBackup : snap[tool]?.backup
       const where = backed ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
       return `<div class="wc-tnote"><div>${T(`wc.${tool}Left`)}</div><div class="wc-where">${where}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
@@ -2078,7 +2103,7 @@
     // written, but where she is (the appearance session's words).
     if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name: TOOL[tool] }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
-    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: { claude: 'settings.json', zcode: 'config.json' }[tool] || 'hooks.json' }))}</b></div>
+    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: { claude: 'settings.json', zcode: 'config.json', dsh: 'cordis.patch.yml' }[tool] || 'hooks.json' }))}</b></div>
         <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
   }
 
@@ -2104,8 +2129,8 @@
     const many = tools.length > 1
     const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
     const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
-    // A nudge to approve only where one of them can ask (Antigravity can not).
-    const sub = `${T('wc.sub1')}${tools.some(tool => tool !== 'agy') ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
+    // A nudge to approve only where one of them can ask (Antigravity and DeepSeek Harness can not).
+    const sub = `${T('wc.sub1')}${tools.some(tool => !['agy', 'dsh'].includes(tool)) ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
     const safe = [many ? 'wc.safeMany' : `wc.safe.${tools[0]}`, 'wc.safe2', 'wc.safe3'].map(k => `<div><span class="fi">\uE73E</span><span>${T(k)}</span></div>`).join('')
     // Claude Code's plugin, while it is here and not written.
     const commands = snap.pluginCommands || []
@@ -2642,6 +2667,22 @@
         connecting = ''
         snap = got.snapshot
         if (action === 'install' && !got.ok) failed.agy = { error: got.error || '', kind: got.kind || 'other', folder: got.folder || '' }
+        draw()
+        relayout()
+      })
+    }
+    const dshHooks = at('[data-dsh]')
+    if (dshHooks) {
+      const action = dshHooks.dataset.dsh
+      if (action === 'install') {
+        connecting = 'dsh'
+        delete failed.dsh
+        draw()
+      }
+      return window.pet.settings.dshHooks(action).then(got => {
+        connecting = ''
+        snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.dsh = { error: got.error || '', kind: got.kind || 'other' }
         draw()
         relayout()
       })

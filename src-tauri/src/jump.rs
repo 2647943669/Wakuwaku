@@ -7,7 +7,12 @@
 //   Claude Code   the process on the other end of the hook's connection
 //                 (server.rs), found in the TCP table
 //   Codex         the hook command's own parents, from Codex up, past the
-//                 shell it runs hooks in (main.rs codex_hook)
+//                 shell it runs hooks in (main.rs codex_hook); Antigravity's
+//                 and ZCode's the same
+//   DeepSeek H.   as Claude Code's, the hook on the other end of the
+//                 connection (its sandbox keeps it from looking above
+//                 itself): the outermost process above it, the app
+//                 (server.rs chain_for)
 // Going there, while the session's own process (the chain's first) still
 // runs: the first process up the chain, still the same one, that has
 // a window of its own (or a console window, kept by a conhost under it);
@@ -192,6 +197,31 @@ mod imp {
             .skip_while(|(_, _, name)| SHELLS.contains(&name.as_str()))
             .map(|(pid, at, _)| (pid, at))
             .collect()
+    }
+
+    // The outermost process above one, by the processes' list (their numbers
+    // and parents): the app a hook runs under, past the shell and the hook
+    // runners that are gone a moment later (DeepSeek Harness's: server.rs
+    // chain_for). A parent that started after its child, where both may be
+    // asked, has a reused number. Itself when nothing is above it.
+    pub fn outermost_of(pid: u32) -> u32 {
+        let all = processes();
+        let (mut cur, mut outermost) = (pid, pid);
+        for _ in 0..MAX_CHAIN {
+            let Some(&(parent, _)) = all.get(&cur) else { break };
+            let Some((_, name)) = all.get(&parent) else { break };
+            if parent == 0 || parent == cur || ROOTS.contains(&name.as_str()) {
+                break;
+            }
+            if let (Some(child), Some(at)) = (started(cur), started(parent)) {
+                if at > child {
+                    break;
+                }
+            }
+            outermost = parent;
+            cur = parent;
+        }
+        outermost
     }
 
     fn named_chain(pid: u32, all: &HashMap<u32, (u32, String)>) -> Vec<(u32, u64, String)> {
@@ -502,6 +532,9 @@ mod imp {
     pub fn hook_chain() -> Chain {
         Vec::new()
     }
+    pub fn outermost_of(pid: u32) -> u32 {
+        pid
+    }
     pub fn client_of(_client_port: u16, _server_port: u16) -> Option<u32> {
         None
     }
@@ -531,7 +564,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, hook_chain, is_listening, still_running, still_there, windows_for};
+pub use imp::{chain_of, client_of, hook_chain, is_listening, outermost_of, still_running, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {
@@ -591,6 +624,17 @@ mod tests {
         let chain = chain_of(std::process::id());
         assert_eq!(chain.first().map(|c| c.0), Some(std::process::id()));
         assert!(chain.windows(2).all(|w| w[0].1 >= w[1].1), "a parent never starts after its child");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_outermost_process_above_this_one() {
+        // Above this test: cargo, a shell, a terminal… up to what all run under.
+        let top = outermost_of(std::process::id());
+        assert_ne!(top, std::process::id());
+        assert!(chain_of(std::process::id()).iter().any(|&(pid, _)| pid == top) || chain_of(top).len() == 1);
+        // None such: itself.
+        assert_eq!(outermost_of(u32::MAX - 3), u32::MAX - 3);
     }
 
     #[cfg(windows)]

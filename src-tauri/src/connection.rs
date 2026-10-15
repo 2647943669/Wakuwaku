@@ -69,7 +69,8 @@ pub fn shown_path(file: &Path) -> String {
 }
 
 // What kept a settings file from being written, for what to do about it:
-// locked (another program has it open), invalid (not JSON), other. From
+// locked (another program has it open), invalid (not JSON), flowList (DSH's
+// patch file with its list as [ … ]), other. From
 // the error's text: io's ends "(os error 32)" (or 33) whatever the
 // language, serde_json's says where, "at line 3 column 5".
 pub fn error_kind(error: &str) -> &'static str {
@@ -77,6 +78,8 @@ pub fn error_kind(error: &str) -> &'static str {
         "path"
     } else if error.contains("(os error 32)") || error.contains("(os error 33)") {
         "locked"
+    } else if error.contains(DSH_FLAT) {
+        "flowList"
     } else if error.contains(" at line ") && error.contains(" column ") {
         "invalid"
     } else {
@@ -542,7 +545,7 @@ pub fn note_connected(connected: bool) -> bool {
 }
 
 pub fn look_connected(port: u16) -> bool {
-    let connected = connection(port) != "none" || is_codex_connected() || is_agy_connected() || is_zcode_connected();
+    let connected = connection(port) != "none" || is_codex_connected() || is_agy_connected() || is_zcode_connected() || is_dsh_connected();
     note_connected(connected);
     connected
 }
@@ -685,10 +688,10 @@ pub fn agy_hooks_status() -> &'static str {
 
 // The tools on this computer by name, in their order (the island names
 // them while none is connected): Claude Code by its folder, Codex,
-// Antigravity and ZCode by theirs; none found, the first three (it can not
-// be told).
+// Antigravity, ZCode and DeepSeek Harness by theirs; none found, the first
+// three (it can not be told).
 pub fn tools_here() -> Vec<&'static str> {
-    let here: Vec<&str> = [("Claude Code", claude_here()), ("Codex", codex_home().is_dir()), ("Antigravity", agy_here()), ("ZCode", zcode_here())].into_iter().filter(|(_, is)| *is).map(|(name, _)| name).collect();
+    let here: Vec<&str> = [("Claude Code", claude_here()), ("Codex", codex_home().is_dir()), ("Antigravity", agy_here()), ("ZCode", zcode_here()), ("DeepSeek Harness", dsh_here())].into_iter().filter(|(_, is)| *is).map(|(name, _)| name).collect();
     if here.is_empty() {
         vec!["Claude Code", "Codex", "Antigravity"]
     } else {
@@ -896,6 +899,242 @@ pub fn write_zcode_hooks(action: &str) -> Result<(), String> {
                 fs::write(&note, json!({ "enabledBefore": enabled }).to_string()).map_err(|e| e.to_string())?;
             }
             write_json(&file, &zcode_install(&before, &launch_command()))
+        }
+        _ => Err(format!("unknown action {action}")),
+    }
+}
+
+// --- DeepSeek Harness: its Claude Code hook bridge, and a hooks.json of hers -----------
+//
+// DeepSeek Harness (dsh, its desktop app and CLI) has no hooks file of its
+// own: everything is a plugin, mounted from a profile's patch layers. One of
+// those it ships (in the desktop app's bundle, and as a dependency of the
+// `@deepseek-ai/dsh` CLI) is a bridge that runs a Claude Code hooks.json's
+// command hooks (`@deepseek-ai/dsh-hooks-claude-code`): SessionStart,
+// UserPromptSubmit, PreToolUse, PostToolUse, Stop (and Subagent*), with
+// Claude Code's payloads; no PermissionRequest, no last reply, and an empty
+// transcript_path (events_dsh.rs). Install inserts that bridge, pointed at
+// dsh-hooks.json in her data folder, into the home-level patch layer
+// ($DSH_HOME/cordis.patch.yml, ~/.dsh by default), which every profile
+// applies over its own (the desktop app's "desktop" profile too, which its
+// CLI refuses to touch) and which DSH's own settings never rewrite; our rows
+// sit between two comment lines of ours, so they are found and taken out
+// again without a YAML parser. The bridge reads hooks.json once, as DSH
+// starts: installed, DSH is restarted.
+//
+// The bridge runs each hook as a command through DSH's shell, which on
+// Windows is PowerShell (pwsh 7, else Windows PowerShell), in DSH's sandbox
+// (a write-restricted, low-integrity token: the hook may read and open a
+// socket, but not write; so it never starts her, who would run so too). A
+// hook costs some 0.9 s there (desktop app 0.2.0-rc.2 in the test VM,
+// Windows PowerShell 5.1), and DSH waits on each but SessionStart's: so
+// only a turn's start and end, and the few tools worth it (an edit, the
+// to-do list, a question to the person, PostToolUse; the question's start,
+// PreToolUse) have one, by name.
+
+pub const DSH_FLAG: &str = "--wakuwaku-dsh-hook";
+const DSH_BRIDGE: &str = "@deepseek-ai/dsh-hooks-claude-code";
+const DSH_TIMEOUT: u64 = 15;
+// Our rows in the patch file, between these lines.
+const DSH_BEGIN: &str = "# wakuwaku begin";
+const DSH_END: &str = "# wakuwaku end";
+// The tools whose end (and the question's start) is told: DSH's own names.
+pub const DSH_POST_TOOLS: &str = "write|edit|str_replace_editor|todo_write|ask_user_question";
+const DSH_PRE_TOOLS: &str = "ask_user_question";
+
+pub fn dsh_home() -> PathBuf {
+    match std::env::var_os("DSH_HOME").filter(|h| !h.is_empty()) {
+        Some(home) => PathBuf::from(home),
+        None => PathBuf::from(std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).unwrap_or_default()).join(".dsh"),
+    }
+}
+
+// Whether DeepSeek Harness is on this computer: its folder (made as it first runs).
+pub fn dsh_here() -> bool {
+    dsh_home().is_dir()
+}
+
+pub fn dsh_patch_file() -> PathBuf {
+    dsh_home().join("cordis.patch.yml")
+}
+
+pub fn dsh_hooks_file() -> PathBuf {
+    crate::data::folder().join("dsh-hooks.json")
+}
+
+// The command DSH's PowerShell runs for an event: the bare path when it
+// needs no quoting, else as PowerShell calls a quoted program; its output
+// piped away, so that PowerShell waits for it (it does not for a program
+// with a window of its own, as this one is, and was gone before her server
+// could see where the hook ran: server.rs chain_for).
+pub fn dsh_command(exe: &str, event: &str) -> String {
+    let is_plain = !exe.is_empty() && exe.chars().all(|c| c.is_ascii_alphanumeric() || "\\/:._-".contains(c));
+    if is_plain {
+        format!("{exe} {DSH_FLAG} {event} | Out-Null")
+    } else {
+        format!("& '{}' {DSH_FLAG} {event} | Out-Null", exe.replace('\'', "''"))
+    }
+}
+
+// The hooks.json the bridge runs.
+pub fn dsh_hooks(exe: &str) -> Value {
+    let hook = |event: &str| json!([{ "type": "command", "command": dsh_command(exe, event), "timeout": DSH_TIMEOUT }]);
+    json!({ "hooks": {
+        "SessionStart": [{ "hooks": hook("SessionStart") }],
+        "UserPromptSubmit": [{ "hooks": hook("UserPromptSubmit") }],
+        "PreToolUse": [{ "matcher": DSH_PRE_TOOLS, "hooks": hook("PreToolUse") }],
+        "PostToolUse": [{ "matcher": DSH_POST_TOOLS, "hooks": hook("PostToolUse") }],
+        "Stop": [{ "hooks": hook("Stop") }],
+    } })
+}
+
+// Our rows: the bridge inserted, pointed at the hooks.json.
+fn dsh_block(config_path: &str) -> String {
+    format!(
+        "{DSH_BEGIN}: Wakuwaku follows DeepSeek Harness through its Claude Code hook bridge (remove it from her settings)\n\
+         - insert:\n    - id: wakuwaku\n      name: '{DSH_BRIDGE}'\n      config:\n        configPath: '{}'\n{DSH_END}\n",
+        config_path.replace('\'', "''")
+    )
+}
+
+// The text without our rows, and the configPath they gave (None: none of ours).
+fn dsh_strip(text: &str) -> (String, Option<String>) {
+    let mut out = String::new();
+    let (mut inside, mut found) = (false, None);
+    for line in text.split_inclusive('\n') {
+        let bare = line.trim();
+        if !inside && bare.starts_with(DSH_BEGIN) {
+            inside = true;
+            found = Some(String::new());
+            continue;
+        }
+        if inside {
+            if bare.starts_with(DSH_END) {
+                inside = false;
+            } else if let Some(value) = bare.strip_prefix("configPath:") {
+                let value = value.trim();
+                let value = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')).map_or(value.to_string(), |v| v.replace("''", "'"));
+                found = Some(value);
+            }
+            continue;
+        }
+        out.push_str(line);
+    }
+    (out, found)
+}
+
+// The rows of a YAML list a patch file has, past its comments and blank lines.
+fn dsh_content(text: &str) -> Vec<&str> {
+    text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).collect()
+}
+
+// The patch file with our rows (in place of ours before): added after the
+// list's last row, or in place of an empty list ([]); the list as a YAML
+// flow sequence of rows ([ ... ]) is not one to add to.
+pub fn dsh_install(text: Option<&str>, config_path: &str) -> Result<String, String> {
+    let (rest, _) = dsh_strip(text.unwrap_or(""));
+    let block = dsh_block(config_path);
+    let content = dsh_content(&rest);
+    if content.is_empty() {
+        return Ok(if rest.trim().is_empty() { block } else { format!("{}{block}", with_newline(&rest)) });
+    }
+    if content == ["[]"] {
+        let mut out = String::new();
+        for line in rest.split_inclusive('\n') {
+            out.push_str(if line.trim() == "[]" { &block } else { line });
+        }
+        return Ok(out);
+    }
+    if content[0].starts_with('[') {
+        return Err(DSH_FLAT.to_string());
+    }
+    Ok(format!("{}{block}", with_newline(&rest)))
+}
+
+fn with_newline(text: &str) -> String {
+    if text.is_empty() || text.ends_with('\n') { text.to_string() } else { format!("{text}\n") }
+}
+
+// The patch file without our rows: None when nothing else was in it (the
+// file goes); an empty list ([]) when only comments are left, which DSH
+// would refuse to start with.
+pub fn dsh_uninstall(text: &str) -> Option<String> {
+    let (rest, _) = dsh_strip(text);
+    if rest.trim().is_empty() {
+        return None;
+    }
+    if dsh_content(&rest).is_empty() {
+        return Some(format!("{}[]\n", with_newline(&rest)));
+    }
+    Some(rest)
+}
+
+// How our rows stand against what this copy would write: missing / ok /
+// stale (another copy's hooks.json, or ours not as this version writes it).
+pub fn dsh_status_of(text: &str, config_path: &str, hooks: Option<&Value>, want: &Value) -> &'static str {
+    match dsh_strip(text).1 {
+        None => "missing",
+        Some(path) if same_path(&path) == same_path(config_path) && hooks == Some(want) => "ok",
+        Some(_) => "stale",
+    }
+}
+
+// absent (no DeepSeek Harness here), unreadable, or how our rows stand.
+pub fn dsh_hooks_status() -> &'static str {
+    if !dsh_here() {
+        return "absent";
+    }
+    let text = match fs::read_to_string(dsh_patch_file()) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(_) => return "unreadable",
+    };
+    let hooks = read_json(&dsh_hooks_file()).ok();
+    dsh_status_of(&text, &dsh_hooks_file().to_string_lossy(), hooks.as_ref(), &dsh_hooks(&launch_command()))
+}
+
+pub fn is_dsh_connected() -> bool {
+    matches!(dsh_hooks_status(), "ok" | "stale")
+}
+
+// What keeps our rows out of a patch file, as write_dsh_hooks says it (error_kind: "flowList").
+const DSH_FLAT: &str = "its list is written as [ … ], not a row a line: our rows cannot be added to it";
+
+// Change DSH's home-level patch file, backed up once beside itself, and the
+// hooks.json in her data folder. action: install, remove.
+pub fn write_dsh_hooks(action: &str) -> Result<(), String> {
+    let file = dsh_patch_file();
+    let text = match fs::read_to_string(&file) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.to_string()),
+    };
+    // A copy of the person's own: none of a file of ours alone.
+    let backup = backup_of(&file);
+    if text.as_deref().is_some_and(|t| !dsh_strip(t).0.trim().is_empty()) && !backup.exists() {
+        fs::copy(&file, &backup).map_err(|e| e.to_string())?;
+    }
+    match action {
+        "remove" => {
+            if let Some(text) = text.filter(|t| dsh_strip(t).1.is_some()) {
+                match dsh_uninstall(&text) {
+                    Some(rest) => fs::write(&file, rest).map_err(|e| e.to_string())?,
+                    None => fs::remove_file(&file).map_err(|e| e.to_string())?,
+                }
+            }
+            let _ = fs::remove_file(dsh_hooks_file());
+            Ok(())
+        }
+        "install" => {
+            let hooks = dsh_hooks_file();
+            let after = dsh_install(text.as_deref(), &hooks.to_string_lossy())?;
+            // Ours alone: written as it is, no copy kept.
+            let text = serde_json::to_string_pretty(&dsh_hooks(&launch_command())).map_err(|e| e.to_string())?;
+            fs::write(&hooks, format!("{text}\n")).map_err(|e| e.to_string())?;
+            if let Some(read) = READ.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+                read.remove(&hooks);
+            }
+            fs::write(&file, after).map_err(|e| e.to_string())
         }
         _ => Err(format!("unknown action {action}")),
     }
@@ -1342,6 +1581,58 @@ mod tests {
         assert_eq!(zcode_status_of(&one, exe), "off");
         one["hooks"]["events"]["Stop"][1]["hooks"][0]["enabled"] = json!(true);
         assert_eq!(zcode_status_of(&one, exe), "ok");
+    }
+
+    #[test]
+    fn dsh_bridge_rows_in_and_out_of_its_patch_file() {
+        let hooks = r"C:\Users\Me\wakuwaku-data\dsh-hooks.json";
+        // As DSH's template writes a profile's patch file, rows of the person's own.
+        let theirs = "# Your patch layer\n- id: ui-chat\n  name: \"@deepseek-ai/dsh-client-ui-chat\"\n  config:\n    transcriptView: standard\n";
+        let with = dsh_install(Some(theirs), hooks).unwrap();
+        assert!(with.starts_with(theirs), "{with}");
+        assert!(with.contains("\n- insert:\n    - id: wakuwaku\n      name: '@deepseek-ai/dsh-hooks-claude-code'\n      config:\n"), "{with}");
+        assert!(with.contains(r"        configPath: 'C:\Users\Me\wakuwaku-data\dsh-hooks.json'"), "{with}");
+        // Installing twice replaces, never doubles; removing gives theirs back.
+        let again = dsh_install(Some(&with), hooks).unwrap();
+        assert_eq!(again.matches(DSH_BEGIN).count(), 1);
+        assert_eq!(dsh_uninstall(&again).as_deref(), Some(theirs));
+        // No file, or an empty list: ours alone, then gone, or the list again.
+        let alone = dsh_install(None, hooks).unwrap();
+        assert!(alone.starts_with(DSH_BEGIN));
+        assert_eq!(dsh_uninstall(&alone), None);
+        let empty = "# comments\n[]\n";
+        let filled = dsh_install(Some(empty), hooks).unwrap();
+        assert!(filled.starts_with("# comments\n# wakuwaku begin") && !filled.contains("[]"), "{filled}");
+        assert_eq!(dsh_uninstall(&filled).as_deref(), Some(empty));
+        // A list written as [ … ] is not added to.
+        assert_eq!(super::error_kind(&dsh_install(Some("[ { id: x, disabled: true } ]\n"), hooks).unwrap_err()), "flowList");
+        // A quote in the path.
+        let quoted = dsh_install(None, r"D:\it's\dsh-hooks.json").unwrap();
+        assert!(quoted.contains(r"configPath: 'D:\it''s\dsh-hooks.json'"));
+        assert_eq!(dsh_strip(&quoted).1.as_deref(), Some(r"D:\it's\dsh-hooks.json"));
+
+        // Its state: our rows pointed at our hooks.json, as this copy writes it.
+        let exe = r"C:\Program Files\Wakuwaku\wakuwaku.exe";
+        let want = dsh_hooks(exe);
+        assert_eq!(dsh_status_of(theirs, hooks, Some(&want), &want), "missing");
+        assert_eq!(dsh_status_of(&with, hooks, Some(&want), &want), "ok");
+        assert_eq!(dsh_status_of(&with, r"D:\other\dsh-hooks.json", Some(&want), &want), "stale");
+        assert_eq!(dsh_status_of(&with, hooks, None, &want), "stale");
+        assert_eq!(dsh_status_of(&with, hooks, Some(&dsh_hooks(r"D:\w\wakuwaku.exe")), &want), "stale");
+    }
+
+    #[test]
+    fn dsh_hooks_are_commands_for_its_powershell() {
+        let hooks = dsh_hooks(r"C:\Program Files\Wakuwaku\wakuwaku.exe");
+        let stop = &hooks["hooks"]["Stop"][0]["hooks"][0];
+        assert_eq!(stop["command"], r"& 'C:\Program Files\Wakuwaku\wakuwaku.exe' --wakuwaku-dsh-hook Stop | Out-Null");
+        assert_eq!((stop["type"].as_str(), stop["timeout"].as_u64()), (Some("command"), Some(DSH_TIMEOUT)));
+        assert_eq!(dsh_command(r"D:\pet\wakuwaku.exe", "PostToolUse"), r"D:\pet\wakuwaku.exe --wakuwaku-dsh-hook PostToolUse | Out-Null");
+        // Only the tools worth a wait: DSH's own names, as its bridge matches them.
+        assert_eq!(hooks["hooks"]["PostToolUse"][0]["matcher"], DSH_POST_TOOLS);
+        assert_eq!(hooks["hooks"]["PreToolUse"][0]["matcher"], "ask_user_question");
+        assert!(hooks["hooks"]["SessionStart"][0].get("matcher").is_none());
+        assert_eq!(hooks["hooks"].as_object().unwrap().len(), 5);
     }
 
     #[test]
