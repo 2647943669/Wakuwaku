@@ -1400,9 +1400,17 @@
   transform: scale(0.9);
 }
 
+/* On: in Windows' accent, as its quick settings fill a switch that is on
+   (--win-accent: the lighter one on dark, the darker one on light, island.js);
+   in the text's colour it went black on the light strip (#41). */
 #island-settings .tile.on .c {
-  background: var(--fg);
+  background: var(--win-accent, #4cc2ff);
   color: #000;
+}
+
+.tb-light #island-settings .tile.on .c {
+  background: var(--win-accent, #005fb8);
+  color: #fff;
 }
 
 /* Her home: two pictures to pick from. */
