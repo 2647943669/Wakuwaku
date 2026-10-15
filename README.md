@@ -84,6 +84,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
   - `claude -p` 这类非交互模式会先等 hook 回复再做决定，没人点的话最多会卡到面板等待时间结束。
   - MCP 弹出的表单（Elicitation）只做提醒。
 - Codex 的授权请求也会弹到面板上，但只有**允许** / **拒绝**（Codex 不接受 hook 加规则）。Codex 要等面板交出才会弹自己的确认框，所以面板最多等 1 分钟；想在终端里答，点「去终端处理」。
+- omp（oh-my-pi）的计划审批也会弹到面板上：**批准**就按计划执行，**拒绝**就让 omp 接着改计划；终端里的审批框同时开着，在终端里先答了，面板就收起。omp 的工具批准她答不了（omp 没有给扩展回答它的办法），只提醒你去终端。
 
 ## 安装
 
@@ -134,6 +135,17 @@ Codex 桌面版里装过的宠物（`~/.codex/pets`）格式相同，会直接�
 和 Claude Code 的区别：Antigravity 没有「等你批准」的事件，所以她能跟着开始、干活、调用工具、做完和出错，但提醒不了批准，也不能在她这里确认。
 
 Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：程序的路径里有空格时，用它的 8.3 短路径写进去；连短路径也没有（有的盘关掉了短文件名），就装不上，把程序放到路径没有空格的文件夹即可。agy 每一步都会等 hook 跑完，大约 0.1–0.2 秒。
+
+### 5. 连上 oh-my-pi（omp，可选）
+
+支持 [oh-my-pi](https://github.com/can1357/oh-my-pi)（命令行 `omp`，18.11 起）。omp 没有 hooks，只有扩展：在「连接」页的 omp 一栏点「安装」，会在 omp 的 agent 文件夹放一个我们自己的扩展 `~/.omp/agent/extensions/wakuwaku.ts`（设了 `PI_CODING_AGENT_DIR` 就放那里；用 `omp --profile` 的，每个 profile 的 `~/.omp/profiles/<名字>/agent/extensions/` 也各放一份），端口和程序的路径写在文件里，omp 的设置一个字都不改；移除时删掉它。之后新开的 omp 会加载它（已经开着的要重开）。
+
+和 Claude Code 的区别：
+
+- 她能跟着会话开始、干活和每一步用的工具、做完（回复的开头）、出错、退出；子 agent 的不算，只显示主会话。
+- omp 默认是 yolo，不问工具批准；设成 `always-ask` / `write` 时，omp 要你批准一个工具，她会显示「在终端里批准：…」，批准要在 omp 里做（omp 没有让扩展回答工具批准的接口）。
+- omp 的计划审批（plan mode）可以在她的面板上批准或拒绝，和终端里的审批框谁先答算谁的。
+- 扩展在 omp 自己的进程里跑：每个事件发出去就不管了，从不让 omp 等她；她没开着时 omp 照常工作。她没开着、也不是你从菜单退出的，新的 omp 会话开始时会把她叫起来。点会话能跳到 omp 所在的终端窗口。
 
 ### 从源码运行
 
@@ -209,7 +221,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 omp 的：在 omp 一栏点「移除」，删掉 `extensions/wakuwaku.ts`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
@@ -221,6 +233,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 Claude Code ──HTTP hooks──▶ 宠物窗口 (127.0.0.1:47213/hook)
             └─SessionStart─▶ 程序本身 --wakuwaku-ensure-running（后台运行，她没开就启动）
 Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ 宠物窗口 (/hook?agent=codex)
+omp ──扩展 wakuwaku.ts（在 omp 进程里）──▶ 宠物窗口 (/hook?agent=omp)
 ```
 
 - 所有事件都用 Claude Code 的 **HTTP hook** 直接发给她，调用工具时不启动任何进程（本机实测每次约 0.3ms）。她立刻回 `{}`，表示不做任何决定；只有确认请求会等你在面板上点了再回。

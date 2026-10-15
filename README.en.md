@@ -86,6 +86,7 @@ Each pet has 11 animations, and every one of them has a job:
   - Non-interactive runs such as `claude -p` wait for the hook before deciding, so with nobody clicking they wait until the panel gives up.
   - MCP forms (Elicitation) are announced, not filled in.
 - Codex's permission prompts come to the panel too, with **Allow** / **Deny** only (Codex takes no rules from a hook). Codex shows its own dialog only once the panel lets go, so the panel waits 1 minute at most; to answer in the terminal, click Handle in terminal.
+- omp's (oh-my-pi's) plan reviews come to the panel too: **Approve** executes the plan, **Deny** has omp refine it; omp's own review stays open in the terminal meanwhile, and answering there first puts the panel away. omp's tool approvals she can't answer (omp gives an extension no way to), only remind you to go to the terminal.
 
 ## Install
 
@@ -136,6 +137,17 @@ Google's Antigravity is supported: the `agy` CLI and the Antigravity 2.0 desktop
 How it differs from Claude Code: Antigravity has no "needs your approval" event, so she follows its sessions starting, working, using tools, finishing and failing, but can't remind you to approve, and you can't approve on her.
 
 Antigravity hooks can only be commands, run by `cmd` without reading quotes: if the app's path has a space, its 8.3 short path is written instead; with no short path either (some drives have short names turned off), installing fails, and moving the app to a folder with no spaces in its path fixes it. agy waits for the hook at each step, about 0.1–0.2 s.
+
+### 5. Connect oh-my-pi (omp, optional)
+
+[oh-my-pi](https://github.com/can1357/oh-my-pi) (the `omp` command line, 18.11 or later) is supported. omp has no hooks, only extensions: click Install in the omp part of the Connect page, and an extension of our own goes into omp's agent folder, `~/.omp/agent/extensions/wakuwaku.ts` (where `PI_CODING_AGENT_DIR` points, if set; with `omp --profile`, each profile's `~/.omp/profiles/<name>/agent/extensions/` gets one too), her port and the app's path written in it; none of omp's settings change, and Remove deletes it. Every omp started after that loads it (one already open has to be restarted).
+
+How it differs from Claude Code:
+
+- She follows a session starting, working and each tool it uses, finishing (the start of its reply), failing and exiting; a subagent's are left out, only the main session shows.
+- omp runs in yolo by default and asks for no tool approvals; set to `always-ask` or `write`, when omp wants a tool approved she shows "Approve it in the terminal: …", and the approval is given in omp (omp has no way for an extension to answer it).
+- omp's plan reviews (plan mode) can be approved or turned down on her panel, whichever of it and the terminal's review answers first.
+- The extension runs inside omp's own process: each event is sent and let go, and omp never waits on her; with her not running, omp works as ever. When she isn't running and you didn't quit her from her menu, a new omp session starts her. Clicking the session goes to the terminal window omp runs in.
 
 ### From source
 
@@ -211,7 +223,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 ### Uninstall
 
 1. If you turned on **Start at login**, turn it off on the Connect page (the `Wakuwaku` Run entry and the `Wakuwaku at logon-…` task both go).
-2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`.
+2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`. With omp: click Remove in its part, which deletes `extensions/wakuwaku.ts`.
 3. Quit her, then delete the exe or the project folder. Notifications register her name in `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`; delete that key too.
 4. Delete her settings and downloaded pets: the `wakuwaku-data` folder beside the exe, or the project's `data/` when run from source.
 
@@ -223,6 +235,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 Claude Code ──HTTP hooks──▶ the pet (127.0.0.1:47213/hook)
             └─SessionStart─▶ the app itself --wakuwaku-ensure-running (in the background; starts her if she's not up)
 Codex ──command hooks──▶ the app itself --wakuwaku-codex-hook ──▶ the pet (/hook?agent=codex)
+omp ──extension wakuwaku.ts (inside omp's process)──▶ the pet (/hook?agent=omp)
 ```
 
 - Every event is a Claude Code **HTTP hook** sent straight to her, so a tool call starts no process (about 0.3 ms here). She answers `{}` at once, meaning no decision; only a prompt waits until you answer on the panel.

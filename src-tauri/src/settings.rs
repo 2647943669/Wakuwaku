@@ -23,9 +23,11 @@ pub fn snapshot(sh: &Shared) -> Value {
     let (win_light, win_accent) = crate::wallpaper::look();
     // Whether either is connected, as the island tells it (connection.rs).
     let conn = connection::connection(sh.port);
-    if connection::note_connected(conn != "none" || connection::is_codex_connected() || connection::is_agy_connected()) {
+    let omp = connection::omp_hooks_status(sh.port);
+    if connection::note_connected(conn != "none" || connection::is_codex_connected() || connection::is_agy_connected() || matches!(omp, "ok" | "stale" | "partial")) {
         sh.redraw();
     }
+    let omp_files = connection::omp_files();
     json!({
         "settings": Value::Object(sh.settings.lock().unwrap().clone()),
         "lang": sh.lang(),
@@ -67,6 +69,16 @@ pub fn snapshot(sh: &Shared) -> Value {
             "fileShown": connection::shown_path(&connection::agy_hooks_file()),
             "backup": connection::backup_of(&connection::agy_hooks_file()).exists(),
             "seen": sh.agy_seen.load(Ordering::SeqCst) > 0,
+        },
+        // omp's extension (connection.rs): in its agent folder, and each
+        // profile's (more: how many besides the first); whether any omp
+        // event came; whether omp is on this computer at all.
+        "omp": {
+            "hooks": omp,
+            "file": omp_files.first().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default(),
+            "fileShown": omp_files.first().map(|f| connection::shown_path(f)).unwrap_or_default(),
+            "more": omp_files.len().saturating_sub(1),
+            "seen": sh.omp_seen.load(Ordering::SeqCst) > 0,
         },
         // How many displays there are: her taskbar on all of them is offered
         // only with more than one (Look, taskbarDisplays).
@@ -453,6 +465,16 @@ pub async fn settings_agy_hooks(app: AppHandle, action: String) -> Value {
             let folder = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.to_string_lossy().into_owned())).unwrap_or_default();
             json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "folder": folder, "snapshot": snapshot(&sh) })
         }
+    }
+}
+
+// install, remove: omp's extension, in each of its agent folders.
+#[tauri::command]
+pub async fn settings_omp_hooks(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_omp_hooks(&action, sh.port) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 
