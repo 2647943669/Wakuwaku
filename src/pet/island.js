@@ -569,9 +569,10 @@
   const TURN_MS = 320
   const isPinned = () => !!monitor && config.monitor?.pin !== false
 
-  // A widget's line in the open island: the one shown is lit.
+  // A widget's line in the open island: the one shown is lit; its detail
+  // (the weather's range for the day) after its value, here alone.
   function widgetRow(widget, isShown) {
-    const { label, value } = Widgets.words(lang, widget, isDetailed())
+    const { label, value, detail } = Widgets.words(lang, widget, isDetailed())
     const row = el('span', isShown ? 'wrow on' : 'wrow')
     row.dataset.widget = widget.id
     row.insertAdjacentHTML('afterbegin', Widgets.icon(widget.icon))
@@ -579,7 +580,7 @@
     const valueText = el('span', 'wv', value)
     valueText.style.color = ink(widget.color) || hue().idle
     if (Widgets.partsOf(widget)) valueText.innerHTML = Widgets.partsHTML(widget)
-    row.append(el('span', 'wl', label), valueText)
+    row.append(el('span', 'wl', label), valueText, ...(detail ? [el('span', 'wd', detail)] : []))
     return row
   }
 
@@ -660,7 +661,9 @@
     // A widget that asked to open the island: what it says, over all else.
     if (isNudging() && nudge.widget) {
       const w = nudge.widget
-      const { label, value } = Widgets.words(lang, w, isDetailed())
+      const { label, value: bare, detail } = Widgets.words(lang, w, isDetailed())
+      // Its detail after the value, as in its line (the weather's range).
+      const value = [bare, detail].filter(Boolean).join(' · ')
       // A private one's words stay off screen too, while the specifics do.
       const words = w.private && !isDetailed() ? '' : w.words
       const card = el('span', 'me')
@@ -4289,7 +4292,7 @@
     const at = widgets.findIndex(w => w.id === n.id)
     if (at >= 0) widgetAt = at
     // Not a widget's (a new version): its own icon.
-    nudgeFor('waving', null, NUDGE_READ_MS, { ...n, icon: widgets[at]?.icon || n.icon, color: widgets[at]?.color })
+    nudgeFor('waving', null, NUDGE_READ_MS, { ...n, icon: widgets[at]?.icon || n.icon, color: widgets[at]?.color, detail: widgets[at]?.detail })
   })
 
   // --- The pointer ----------------------------------------------------------------

@@ -66,10 +66,12 @@
       : `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.dot}</svg>`
 
   // What a widget says: its label and its value, in her language; a private
-  // one's label not, unless the specifics may show.
+  // one's label not, unless the specifics may show. And its detail, for the
+  // open island alone (the weather's range for the day).
   const words = (lang, w, detailed = true) => ({
     label: w.private && !detailed ? '' : render(lang, w.label),
     value: partsOf(w) ? partsOf(w).map(p => p.text).join(' ') : render(lang, w.value),
+    detail: typeof w.detail === 'string' ? w.detail : '',
   })
 
   // How full a reading is, 0 to 100. The processor, memory and the battery

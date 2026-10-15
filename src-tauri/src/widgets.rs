@@ -2,9 +2,11 @@
 // script keeps up to date there (or the pet herself, for the built-in ones),
 // shown only while no session needs you: sessions always come first.
 //
-//   POST /widget { id, label, value?, icon?, color?, ttl?, nudge? }
+//   POST /widget { id, label, value?, detail?, icon?, color?, ttl?, nudge? }
 //     id     a-z 0-9 _ -, up to 40; the same id again replaces it
 //     label  up to 40 characters; value up to 24
+//     detail up to 24, shown after the value in the open island only (the
+//            weather's range for the day): the compact one stays short
 //     icon   one of ICONS, else a dot
 //     color  #rgb or #rrggbb, for the value
 //     ttl    how long (s) it stays without a new one: 300 by default, 10 to 86400
@@ -46,6 +48,8 @@ pub struct Widget {
     pub id: String,
     label: Value,
     value: Value,
+    // A script's few words more, for the open island alone.
+    detail: String,
     icon: String,
     color: String,
     // When it goes, if no new one comes (ms); never, for the built-in ones.
@@ -105,6 +109,7 @@ impl Widgets {
             id: id.into(),
             label: json!(label),
             value: json!(clip(s("value"), 24)),
+            detail: clip(s("detail"), 24),
             icon: if ICONS.contains(&s("icon")) { s("icon").into() } else { "dot".into() },
             color: if is_color(s("color")) { s("color").into() } else { String::new() },
             until: Some(now + ttl * 1000),
@@ -149,7 +154,7 @@ impl Widgets {
     // kept until she takes it away. True when they changed.
     #[allow(clippy::too_many_arguments)]
     pub fn put_owned(&mut self, id: &str, icon: &str, color: &str, label: Value, value: Value, private: bool, now: u64) -> bool {
-        let widget = Widget { id: id.into(), label, value, icon: icon.into(), color: color.into(), until: None, at: now, private };
+        let widget = Widget { id: id.into(), label, value, detail: String::new(), icon: icon.into(), color: color.into(), until: None, at: now, private };
         match self.list.iter_mut().find(|w| w.id == id) {
             Some(old) if old.label == widget.label && old.value == widget.value && old.color == widget.color => false,
             Some(old) => {
@@ -213,6 +218,7 @@ impl Widgets {
                         "id": w.id,
                         "label": w.label,
                         "value": w.value,
+                        "detail": w.detail,
                         "icon": w.icon,
                         "color": w.color,
                         "builtIn": is_built_in(&w.id),
@@ -237,7 +243,7 @@ fn is_built_in(id: &str) -> bool {
 // A built-in widget with nothing to say yet.
 fn built_in(id: &str) -> Widget {
     let (icon, color) = BUILT_IN.iter().find(|b| b.0 == id).map_or(("dot", ""), |b| (b.1, b.2));
-    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, icon: icon.into(), color: color.into(), until: None, at: 0, private: false }
+    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: String::new(), icon: icon.into(), color: color.into(), until: None, at: 0, private: false }
 }
 
 // --- Today: what the day has seen ---------------------------------------------------
@@ -908,11 +914,15 @@ mod tests {
         let mut w = Widgets::default();
         let put = w.put(&json!({ "id": "weather", "label": "上海 · 多云", "value": "22°", "icon": "weather", "color": "#ffb340" }), 1_000).unwrap();
         assert_eq!((put.id.as_str(), put.nudge), ("weather", None));
-        w.put(&json!({ "id": "weather", "label": "上海 · 晴", "value": "24°", "icon": "nope", "color": "red" }), 2_000).unwrap();
+        assert_eq!(scripted(w.view(1_000, &[], &[], &|_| None))[0]["detail"], "", "no detail sent");
+        w.put(&json!({ "id": "weather", "label": "上海 · 晴", "value": "24°", "detail": " 14°~22° ", "icon": "nope", "color": "red" }), 2_000).unwrap();
         let view = scripted(w.view(2_000, &[], &[], &|_| None));
         assert_eq!(view.as_array().unwrap().len(), 1);
         assert_eq!((view[0]["label"].as_str(), view[0]["icon"].as_str(), view[0]["color"].as_str()), (Some("上海 · 晴"), Some("dot"), Some("")));
+        assert_eq!(view[0]["detail"], "14°~22°");
         assert_eq!(view[0]["leftMs"], 300_000);
+        w.put(&json!({ "id": "weather", "label": "x", "detail": "一二三四五六七八九十一二三四五六七八九十一二三四五六" }), 2_500).unwrap();
+        assert_eq!(scripted(w.view(2_500, &[], &[], &|_| None))[0]["detail"].as_str().unwrap().chars().count(), 24);
         w.put(&json!({ "id": "weather", "remove": true }), 3_000).unwrap();
         assert!(scripted(w.view(3_000, &[], &[], &|_| None)).as_array().unwrap().is_empty());
     }
