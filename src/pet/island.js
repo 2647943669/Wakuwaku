@@ -2773,13 +2773,17 @@
   const flyout = el('span', 'tfly')
   let trayOpen = false
 
+  // One a press does not reach (reach false: its program handed its icon to
+  // Windows' own taskbar only, before hers was up, and never named hers the
+  // message to send it; systray.rs) says so in its tip.
   function trayIcon(i) {
     const slot = el('span', 'ticon')
     slot.dataset.tray = i.key
     slot.dataset.name = i.name
-    slot.title = i.tip || i.exe
+    const unreached = i.reach === false ? `\n${t(lang, 'taskbar.trayUnreached')}` : ''
+    slot.title = (i.tip || i.exe) + unreached
     slot.setAttribute('role', 'button')
-    slot.setAttribute('aria-label', i.tip || i.name || i.exe || '')
+    slot.setAttribute('aria-label', (i.tip || i.name || i.exe || '') + unreached)
     if (i.png) {
       const img = el('img')
       img.src = i.png
@@ -2861,7 +2865,7 @@
     const icons = orderedTray()
     const folded = icons.filter(i => !isOut(i))
     if (!folded.length) trayOpen = false
-    const drawn = JSON.stringify([icons.map(i => [i.key, i.png.length, i.png.slice(-24), i.tip, isOut(i)]), trayOpen])
+    const drawn = JSON.stringify([icons.map(i => [i.key, i.png.length, i.png.slice(-24), i.tip, isOut(i), i.reach]), trayOpen])
     if (drawn !== trayDrawn) {
       trayDrawn = drawn
       chevron.hidden = !folded.length

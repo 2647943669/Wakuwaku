@@ -322,6 +322,10 @@ mod imp {
     static ASK_AT: AtomicU32 = AtomicU32::new(0);
     static LAST_ASK: AtomicU32 = AtomicU32::new(0);
     static QUICK_ASKS: AtomicU32 = AtomicU32::new(0);
+    // From this tick, the icons only Explorer's tray holds are looked for
+    // again (systray.rs scan_held): some seconds after each asking, else
+    // every half minute.
+    static HELD_AT: AtomicU32 = AtomicU32::new(0);
     // Each icon drawn: (key, its handle) to its PNG; the list sent last.
     static PNGS: Mutex<Option<HashMap<u64, (isize, String)>>> = Mutex::new(None);
     static SENT: Mutex<Value> = Mutex::new(Value::Null);
@@ -370,7 +374,7 @@ mod imp {
     static KEYS_WAKE: (Mutex<bool>, std::sync::Condvar) = (Mutex::new(false), std::sync::Condvar::new());
     static SENT_KEYS: Mutex<Value> = Mutex::new(Value::Null);
     // Windows' own record of the tray icons it keeps out (windows_kept), read once.
-    static KEPT: Mutex<Option<Vec<(String, Option<u32>, bool)>>> = Mutex::new(None);
+    static KEPT: Mutex<Option<Vec<Kept>>> = Mutex::new(None);
     // The desktop's picture under the strip and Windows' look, as
     // sent last (send_look), and whether they are being looked at.
     static PAPER: Mutex<Value> = Mutex::new(Value::Null);
@@ -1953,6 +1957,7 @@ mod imp {
             TICKS.store(0, Ordering::SeqCst);
             let tray = systray::start(strip, hwnd as isize, WM_TRAY_CHANGED);
             ASK_AT.store(SETTLE_TICKS, Ordering::SeqCst);
+            HELD_AT.store(0, Ordering::SeqCst);
             log(&format!("up: window hooks {}, shell hook {shell_hook}, tray {tray} (first: {})", hooks.iter().filter(|h| **h != 0).count(), systray::first()));
             let _ = ready.send(hwnd as isize);
 
@@ -2216,6 +2221,14 @@ mod imp {
             LAST_ASK.store(ticks, Ordering::SeqCst);
             systray::ask_again();
             log("tray: programs asked for their icons");
+            HELD_AT.store(ticks + 8, Ordering::SeqCst);
+        }
+        // Those that answered are in by now: what only Explorer's tray holds
+        // is shown from Windows' record (zhoupengjie/Wakuwaku#52).
+        let held = HELD_AT.load(Ordering::SeqCst);
+        if held != 0 && ticks >= held && systray::first() {
+            HELD_AT.store(ticks + 60, Ordering::SeqCst);
+            systray::scan_held();
         }
         // Windows' mode, accent and wallpaper: told when they change
         // (WM_SETTINGCHANGE and the rest below); looked at anyway every
@@ -2242,16 +2255,19 @@ mod imp {
 
     // Where Windows' own taskbar keeps each tray icon: Control Panel\
     // NotifyIconSettings, a key per icon with its program's path, its uID
-    // and IsPromoted 1 when kept out on the taskbar (folded away otherwise).
-    // (file name, uID, kept out), read once while the taskbar is up.
-    fn windows_kept() -> Vec<(String, Option<u32>, bool)> {
+    // (or IconGuid, for one named by a guid) and IsPromoted 1 when kept out
+    // on the taskbar (folded away otherwise). (file name, uID, guid, kept
+    // out), read once while the taskbar is up.
+    type Kept = (String, Option<u32>, Option<[u8; 16]>, bool);
+
+    fn windows_kept() -> Vec<Kept> {
         use winreg::enums::HKEY_CURRENT_USER;
         use winreg::RegKey;
         let mut kept = KEPT.lock().unwrap();
         if let Some(list) = kept.as_ref() {
             return list.clone();
         }
-        let list: Vec<(String, Option<u32>, bool)> = RegKey::predef(HKEY_CURRENT_USER)
+        let list: Vec<Kept> = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey(r"Control Panel\NotifyIconSettings")
             .map(|root| {
                 root.enum_keys()
@@ -2261,7 +2277,8 @@ mod imp {
                         let path: String = key.get_value("ExecutablePath").ok()?;
                         let file = path.rsplit('\\').next().unwrap_or(&path).to_lowercase();
                         let promoted: u32 = key.get_value("IsPromoted").unwrap_or(0);
-                        Some((file, key.get_value("UID").ok(), promoted != 0))
+                        let guid = key.get_value::<String, _>("IconGuid").ok().and_then(|g| systray::guid_bytes(&g));
+                        Some((file, key.get_value("UID").ok(), guid, promoted != 0))
                     })
                     .collect()
             })
@@ -2271,11 +2288,31 @@ mod imp {
     }
 
     // Whether Windows keeps this icon out on its taskbar: its program's, by
-    // its uID when the program has several.
-    fn kept_out(kept: &[(String, Option<u32>, bool)], exe: &str, uid: u32) -> bool {
+    // its guid or its uID when the program has several.
+    fn kept_out(kept: &[Kept], exe: &str, uid: u32, guid: Option<[u8; 16]>) -> bool {
         let exe = exe.to_lowercase();
-        let its: Vec<&(String, Option<u32>, bool)> = kept.iter().filter(|k| k.0 == exe).collect();
-        its.iter().find(|k| k.1 == Some(uid)).or(its.first()).is_some_and(|k| k.2)
+        let its: Vec<&Kept> = kept.iter().filter(|k| k.0 == exe).collect();
+        let this = match guid {
+            Some(g) => its.iter().find(|k| k.2 == Some(g)),
+            None => its.iter().find(|k| k.2.is_none() && k.1 == Some(uid)),
+        };
+        this.or(its.first()).is_some_and(|k| k.3)
+    }
+
+    #[cfg(test)]
+    mod kept_tests {
+        use super::systray;
+
+        #[test]
+        fn windows_placement_is_found_by_guid_too() {
+            let a = systray::guid_bytes("{D36B22A6-995E-4340-8339-3DE08C6840DF}");
+            let b = systray::guid_bytes("{D68540CC-E0D8-4298-B55C-E6E324121F77}");
+            let kept = vec![("nvdisplay.container.exe".to_string(), None, a, false), ("nvdisplay.container.exe".to_string(), None, b, true), ("everything.exe".to_string(), Some(0), None, true)];
+            assert!(super::kept_out(&kept, "NVDisplay.Container.exe", 0, b));
+            assert!(!super::kept_out(&kept, "NVDisplay.Container.exe", 0, a));
+            assert!(super::kept_out(&kept, "Everything.exe", 0, None));
+            assert!(!super::kept_out(&kept, "other.exe", 0, None));
+        }
     }
 
     // The icons as the page draws them: each drawn once per handle, and sent
@@ -2300,7 +2337,10 @@ mod imp {
             shown
                 .iter()
                 .map(|s| {
-                    let png = if s.icon == 0 {
+                    // One only Explorer's tray holds: Windows' own picture of it.
+                    let png = if !s.snapshot.is_empty() {
+                        format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&s.snapshot))
+                    } else if s.icon == 0 {
                         String::new()
                     } else {
                         match pngs.get(&s.key) {
@@ -2312,7 +2352,8 @@ mod imp {
                             }
                         }
                     };
-                    let item = json!({ "key": s.key, "png": png, "tip": s.tip, "exe": s.exe, "name": s.name, "windowsOut": kept_out(&kept, &s.exe, s.uid) });
+                    let out = s.out.unwrap_or_else(|| kept_out(&kept, &s.exe, s.uid, s.guid));
+                    let item = json!({ "key": s.key, "png": png, "tip": s.tip, "exe": s.exe, "name": s.name, "windowsOut": out, "reach": s.reach });
                     let mut lite = item.clone();
                     if sent.get(&s.key) == Some(&s.icon) {
                         if let Some(o) = lite.as_object_mut() {
