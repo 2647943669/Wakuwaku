@@ -20,9 +20,10 @@
 // Built in (texts as { key, vars } for the page to say in her language):
 //   monitor  the machine: CPU, memory, the network's pace, the battery, each
 //            on or off ("monitor" setting), read every 1 to 10 seconds, and
-//            the hardware's sensors picked from LibreHardwareMonitor (lhm.rs);
-//            its value is { parts: [{ icon, text, kind? }] }, shown as icon
-//            and number
+//            the hardware's sensors picked, Windows' own (hw.rs) or
+//            LibreHardwareMonitor's (lhm.rs), by "monitorSource";
+//            its value is { parts: [{ icon, text, kind?, warn? }] }, shown as
+//            icon and number
 //   today    turns today, how long the agents worked, approvals given on her
 //            (Antigravity's never come to her)
 //   tokens   today's tokens, Claude Code's, Codex's and Antigravity's (tokens.rs)
@@ -540,110 +541,24 @@ mod sys {
             .unwrap_or(0)
     }
 
-    // PDH, Windows' performance counters (pdh.dll): loaded from System32 the
-    // first time a counter is opened, not at her start, as the monitor is
-    // off by default; None should it or one of its functions be missing.
-    type OpenQuery = unsafe extern "system" fn(source: *const u16, user: usize, query: *mut isize) -> u32;
-    type AddCounter = unsafe extern "system" fn(query: isize, path: *const u16, user: usize, counter: *mut isize) -> u32;
-    type Collect = unsafe extern "system" fn(query: isize) -> u32;
-    type Formatted = unsafe extern "system" fn(counter: isize, format: u32, kind: *mut u32, value: *mut CounterValue) -> u32;
-    type CloseQuery = unsafe extern "system" fn(query: isize) -> u32;
-
-    struct Pdh {
-        open: OpenQuery,
-        add: AddCounter,
-        collect: Collect,
-        formatted: Formatted,
-        close: CloseQuery,
-    }
-
-    // PDH_FMT_COUNTERVALUE: its status, then the value (a union of 8 bytes).
-    #[repr(C)]
-    #[derive(Default)]
-    struct CounterValue {
-        status: u32,
-        value: f64,
-    }
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn LoadLibraryExW(name: *const u16, file: isize, flags: u32) -> isize;
-        fn GetProcAddress(module: isize, name: *const u8) -> *const ();
-    }
-
-    fn pdh() -> Option<&'static Pdh> {
-        static PDH: std::sync::OnceLock<Option<Pdh>> = std::sync::OnceLock::new();
-        PDH.get_or_init(|| {
-            const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x800;
-            let name: Vec<u16> = "pdh.dll".encode_utf16().chain([0]).collect();
-            // SAFETY: Windows' own library, from System32 alone; each
-            // export by its name, cast to the shape PDH documents for it.
-            unsafe {
-                let module = LoadLibraryExW(name.as_ptr(), 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
-                if module == 0 {
-                    return None;
-                }
-                let f = |name: &std::ffi::CStr| Some(GetProcAddress(module, name.as_ptr() as *const u8)).filter(|f| !f.is_null());
-                Some(Pdh {
-                    open: std::mem::transmute::<*const (), OpenQuery>(f(c"PdhOpenQueryW")?),
-                    add: std::mem::transmute::<*const (), AddCounter>(f(c"PdhAddEnglishCounterW")?),
-                    collect: std::mem::transmute::<*const (), Collect>(f(c"PdhCollectQueryData")?),
-                    formatted: std::mem::transmute::<*const (), Formatted>(f(c"PdhGetFormattedCounterValue")?),
-                    close: std::mem::transmute::<*const (), CloseQuery>(f(c"PdhCloseQuery")?),
-                })
-            }
-        })
-        .as_ref()
-    }
-
     // One of Windows' counters, by its English path (the same whatever
-    // Windows' language), in a query of its own: opened once (the counters'
-    // names looked up then: ~0.3 s on this thread, ~4 MB that PDH keeps),
-    // collected each turn (~0.2 ms).
-    pub struct Counter {
-        pdh: &'static Pdh,
-        query: isize,
-        counter: isize,
-    }
+    // Windows' language), in a query of its own (hw.rs pdh): opened once
+    // (the counters' names looked up then: ~0.3 s on this thread, ~4 MB
+    // that PDH keeps), collected each turn (~0.2 ms).
+    pub struct Counter(crate::hw::pdh::Query);
 
     impl Counter {
         pub fn open(path: &str) -> Option<Counter> {
-            let pdh = pdh()?;
-            let path: Vec<u16> = path.encode_utf16().chain([0]).collect();
-            let (mut query, mut counter) = (0isize, 0isize);
-            // SAFETY: PDH fills our own handles; the path ends in 0. A query
-            // whose counter would not be added is closed again.
-            unsafe {
-                if (pdh.open)(std::ptr::null(), 0, &mut query) != 0 {
-                    return None;
-                }
-                if (pdh.add)(query, path.as_ptr(), 0, &mut counter) != 0 {
-                    (pdh.close)(query);
-                    return None;
-                }
-                // The first sample: a rate needs two.
-                (pdh.collect)(query);
-            }
-            Some(Counter { pdh, query, counter })
+            crate::hw::pdh::Query::open(&[path]).map(Counter)
         }
 
         // Its value since the last time, or None when Windows has none to
         // give (too soon after the first sample, or the counter failed).
         pub fn value(&mut self) -> Option<f64> {
-            const PDH_FMT_DOUBLE: u32 = 0x200;
-            let (mut kind, mut v) = (0u32, CounterValue::default());
-            // SAFETY: our own query and counter, open till dropped; the value
-            // is written into our own struct.
-            let ok = unsafe { (self.pdh.collect)(self.query) == 0 && (self.pdh.formatted)(self.counter, PDH_FMT_DOUBLE, &mut kind, &mut v) == 0 };
-            // PDH_CSTATUS_VALID_DATA or PDH_CSTATUS_NEW_DATA.
-            (ok && v.status <= 1).then_some(v.value)
-        }
-    }
-
-    impl Drop for Counter {
-        fn drop(&mut self) {
-            // SAFETY: our own query, closed once.
-            unsafe { (self.pdh.close)(self.query) };
+            if !self.0.collect() {
+                return None;
+            }
+            self.0.value(0, crate::hw::pdh::DOUBLE)
         }
     }
 }
@@ -761,29 +676,40 @@ pub fn rate(bytes_per_sec: f64) -> String {
 }
 
 // The monitor's settings: which parts are on, and how often it reads; the
-// hardware's sensors, from LibreHardwareMonitor (lhm.rs); and whether
-// nobody is at the keyboard (its thread says, main.rs).
+// hardware's sensors, built in (hw.rs) or from LibreHardwareMonitor
+// (lhm.rs), by the source chosen ("monitorSource", hw::Source); whether
+// nobody is at the keyboard, and whether the settings are open (their list
+// of sensors then read whole) (its thread says, main.rs).
 pub struct Watching {
     pub cpu: bool,
     pub memory: bool,
     pub net: bool,
     pub battery: bool,
     pub every: u64,
+    pub source: crate::hw::Source,
+    pub hw: crate::hw::Conf,
     pub lhm: crate::lhm::Conf,
     pub quiet: bool,
+    pub listing: bool,
 }
 
 impl Watching {
-    pub fn from(v: &Value) -> Watching {
+    // The "monitor" setting and "monitorSource".
+    pub fn from(v: &Value, source: &Value) -> Watching {
         let on = |k: &str| v[k] != false;
+        let source = crate::hw::Source::of(v, source);
         Watching {
             cpu: on("cpu"),
             memory: on("mem"),
             net: on("net"),
             battery: on("battery"),
             every: v["every"].as_u64().unwrap_or(2).clamp(1, 10),
-            lhm: crate::lhm::Conf::from(v),
+            source,
+            hw: crate::hw::Conf::from(v),
+            // Asked while it is the source, whatever its old switch said.
+            lhm: crate::lhm::Conf { on: source == crate::hw::Source::Lhm, ..crate::lhm::Conf::from(v) },
             quiet: false,
+            listing: false,
         }
     }
 }
@@ -802,24 +728,38 @@ pub struct Monitor {
     bytes: Option<(u64, u64, std::time::Instant)>,
     // The last CPU use and pace read: kept for a reading that fails once,
     // so a part on stays in sight (pinned, the island keeps its width).
-    cpu: Option<String>,
-    net: Option<(String, String)>,
+    cpu: Option<u64>,
+    net: Option<(f64, f64)>,
     lhm: crate::lhm::Lhm,
+    hw: crate::hw::Hw,
 }
 
 impl Monitor {
     pub fn new() -> Self {
-        Monitor { times: None, counter: None, counter_tried: false, misses: 0, bytes: None, cpu: None, net: None, lhm: crate::lhm::Lhm::new() }
+        Monitor { times: None, counter: None, counter_tried: false, misses: 0, bytes: None, cpu: None, net: None, lhm: crate::lhm::Lhm::new(), hw: crate::hw::Hw::new() }
+    }
+
+    // Turned off: the hardware's counters and handles let go of (opened
+    // again when it is turned on).
+    pub fn rest(&mut self) {
+        self.hw.stop();
+    }
+
+    // What the built-in source found, for the dump (hw.rs).
+    pub fn seen(&self) -> Value {
+        self.hw.seen()
     }
 
     // The parts that are on, as icon and number: cpu 12%, memory 45%, down
     // 1.2M and up 80K a second, battery (a bolt while charging) 85%; then
     // the hardware's sensors picked, with their kind too: { icon: "gpu",
-    // kind: "temp", text: "58°" } (lhm.rs). A part needing two readings
-    // shows from its second, and keeps its last when a reading fails. None
-    // with nothing to show.
+    // kind: "temp", text: "58°" }, from the source chosen (hw.rs, lhm.rs);
+    // a drive's temperature with its own warning: { …, warn: 84 }. A part
+    // needing two readings shows from its second, and keeps its last when a
+    // reading fails. None with nothing to show.
     pub fn read(&mut self, w: &Watching) -> Option<Value> {
         let mut parts = Vec::new();
+        let mut basics = crate::hw::Basics::default();
         let mut part = |icon: &str, text: String| parts.push(json!({ "icon": icon, "text": text }));
         if w.cpu && !self.counter_tried {
             self.counter_tried = true;
@@ -839,7 +779,7 @@ impl Monitor {
         // With the counter open, its value or the last one kept (its first
         // sample has none): never a turn of the other way's.
         if let Some(share) = cpu_share(counted, if self.counter.is_some() { None } else { between }) {
-            self.cpu = Some(format!("{share}%"));
+            self.cpu = Some(share);
         }
         if !w.cpu {
             self.cpu = None;
@@ -850,18 +790,20 @@ impl Monitor {
         if times.is_some() || !w.cpu {
             self.times = times;
         }
-        if let Some(cpu) = &self.cpu {
-            part("cpu", cpu.clone());
+        if let Some(cpu) = self.cpu {
+            part("cpu", format!("{cpu}%"));
+            basics.cpu = Some(cpu as f64);
         }
         if let Some(memory) = w.memory.then(sys::memory_load).flatten() {
             part("memory", format!("{memory}%"));
+            basics.memory = Some(f64::from(memory));
         }
         let bytes = if w.net { sys::network_bytes().map(|(a, b)| (a, b, std::time::Instant::now())) } else { None };
         if let (Some((got, sent, now)), Some((g, s, at))) = (bytes, self.bytes) {
             let secs = now.duration_since(at).as_secs_f64().max(0.5);
             // The counters are 32 bits: they come round again after 4 GB.
             let d = |a: u64, b: u64| (a as u32).wrapping_sub(b as u32) as f64 / secs;
-            self.net = Some((rate(d(got, g)), rate(d(sent, s))));
+            self.net = Some((d(got, g), d(sent, s)));
         }
         if !w.net {
             self.net = None;
@@ -869,17 +811,83 @@ impl Monitor {
         if bytes.is_some() || !w.net {
             self.bytes = bytes;
         }
-        if let Some((down, up)) = &self.net {
-            part("down", down.clone());
-            part("up", up.clone());
+        if let Some((down, up)) = self.net {
+            part("down", rate(down));
+            part("up", rate(up));
+            basics.net = Some((down, up));
         }
-        if let Some((percent, is_charging, _)) = w.battery.then(sys::battery).flatten() {
-            part(if is_charging { "bolt" } else { "battery" }, format!("{percent}%"));
+        // The battery for its row in the settings even while its part is off.
+        let battery = (w.battery || w.listing).then(sys::battery).flatten();
+        if let Some((percent, is_charging, _)) = battery {
+            if w.battery {
+                part(if is_charging { "bolt" } else { "battery" }, format!("{percent}%"));
+            }
+            basics.battery = Some((percent, is_charging));
         }
+        // LibreHardwareMonitor asked only while it is the source (else its
+        // view says off); the built-in readings read only while they are.
         self.lhm.turn(&w.lhm, w.quiet);
         parts.extend(self.lhm.parts(&w.lhm));
+        if w.source == crate::hw::Source::Builtin {
+            self.hw.turn(&w.hw, w.listing, &basics, [w.cpu, w.memory, w.net, w.battery]);
+            parts.extend(self.hw.parts(&w.hw));
+        } else {
+            self.hw.stop();
+        }
         (!parts.is_empty()).then(|| json!({ "parts": parts }))
     }
+}
+
+// One whole reading of the built-in source, as the open settings have it,
+// for her exe's hw::DUMP_FLAG (main.rs): read twice a second apart (rates
+// need two), every part and every sensor on, nothing else of her started;
+// with what was found (every display adapter, kept or not; the drives) and
+// what each group of readings cost the second time.
+pub fn hw_dump() -> Value {
+    let mut w = Watching::from(&json!({}), &json!("builtin"));
+    w.listing = true;
+    let mut m = Monitor::new();
+    let t = std::time::Instant::now();
+    m.read(&w);
+    let first = t.elapsed();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let t = std::time::Instant::now();
+    let island = m.read(&w);
+    let second = t.elapsed();
+    // The monitor's own readings, each timed once more (µs).
+    let us = |f: &mut dyn FnMut()| {
+        let t = std::time::Instant::now();
+        f();
+        t.elapsed().as_micros() as u64
+    };
+    let basics = json!({
+        "cpuCounter": us(&mut || {
+            let _ = m.counter.as_mut().map(sys::Counter::value);
+        }),
+        "systemTimes": us(&mut || {
+            let _ = sys::times();
+        }),
+        "memoryLoad": us(&mut || {
+            let _ = sys::memory_load();
+        }),
+        "network": us(&mut || {
+            let _ = sys::network_bytes();
+        }),
+        "battery": us(&mut || {
+            let _ = sys::battery();
+        }),
+    });
+    json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "windowsBuild": sys::windows_build(),
+        "cpuCounter": processor_counter(sys::windows_build()),
+        "readMs": [first.as_secs_f64() * 1000.0, second.as_secs_f64() * 1000.0],
+        "basicsUs": basics,
+        // The island's parts for someone who never picked (the defaults).
+        "island": island,
+        "seen": m.seen(),
+        "view": crate::hw::view(),
+    })
 }
 
 #[cfg(test)]
@@ -989,23 +997,37 @@ mod tests {
         assert_eq!(scripted(w.view(0, &[], &[], &|_| None))[0]["private"], true);
         assert_eq!(w.label_of("mail").map(|l| l.2), Some(true));
         assert_eq!([rate(80.0), rate(8_400.0), rate(81_234.0), rate(1_234_567.0), rate(250_000_000.0)], ["80B", "8.4K", "81K", "1.2M", "250M"]);
-        let all = Watching::from(&json!({ "every": 99 }));
+        let all = Watching::from(&json!({ "every": 99 }), &Value::Null);
         assert_eq!((all.cpu, all.battery, all.every), (true, true, 10));
+        // The built-in source by default, LibreHardwareMonitor asked only
+        // while it is the source; someone who picked its sensors before there
+        // was a choice keeps it.
+        assert_eq!((all.source, all.lhm.on), (crate::hw::Source::Builtin, false));
+        let theirs = Watching::from(&json!({ "lhm": false, "sensors": ["/amdcpu/0/temperature/2"] }), &json!("lhm"));
+        assert_eq!((theirs.source, theirs.lhm.on, theirs.lhm.sensors.map(|s| s.len())), (crate::hw::Source::Lhm, true, Some(1)));
+        assert_eq!(Watching::from(&json!({ "sensors": ["/amdcpu/0/temperature/2"] }), &Value::Null).source, crate::hw::Source::Lhm);
     }
 
     // On this machine: the second reading has CPU use and the network's pace.
-    // Windows' counters (sys): elsewhere there is nothing to read yet.
+    // Windows' counters (sys): elsewhere there is nothing to read yet. No
+    // hardware's sensor picked: none of them.
     #[cfg(windows)]
     #[test]
     fn the_monitor_reads_this_machine() {
-        let all = Watching::from(&json!({ "every": 99, "lhm": false }));
+        let all = Watching::from(&json!({ "every": 99, "builtinSensors": [] }), &json!("builtin"));
         let mut m = Monitor::new();
         let _ = m.read(&all);
         let icons = |v: Option<Value>| v.map(|v| v["parts"].as_array().unwrap().iter().map(|p| p["icon"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
         let second = icons(m.read(&all));
         assert!(second.starts_with(&["cpu".into(), "memory".into()]), "{second:?}");
-        let only = Watching::from(&json!({ "cpu": false, "net": false, "battery": false, "lhm": false }));
+        let only = Watching::from(&json!({ "cpu": false, "net": false, "battery": false, "builtinSensors": [] }), &json!("builtin"));
         assert_eq!(icons(m.read(&only)), ["memory"]);
+        // The CPU's speed picked: a clock after the machine's own.
+        let speed = Watching::from(&json!({ "net": false, "battery": false, "builtinSensors": ["/cpu/0/clock/0"] }), &json!("builtin"));
+        let _ = m.read(&speed);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let parts = m.read(&speed).unwrap();
+        assert_eq!(parts["parts"].as_array().unwrap().last().unwrap()["kind"], "clock", "{parts}");
     }
 
     // The CPU's use as Task Manager has it: Windows' count, rounded and held

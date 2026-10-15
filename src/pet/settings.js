@@ -24,7 +24,7 @@
     return
   }
 
-  const { t, list: nameList } = window.I18n
+  const { t, list: nameList, render } = window.I18n
   const { CLIPS } = window.Sprite
   const Status = window.Status
   const Widgets = window.Widgets
@@ -726,24 +726,70 @@
     return `<div class="pf">${fields.join('')}</div>`
   }
 
-  // The monitor's settings, folded out under it: its parts on or off, and
-  // how often it reads (1 to 10 seconds); the hardware's sensors below.
+  // The monitor's settings, folded out under it: pinned or not, how often it
+  // reads (1 to 10 seconds), where its sensors come from (monitorSource:
+  // Windows' own, hw.rs, or LibreHardwareMonitor, lhm.rs; each keeps its own
+  // picks), and those sensors.
   function monitorFields() {
     const m = snap.settings.monitor || {}
-    const parts = ['cpu', 'mem', 'net', 'battery'].map(k => `<div class="fr"><span class="fl">${esc(T(`mon.${k}`))}</span><span class="grow"></span>${sw('mon:' + k, m[k] !== false)}</div>`)
+    const source = snap.monitorSource === 'lhm' ? 'lhm' : 'builtin'
     const every = m.every || 2
     const pace = `<div class="fr"><span class="fl">${esc(T('mon.every'))}</span><span class="grow"></span><button class="pbtn sm" data-every="-1" ${every <= 1 ? 'disabled' : ''}>−</button><span class="every">${esc(T('settings.seconds', { n: every }))}</span><button class="pbtn sm" data-every="1" ${every >= 10 ? 'disabled' : ''}>+</button></div>`
     const pin = `<div class="fr"><span class="fl">${esc(T('mon.pin'))}</span><span class="d grow">${esc(T('mon.pinNote'))}</span>${sw('mon:pin', m.pin !== false)}</div>`
-    return `<div class="pf">${pin}${parts.join('')}${pace}${sensorFields(m)}</div>`
+    const from = `<div class="fr lhm-head"><span class="fl">${esc(T('mon.source'))}</span><span class="grow"></span>${seg('monitorSource', [['builtin', T('mon.sourceBuiltin')], ['lhm', 'LibreHardwareMonitor']], source)}</div>`
+    if (source === 'builtin') return `<div class="pf">${pin}${pace}${from}${builtinFields()}</div>`
+    const parts = ['cpu', 'mem', 'net', 'battery'].map(k => `<div class="fr"><span class="fl">${esc(T(`mon.${k}`))}</span><span class="grow"></span>${sw('mon:' + k, m[k] !== false)}</div>`)
+    return `<div class="pf">${pin}${pace}${from}${parts.join('')}${sensorFields(m)}</div>`
   }
 
-  // The hardware's sensors, from a LibreHardwareMonitor the person runs
-  // (lhm.rs, snap.lhm): on or off; whether it was found, and if not, how
-  // to; its sensors to pick, under their hardware (folded, the ones picked
-  // still shown); its port, and a user and password for its authentication.
+  // The setting in "monitor" with a source's picks (hw.rs Source::picks).
+  const picksKey = source => (source === 'lhm' ? 'sensors' : 'builtinSensors')
+
+  // Sensors under their hardware ({ id, name, about, list, more }), folded
+  // (the ones on still shown): each hardware's name, what it is and how
+  // many are picked; each sensor its name, reading and switch (key: what its
+  // switch is: lhms:<id> or hws:<id>, picked; mon:<part>, one of the
+  // monitor's own). One for the settings alone (info) has none; `more`,
+  // a hardware's own lines (a drive's health), shows folded out.
+  function sensorGroups(groups, keyOf) {
+    return groups
+      .map(g => {
+        const open = openHardware.has(g.id)
+        const shown = s => s.on && !s.info
+        const picked = g.list.filter(shown).length
+        const about = g.about ? ` <span class="d">${esc(g.about)}</span>` : ''
+        const title = `<div class="fr lhw" data-lhw="${esc(g.id)}"><span class="fl">${open ? '▾' : '▸'} ${esc(g.name)}${about}</span><span class="d">${picked ? esc(T('mon.lhmTicked', { n: picked })) : ''}</span></div>`
+        const rows = (open ? g.list : g.list.filter(shown)).map(s => `<div class="fr lsen${s.info ? ' info' : ''}"><span class="fl">${esc(s.name)}</span><span class="d">${esc(s.reading)}</span>${s.info ? '' : sw(esc(keyOf(s)), s.on)}</div>`)
+        return title + rows.join('') + (open ? g.more || '' : '')
+      })
+      .join('')
+  }
+
+  // Windows' own readings (hw.rs, snap.hw): under the CPU, each card, the
+  // memory, each drive, the network and the battery, as LibreHardwareMonitor's
+  // are; the CPU's use, the memory's, the network's and the battery on the
+  // monitor's own switches, the rest picked; an NVMe drive's health in its
+  // own line, for the settings alone.
+  function builtinFields() {
+    const v = snap.hw
+    if (!v || !Array.isArray(v.hardware)) return `<div class="note lhm-note">${esc(T('hw.unread'))}</div>`
+    const hardwareName = h => h.name || T(`hw.${h.class}`)
+    const groups = v.hardware.map(h => {
+      const health = h.health ? `<div class="fr lsen info"><span class="fl">${esc(T('hw.health'))}</span><span class="d">${esc(T('hw.healthReading', { used: h.health.used, spare: h.health.spare, hours: h.health.hours }))}</span></div>` : ''
+      const about = h.about && typeof h.about === 'object' ? render(lang, h.about) : h.about || ''
+      const list = (v.sensors || []).filter(s => s.hardwareId === h.id).map(s => ({ ...s, name: T(s.label) }))
+      return { id: h.id, name: hardwareName(h), about, list, more: health }
+    })
+    const note = `<div class="note lhm-note">${esc(T('mon.builtinNote'))}</div>`
+    return note + sensorGroups(groups, s => (s.toggle ? `mon:${s.toggle}` : `hws:${s.id}`))
+  }
+
+  // LibreHardwareMonitor's sensors, from one the person runs (lhm.rs,
+  // snap.lhm): whether it was found, and if not, how to; its sensors to
+  // pick, under their hardware (folded, the ones picked still shown); its
+  // port, and a user and password for its authentication.
   function sensorFields(m) {
-    const head = `<div class="fr lhm-head"><span class="fl">${esc(T('mon.lhm'))}</span><span class="d grow">${esc(T('mon.lhmNote'))}</span>${sw('mon:lhm', m.lhm !== false)}</div>`
-    if (m.lhm === false) return head
+    const head = `<div class="note lhm-note">${esc(T('mon.lhmNote'))}</div>`
     const v = snap.lhm || {}
     const port = m.lhmPort || 8085
     const status =
@@ -766,15 +812,7 @@
       if (last && last.id === s.hardwareId) last.list.push(s)
       else groups.push({ id: s.hardwareId, name: s.hardware || s.hardwareId, list: [s] })
     }
-    const sensors = groups
-      .map(g => {
-        const open = openHardware.has(g.id)
-        const picked = g.list.filter(s => s.on).length
-        const title = `<div class="fr lhw" data-lhw="${esc(g.id)}"><span class="fl">${open ? '▾' : '▸'} ${esc(g.name)}</span><span class="d">${picked ? esc(T('mon.lhmTicked', { n: picked })) : ''}</span></div>`
-        const rows = (open ? g.list : g.list.filter(s => s.on)).map(s => `<div class="fr lsen"><span class="fl">${esc(s.name)}</span><span class="d">${esc(s.reading)}</span>${sw(esc('lhms:' + s.id), s.on)}</div>`)
-        return title + rows.join('')
-      })
-      .join('')
+    const sensors = sensorGroups(groups, s => 'lhms:' + s.id)
     const field = (key, label, attrs, value) => `<label class="fr"><span class="fl">${esc(label)}</span><input class="in" data-mon="${key}" value="${esc(`mon:${key}` in drafts ? drafts[`mon:${key}`] : value)}" spellcheck="false" ${attrs}></label>`
     // The password is never shown again: kept, it says so, and can be forgotten.
     const kept = m.lhmPass === true
@@ -2569,12 +2607,17 @@
       if (key === 'widgetNudge') return patch({ widgetNudge: s.widgetNudge === false })
       // One of the monitor's parts on or off.
       if (key.startsWith('mon:')) return patch({ monitor: { ...(s.monitor || {}), [key.slice(4)]: (s.monitor || {})[key.slice(4)] === false } })
-      // One of the hardware's sensors picked or not: from those picked, or
-      // the ones shown by default (lhm.rs defaults) while none were.
-      if (key.startsWith('lhms:')) {
-        const id = key.slice(5)
-        const picked = Array.isArray(s.monitor?.sensors) ? s.monitor.sensors : (snap.lhm?.sensors || []).filter(x => x.on).map(x => x.id)
-        return patch({ monitor: { ...(s.monitor || {}), sensors: picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id].slice(-32) } })
+      // One of the hardware's sensors picked or not, LibreHardwareMonitor's
+      // (lhms:) or the built-in ones (hws:), each source's own: from those
+      // picked, or the ones shown by default (lhm.rs, hw.rs defaults) while
+      // none were.
+      if (key.startsWith('lhms:') || key.startsWith('hws:')) {
+        const source = key.startsWith('lhms:') ? 'lhm' : 'builtin'
+        const id = key.slice(key.indexOf(':') + 1)
+        const name = picksKey(source)
+        const view = source === 'lhm' ? snap.lhm : snap.hw
+        const picked = Array.isArray(s.monitor?.[name]) ? s.monitor[name] : (view?.sensors || []).filter(x => x.on && !x.toggle).map(x => x.id)
+        return patch({ monitor: { ...(s.monitor || {}), [name]: picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id].slice(-32) } })
       }
       // A plugin she runs on or off; on and missing a setting, its settings open.
       if (key.startsWith('pl:')) {
@@ -2649,7 +2692,7 @@
         gallery.items = []
         return loadGallery(false)
       }
-      const value = ['lang', 'islandWidth', 'taskbarMaterial', 'taskbarClearWhen', 'taskbarButtons', 'taskbarAlign', 'taskbarEdge', 'taskbarDisplays', 'mailAgent', 'mailOffline', 'updateFrom'].includes(key) ? raw : raw === 'seen' ? 'seen' : Number(raw)
+      const value = ['lang', 'monitorSource', 'islandWidth', 'taskbarMaterial', 'taskbarClearWhen', 'taskbarButtons', 'taskbarAlign', 'taskbarEdge', 'taskbarDisplays', 'mailAgent', 'mailOffline', 'updateFrom'].includes(key) ? raw : raw === 'seen' ? 'seen' : Number(raw)
       return patch({ [key]: value })
     }
     const tile = at('[data-tile]')

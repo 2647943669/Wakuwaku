@@ -118,6 +118,29 @@ test("a sensor's reading: its hardware's glyph, full and orange by its kind, aft
   assert.deepEqual(icons(Widgets.rowsOf([p('down'), p('up'), s('cpu', 'temp', '62°')])), [['down', 'up'], ['cpu:temp']])
 })
 
+// The built-in readings (hw.rs): a drive's temperature orange from its own
+// warning; a drive read or written filled as the network's, but full at
+// 1 GB/s, its glyph marked down or up; a card's clock and memory never full.
+test("a built-in reading: a drive's own warning, its rates filled and marked", () => {
+  const s = (icon, kind, text, warn) => ({ icon, kind, text, ...(warn === undefined ? {} : { warn }) })
+  assert.equal(Widgets.isHigh(s('disk', 'temp', '84°', 84)), true)
+  assert.equal(Widgets.isHigh(s('disk', 'temp', '83°', 84)), false)
+  assert.equal(Widgets.isHigh(s('disk', 'temp', '91°', 94)), false)
+  assert.equal(Widgets.isHigh(s('disk', 'temp', '90°')), true)
+  assert.equal(Widgets.shareOf(s('disk', 'temp', '56°', 84)), 37)
+  assert.deepEqual(['512B', '8.4K', '1.2M', '35M', '1.1G', '7.0G'].map(text => Widgets.shareOf(s('disk', 'read', text))), [0, 15, 51, 76, 100, 100])
+  assert.equal(Widgets.shareOf(s('disk', 'write', '1.0M')), 50)
+  // The network's own scale is as it was: 100 MB/s full.
+  assert.equal(Widgets.shareOf({ icon: 'down', text: '1.0M' }), 60)
+  assert.equal(Widgets.shareOf(s('gpu', 'clock', '2.3G')), 0)
+  assert.equal(Widgets.shareOf(s('gpu', 'data', '1.2G')), 0)
+  const html = Widgets.partsHTML({ value: { parts: [s('disk', 'read', '1.2M'), s('disk', 'write', '80K'), s('disk', 'load', '3%')] } })
+  assert.match(html, /<span class="wg rd" aria-hidden="true">&#xEDA2;<\/span><b>1.2M<\/b>/)
+  assert.match(html, /<span class="wg wr" aria-hidden="true">&#xEDA2;<\/span><b>80K<\/b>/)
+  assert.match(html, /<span class="wg" aria-hidden="true">&#xEDA2;<\/span><b>3%<\/b>/)
+  assert.match(Widgets.partsHTML({ value: { parts: [s('disk', 'temp', '85°', 84)] } }), /^<span class="wcell high"/)
+})
+
 test('a colour deepened until it reads on the light island, its hue kept', () => {
   const ratio = (a, b) => {
     const lum = hex => {

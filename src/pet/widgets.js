@@ -5,7 +5,8 @@
 // A widget is { id, label, value, icon, color, builtIn, on, leftMs, private };
 // a built-in one's label and value are { key, vars } to translate. A private
 // one's label stays off screen while the specifics are (details off). The
-// monitor's value is { parts: [{ icon, text }] }: shown as icon and number.
+// monitor's value is { parts: [{ icon, text, kind?, warn? }] }: shown as
+// icon and number.
 ;(function (root) {
   const { render } = root.I18n || require('../shared/i18n')
 
@@ -47,7 +48,7 @@
   // the network's down and up as small solid triangles (drawn smaller,
   // style.css .wg.tri); the battery by its level (Battery0 to Battery10),
   // charging too (BatteryCharging0 to BatteryCharging10). The hardware's
-  // sensors (lhm.rs) by their hardware: a graphics card (F211), the
+  // sensors (hw.rs, lhm.rs) by their hardware: a graphics card (F211), the
   // motherboard (F20C), a drive (EDA2, HardDrive), a fan turning (E72C),
   // another (E9D9, the monitor's own); the unit in the text says what of it.
   const PART_GLYPH = { cpu: 'E950', memory: 'E964', down: 'EDDC', up: 'EDDB', gpu: 'F211', board: 'F20C', disk: 'EDA2', fan: 'E72C', sensor: 'E9D9' }
@@ -79,15 +80,18 @@
   // widgets.rs rate) has no 100%: by its order of magnitude, 1 KB/s empty
   // and 100 MB/s full, each tenfold a fifth, so a rate is always as full.
   // A sensor's by its kind: a load a share, a temperature from 30 °C empty
-  // to 100 °C full, the others (watts, a fan, a clock) none.
+  // to 100 °C full, a drive read or written (hw.rs) as the network's but
+  // full at 1 GB/s, the others (watts, a fan, a clock) none.
   function shareOf(p) {
     const n = parseFloat(p.text)
     if (!Number.isFinite(n)) return 0
     const clamp = v => Math.max(0, Math.min(100, Math.round(v)))
+    const bytes = () => n * ({ K: 1e3, M: 1e6, G: 1e9 }[String(p.text).trim().slice(-1)] || 1)
+    const decades = (tens, from = 3) => clamp(((Math.log10(Math.max(bytes(), 10 ** from)) - from) / tens) * 100)
+    if (p.kind === 'read' || p.kind === 'write') return decades(6)
     if (p.kind) return p.kind === 'load' ? clamp(n) : p.kind === 'temp' ? clamp(((n - 30) / 70) * 100) : 0
     if (p.icon !== 'down' && p.icon !== 'up') return clamp(n)
-    const bytes = n * ({ K: 1e3, M: 1e6, G: 1e9 }[String(p.text).trim().slice(-1)] || 1)
-    return Math.max(0, Math.min(100, Math.round(((Math.log10(Math.max(bytes, 1e3)) - 3) / 5) * 100)))
+    return decades(5)
   }
 
   // A reading's glyph: Windows' own, the battery's by its level.
@@ -98,9 +102,12 @@
 
   // A reading as markup: Windows' glyph and the number in one small cell,
   // its ground filled from the left as far as the reading goes (style.css
-  // .wcell), one that wants a look marked high.
+  // .wcell), one that wants a look marked high. A drive read or written
+  // has the network's small triangle, down or up, at its glyph's corner
+  // (.wg.rd, .wg.wr), the cell no wider.
+  const MARK = { read: ' rd', write: ' wr' }
   const cellHTML = p =>
-    `<span class="wcell${isHigh(p) ? ' high' : ''}" style="--p:${shareOf(p)}%"><span class="wg${p.icon === 'down' || p.icon === 'up' ? ' tri' : ''}" aria-hidden="true">&#x${glyphOf(p)};</span><b>${esc(p.text)}</b></span>`
+    `<span class="wcell${isHigh(p) ? ' high' : ''}" style="--p:${shareOf(p)}%"><span class="wg${p.icon === 'down' || p.icon === 'up' ? ' tri' : MARK[p.kind] || ''}" aria-hidden="true">&#x${glyphOf(p)};</span><b>${esc(p.text)}</b></span>`
 
   // The monitor's readings as markup, in a line.
   const partsHTML = w => (partsOf(w) || []).map(cellHTML).join('')
@@ -148,9 +155,11 @@
 
   // A reading that wants a look: the CPU or the memory at 90% or more, the
   // battery (not charging) at 20% or less; a sensor's load at 90% or more,
-  // its temperature at 90 °C or more.
+  // its temperature at 90 °C or more, or from its own warning on (a drive's
+  // warn, hw.rs: 84 °C for one, 90 for another).
   function isHigh(p) {
     const n = parseFloat(p.text)
+    if (p.kind === 'temp' && Number.isFinite(p.warn)) return n >= p.warn
     if (p.kind) return (p.kind === 'load' || p.kind === 'temp') && n >= 90
     if (p.icon === 'cpu' || p.icon === 'memory') return n >= 90
     return p.icon === 'battery' && n <= 20

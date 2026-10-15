@@ -11,9 +11,13 @@
 // Read on the monitor's thread alone (widgets::Monitor::read), 300 ms at
 // most, at most every 3 s while found (every 10 s while quiet), every 30 s
 // while not; a reading that fails once keeps the last, twice and it is not
-// found. Off, or never found, nothing in the monitor changes.
+// found. Off, or never found, nothing in the monitor changes. Asked only
+// while it is the monitor's source ("monitorSource": "lhm"; the other is the
+// built-in one, hw.rs, which also says which a setting from before there was
+// a choice means).
 //
-// Its settings, in "monitor": lhm (false: never asked), lhmPort (8085),
+// Its settings, in "monitor": lhm (false: never asked; from before the
+// source was chosen), lhmPort (8085),
 // lhmUser and lhmPass (LHM's Basic authentication: the password kept in
 // Windows' Credential Manager, the setting only saying true), sensors (the
 // SensorIds shown, in the tree's order; unset, the CPU's package temperature
@@ -52,6 +56,9 @@ pub enum Kind {
     Clock,
     // SmallData: a card's memory, in MB.
     Data,
+    // A drive read and written, bytes a second: the built-in source's alone (hw.rs).
+    Read,
+    Write,
 }
 
 impl Kind {
@@ -68,7 +75,7 @@ impl Kind {
     }
 
     // As the page knows it (widgets.js shareOf, isHigh).
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Kind::Temperature => "temp",
             Kind::Load => "load",
@@ -76,6 +83,8 @@ impl Kind {
             Kind::Fan => "fan",
             Kind::Clock => "clock",
             Kind::Data => "data",
+            Kind::Read => "read",
+            Kind::Write => "write",
         }
     }
 }
@@ -154,11 +163,16 @@ fn is_gpu(hardware_id: &str) -> bool {
 // three digits), the others (Radeon Graphics, Radeon 780M, UHD, Iris, Arc
 // 140V) taken for the processor's own.
 fn discrete(s: &Sensor) -> u8 {
-    let words: Vec<&str> = s.hardware.split(|c: char| c.is_whitespace() || c == '(' || c == ')').collect();
+    discrete_card(&s.hardware_id, &s.hardware)
+}
+
+// The same by the card's id and name (the built-in source's too, hw.rs).
+pub fn discrete_card(hardware_id: &str, name: &str) -> u8 {
+    let words: Vec<&str> = name.split(|c: char| c.is_whitespace() || c == '(' || c == ')').collect();
     let model = |w: &&str| w.len() == 4 && (w.starts_with('A') || w.starts_with('B')) && w[1..].bytes().all(|c| c.is_ascii_digit());
-    if s.hardware_id.starts_with("/gpu-nvidia/") {
+    if hardware_id.starts_with("/gpu-nvidia/") {
         2
-    } else if words.contains(&"RX") || s.hardware.contains("Radeon Pro") || s.hardware.contains("FirePro") || words.iter().any(model) {
+    } else if words.contains(&"RX") || name.contains("Radeon Pro") || name.contains("FirePro") || words.iter().any(model) {
         1
     } else {
         0
@@ -206,7 +220,7 @@ fn icon(s: &Sensor) -> &'static str {
 
 // A value in a cell's few characters, its unit or a letter for it: 62°,
 // 37%, 8.5W and 122W, 1180 (a fan, revolutions a minute), 4.5G and 800M
-// (a clock), 3.0G and 512M (memory).
+// (a clock), 3.0G and 512M (memory), 1.2M (a drive's bytes a second).
 pub fn short(kind: Kind, v: f64) -> String {
     let one_or_none = |v: f64, unit: &str| if v < 10.0 { format!("{v:.1}{unit}") } else { format!("{v:.0}{unit}") };
     match kind {
@@ -218,6 +232,7 @@ pub fn short(kind: Kind, v: f64) -> String {
         Kind::Clock => format!("{v:.0}M"),
         Kind::Data if v >= 1024.0 => one_or_none(v / 1024.0, "G"),
         Kind::Data => format!("{v:.0}M"),
+        Kind::Read | Kind::Write => crate::widgets::rate(v),
     }
 }
 
@@ -231,6 +246,7 @@ fn long(kind: Kind, v: Option<f64>) -> String {
         Kind::Fan => format!("{v:.0} RPM"),
         Kind::Clock => format!("{v:.0} MHz"),
         Kind::Data => format!("{v:.0} MB"),
+        Kind::Read | Kind::Write => format!("{}/s", crate::widgets::rate(v)),
     }
 }
 

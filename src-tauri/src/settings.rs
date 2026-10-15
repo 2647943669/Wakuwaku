@@ -124,8 +124,11 @@ pub fn snapshot(sh: &Shared) -> Value {
         "plate": crate::backplate::available(),
         "widgets": sh.widgets_view(),
         // The monitor's hardware sensors: LibreHardwareMonitor found or
-        // not, and its sensors (lhm.rs).
+        // not, and its sensors (lhm.rs); the built-in ones (hw.rs); which
+        // of them it shows (a setting from before there was a choice, read).
         "lhm": crate::lhm::view(),
+        "hw": crate::hw::view(),
+        "monitorSource": crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource")).name(),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.
@@ -269,10 +272,13 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
             m.iter().all(|(k, v)| match k.as_str() {
                 "cpu" | "mem" | "net" | "battery" | "pin" => v.is_boolean(),
                 "every" => v.as_u64().is_some_and(|s| (1..=10).contains(&s)),
-                // The hardware's sensors, from LibreHardwareMonitor.
-                _ => crate::lhm::is_setting(k, v).unwrap_or(false),
+                // The hardware's sensors: the built-in ones picked, and
+                // LibreHardwareMonitor's.
+                _ => crate::hw::is_setting(k, v).or_else(|| crate::lhm::is_setting(k, v)).unwrap_or(false),
             })
         }),
+        // Where the monitor's sensors come from (hw.rs Source).
+        "monitorSource" => crate::hw::is_source(v),
         "widgetNudge" => is_bool,
         // Not to be reminded that nothing is connected (island.js isHinting).
         "connectHintOff" => is_bool,

@@ -723,6 +723,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* One for the settings alone (memory cached, a drive's health): no switch,
+   its reading where the others' are, before theirs. */
+#island-settings .fr.lsen.info .d {
+  margin-right: 50px;
+}
+
 #island-settings .fr {
   display: flex;
   align-items: center;
