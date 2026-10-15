@@ -249,6 +249,9 @@
   // moment, she plays clip, and text (a hello) replaces the mood's line.
   let nudge = null
   let nudgeTimer
+  // Closed by a press while it was open by itself (dismiss): the pointer
+  // still on it opens it no more, until it has left and come back.
+  let dismissed = false
   let view = ''
   let clockTimer
   let blinkTimer
@@ -3809,6 +3812,39 @@
     update()
   }
 
+  // Open by itself no more: what opened it has been seen.
+  function endNudge() {
+    nudge = null
+    clearTimeout(nudgeTimer)
+  }
+
+  // A press on the island while it is open by itself (zhoupengjie/Wakuwaku#45):
+  // what a widget's words point to opens (a letter, the updates), as it
+  // always did; any other press closes it, rather than opening the settings
+  // and leaving it to its time.
+  function pressNudge() {
+    const open = nudge?.widget?.open
+    endNudge()
+    // A word that points somewhere (an agent answered about a letter): there.
+    if (open?.tab === 'mail') {
+      window.Settings?.openLetter?.({ account: open.account, uid: open.uid, folder: open.folder || 'inbox' })
+      return window.pet.openSettings('mail')
+    }
+    // A page, or a part of one (a new version: the updates).
+    if (open?.tab) return window.pet.openSettings(open.tab)
+    dismiss()
+  }
+
+  // Closed under the pointer: its hover forgotten, and none taken again
+  // until it has left the island (mouseleave) and come back.
+  function dismiss() {
+    endNudge()
+    clearTimeout(hoverTimer)
+    isHover = false
+    dismissed = true
+    update()
+  }
+
   // Now and then a blink, as a class for a moment (no running animation).
   function blink() {
     clearTimeout(blinkTimer)
@@ -3966,9 +4002,14 @@
     const done = pull
     pull = null
     if (!done.started) {
-      // A click on her, not a pull: the settings, as anywhere on the island.
-      if (view !== 'ask') window.pet.openSettings()
-      return
+      // A click on her, not a pull: the settings, as anywhere on the island;
+      // open by itself, it closes instead, as anywhere on it (pressNudge).
+      // The click the browser sends after, on the island that held the
+      // pointer, is this press too: not one to open the settings.
+      if (view === 'ask') return
+      if (!isNudging()) return window.pet.openSettings()
+      pulledAt = Date.now()
+      return pressNudge()
     }
     pulledAt = Date.now()
     if (done.carrying) {
@@ -4148,9 +4189,13 @@
     takeWidgets(data.widgets)
     place()
     // Something new that wants you, or is finished: the island opens for a
-    // moment, a longer one with Claude's words to read.
+    // moment, a longer one with Claude's words to read. Not for an ending
+    // when it is not to open by itself (openOnEnd, on unless turned off):
+    // her mood and the sound alone say so then; a session waiting on you
+    // still opens it.
     const isReading = isDetailed() && Status.isEnding(now) && !!now.reply
-    if (isOn() && before !== now.mood && NUDGE_CLIP[now.mood]) nudgeFor(NUDGE_CLIP[now.mood], null, isReading ? NUDGE_READ_MS : NUDGE_MS)
+    const opens = NUDGE_CLIP[now.mood] && !(Status.isEnding(now) && config.openOnEnd === false)
+    if (isOn() && before !== now.mood && opens) nudgeFor(NUDGE_CLIP[now.mood], null, isReading ? NUDGE_READ_MS : NUDGE_MS)
     else update()
   })
 
@@ -4200,6 +4245,8 @@
       window.pet.hover(true)
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
+        // Closed by a press under this pointer (dismiss): not opened by it again.
+        if (dismissed) return
         isHover = true
         update()
       }, HOVER_OPEN_MS)
@@ -4207,8 +4254,15 @@
     target.addEventListener('mouseleave', () => {
       // Pulling her out keeps the window's pointer, wherever it goes.
       if (!pull?.started) window.pet.hover(false)
+      // Off the island it was closed under: coming back is a new hover.
+      dismissed = false
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
+        // Open by itself, rested on and left: it has been seen (as Rust
+        // counts it once the pointer leaves, island.rs hover), so it closes
+        // now, not when its time is up. Only passed across, the hover never
+        // taken, it stays open.
+        if (isHover && isNudging()) endNudge()
         isHover = false
         // In the notch, whatever was open goes back once the pointer has
         // left, as a notch app's does: the settings too, unless a field in
@@ -4222,7 +4276,9 @@
     // One click opens the settings (no double-click to wait for), except on a
     // prompt and its buttons, in the settings themselves, or on her (her
     // press may be a pull; pullUp decides). In the open island, a click on a
-    // session goes to its window instead.
+    // session goes to its window instead. Open by itself, a click closes it
+    // (pressNudge), but on a session (to its window, the island closed too)
+    // or a widget (its settings).
     target.addEventListener('click', e => {
       // A click in the settings (✕, the head) may just have closed them: not a click to open.
       if (isSetting() || window.Settings?.layer?.contains(e.target) || Date.now() - pulledAt < 500) return
@@ -4230,7 +4286,11 @@
       // The press, if the clocks redrew the session between it and the release.
       const id = view === 'expanded' && (e.target.closest('[data-jump]')?.dataset.jump || (Date.now() - pressed.at < 1000 && pressed.id))
       pressed = { id: '', at: 0 }
-      if (id) return jumpTo(id)
+      if (id) {
+        if (isNudging()) dismiss()
+        return jumpTo(id)
+      }
+      if (isNudging() && !e.target.closest('[data-widget]')) return pressNudge()
       // Not connected: "don't remind me" puts the hint away; any other
       // press but on a session's or a widget's row opens the settings'
       // welcome (a session listed still goes to its window: the hooks
@@ -4244,16 +4304,10 @@
       if (row) {
         const at = widgets.findIndex(w => w.id === row.dataset.widget)
         if (at >= 0) turnWidget(at - (widgetAt % widgets.length))
+        // Open by itself no more: the settings open over it.
+        endNudge()
         return openWidgetSettings(at >= 0 ? widgets[at] : { id: row.dataset.widget })
       }
-      // A word that points somewhere (an agent answered about a letter): there.
-      const open = isNudging() && nudge.widget?.open
-      if (open?.tab === 'mail') {
-        window.Settings?.openLetter?.({ account: open.account, uid: open.uid, folder: open.folder || 'inbox' })
-        return window.pet.openSettings('mail')
-      }
-      // A page, or a part of one (a new version: the updates).
-      if (open?.tab) return window.pet.openSettings(open.tab)
       window.pet.openSettings()
     })
     // The wheel turns to the next widget, while the widgets have the island.

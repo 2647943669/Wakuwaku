@@ -662,7 +662,7 @@
     const waits = WAITS.map(w => [w, w >= 60 ? T('settings.minutes', { n: Math.round(w / 60) }) : T('settings.seconds', { n: w })])
     const idles = IDLE_HIDES.map(m => [m, !m ? T('s.idleAlways') : m >= 60 ? T('s.paperHours', { n: m / 60 }) : T('s.minutesShort', { n: m })])
     const notify = s.notify || {}
-    return `${sec(T('s.holdTitle'))}<div class="grp">${row(esc(T('s.hold')), '', seg('hold', holds, s.hold))}</div>
+    return `${sec(T('s.holdTitle'))}<div class="grp">${row(esc(T('s.hold')), '', seg('hold', holds, s.hold))}${row(esc(T('s.openOnEnd')), esc(T('s.openOnEndNote')), sw('openOnEnd', s.openOnEnd !== false))}</div>
       ${sec(T('s.idleTitle'))}<div class="grp">${row(esc(T('s.idleHide')), esc(T('s.idleHideNote')), seg('idleHideMin', idles, s.idleHideMin))}</div>
       ${sec(T('settings.notify'))}<div class="grp">
         ${row(esc(T('settings.notifyWaiting')), '', sw('notify.waiting', notify.waiting))}
