@@ -28,8 +28,8 @@ pub struct Keys {
 
 // The clear taskbar (taskbar.rs fills_display): a window maximized on its
 // display; her island at the top of the screen (island.rs look_over_max):
-// one on its display.
-pub use imp::{maximized, maximized_on};
+// one on its display; and (look_under) one under it.
+pub use imp::{maximized, maximized_on, reaches_into};
 
 #[cfg(windows)]
 mod imp {
@@ -481,6 +481,52 @@ mod imp {
             let (x, y) = ((r.left + r.right) / 2, (r.top + r.bottom) / 2);
             x >= mon.0 && x < mon.0 + mon.2 && y >= mon.1 && y < mon.1 + mon.3
         })
+    }
+
+    // A window with a button, not minimized, reaching into this rect
+    // (physical x, y, w, h) where it is seen: DWM's frame, without the
+    // borders Windows draws round it for sizing that cannot be seen (some
+    // 7 px a side), else its rect. Her island at the top of the screen
+    // goes up out of its way (island.rs look_under). The cheap questions
+    // first: each of a few hundred windows is asked, every 1.5 s. Front to
+    // back, so the desktop's window lifted over them ("show the desktop")
+    // is met first: what lies under it is not seen.
+    pub fn reaches_into(r: (i32, i32, i32, i32)) -> bool {
+        let mut all: Vec<isize> = Vec::new();
+        // SAFETY: collect() only pushes, while all lives.
+        unsafe { EnumWindows(collect, &mut all as *mut Vec<isize> as isize) };
+        let me = std::process::id();
+        for h in all {
+            let hwnd = h as Hwnd;
+            // SAFETY: plain queries about a window being enumerated.
+            if unsafe { IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 } {
+                continue;
+            }
+            let f = frame_of(hwnd);
+            if !(f.left < r.0 + r.2 && r.0 < f.right && f.top < r.1 + r.3 && r.1 < f.bottom) {
+                continue;
+            }
+            if is_desktop(h) {
+                return false;
+            }
+            if is_task(hwnd, me) {
+                return true;
+            }
+        }
+        false
+    }
+
+    const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
+
+    fn frame_of(hwnd: Hwnd) -> WinRect {
+        let mut f = WinRect::default();
+        // SAFETY: our own struct, of the size passed.
+        let got = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut f as *mut WinRect as *mut c_void, std::mem::size_of::<WinRect>() as u32) };
+        if got == 0 && f.right > f.left && f.bottom > f.top {
+            f
+        } else {
+            rect_of(hwnd)
+        }
     }
 
     // Its icon (the window's own, else its class's), the big one first: a
@@ -1250,6 +1296,9 @@ mod imp {
         false
     }
     pub fn maximized_on(_mon: (i32, i32, i32, i32)) -> bool {
+        false
+    }
+    pub fn reaches_into(_r: (i32, i32, i32, i32)) -> bool {
         false
     }
     pub fn is_start(_hwnd: isize) -> bool {

@@ -205,6 +205,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // The taskbar home stands in for Windows' own: elsewhere, only the island.
         "display" => v.as_str() == Some("island") || (cfg!(windows) && v.as_str() == Some("taskbar")),
         "islandWidth" => matches!(v.as_str(), Some("narrow" | "normal" | "wide")),
+        // At the top of the screen, up out of the way of a window under it (island.rs look_under).
+        "islandHideUnder" => is_bool,
         "taskbarMaterial" => matches!(v.as_str(), Some("mica" | "black" | "clear")),
         "taskbarClearWhen" => matches!(v.as_str(), Some("mica" | "solid" | "always")),
         "taskbarButtons" => matches!(v.as_str(), Some("icons" | "labels")),

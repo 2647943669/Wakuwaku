@@ -2784,6 +2784,35 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   box-shadow: 0 0 0 2px var(--i-bg);
 }
 
+/* Up out of the way of the window under it (island.js setStow,
+   zhoupengjie/Wakuwaku#49): its foot 2 px into the screen, above it the
+   8 px it hangs below the window's top (#island-bar) and its whole height
+   (the row's, the island's: so one closing as it goes ends up there too);
+   nothing of it takes the pointer, which the page never hears over it
+   then (bridge.js chainAt), so the window lets every press through. Up
+   quickly, down with a little of the spring; at once with Windows'
+   animation effects off. */
+.home-island #island-row {
+  transition: transform 0.32s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+
+.isl-stowed.home-island #island-row {
+  transform: translateY(calc(2px - 8px - 100%));
+  transition-duration: 0.22s;
+  transition-timing-function: cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+.isl-stowed #island,
+.isl-stowed #island * {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-island #island-row {
+    transition: none;
+  }
+}
+
 /* The settings as Windows' own Settings in the dark mode too, as they are
    in the light: its grey ground, the cards a step lighter. */
 .home-taskbar.tb-capsule:not(.tb-light) #island[data-view='settings'] {
