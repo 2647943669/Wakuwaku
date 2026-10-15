@@ -47,6 +47,7 @@ mod events;
 mod events_agy;
 mod events_codex;
 mod events_opencode;
+mod events_omp;
 mod fetch;
 mod focus;
 mod fullscreen;
@@ -134,10 +135,12 @@ pub struct Shared {
     // When the last Codex event came (ms), 0 never: Codex runs its hooks
     // only once the person trusts them.
     pub codex_seen: std::sync::atomic::AtomicU64,
-    // The same for Antigravity's.
+    // The same for Antigravity's, and for omp's (its extension is loaded
+    // only by an omp started after it was written).
     pub agy_seen: std::sync::atomic::AtomicU64,
     // And OpenCode's, from her plugin in it.
     pub opencode_seen: std::sync::atomic::AtomicU64,
+    pub omp_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -1340,6 +1343,7 @@ fn main() {
             settings::settings_codex_hooks,
             settings::settings_agy_hooks,
             settings::settings_opencode,
+            settings::settings_omp_hooks,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1432,6 +1436,7 @@ fn main() {
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
                 agy_seen: std::sync::atomic::AtomicU64::new(0),
                 opencode_seen: std::sync::atomic::AtomicU64::new(0),
+                omp_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),

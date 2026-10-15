@@ -43,7 +43,7 @@ src-tauri/
     pointer.rs            两个窗口共用的点击穿透
     screen.rs             各个显示器的工作区
     asks.rs               确认请求：显示什么、每个选择回给 Claude Code 什么、排队和超时
-    connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json、Antigravity 的 hooks.json、OpenCode 的插件文件（安装 / 移除 / 状态）、开机自启
+    connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json、Antigravity 的 hooks.json、OpenCode 的插件文件、omp 的扩展（安装 / 移除 / 状态）、开机自启
     logon.rs              开机自启的计划任务（任务栏模式，Task Scheduler 的 COM）、这次登录是什么时候
     fetch.rs              codex-pets.net：解析地址、下载宠物、图库
     fullscreen.rs         别的程序是否全屏（user32）
@@ -63,6 +63,7 @@ src-tauri/
     events.rs             Claude Code 的 hook 事件 → 消息；会话名（session_title 或会话记录）、项目名（git 仓库名）
     events_codex.rs       Codex 的 hook 事件 → 消息（步骤、任务、回复、项目名的说法用 events.rs 的）
     events_opencode.rs    OpenCode 插件发来的事件 → 和 Claude Code 一样名字的 hook 事件（确认、找窗口用）→ 消息
+    events_omp.rs         omp（oh-my-pi）扩展发来的事件 → 消息：小写的工具名、`path` 参数换成 Claude Code 的，再交给 events.rs
     data.rs               数据目录、设置读写、已下载的宠物和 Codex 的宠物
     detach.rs             她启动的进程：更新、重启、守护进程按普通方式启动；hook 拉起她、启动时自查要脱离启动者的作业，作业不放行时才以资源管理器为父进程
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
@@ -70,6 +71,7 @@ src-tauri/
   vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic（见 README.md）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装时写上端口放进 OpenCode 的插件文件夹）
+integrations/omp/         omp 的扩展 wakuwaku.ts（connection.rs 填上端口、程序路径后写进 omp 的 agent 文件夹）
 .claude-plugin/           插件市场入口 marketplace.json（位置是 Claude Code 规定的）
 scripts/make-icons.js     画图标（node + ImageMagick），输出提交在 src-tauri/icons
 test/                     页面的单元测试（node --test，不需要 npm install）；fake-imap.js、fake-smtp.js 是试邮件用的假 IMAP、SMTP 服务器；fake-relay.js 是假的崩溃报告中转；fake-lhm.js 是假的 LibreHardwareMonitor 网页服务器
@@ -152,9 +154,30 @@ OpenCode 2（zhoupengjie/Wakuwaku#31；2026-10-15 在测试机的 2.0.29 上做�
 - **没有的**：OpenCode 不会把她叫醒（插件不知道 exe 在哪，也不该从服务里起进程），靠开机自启；今天的 token 不算 OpenCode 的（它记在 `~/.local/share/opencode/opencode.db`，`session.step.ended` 里也有用量，可以另做）；1.x 的 OpenCode 不认这个插件。
 - **测试**：`opencode run` 遇到确认会自己拒掉（noninteractive.ts：不能问人），测不了确认；用 `opencode api` 走服务：`POST /api/session`（`{ location: { directory }, model, permissions: [{ action: "shell", resource: "*", effect: "ask" }] }` 让这个会话每条命令都问）、`POST /api/session/<id>/prompt`（`{ text }`）、`GET /api/session/<id>/permission`、`POST /api/session/<id>/permission/<请求 id>/reply`（`{ decision }`，就是 TUI 答的那一下）。`test/opencode.test.js` 用假的她和假的 `ctx` 测插件本身（端口换掉，不会打到真的她）。
 
+## oh-my-pi（omp）
+
+omp（`can1357/oh-my-pi`，zhoupengjie/Wakuwaku#47）没有 Claude Code 那样的 hooks，只有**扩展**：一个 TS/JS 模块（`export default (pi) => { pi.on(...) }`），在 omp.exe 自带的 Bun 里运行。她带一个 `integrations/omp/wakuwaku.ts`（`connection.rs` 用 `include_str!` 打进 exe），「连接」页安装时把端口、程序路径（叫醒她用）和 `WAKUWAKU_USER_DATA`（只有测试副本有）填进去，写到 `<agent 文件夹>/extensions/wakuwaku.ts`。omp.exe 是 Bun 编译的，打包的 JS 源码原样在 exe 里（一段段以 `// packages/coding-agent/src/…` 开头），下面的说法以 18.11.1 的源码和 2026-10-15 在测试 VM 里的实测为准（API 几乎每天在变）：
+
+- **放在哪**：agent 文件夹和 omp 的 `utils/src/dirs.ts` 一样找：`~/.omp/agent`，`PI_CONFIG_DIR` 换掉 `.omp`，`PI_CODING_AGENT_DIR` 换掉整个（issue 里写的 `OMP_AGENT_DIR` 在 18.11.1 里没有）。profile（`--profile <名字>`、`OMP_PROFILE`）有自己的 `~/.omp/profiles/<名字>/agent`，她看不出 omp 用的是哪个，所以每个已有的 profile 都放一份（状态 `partial`：之后新建的 profile 还没有）。**目录里只认 `*.ts`、`*.js`**（扫描用 `*.{ts,js}`，`.mjs` 不加载；`-e` 指定的文件才不管扩展名）。状态按文件内容比：和这份程序要写的一字不差是 `ok`，不一样（端口、程序位置、旧版本）是 `stale`，没有是 `missing`，没找到 omp（`~/.omp` 和 `%LOCALAPPDATA%\omp\omp.exe` 都没有）是 `absent`。只有之后新开的 omp 才加载。
+- **事件**（`pi.on`）：omp 会**等**每个处理函数（一般最多 30 秒，`session_shutdown` 2 秒，超时算出错），所以扩展里什么都不等：事件排进一个队列按顺序发（不然一个很快的工具，结束会比开始先到），发出去处理函数就返回；只有 `session_shutdown` 在她答过话时最多等 1 秒，让最后的 `SessionEnd` 发出去（`-p` 紧接着就退出）。每个处理函数包在 try 里，每个 promise 都接住错误（没人接的 rejection 会弄坏整个 omp 进程）。
+  - `session_start` / `session_switch` / `session_branch` → `SessionStart`；会话 id 换了，先给旧的发 `SessionEnd`（批准计划、清空上下文执行时 omp 就换了一个新会话）
+  - `before_agent_start`（带 `prompt`）→ `UserPromptSubmit`
+  - `tool_execution_start` / `_end` → `PreToolUse` / `PostToolUse`（`isError` 时 `PostToolUseFailure`，带结果的文字）。结束事件不带参数：开始时的参数按 `toolCallId` 记着；长字符串截到 2000 字（write 的整个文件）；改文件的 `result.details.path`（完整路径）作为 `file`。每个工具调用都有 `intent`（模型写的一句话，比如「Reading a.txt」）。
+  - `agent_end`，没有 `willContinue` 时：看最后一条 assistant，`stopReason` 是 `error` 发 `StopFailure`（`errorMessage` 作 `error_details`），`aborted` 发 `Interrupt`（空闲，回合结束；进入计划审批前 omp 自己也这样中止一轮，`errorMessage` 是 `__omp.silent_abort__`），否则 `Stop`（`last_assistant_message` 是它的文字）
+  - `tool_approval_requested` / `_resolved` → `ApprovalRequested`（等你，「在终端里批准：…」）/ `ApprovalResolved`（回到干活）
+  - `plan_review_requested` / `_resolved` → 见下面的计划审批
+  - `session_shutdown` → `SessionEnd`
+  - 只发 `ctx.agent.kind === "main"` 的：子 agent 在同一个进程里，有自己的会话 id，`kind` 是 `sub`。omp 给每个会话（主会话、每个子 agent）各加载一次这个模块，所以共享的东西（队列、在跑的工具、审批）放在 `globalThis.__wakuwakuOmp1`。
+- **怎么发**：用 `node:http`，不用 `fetch`：omp 的 Bun 里 `fetch` 连 `127.0.0.1` 也走 `HTTP_PROXY`（实测设了 `HTTP_PROXY` 就连不上她；就算代理转得过去，连接的另一头也成了代理进程，跳不到窗口）。她没开着时连接立刻被拒（Bun 里约 1 ms），之后 15 秒内什么都不发；会话开始时连不上，就像 Claude Code 的 SessionStart 命令那样运行一次 `wakuwaku.exe --wakuwaku-ensure-running`（带上她的端口和 `WAKUWAKU_USER_DATA`，`detached`，不开窗口），2 秒后再试；从菜单退出的（`quit-by-choice`）不会被叫起来。实测她没开着时 `omp -p` 照常退出 0、没有多余的输出，耗时和 `--no-extensions` 一样（都约 2 秒）。
+- **events_omp.rs**：omp 的工具换成 Claude Code 的名字和参数再交给 `events.rs`：`bash`→`Bash`（`intent` 作 `description`），`read` / `write` / `edit` / `ast_edit` / `notebook` 的 `path`→`file_path`（`notebook_path`），`grep` / `ast_grep`→`Grep`，`glob` / `find`→`Glob`（glob 的通配符在 `path` 里），`task`→`Task`，`ask`→`AskUserQuestion`（等你回答），`todo`→`TodoWrite`（只说在更新清单），`web_search`→`WebSearch`，`fetch`→`WebFetch`；这样「改好了」、改过的文件、步骤的说法都和 Claude Code 的一样。omp 自己的工具（`lsp`、`python`、`browser`、`wait`……）显示 `intent`，没有才显示工具名。消息带 `agent: "omp"`；会话名用 omp 自己起的（`getSessionName()`，常带个 emoji）。
+- **进程链**：事件是从 omp.exe 里发的，和 Claude Code 一样由她按连接的对端端口查 TCP 表，找到 omp.exe 再往上（`server.rs` 的 `brings_chain`：只有 Codex、Antigravity 自带进程链）。实测 omp 开在 Windows Terminal 的标签页里，点会话就切到那个窗口。
+- **计划审批**（`ctx.resolvePlanReview`，18.10.4 起；只有交互模式有，`-p` 和 RPC 模式没有计划审批）：`plan_review_requested`（`reviewId`、`planContent`、`options`：execute / compact / keep / refine / save）时发一个 `PermissionRequest`，`tool_name: "ExitPlanMode"`、`tool_input: { plan }`，和 Claude Code 的计划一样显示在面板上，标着 omp；这个请求单独发（排在之前的事件后面，之后的事件不等它），挂着等她回答（最多 295 秒）。她批准 → `resolvePlanReview(id, "execute")`；拒绝 → `"refine"`，她的拒绝语当 feedback（omp 拿它当下一句话接着改计划，实测模型会用 `ask` 问你要怎么改）；「去终端处理」、到时间 → `{}`，什么都不做。回答前先看 `getPendingPlanReview()` 还是不是这一个：终端已经答了就不用她的。`plan_review_resolved` 时发 `PostToolUse`（同样的 `tool_input`，带 `choice`），`asks.rs` 认出是同一个调用，面板收起（日志：`prompt N settled in the terminal (PostToolUse)`）；`choice` 会接着干活的（execute、compact、keep、refine）显示干活，save 或取消显示空闲。在面板上批准的算进「今天」的批准。
+- **工具批准没做**：omp 默认 `yolo`，不问；`always-ask` / `write` 时扩展只收得到通知（`tool_approval_requested` 只有工具名和 id），没有回答它的接口。在 `tool_call` 里自己当一道闸（像官方例子 `permission-gate.ts`）会和 omp 自己的批准问两次，`tool_call` 还有 30 秒的预算，所以没做；「连接」页写明工具批准留在 omp 里。等上游有 `resolveToolApproval` 这样的接口再接。
+- **测试**（VM，不用键盘）：`omp -p "…" --model deepseek-flash --thinking off` 看状态和回复（`-p` 结束后马上 `SessionEnd`，做完只闪一下）；交互模式用 `conhost.exe --headless omp.exe … "第一句话"`（不开窗口）；`--config <yml>` 叠一层配置：`plan: { defaultOnStartup: true }` 直接进计划模式，`retry: { enabled: false }` 加上指向关着的端口的 `HTTPS_PROXY`，很快就出错。工具批准用 `--mode rpc --approval-mode always-ask`：stdin 发 `{"type":"prompt","message":"…"}`，批准请求是 `extension_ui_request`（`method: "select"`，选项 Approve / Deny），回 `{"type":"extension_ui_response","id":…,"value":"Approve"}`，关掉 stdin 就正常退出。交互模式没有终端输入，用一个只在测试时 `-e` 加载的扩展按文件调 `ctx.resolvePlanReview`（扮演终端里的回答）和 `ctx.shutdown()`（正常退出）；有对话框开着（工具批准、`ask`）时 `shutdown()`、`abort()` 都等它，只能结束进程，她那边的会话就要等 15 分钟的超时（和 Claude Code 被强行结束一样）。设了 `BUN_BE_BUN=1` 的 `omp.exe` 就是 bun 本身（试 Bun 的行为用；它的 `Bun.serve` 监听所有网卡，会让防火墙弹窗）。
+
 ## 消息
 
-hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，`/state` 也收这个格式：
+hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`，omp 的在 `events_omp.rs`）换算成消息，`/state` 也收这个格式：
 
 ```json
 { "session": "…", "project": "wakuwaku", "mood": "working", "detail": "Bash", "event": "tool-start", "toolId": "toolu_…", "step": { "key": "step.run", "vars": { "what": "Run the tests" } } }
@@ -172,7 +195,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 | `todo` | 任务清单的变化：TodoWrite 给 `{ set }`，TaskCreate / TaskUpdate 给 `{ add }` / `{ update }` |
 | `file` | 刚改过的文件（这一轮改了几个文件） |
 | `reply` / `error` | Stop / StopFailure 的 `last_assistant_message` 摘前一两句；StopFailure 的 `error`（`error.*`）或 `error_details` |
-| `agent` / `turn` | Codex 的消息带 `agent: "codex"` 和回合 id（见上面的 Codex 一节）；Antigravity 的 `"agy"`，OpenCode 的 `"opencode"` |
+| `agent` / `turn` | Codex 的消息带 `agent: "codex"` 和回合 id（见上面的 Codex 一节）；Antigravity 的 `"agy"`，OpenCode 的 `"opencode"`，omp 的 `"omp"` |
 
 **会话名**：hook 自带的 `session_title`（只有 UserPromptSubmit、SessionStart 带，而且只是自定义标题：`/rename` 或桌面版起的名字）；没有时，在一轮开始和结束时读 `transcript_path` 末尾 256 KB 里最后一条 `custom-title`，没有再用 `ai-title`。**项目名**：从 `cwd` 往上找 `.git`，是目录就取它所在文件夹的名字；是文件（worktree）就按里面的 `gitdir: <仓库>/.git/worktrees/<名字>` 取仓库名；不在 git 里就用 `cwd` 的文件夹名。按 `cwd` 缓存。
 
@@ -187,7 +210,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 | 请求 | 说明 |
 | --- | --- |
 | `GET /health` | `{ ok, app: "wakuwaku", runtime: "tauri", state }`；调试模式下还有 `window`、`island`、`settings` |
-| `POST /hook` | Claude Code 的 hook 事件；一般立刻回 `{}`，`PermissionRequest` 等面板上的回答。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来），`?agent=opencode` 的是 OpenCode 里她的插件发来的（见 OpenCode 一节） |
+| `POST /hook` | Claude Code 的 hook 事件；一般立刻回 `{}`，`PermissionRequest` 等面板上的回答。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来），`?agent=opencode` 的是 OpenCode 里她的插件发来的（见 OpenCode 一节），`?agent=omp` 的是 omp 里她的扩展发来的 |
 | `POST /state` | 一条消息 |
 | `POST /widget` | 岛上的一个插件（见"岛上的插件"）；回 `{ ok: true }`，或者 400 和 `{ error }` |
 | `POST /come-home` | 再次启动时用：她重新出现 |
@@ -210,6 +233,8 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 
 面板什么时候收起：同一个调用的 `PostToolUse` / `PostToolUseFailure` 到达（比较输入时忽略 `answers`）；同一个会话的 `UserPromptSubmit`、`Stop`、`StopFailure`、`SessionEnd`、`Interrupt`（Codex、OpenCode）；OpenCode 的：它那边已答（`PermissionReplied`，按请求 id）、同一个调用（按 `tool_use_id`）结束；同一个 agent 又来了新请求（OpenCode 除外：它会同时问几个调用，各自等）；等待时间到。每个请求怎么结束的，日志里都有一行：`answer N`（在她身上答的）、`prompt N handed to the terminal: its time is up`（超时）、`… asked to on her`（去终端处理）、`prompt N settled in the terminal (事件名)`（终端已答）、`… out of sight`（看不见）。`asks.rs` 的 `expire` 和 `seen` 返回结束了的 id，供调用的地方写日志。以前超时、终端已答都不写，等满 290 秒退回终端的那次在日志里看不出来（2026-10-13 测试会话）。
 
+omp 的计划审批也走这里（`tool_name: "ExitPlanMode"`，面板上标着 omp，见上面的 omp 一节）：允许回 `{ behavior: "allow" }`，扩展拿它执行计划；拒绝回 `deny`，扩展让 omp 带着拒绝语改计划；`{}` 什么都不做。它不像 Codex 那样限 1 分钟：omp 终端里的审批框一直开着，按设置的等待时间（最多 290 秒）交还。
+
 面板在哪：灵动岛模式在岛里（岛的 `ask` 形状）；设置开着时是设置里的横幅（`panel.js` 的 `holdsPanel()` 看 `settingsOpen`）；只有宠物时在她头顶，她的窗口向上、向两侧长大，她本人不动（`pet.rs` 的 `set_panel`，挡在屏幕边上时用 `pet:shift` 把她挪回原位）。
 
 ## 点会话就到它的窗口
@@ -218,6 +243,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`）换算成消息，
 
 **会话在哪个进程里**（`state.rs` 的 `chain`，消息里是 `[[pid, 启动时间], …]`）：
 - Claude Code 的 HTTP hook：`server.rs` 用请求的对端端口查 TCP 表（`GetExtendedTcpTable`），连接另一头就是 Claude Code 自己的进程，再往上找父进程。会话还没有进程链、或者一轮开始（UserPromptSubmit / SessionStart，可能换了进程续上）时才查。
+- omp：她的扩展在 omp.exe 里发 HTTP 请求，和 Claude Code 一样查 TCP 表，连接另一头就是 omp.exe。
 - Codex：hook 命令（`--wakuwaku-codex-hook`）在自己里面算好父进程链，跳过它自己和 Codex 用来跑它的 shell，从 Codex 开始，放进事件的 `wakuwaku_chain` 字段。
 - OpenCode：插件在它的后台服务（`opencode serve --service`，没有窗口）里，连接另一头是服务。`jump.rs` 的 `front_chain` 再查 TCP 表里连着服务监听端口的进程（它的 TUI、`opencode run`、`opencode api`），取窗口标题带会话名或项目名的那个，没有就取最新启动、找得到窗口的那个（刚开始的 run、唯一的 TUI），再没有就取最新的；一个都没有（`--standalone` 自己当服务）就是服务自己的链。同时开着几个 TUI 时可能认错（OpenCode 2.0.29 的 TUI 标题都是「OpenCode」）。
 - 每个进程都记启动时间，父进程不会比子进程晚启动：对不上的就是 pid 被复用了。走到 explorer、sihost、svchost 这类所有程序都在其下的进程就停。

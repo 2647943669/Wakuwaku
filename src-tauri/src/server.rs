@@ -3,7 +3,10 @@
 //   GET  /health       { ok, app, runtime, state }; with WAKUWAKU_DEBUG=1, the windows and settings too
 //   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
 //                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook)
+//                      ?agent=agy: an Antigravity one, the same (main.rs agy_hook)
 //                      ?agent=opencode: an OpenCode event, from her plugin in it (events_opencode.rs)
+//                      ?agent=omp: an oh-my-pi one, from her extension inside omp
+//                      (integrations/omp/wakuwaku.ts, events_omp.rs)
 //   POST /state        a message (state.rs)
 //   POST /widget       a widget for the island, from a script (widgets.rs)
 //   POST /come-home    started again while running: back into sight
@@ -20,7 +23,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::{events, events_agy, events_codex, events_opencode, island, jump, now_ms, pet, Responder, Shared};
+use crate::{events, events_agy, events_codex, events_omp, events_opencode, island, jump, now_ms, pet, Responder, Shared};
 
 // Hook events carry whole files (an Edit's PostToolUse has the file before
 // the edit), so this is generous.
@@ -30,16 +33,25 @@ const MAX_BODY: u64 = 16 * 1024 * 1024;
 const CODEX_ASK_MS: u64 = 60 * 1000;
 
 // Which agent's hook the request comes from (?agent=codex, ?agent=agy: handed
-// on by this program, main.rs; ?agent=opencode: her plugin in OpenCode);
-// none for Claude Code's.
+// on by this program, main.rs; ?agent=opencode: her plugin in OpenCode;
+// ?agent=omp: her extension in omp); none for Claude Code's.
 fn agent_of(url: &str) -> Option<&'static str> {
     let (_, query) = url.split_once('?')?;
     query.split('&').find_map(|p| match p {
         "agent=codex" => Some("codex"),
         "agent=agy" => Some("agy"),
         "agent=opencode" => Some("opencode"),
+        "agent=omp" => Some("omp"),
         _ => None,
     })
+}
+
+// Whether an agent's events bring the processes their session runs in:
+// Codex's and Antigravity's hook commands look them up (main.rs). Claude
+// Code's come from its own process, and omp's from her extension inside
+// omp.exe: those she finds on the other end of the connection.
+fn brings_chain(agent: Option<&str>) -> bool {
+    matches!(agent, Some("codex" | "agy"))
 }
 
 // True the first time a line comes; a few kinds are kept, and past them
@@ -85,12 +97,12 @@ fn read_json(req: &mut Request) -> Option<Value> {
 // The process chain of the session an event comes from, looked up when the
 // session has none yet or a turn begins (it may have been resumed in another
 // process): Codex's and Antigravity's hook command brings its own; for
-// Claude Code, it is the process on the other end of this connection. For
+// Claude Code and omp, it is the process on the other end of this connection. For
 // OpenCode that is its background service, which has no window: the
 // terminal is that of a program of OpenCode's connected to it (jump.rs
 // front_chain), or the service's own when none is (run standalone).
 fn chain_for(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> Option<jump::Chain> {
-    if matches!(agent, Some("codex" | "agy")) {
+    if brings_chain(agent) {
         let chain = jump::chain_from_json(event.get(jump::CODEX_CHAIN));
         return (!chain.is_empty()).then_some(chain);
     }
@@ -130,8 +142,8 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                     return reply(req, 200, json!({}));
                 }
             }
-            // Codex's, Antigravity's and OpenCode's events, tagged for the
-            // prompts (asks.rs) and read their own way.
+            // Codex's, Antigravity's, OpenCode's and omp's events, tagged for
+            // the prompts (asks.rs) and read their own way.
             if let (Some(agent), Some(fields)) = (agent, event.as_object_mut()) {
                 fields.insert("agent".into(), json!(agent));
             }
@@ -139,6 +151,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 Some("codex") => &sh.codex_seen,
                 Some("agy") => &sh.agy_seen,
                 Some("opencode") => &sh.opencode_seen,
+                Some("omp") => &sh.omp_seen,
                 _ => &sh.claude_seen,
             };
             seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
@@ -153,6 +166,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                     events_agy::to_message(&event)
                 }
                 Some("opencode") => events_opencode::to_message(&event),
+                Some("omp") => events_omp::to_message(&event),
                 _ => events::to_message(&event),
             };
             if let Some(mut msg) = msg {
@@ -290,9 +304,13 @@ mod tests {
         assert_eq!(agent_of("/hook?agent=codex"), Some("codex"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=agy"), Some("agy"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=opencode"), Some("opencode"));
+        assert_eq!(agent_of("/hook?from=wakuwaku&agent=omp"), Some("omp"));
         assert_eq!(agent_of("/hook?from=wakuwaku"), None);
         assert_eq!(agent_of("/hook?agent=codexx"), None);
         assert_eq!(agent_of("/hook"), None);
+        // omp's come from inside omp.exe: she finds its process, as Claude Code's.
+        assert!(brings_chain(Some("codex")) && brings_chain(Some("agy")));
+        assert!(!brings_chain(Some("omp")) && !brings_chain(None));
     }
 
     // A connection whose socket cannot be split in two (WSADuplicateSocket's
