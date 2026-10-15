@@ -52,6 +52,7 @@ mod icons;
 mod inputs;
 mod island;
 mod jump;
+mod lhm;
 mod mail;
 mod notch;
 mod notify;
@@ -1453,12 +1454,15 @@ fn main() {
                 power::thread_eco();
                 let mut monitor = widgets::Monitor::new();
                 let mut next = std::time::Instant::now();
-                let mut was = (false, 0, false);
+                let mut was = (false, Value::Null, false);
                 loop {
-                    let watching = widgets::Watching::from(&monitored.setting("monitor"));
+                    let setting = monitored.setting("monitor");
+                    let mut watching = widgets::Watching::from(&setting);
                     let (on, quiet) = (monitored.is_widget_on("monitor"), monitored.is_quiet());
-                    if std::time::Instant::now() >= next || (on, watching.every, quiet) != was {
-                        was = (on, watching.every, quiet);
+                    watching.quiet = quiet;
+                    // Any of its settings changed (a sensor picked, too): read now.
+                    if std::time::Instant::now() >= next || (on, &setting, quiet) != (was.0, &was.1, was.2) {
+                        was = (on, setting, quiet);
                         // Quiet (nobody looking), every ten seconds at least.
                         let every = if quiet { watching.every.max(10) } else { watching.every };
                         next = std::time::Instant::now() + Duration::from_secs(every);
@@ -1472,6 +1476,11 @@ fn main() {
                         };
                         if changed {
                             monitored.redraw_widgets();
+                        }
+                        // LibreHardwareMonitor found or lost, its sensors' readings:
+                        // the open settings list them.
+                        if lhm::take_changed() {
+                            monitored.push_settings();
                         }
                     }
                     // Off, till it is turned on.

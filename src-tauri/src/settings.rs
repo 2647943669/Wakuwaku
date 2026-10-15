@@ -85,6 +85,9 @@ pub fn snapshot(sh: &Shared) -> Value {
         // Whether Windows' acrylic can go under the open island (backplate.rs).
         "plate": crate::backplate::available(),
         "widgets": sh.widgets_view(),
+        // The monitor's hardware sensors: LibreHardwareMonitor found or
+        // not, and its sensors (lhm.rs).
+        "lhm": crate::lhm::view(),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.
@@ -223,7 +226,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
             m.iter().all(|(k, v)| match k.as_str() {
                 "cpu" | "mem" | "net" | "battery" | "pin" => v.is_boolean(),
                 "every" => v.as_u64().is_some_and(|s| (1..=10).contains(&s)),
-                _ => false,
+                // The hardware's sensors, from LibreHardwareMonitor.
+                _ => crate::lhm::is_setting(k, v).unwrap_or(false),
             })
         }),
         "widgetNudge" => is_bool,
@@ -259,6 +263,10 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
             "scale" => scale = value.as_f64(),
             "display" => display = value.as_str().map(str::to_string),
             "out" => out = value.as_bool(),
+            // LibreHardwareMonitor's password, typed: to the Credential Manager.
+            "monitor" => {
+                rest.insert(key.clone(), crate::lhm::keep_password(value.clone()));
+            }
             _ => {
                 rest.insert(key.clone(), value.clone());
             }
@@ -533,6 +541,7 @@ pub async fn settings_open_site(app: AppHandle, place: String) {
         "googleAppPasswords" => "https://myaccount.google.com/apppasswords",
         "appleAppPasswords" => "https://account.apple.com/account/manage",
         "yahooAppPasswords" => "https://login.yahoo.com/account/security",
+        "lhm" => "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases",
         _ => fetch::SITE,
     };
     // By ShellExecute, not `cmd /c start`: run from the installed pet (no

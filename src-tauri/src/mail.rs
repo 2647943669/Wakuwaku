@@ -630,7 +630,7 @@ pub async fn mail_switch(app: AppHandle, id: String, on: bool) -> Value {
 // --- Passwords, in Windows' Credential Manager ----------------------------------------------------
 
 #[cfg(windows)]
-mod secret {
+pub(crate) mod secret {
     #[repr(C)]
     pub struct Credential {
         flags: u32,
@@ -661,12 +661,26 @@ mod secret {
         s.encode_utf16().chain([0]).collect()
     }
 
-    fn target(id: &str) -> Vec<u16> {
-        wide(&format!("Wakuwaku mail {id}"))
+    // A mail account's, by its id.
+    fn target(id: &str) -> String {
+        format!("Wakuwaku mail {id}")
     }
 
     pub fn write(id: &str, password: &str) -> Result<(), String> {
-        let (target, user) = (target(id), wide("wakuwaku"));
+        write_named(&target(id), password)
+    }
+
+    pub fn read(id: &str) -> Option<String> {
+        read_named(&target(id))
+    }
+
+    pub fn delete(id: &str) {
+        delete_named(&target(id))
+    }
+
+    // One by its whole name there (LibreHardwareMonitor's, lhm.rs).
+    pub fn write_named(name: &str, password: &str) -> Result<(), String> {
+        let (target, user) = (wide(name), wide("wakuwaku"));
         let blob = password.as_bytes();
         let credential = Credential {
             flags: 0,
@@ -690,8 +704,8 @@ mod secret {
         }
     }
 
-    pub fn read(id: &str) -> Option<String> {
-        let target = target(id);
+    pub fn read_named(name: &str) -> Option<String> {
+        let target = wide(name);
         let mut found: *mut Credential = std::ptr::null_mut();
         // SAFETY: the credential Windows gives is read while it is its, then freed.
         unsafe {
@@ -704,8 +718,8 @@ mod secret {
         }
     }
 
-    pub fn delete(id: &str) {
-        let target = target(id);
+    pub fn delete_named(name: &str) {
+        let target = wide(name);
         // SAFETY: a name ending in 0.
         unsafe { CredDeleteW(target.as_ptr(), GENERIC, 0) };
     }
@@ -717,7 +731,7 @@ mod secret {
 }
 
 #[cfg(not(windows))]
-mod secret {
+pub(crate) mod secret {
     pub fn write(_id: &str, _password: &str) -> Result<(), String> {
         Err("not on this system".into())
     }
@@ -725,6 +739,13 @@ mod secret {
         None
     }
     pub fn delete(_id: &str) {}
+    pub fn write_named(_name: &str, _password: &str) -> Result<(), String> {
+        Err("not on this system".into())
+    }
+    pub fn read_named(_name: &str) -> Option<String> {
+        None
+    }
+    pub fn delete_named(_name: &str) {}
 }
 
 #[cfg(test)]

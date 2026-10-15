@@ -86,6 +86,8 @@
   // typed in them and not yet kept ("weather.City": "上海").
   let openPlugin = ''
   const drafts = {}
+  // The monitor's hardware (LibreHardwareMonitor's) folded out, by its id.
+  const openHardware = new Set()
   // The mail account being set up or changed, as Thunderbird's dialog has
   // it: the address and password; then (step found) the server looked up,
   // or (step manual) the server's fields; busy while looking or signing in;
@@ -714,14 +716,64 @@
   }
 
   // The monitor's settings, folded out under it: its parts on or off, and
-  // how often it reads (1 to 10 seconds).
+  // how often it reads (1 to 10 seconds); the hardware's sensors below.
   function monitorFields() {
     const m = snap.settings.monitor || {}
     const parts = ['cpu', 'mem', 'net', 'battery'].map(k => `<div class="fr"><span class="fl">${esc(T(`mon.${k}`))}</span><span class="grow"></span>${sw('mon:' + k, m[k] !== false)}</div>`)
     const every = m.every || 2
     const pace = `<div class="fr"><span class="fl">${esc(T('mon.every'))}</span><span class="grow"></span><button class="pbtn sm" data-every="-1" ${every <= 1 ? 'disabled' : ''}>−</button><span class="every">${esc(T('settings.seconds', { n: every }))}</span><button class="pbtn sm" data-every="1" ${every >= 10 ? 'disabled' : ''}>+</button></div>`
     const pin = `<div class="fr"><span class="fl">${esc(T('mon.pin'))}</span><span class="d grow">${esc(T('mon.pinNote'))}</span>${sw('mon:pin', m.pin !== false)}</div>`
-    return `<div class="pf">${pin}${parts.join('')}${pace}</div>`
+    return `<div class="pf">${pin}${parts.join('')}${pace}${sensorFields(m)}</div>`
+  }
+
+  // The hardware's sensors, from a LibreHardwareMonitor the person runs
+  // (lhm.rs, snap.lhm): on or off; whether it was found, and if not, how
+  // to; its sensors to pick, under their hardware (folded, the ones picked
+  // still shown); its port, and a user and password for its authentication.
+  function sensorFields(m) {
+    const head = `<div class="fr lhm-head"><span class="fl">${esc(T('mon.lhm'))}</span><span class="d grow">${esc(T('mon.lhmNote'))}</span>${sw('mon:lhm', m.lhm !== false)}</div>`
+    if (m.lhm === false) return head
+    const v = snap.lhm || {}
+    const port = m.lhmPort || 8085
+    const status =
+      v.status === 'found'
+        ? T(!(v.sensors || []).length ? 'mon.lhmNone' : v.version ? 'mon.lhmFoundVersion' : 'mon.lhmFound', { version: v.version || '' })
+        : v.status === 'auth'
+          ? T('mon.lhmAuth')
+          : v.status === 'strange'
+            ? T('mon.lhmStrange', { port })
+            : v.status === 'missing'
+              ? T('mon.lhmMissing', { port })
+              : T('mon.lhmUnread')
+    // Where to get it, while none answers.
+    const get = v.status === 'found' || v.status === 'auth' || v.status === 'strange' ? '' : ` <span class="link" data-site="lhm">${esc(T('mon.lhmGet'))} ›</span>`
+    const note = `<div class="note lhm-note${v.status === 'found' ? '' : ' bad'}">${esc(status)}${get}</div>`
+    // Its sensors by hardware, in LHM's order.
+    const groups = []
+    for (const s of v.status === 'found' ? v.sensors || [] : []) {
+      const last = groups[groups.length - 1]
+      if (last && last.id === s.hardwareId) last.list.push(s)
+      else groups.push({ id: s.hardwareId, name: s.hardware || s.hardwareId, list: [s] })
+    }
+    const sensors = groups
+      .map(g => {
+        const open = openHardware.has(g.id)
+        const picked = g.list.filter(s => s.on).length
+        const title = `<div class="fr lhw" data-lhw="${esc(g.id)}"><span class="fl">${open ? '▾' : '▸'} ${esc(g.name)}</span><span class="d">${picked ? esc(T('mon.lhmTicked', { n: picked })) : ''}</span></div>`
+        const rows = (open ? g.list : g.list.filter(s => s.on)).map(s => `<div class="fr lsen"><span class="fl">${esc(s.name)}</span><span class="d">${esc(s.reading)}</span>${sw(esc('lhms:' + s.id), s.on)}</div>`)
+        return title + rows.join('')
+      })
+      .join('')
+    const field = (key, label, attrs, value) => `<label class="fr"><span class="fl">${esc(label)}</span><input class="in" data-mon="${key}" value="${esc(`mon:${key}` in drafts ? drafts[`mon:${key}`] : value)}" spellcheck="false" ${attrs}></label>`
+    // The password is never shown again: kept, it says so, and can be forgotten.
+    const kept = m.lhmPass === true
+    const forget = kept ? `<div class="fr"><span class="fl"></span><span class="d grow">${esc(T('mon.lhmPassKept'))}</span><button class="pbtn sm" data-lhm-forget>${esc(T('mon.lhmForget'))}</button></div>` : ''
+    const reach =
+      field('lhmPort', T('mon.lhmPort'), 'inputmode="numeric" placeholder="8085"', m.lhmPort || '') +
+      field('lhmUser', T('mon.lhmUser'), `placeholder="${esc(T('mon.lhmOptional'))}" autocomplete="off"`, m.lhmUser || '') +
+      field('lhmPass', T('mon.lhmPass'), `type="password" autocomplete="off" placeholder="${esc(kept ? '••••••' : T('mon.lhmOptional'))}"`, '') +
+      forget
+    return `${head}${note}${sensors}${reach}`
   }
 
   // Plugins: built in, run by her, or anyone's script, each with its switch
@@ -2097,7 +2149,7 @@
     const box = body.contains(document.activeElement) && document.activeElement.matches('input, textarea') ? document.activeElement : null
     const which =
       box &&
-      (box.id ? `#${box.id}` : box.dataset.field ? `[data-field="${box.dataset.field}"]` : box.dataset.mf ? `[data-mf="${box.dataset.mf}"]` : box.dataset.w ? `[data-w="${box.dataset.w}"]` : box.dataset.proxyAt !== undefined ? '[data-proxy-at]' : null)
+      (box.id ? `#${box.id}` : box.dataset.field ? `[data-field="${box.dataset.field}"]` : box.dataset.mon ? `[data-mon="${box.dataset.mon}"]` : box.dataset.mf ? `[data-mf="${box.dataset.mf}"]` : box.dataset.w ? `[data-w="${box.dataset.w}"]` : box.dataset.proxyAt !== undefined ? '[data-proxy-at]' : null)
     const caret = which ? box.selectionStart : null
     const changed = setHTML(body, PAGES[tab]())
     if (reset) {
@@ -2372,6 +2424,13 @@
       if (key === 'widgetNudge') return patch({ widgetNudge: s.widgetNudge === false })
       // One of the monitor's parts on or off.
       if (key.startsWith('mon:')) return patch({ monitor: { ...(s.monitor || {}), [key.slice(4)]: (s.monitor || {})[key.slice(4)] === false } })
+      // One of the hardware's sensors picked or not: from those picked, or
+      // the ones shown by default (lhm.rs defaults) while none were.
+      if (key.startsWith('lhms:')) {
+        const id = key.slice(5)
+        const picked = Array.isArray(s.monitor?.sensors) ? s.monitor.sensors : (snap.lhm?.sensors || []).filter(x => x.on).map(x => x.id)
+        return patch({ monitor: { ...(s.monitor || {}), sensors: picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id].slice(-32) } })
+      }
       // A plugin she runs on or off; on and missing a setting, its settings open.
       if (key.startsWith('pl:')) {
         const p = (snap.plugins || []).find(x => x.id === key.slice(3))
@@ -2387,6 +2446,15 @@
       }
       return patch({ [key]: !s[key] })
     }
+    // A hardware's sensors folded out, or in.
+    const hardware = at('[data-lhw]')
+    if (hardware) {
+      const id = hardware.dataset.lhw
+      if (!openHardware.delete(id)) openHardware.add(id)
+      return draw()
+    }
+    // LibreHardwareMonitor's password forgotten.
+    if (at('[data-lhm-forget]')) return patch({ monitor: { ...(s.monitor || {}), lhmPass: '' } })
     // The monitor a second faster or slower.
     const pace = at('[data-every]')
     if (pace && !pace.disabled) {
@@ -3024,6 +3092,7 @@
       if (!e.isComposing) searchSoon()
     }
     if (e.target.dataset.field) drafts[e.target.dataset.field] = e.target.value
+    if (e.target.dataset.mon) drafts[`mon:${e.target.dataset.mon}`] = e.target.value
   })
 
   // The word an input method has chosen: looked for as if typed.
@@ -3039,6 +3108,7 @@
     if (e.target.matches('[data-w-file]')) return addFiles(e.target)
     if (e.target.dataset.ilook) return ilookInput(e.target, true)
     if (e.target.dataset.proxyAt !== undefined) return proxyAddress(e.target.value)
+    if (e.target.dataset.mon) return monitorField(e.target.dataset.mon)
     const key = e.target.dataset.field
     if (!key || !(key in drafts)) return
     const value = drafts[key].trim()
@@ -3048,6 +3118,24 @@
     if (!field || (field.kind === 'number' && value && !(Number(value) > 0))) return draw()
     setPlugin(id, { [name]: value })
   })
+
+  // How the monitor reaches LibreHardwareMonitor, kept once typed: a port
+  // that is none goes back to what it was; the password goes to Windows'
+  // Credential Manager (lhm.rs keep_password), an empty one changes nothing.
+  function monitorField(name) {
+    const key = `mon:${name}`
+    if (!(key in drafts)) return
+    const typed = drafts[key]
+    delete drafts[key]
+    const m = snap.settings.monitor || {}
+    if (name === 'lhmPort') {
+      const port = typed.trim() ? Number(typed.trim()) : 8085
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return draw()
+      return patch({ monitor: { ...m, lhmPort: port } })
+    }
+    if (name === 'lhmPass') return typed ? patch({ monitor: { ...m, lhmPass: typed } }) : draw()
+    return patch({ monitor: { ...m, lhmUser: typed.trim().replace(/:/g, '').slice(0, 64) } })
+  }
 
   // A plugin's settings changed, the others kept.
   function setPlugin(id, change) {
@@ -3069,7 +3157,7 @@
         return sendDraft()
       }
       if (e.key === 'Enter' && e.target.id === 's-ref' && !e.isComposing) layer.querySelector('[data-fetch]')?.click()
-      if (e.key === 'Enter' && (e.target.dataset.field || e.target.dataset.proxyAt !== undefined)) e.target.blur()
+      if (e.key === 'Enter' && (e.target.dataset.field || e.target.dataset.mon || e.target.dataset.proxyAt !== undefined)) e.target.blur()
       if (e.key === 'Enter' && e.target.dataset.mf) layer.querySelector('[data-mail-find]:not([disabled]), [data-mail-save]:not([disabled])')?.click()
       if (e.key === 'Enter' && e.target.dataset.talk && !e.isComposing) say(e.target)
       return

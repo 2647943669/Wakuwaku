@@ -17,8 +17,10 @@
 //
 // Built in (texts as { key, vars } for the page to say in her language):
 //   monitor  the machine: CPU, memory, the network's pace, the battery, each
-//            on or off ("monitor" setting), read every 1 to 10 seconds; its
-//            value is { parts: [{ icon, text }] }, shown as icon and number
+//            on or off ("monitor" setting), read every 1 to 10 seconds, and
+//            the hardware's sensors picked from LibreHardwareMonitor (lhm.rs);
+//            its value is { parts: [{ icon, text, kind? }] }, shown as icon
+//            and number
 //   today    turns today, how long the agents worked, approvals given on her
 //            (Antigravity's never come to her)
 //   tokens   today's tokens, Claude Code's, Codex's and Antigravity's (tokens.rs)
@@ -751,19 +753,31 @@ pub fn rate(bytes_per_sec: f64) -> String {
     if n < 10.0 { format!("{n:.1}{unit}") } else { format!("{n:.0}{unit}") }
 }
 
-// The monitor's settings: which parts are on, and how often it reads.
+// The monitor's settings: which parts are on, and how often it reads; the
+// hardware's sensors, from LibreHardwareMonitor (lhm.rs); and whether
+// nobody is at the keyboard (its thread says, main.rs).
 pub struct Watching {
     pub cpu: bool,
     pub memory: bool,
     pub net: bool,
     pub battery: bool,
     pub every: u64,
+    pub lhm: crate::lhm::Conf,
+    pub quiet: bool,
 }
 
 impl Watching {
     pub fn from(v: &Value) -> Watching {
         let on = |k: &str| v[k] != false;
-        Watching { cpu: on("cpu"), memory: on("mem"), net: on("net"), battery: on("battery"), every: v["every"].as_u64().unwrap_or(2).clamp(1, 10) }
+        Watching {
+            cpu: on("cpu"),
+            memory: on("mem"),
+            net: on("net"),
+            battery: on("battery"),
+            every: v["every"].as_u64().unwrap_or(2).clamp(1, 10),
+            lhm: crate::lhm::Conf::from(v),
+            quiet: false,
+        }
     }
 }
 
@@ -783,17 +797,20 @@ pub struct Monitor {
     // so a part on stays in sight (pinned, the island keeps its width).
     cpu: Option<String>,
     net: Option<(String, String)>,
+    lhm: crate::lhm::Lhm,
 }
 
 impl Monitor {
     pub fn new() -> Self {
-        Monitor { times: None, counter: None, counter_tried: false, misses: 0, bytes: None, cpu: None, net: None }
+        Monitor { times: None, counter: None, counter_tried: false, misses: 0, bytes: None, cpu: None, net: None, lhm: crate::lhm::Lhm::new() }
     }
 
     // The parts that are on, as icon and number: cpu 12%, memory 45%, down
-    // 1.2M and up 80K a second, battery (a bolt while charging) 85%. A part
-    // needing two readings shows from its second, and keeps its last when a
-    // reading fails. None with nothing to show.
+    // 1.2M and up 80K a second, battery (a bolt while charging) 85%; then
+    // the hardware's sensors picked, with their kind too: { icon: "gpu",
+    // kind: "temp", text: "58°" } (lhm.rs). A part needing two readings
+    // shows from its second, and keeps its last when a reading fails. None
+    // with nothing to show.
     pub fn read(&mut self, w: &Watching) -> Option<Value> {
         let mut parts = Vec::new();
         let mut part = |icon: &str, text: String| parts.push(json!({ "icon": icon, "text": text }));
@@ -852,6 +869,8 @@ impl Monitor {
         if let Some((percent, is_charging, _)) = w.battery.then(sys::battery).flatten() {
             part(if is_charging { "bolt" } else { "battery" }, format!("{percent}%"));
         }
+        self.lhm.turn(&w.lhm, w.quiet);
+        parts.extend(self.lhm.parts(&w.lhm));
         (!parts.is_empty()).then(|| json!({ "parts": parts }))
     }
 }
@@ -968,13 +987,13 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn the_monitor_reads_this_machine() {
-        let all = Watching::from(&json!({ "every": 99 }));
+        let all = Watching::from(&json!({ "every": 99, "lhm": false }));
         let mut m = Monitor::new();
         let _ = m.read(&all);
         let icons = |v: Option<Value>| v.map(|v| v["parts"].as_array().unwrap().iter().map(|p| p["icon"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();
         let second = icons(m.read(&all));
         assert!(second.starts_with(&["cpu".into(), "memory".into()]), "{second:?}");
-        let only = Watching::from(&json!({ "cpu": false, "net": false, "battery": false }));
+        let only = Watching::from(&json!({ "cpu": false, "net": false, "battery": false, "lhm": false }));
         assert_eq!(icons(m.read(&only)), ["memory"]);
     }
 

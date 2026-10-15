@@ -140,7 +140,8 @@
   color: #c42b3c;
 }
 
-.tb-light #island-settings .d.bad {
+.tb-light #island-settings .d.bad,
+.tb-light #island-settings .note.lhm-note.bad {
   color: #b25e00;
 }
 
@@ -672,6 +673,48 @@
 /* A plugin's settings, folded out under its row. */
 #island-settings .pf {
   padding: 2px 14px 10px 44px;
+}
+
+/* The monitor's hardware sensors (settings.js sensorFields): their heading
+   set apart, LibreHardwareMonitor's state in a line of its own, each
+   hardware's name folding its sensors out, a sensor's name as long as it
+   is and its reading in steady digits. */
+#island-settings .pf .lhm-head {
+  margin-top: 6px;
+}
+
+#island-settings .pf .note.lhm-note {
+  padding: 0 0 6px;
+}
+
+#island-settings .note.lhm-note.bad {
+  color: #ffb340;
+}
+
+#island-settings .fr.lhw {
+  cursor: pointer;
+}
+
+#island-settings .fr.lhw .fl,
+#island-settings .fr.lsen .fl {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#island-settings .fr.lhw .fl {
+  color: inherit;
+}
+
+#island-settings .fr.lsen {
+  padding-left: 14px;
+}
+
+#island-settings .fr.lsen .d {
+  font-variant-numeric: tabular-nums;
 }
 
 #island-settings .fr {
