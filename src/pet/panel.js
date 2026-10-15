@@ -3,20 +3,20 @@
 // waiting one is shown; the terminal can still answer it, whichever comes first.
 // Codex's permission prompts too (allow or deny): Codex shows its own dialog
 // only once the panel hands it over. And OpenCode's (allow, always, deny),
-// which OpenCode asks in its own window all the while; and omp's plan
-// reviews (approve: it is executed; deny: omp refines it), with omp's own
-// review open meanwhile.
+// which OpenCode asks in its own window all the while; omp's plan reviews
+// (approve: it is executed; deny: omp refines it), with omp's own review
+// open meanwhile; and ZCode's (allow or deny) beside its own.
 //
 // Everything shown comes from the tool call, so it is set as text, never HTML.
 ;(function () {
   const { t } = window.I18n
+  // The other agents a prompt may come from, named on it (Claude Code's: none).
+  const FROM = { codex: 'Codex', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode' }
 
   // Buttons wake up a moment after a prompt appears, so a click already on
   // its way to where the panel opens cannot answer it.
   const ARM_MS = 600
   const STEP_ARM_MS = 150
-  // Whose a prompt is, when not Claude Code's: a chip with its name.
-  const FROM = { codex: 'Codex', opencode: 'OpenCode', omp: 'omp' }
 
   const panel = document.getElementById('panel')
   let lang = 'en'
@@ -294,7 +294,8 @@
       el(
         'div',
         { class: 'foot' },
-        button(ask.kind === 'question' && !ask.canAnswer ? T('panel.gotIt') : T('panel.toTerminal'), 'dismiss', dismiss, 'ghost'),
+        // An app's prompt (ZCode's dialog stays open meanwhile) is handled there.
+        button(ask.kind === 'question' && !ask.canAnswer ? T('panel.gotIt') : ask.from === 'zcode' ? T('panel.toApp', { app: FROM[ask.from] }) : T('panel.toTerminal'), 'dismiss', dismiss, 'ghost'),
         more,
       ),
     )

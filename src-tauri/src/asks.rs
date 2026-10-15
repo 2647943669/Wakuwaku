@@ -11,7 +11,9 @@
 //
 // Codex's prompts come the same way (events_codex.rs), but Codex shows its
 // own dialog only once the hook has answered with no decision, and takes
-// only allow or deny: no rules to add, so never "always".
+// only allow or deny: no rules to add, so never "always". ZCode's too
+// (events_zcode.rs): its dialog shows at once, as Claude Code's does, and
+// it suggests no rules either.
 //
 // OpenCode's too, from her plugin (events_opencode.rs): OpenCode asks the
 // person in its own window all the while, and the plugin gives her answer

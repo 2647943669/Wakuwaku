@@ -246,7 +246,7 @@ fn built_in(id: &str) -> Widget {
 pub struct Today {
     pub date: String,
     pub turns: u64,
-    // Of those, Antigravity's: its approvals never come to her.
+    // Of those, Antigravity's and DeepSeek Harness's: their approvals never come to her.
     pub agy_turns: u64,
     pub worked_ms: u64,
     pub approvals: u64,
@@ -277,7 +277,8 @@ impl Today {
     }
 
     // Turns, the time as h:mm (under a minute, in seconds: a few short turns
-    // are no 0:00), approvals; with Antigravity's turns alone, "—" for them.
+    // are no 0:00), approvals; with Antigravity's or DeepSeek Harness's turns
+    // alone, "—" for them.
     pub fn words(&self) -> Value {
         let minutes = self.worked_ms / 60_000;
         let time = match self.worked_ms {

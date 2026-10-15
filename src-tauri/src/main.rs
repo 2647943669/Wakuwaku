@@ -32,6 +32,9 @@
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// The settings' snapshot (settings.rs) is one json! with every agent's part
+// in it: past the default 128 it no longer expands.
+#![recursion_limit = "256"]
 
 mod appbar;
 mod asks;
@@ -48,6 +51,8 @@ mod events_agy;
 mod events_codex;
 mod events_opencode;
 mod events_omp;
+mod events_dsh;
+mod events_zcode;
 mod fetch;
 mod focus;
 mod fullscreen;
@@ -141,6 +146,10 @@ pub struct Shared {
     // And OpenCode's, from her plugin in it.
     pub opencode_seen: std::sync::atomic::AtomicU64,
     pub omp_seen: std::sync::atomic::AtomicU64,
+    // And ZCode's.
+    pub zcode_seen: std::sync::atomic::AtomicU64,
+    // And DeepSeek Harness's.
+    pub dsh_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -442,7 +451,8 @@ impl Shared {
         let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
-            let is_agy = msg["agent"] == "agy";
+            // Antigravity's and DeepSeek Harness's approvals never come to her.
+            let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh";
             self.count_today(|t| {
                 t.turns += out.turns;
                 if is_agy {
@@ -1213,6 +1223,71 @@ fn agy_hook(port: u16, name: &str) {
     }
 }
 
+// ZCode's hook (connection::ZCODE_FLAG and the event's name): the event
+// handed to her port and let go (post_and_go: ZCode waits on each hook),
+// with where the session runs as it starts or a turn begins (jump.rs); its
+// session starting with her not up starts her, unless the person quit her,
+// as Codex's does. A prompt waits for her answer, printed for ZCode in Claude
+// Code's words (asks.rs); ZCode shows its own dialog meanwhile, takes the
+// first answer, and ends this hook should the person answer there. Nothing
+// printed otherwise: ZCode takes JSON a hook prints as its output, and fails
+// the hook on one that does not fit. Her not up, nothing to wait on.
+fn zcode_hook(port: u16, name: &str) {
+    let Some(mut event) = read_event() else { return };
+    let name = event["hook_event_name"].as_str().unwrap_or(name).to_string();
+    if let Some(fields) = event.as_object_mut() {
+        fields.insert("hook_event_name".into(), json!(name));
+        if matches!(name.as_str(), "SessionStart" | "UserPromptSubmit") {
+            fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
+        }
+    }
+    if name != "PermissionRequest" {
+        if !post_and_go(port, "zcode", &event) && name == "SessionStart" && data::may_start(&data::folder()) {
+            start_detached();
+        }
+        return;
+    }
+    if !jump::is_listening(port) {
+        return;
+    }
+    // Just under the hook's own timeout.
+    let wait = Duration::from_millis(connection::ZCODE_PROMPT_TIMEOUT_MS - 5_000);
+    let agent = ureq::Agent::config_builder().timeout_global(Some(wait)).build().new_agent();
+    if let Ok(mut res) = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=zcode")).send_json(&event) {
+        let body = res.body_mut().read_to_string().unwrap_or_default();
+        if serde_json::from_str::<Value>(&body).is_ok_and(|v| v.get("hookSpecificOutput").is_some()) {
+            let mut out = std::io::stdout();
+            let _ = out.write_all(body.as_bytes());
+            let _ = out.flush();
+        }
+    }
+}
+
+// DeepSeek Harness's hook (connection::DSH_FLAG and the event's name), run
+// by its Claude Code bridge through its PowerShell, in its sandbox: the event
+// handed to her port and let go. As a session starts or a turn begins it
+// waits for her answer instead (some ms), this connection held while she
+// looks up where the session runs from this process (server.rs chain_for:
+// in its sandbox it may not open the processes above itself). It never
+// starts her: she would run in DSH's sandbox (a low-integrity,
+// write-restricted token) and could keep nothing. Nothing printed: the
+// bridge would read it as a decision.
+fn dsh_hook(port: u16, name: &str) {
+    let Some(mut event) = read_event() else { return };
+    let name = event["hook_event_name"].as_str().unwrap_or(name).to_string();
+    if let Some(fields) = event.as_object_mut() {
+        fields.insert("hook_event_name".into(), json!(name));
+    }
+    if !matches!(name.as_str(), "SessionStart" | "UserPromptSubmit") {
+        post_and_go(port, "dsh", &event);
+        return;
+    }
+    if jump::is_listening(port) {
+        let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(3))).build().new_agent();
+        let _ = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=dsh")).send_json(&event);
+    }
+}
+
 fn main() {
     // Her exe again, as the taskbar's guard (shell.rs): it waits for her to
     // end, and gives Windows' taskbar back if she could not; and sees
@@ -1235,6 +1310,12 @@ fn main() {
     }
     if let Some(at) = args.iter().position(|a| a == connection::AGY_FLAG) {
         return agy_hook(port, args.get(at + 1).map_or("", String::as_str));
+    }
+    if let Some(at) = args.iter().position(|a| a == connection::ZCODE_FLAG) {
+        return zcode_hook(port, args.get(at + 1).map_or("", String::as_str));
+    }
+    if let Some(at) = args.iter().position(|a| a == connection::DSH_FLAG) {
+        return dsh_hook(port, args.get(at + 1).map_or("", String::as_str));
     }
 
     // Started at login (connection.rs): by her logon task, or by the Run value.
@@ -1344,6 +1425,8 @@ fn main() {
             settings::settings_agy_hooks,
             settings::settings_opencode,
             settings::settings_omp_hooks,
+            settings::settings_zcode_hooks,
+            settings::settings_dsh_hooks,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1437,6 +1520,8 @@ fn main() {
                 agy_seen: std::sync::atomic::AtomicU64::new(0),
                 opencode_seen: std::sync::atomic::AtomicU64::new(0),
                 omp_seen: std::sync::atomic::AtomicU64::new(0),
+                zcode_seen: std::sync::atomic::AtomicU64::new(0),
+                dsh_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),

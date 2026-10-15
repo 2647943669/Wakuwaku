@@ -86,6 +86,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 - Codex 的授权请求也会弹到面板上，但只有**允许** / **拒绝**（Codex 不接受 hook 加规则）。Codex 要等面板交出才会弹自己的确认框，所以面板最多等 1 分钟；想在终端里答，点「去终端处理」。
 - OpenCode 要你批准时也会弹到面板上：**允许** / **以后都允许** / **拒绝**。OpenCode 自己同时也在问，两边哪边先答算哪边的；「以后都允许」由 OpenCode 记在这个项目里。
 - omp（oh-my-pi）的计划审批也会弹到面板上：**批准**就按计划执行，**拒绝**就让 omp 接着改计划；终端里的审批框同时开着，在终端里先答了，面板就收起。omp 的工具批准她答不了（omp 没有给扩展回答它的办法），只提醒你去终端。
+- ZCode 的授权请求也一样只有**允许** / **拒绝**；ZCode 自己的确认框同时弹出，两边先答的算数，点「去 ZCode 处理」交回 ZCode。
 
 ## 安装
 
@@ -155,6 +156,25 @@ Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：�
 - omp 默认是 yolo，不问工具批准；设成 `always-ask` / `write` 时，omp 要你批准一个工具，她会显示「在终端里批准：…」，批准要在 omp 里做（omp 没有让扩展回答工具批准的接口）。
 - omp 的计划审批（plan mode）可以在她的面板上批准或拒绝，和终端里的审批框谁先答算谁的。
 - 扩展在 omp 自己的进程里跑：每个事件发出去就不管了，从不让 omp 等她；她没开着时 omp 照常工作。她没开着、也不是你从菜单退出的，新的 omp 会话开始时会把她叫起来。点会话能跳到 omp 所在的终端窗口。
+
+### 7. 连上 ZCode（可选）
+
+支持智谱 Z.ai 的 [ZCode](https://zcode.z.ai/)：桌面版（3.15 实测）和它的命令行。在「连接」页的 ZCode 一栏点「安装」，会在 `~/.zcode/cli/config.json` 的 `hooks.events` 里给 7 个事件各加一条我们的 hook，并打开 `hooks.enabled`（先备份；移除时只删我们的条目，`hooks.enabled` 也还原成原来的样子）。之后**新建的任务**就会连上，已经开着的任务不算。ZCode 设置里能看到这几条 hook，也能一条条关掉，关掉后「连接」页会提示。
+
+和 Claude Code 几乎一样：开始、干活、每一步的工具、做完（带上它最后说的话）、改好了都能显示，「今天」也算上它。ZCode 要你批准时，岛上会弹出**允许** / **拒绝**（ZCode 不给建议规则，所以没有「以后都允许」）；ZCode 自己的确认框同时弹出，**先答的那边算数**：在岛上点了，ZCode 的框会关掉；在 ZCode 里答了，岛上的面板会在这一步做完时收起（拒绝的话，要等这一轮结束）。点「去 ZCode 处理」就交回 ZCode，并把它的窗口拉到前面。她没开时，ZCode 照常只弹自己的框。
+
+ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwaku.exe --wakuwaku-zcode-hook <事件名>`（按参数直接启动，不经过 shell，路径里有空格也没关系），把事件转给她。ZCode 每一步都会等它跑完，大约 0.1 秒；确认请求的那条最多等 10 分钟（面板自己的等待时间更短，到时间就交回 ZCode）。新任务开始时她没开，也会把她拉起来（除非你从菜单里退出了她）。
+
+### 8. 连上 DeepSeek Harness（可选）
+
+支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；它自带一个运行 Claude Code hooks.json 的「兼容桥」插件（`@deepseek-ai/dsh-hooks-claude-code`）。在「连接」页的 DeepSeek Harness 一栏点「安装」：她把这个桥接进 `~/.dsh/cordis.patch.yml`（所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着），桥要运行的 hook 列表写在她的数据文件夹里（`dsh-hooks.json`）。然后**重开一次 DeepSeek Harness**，它只在启动时读这些。
+
+能做的：会话开始、干活、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、改了哪些文件、任务清单，它向你提问时显示「在等你」；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。做不到的：
+
+- **批准还在 DSH 自己的窗口里点**：这个桥不支持 `PermissionRequest`，她不知道它在等你批准（这时岛上显示的是「在干活」）。
+- **岛上显示不了它最后说的话**：桥给的事件里没有回复，DSH 的会话记录是 Zstandard 压缩的。
+- 每一步用的什么工具不显示：DSH 用 PowerShell 跑 hook，而且是在它的沙箱里，每条大约 1 秒，所以只挂了一轮的开始和结束、改文件、任务清单、提问这几处，别的工具不挂，免得每次调用都慢一秒。
+- 新会话开始时不会把她拉起来：hook 在 DSH 的沙箱里运行，从那里启动的她什么都存不下。
 
 ### 从源码运行
 
@@ -230,7 +250,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：在 OpenCode 一栏点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。 连过 omp 的：在 omp 一栏点「移除」，删掉 `extensions/wakuwaku.ts`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：在 OpenCode 一栏点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：在 omp 一栏点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：在 ZCode 一栏点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：在它那一栏点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
@@ -244,6 +264,8 @@ Claude Code ──HTTP hooks──▶ 宠物窗口 (127.0.0.1:47213/hook)
 Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ 宠物窗口 (/hook?agent=codex)
 OpenCode ──它后台服务里的插件 wakuwaku.js──▶ 宠物窗口 (/hook?agent=opencode)
 omp ──扩展 wakuwaku.ts（在 omp 进程里）──▶ 宠物窗口 (/hook?agent=omp)
+ZCode ──process hooks──▶ 程序本身 --wakuwaku-zcode-hook <事件> ──▶ 宠物窗口 (/hook?agent=zcode)
+DeepSeek Harness ──Claude Code 兼容桥（PowerShell）──▶ 程序本身 --wakuwaku-dsh-hook <事件> ──▶ 宠物窗口 (/hook?agent=dsh)
 ```
 
 - 所有事件都用 Claude Code 的 **HTTP hook** 直接发给她，调用工具时不启动任何进程（本机实测每次约 0.3ms）。她立刻回 `{}`，表示不做任何决定；只有确认请求会等你在面板上点了再回。

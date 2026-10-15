@@ -89,6 +89,23 @@ pub fn snapshot(sh: &Shared) -> Value {
             "more": omp_files.len().saturating_sub(1),
             "seen": sh.omp_seen.load(Ordering::SeqCst) > 0,
         },
+        // ZCode's config.json (connection.rs), the same; absent without its folder.
+        "zcode": {
+            "hooks": connection::zcode_hooks_status(),
+            "file": connection::zcode_config_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::zcode_config_file()),
+            "backup": connection::backup_of(&connection::zcode_config_file()).exists(),
+            "seen": sh.zcode_seen.load(Ordering::SeqCst) > 0,
+        },
+        // DeepSeek Harness's home-level patch file, where its hook bridge is
+        // inserted (connection.rs), the same; absent without its folder.
+        "dsh": {
+            "hooks": connection::dsh_hooks_status(),
+            "file": connection::dsh_patch_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::dsh_patch_file()),
+            "backup": connection::backup_of(&connection::dsh_patch_file()).exists(),
+            "seen": sh.dsh_seen.load(Ordering::SeqCst) > 0,
+        },
         // How many displays there are: her taskbar on all of them is offered
         // only with more than one (Look, taskbarDisplays).
         "displayCount": sh.screens().areas.len(),
@@ -487,11 +504,31 @@ pub async fn settings_opencode(app: AppHandle, action: String) -> Value {
     }
 }
 
+// install, remove: ZCode's config.json.
+#[tauri::command]
+pub async fn settings_zcode_hooks(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_zcode_hooks(&action) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+    }
+}
+
 // install, remove: omp's extension, in each of its agent folders.
 #[tauri::command]
 pub async fn settings_omp_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_omp_hooks(&action, sh.port) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+    }
+}
+
+// install, remove: DeepSeek Harness's hook bridge (its home-level patch file).
+#[tauri::command]
+pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_dsh_hooks(&action) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
         Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }

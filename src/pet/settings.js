@@ -271,7 +271,7 @@
           .map(x => {
             const name = Status.nameOf(x, detailed)
             const what = [
-              ({ codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode', omp: 'omp' })[x.agent] || '',
+              ({ codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode', dsh: 'DeepSeek Harness' })[x.agent] || '',
               Status.status(lang, x, { detailed, withClock: false }),
               detailed && x.name && x.project !== name ? x.project : '',
               detailed && Status.isEnding(x) ? x.reply : '',
@@ -1906,11 +1906,49 @@
           ? `<button class="pbtn" data-omp="install">${esc(T(omp.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-omp="remove">${esc(T('settings.remove'))}</button>`
           : ''
     const ompWhere = omp.file ? `${omp.fileShown || omp.file}${omp.more ? T('s.ompMore', { n: omp.more }) : ''}` : ''
+    // ZCode: hooks of ours in ~/.zcode/cli/config.json.
+    const zcode = snap.zcode || {}
+    const zcodeConn = zcodeIn() && zcode.seen ? 's.zcodeConnOk' : zcodeIn() ? 's.zcodeConnWait' : zcode.hooks === 'off' ? 's.zcodeConnOff' : 's.zcodeConnNone'
+    const zcodeColor = zcodeConn === 's.zcodeConnOk' ? COLOR.done : zcodeIn() || zcode.hooks === 'off' ? COLOR.waiting : COLOR.idle
+    const zcodeWord = {
+      ok: 'settings.hooksOk',
+      missing: 'settings.hooksMissing',
+      stale: 'settings.hooksStale',
+      partial: 'settings.hooksPartial',
+      off: 's.zcodeOff',
+      unreadable: 's.zcodeUnreadable',
+      absent: 's.zcodeAbsent',
+    }[zcode.hooks]
+    const zcodeButtons =
+      zcode.hooks === 'missing'
+        ? `<button class="pbtn" data-zcode="install">${esc(T('settings.install'))}</button>`
+        : ['ok', 'stale', 'partial', 'off'].includes(zcode.hooks)
+          ? `<button class="pbtn" data-zcode="install">${esc(T(zcode.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-zcode="remove">${esc(T('settings.remove'))}</button>`
+          : ''
+    // DeepSeek Harness: its Claude Code hook bridge, inserted in ~/.dsh/cordis.patch.yml.
+    const dsh = snap.dsh || {}
+    const dshConn = dshIn() && dsh.seen ? 's.dshConnOk' : dshIn() ? 's.dshConnWait' : 's.dshConnNone'
+    const dshColor = dshConn === 's.dshConnOk' ? COLOR.done : dshIn() ? COLOR.waiting : COLOR.idle
+    const dshWord = {
+      ok: 'settings.hooksOk',
+      missing: 'settings.hooksMissing',
+      stale: 'settings.hooksStale',
+      unreadable: 's.dshUnreadable',
+      absent: 's.dshAbsent',
+    }[dsh.hooks]
+    const dshButtons =
+      dsh.hooks === 'missing'
+        ? `<button class="pbtn" data-dsh="install">${esc(T('settings.install'))}</button>`
+        : ['ok', 'stale'].includes(dsh.hooks)
+          ? `<button class="pbtn" data-dsh="install">${esc(T(dsh.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-dsh="remove">${esc(T('settings.remove'))}</button>`
+          : ''
     return `${sec(T('s.status'))}<div class="grp"><div class="r"><span class="dot" style="background:${isOk ? COLOR.done : snap.connection === 'both' ? COLOR.waiting : COLOR.idle}"></span><div class="grow">${esc(T(conn))}</div><span class="d">${esc(T('s.sessionsOnline', { n: sessions }))}</span></div>
         <div class="r"><span class="dot" style="background:${codexColor}"></span><div class="grow">${esc(T(codexConn))}</div></div>
         <div class="r"><span class="dot" style="background:${agyColor}"></span><div class="grow">${esc(T(agyConn))}</div></div>
         <div class="r"><span class="dot" style="background:${ocColor}"></span><div class="grow">${esc(T(ocConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${ompColor}"></span><div class="grow">${esc(T(ompConn))}</div></div></div>
+        <div class="r"><span class="dot" style="background:${ompColor}"></span><div class="grow">${esc(T(ompConn))}</div></div>
+        <div class="r"><span class="dot" style="background:${zcodeColor}"></span><div class="grow">${esc(T(zcodeConn))}</div></div>
+        <div class="r"><span class="dot" style="background:${dshColor}"></span><div class="grow">${esc(T(dshConn))}</div></div></div>
       ${sec(T('home.plugin'))}<div class="grp"><div class="note">${esc(T('home.pluginWhy'))}</div>
         ${snap.pluginCommands.map(c => `<div class="r"><span class="cmd mono">${esc(c)}</span><button class="pbtn" data-copy="${esc(c)}">${esc(T('home.copy'))}</button></div>`).join('')}
       </div>
@@ -1937,6 +1975,16 @@
         <div class="note">${esc(T('s.ompWhy'))}</div>
         <div class="r"><div class="grow"><div>${esc(T('s.ompExtension'))}: ${esc(T(ompWord))}</div><div class="d mono ellip">${esc(ompWhere)}</div></div>${ompButtons}</div>
         ${ompIn() && !omp.seen ? `<div class="note">${esc(T('s.ompNew'))}</div>` : ''}
+      </div>
+      ${sec(T('s.zcode'))}<div class="grp">
+        <div class="note">${esc(T('s.zcodeWhy'))}</div>
+        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(zcodeWord))}</div><div class="d mono ellip">${esc(zcode.file || '')}</div></div>${zcodeButtons}</div>
+        ${zcode.hooks === 'off' ? `<div class="note">${esc(T('s.zcodeOffNote'))}</div>` : ''}
+      </div>
+      ${sec(T('s.dsh'))}<div class="grp">
+        <div class="note">${esc(T('s.dshWhy'))}</div>
+        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(dshWord))}</div><div class="d mono ellip">${esc(dsh.file || '')}</div></div>${dshButtons}</div>
+        ${dshIn() && !dsh.seen ? `<div class="note">${esc(T('s.dshRestart'))}</div>` : ''}
       </div>
       ${sec(T('settings.about'))}<div class="grp">
         <div class="r"><div class="grow">${esc(T('s.version', { version: snap.version }))}</div><span class="link" data-site="repo">${esc(T('home.repo'))} ›</span></div>
@@ -2025,24 +2073,26 @@
   // 不用提醒) and nothing connected: the welcome folded to one row at the
   // page's top; opened again by its 去连接, or by asking for connecting.
   let welcomeOpen = false
-  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode', omp: 'omp' }
+  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode', dsh: 'DeepSeek Harness' }
   // What each one's buttons say they are for (the handlers below).
-  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy', opencode: 'data-opencode', omp: 'data-omp' }
+  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy', opencode: 'data-opencode', omp: 'data-omp', zcode: 'data-zcode', dsh: 'data-dsh' }
   const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
   const claudeIn = () => snap.connection !== 'none'
   const agyIn = () => ['ok', 'stale'].includes(snap.agy?.hooks)
   const opencodeIn = () => ['ok', 'stale'].includes(snap.opencode?.plugin)
   const ompIn = () => ['ok', 'stale', 'partial'].includes(snap.omp?.hooks)
-  const anyIn = () => claudeIn() || codexIn() || agyIn() || opencodeIn() || ompIn()
+  const zcodeIn = () => ['ok', 'stale', 'partial'].includes(snap.zcode?.hooks)
+  const dshIn = () => ['ok', 'stale'].includes(snap.dsh?.hooks)
+  const anyIn = () => claudeIn() || codexIn() || agyIn() || opencodeIn() || ompIn() || zcodeIn() || dshIn()
   const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !anyIn()
   const showWelcome = () => !anyIn() || !snap.settings.onboarded
 
   // The ones on this computer, in this order: Claude Code by its folder (or
-  // connected), Codex, Antigravity, OpenCode and omp by theirs. None found:
-  // all but omp (it cannot be told).
+  // connected), Codex, Antigravity, OpenCode, omp, ZCode and DeepSeek Harness
+  // by theirs. None found: the first four (it cannot be told).
   function toolsHere() {
-    const isHere = tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : tool === 'opencode' ? snap.opencode?.plugin !== 'absent' : snap[tool]?.hooks !== 'absent')
-    const here = ['claude', 'codex', 'agy', 'opencode', 'omp'].filter(isHere)
+    const isHere = tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : tool === 'opencode' ? snap.opencode?.plugin !== 'absent' : !!snap[tool] && snap[tool].hooks !== 'absent')
+    const here = ['claude', 'codex', 'agy', 'opencode', 'omp', 'zcode', 'dsh'].filter(isHere)
     return here.length ? here : ['claude', 'codex', 'agy', 'opencode']
   }
 
@@ -2058,6 +2108,8 @@
     if (tool === 'agy' && agyIn()) return snap.agy?.seen ? 'seen' : 'set'
     if (tool === 'opencode' && opencodeIn()) return snap.opencode?.seen ? 'seen' : 'set'
     if (tool === 'omp' && ompIn()) return snap.omp?.seen ? 'seen' : 'set'
+    if (tool === 'zcode' && zcodeIn()) return snap.zcode?.seen ? 'seen' : 'set'
+    if (tool === 'dsh' && dshIn()) return snap.dsh?.seen ? 'seen' : 'set'
     return failed[tool] ? 'failed' : 'none'
   }
 
@@ -2090,18 +2142,20 @@
       agy: snap.agy?.fileShown || snap.agy?.file,
       opencode: snap.opencode?.fileShown || snap.opencode?.file,
       omp: snap.omp?.fileShown || snap.omp?.file,
+      zcode: snap.zcode?.fileShown || snap.zcode?.file,
+      dsh: snap.dsh?.fileShown || snap.dsh?.file,
     })[tool] || ''
 
-  // Under the buttons: what each still needs (Claude Code and Antigravity
-  // where it was written, and undone), or why it could not be written.
+  // Under the buttons: what each still needs (Claude Code, Antigravity and
+  // ZCode where it was written, and undone), or why it could not be written.
   function toolNote(tool) {
     const state = toolState(tool)
     const mono = text => `<span class="mono">${esc(text)}</span>`
     const file = toolFile(tool)
-    if ((tool === 'claude' || tool === 'agy') && state === 'set') {
-      const backed = tool === 'claude' ? snap.settingsBackup : snap.agy?.backup
+    if (['claude', 'agy', 'zcode', 'dsh'].includes(tool) && state === 'set') {
+      const backed = tool === 'claude' ? snap.settingsBackup : snap[tool]?.backup
       const where = backed ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
-      return `<div class="wc-tnote"><div>${T(tool === 'claude' ? 'wc.claudeLeft' : 'wc.agyLeft')}</div><div class="wc-where">${where}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
+      return `<div class="wc-tnote"><div>${T(`wc.${tool}Left`)}</div><div class="wc-where">${where}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
     }
     if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
     if (tool === 'opencode' && state === 'set') {
@@ -2117,7 +2171,7 @@
     // written, but where she is (the appearance session's words).
     if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name: TOOL[tool] }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
-    const named = { claude: 'settings.json', opencode: 'wakuwaku.js', omp: 'wakuwaku.ts' }[tool] || 'hooks.json'
+    const named = { claude: 'settings.json', opencode: 'wakuwaku.js', omp: 'wakuwaku.ts', zcode: 'config.json', dsh: 'cordis.patch.yml' }[tool] || 'hooks.json'
     return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: named }))}</b></div>
         <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
   }
@@ -2144,8 +2198,8 @@
     const many = tools.length > 1
     const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
     const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
-    // A nudge to approve only where one of them can ask (Antigravity can not).
-    const sub = `${T('wc.sub1')}${tools.some(tool => tool !== 'agy') ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
+    // A nudge to approve only where one of them can ask (Antigravity and DeepSeek Harness can not).
+    const sub = `${T('wc.sub1')}${tools.some(tool => !['agy', 'dsh'].includes(tool)) ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
     // OpenCode alone: a file of ours, nothing backed up, and she is not woken
     // by it; omp alone: a file of its own is written, nothing to back up.
     const safeKeys = many ? ['wc.safeMany', 'wc.safe2', 'wc.safe3'] : tools[0] === 'opencode' ? ['wc.safe.opencode', 'wc.safeOc2', 'wc.safeOc3'] : tools[0] === 'omp' ? ['wc.safe.omp', 'wc.safe3'] : [`wc.safe.${tools[0]}`, 'wc.safe2', 'wc.safe3']
@@ -2685,6 +2739,38 @@
         connecting = ''
         snap = got.snapshot
         if (action === 'install' && !got.ok) failed.agy = { error: got.error || '', kind: got.kind || 'other', folder: got.folder || '' }
+        draw()
+        relayout()
+      })
+    }
+    const dshHooks = at('[data-dsh]')
+    if (dshHooks) {
+      const action = dshHooks.dataset.dsh
+      if (action === 'install') {
+        connecting = 'dsh'
+        delete failed.dsh
+        draw()
+      }
+      return window.pet.settings.dshHooks(action).then(got => {
+        connecting = ''
+        snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.dsh = { error: got.error || '', kind: got.kind || 'other' }
+        draw()
+        relayout()
+      })
+    }
+    const zcodeHooks = at('[data-zcode]')
+    if (zcodeHooks) {
+      const action = zcodeHooks.dataset.zcode
+      if (action === 'install') {
+        connecting = 'zcode'
+        delete failed.zcode
+        draw()
+      }
+      return window.pet.settings.zcodeHooks(action).then(got => {
+        connecting = ''
+        snap = got.snapshot
+        if (action === 'install' && !got.ok) failed.zcode = { error: got.error || '', kind: got.kind || 'other' }
         draw()
         relayout()
       })

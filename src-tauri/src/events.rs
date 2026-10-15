@@ -91,7 +91,7 @@ pub(crate) fn step_of(tool: &str, input: &Value) -> Value {
 }
 
 // A change to the session's to-do list, from the tools that keep it.
-fn todo_of(tool: &str, input: &Value) -> Option<Value> {
+pub(crate) fn todo_of(tool: &str, input: &Value) -> Option<Value> {
     let i = |key: &str| s(input, key);
     match tool {
         "TodoWrite" => {
@@ -148,7 +148,7 @@ pub(crate) fn reply_of(message: &str) -> Option<String> {
             out.push(' ');
         }
         after_heading = is_heading && !line.ends_with(['。', '！', '？', '.', '!', '?', ':', '：']);
-        let line = line.replace("**", "").replace('`', "");
+        let line = unlink(&line.replace("**", "").replace('`', ""));
         out.push_str(&line);
         let ends = line.ends_with(['。', '！', '？', '.', '!', '?']);
         if out.chars().count() >= 40 || (ends && out.chars().count() >= 12) {
@@ -156,6 +156,27 @@ pub(crate) fn reply_of(message: &str) -> Option<String> {
         }
     }
     (!out.is_empty()).then(|| clip(&out, 140))
+}
+
+// A markdown link as its words: "[a.txt](C:\w\a.txt)" → "a.txt" (ZCode
+// links each file it names so).
+fn unlink(line: &str) -> String {
+    let mut out = String::new();
+    let mut rest = line;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        let Some((words, tail)) = after.split_once("](") else { break };
+        let Some(close) = tail.find(')').filter(|_| !words.contains(['[', ']'])) else {
+            out.push_str(&rest[..=open]);
+            rest = after;
+            continue;
+        };
+        out.push_str(&rest[..open]);
+        out.push_str(words);
+        rest = &tail[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 // Why a turn failed: one of Claude Code's error kinds, or its own words.
@@ -396,6 +417,10 @@ mod tests {
         assert_eq!(m["reply"], "Done: All 12 tests pass.");
         let m = to_message(&json!({ "hook_event_name": "Stop", "last_assistant_message": "Short.\nThen a second line that is long enough to stop." })).unwrap();
         assert_eq!(m["reply"], "Short. Then a second line that is long enough to stop.");
+        let m = to_message(&json!({ "hook_event_name": "Stop", "last_assistant_message": "Created [a.txt](C:\\w\\a.txt) and [b](x) with the content `hi`." })).unwrap();
+        assert_eq!(m["reply"], "Created a.txt and b with the content hi.");
+        assert_eq!(unlink("a [b] c [d](e"), "a [b] c [d](e");
+        assert_eq!(unlink("[x [y](z)"), "[x y");
         let m = to_message(&json!({ "hook_event_name": "StopFailure", "error": "rate_limit" })).unwrap();
         assert_eq!(m["error"], json!({ "key": "error.rate_limit", "vars": {} }));
         let m = to_message(&json!({ "hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": { "command": "git push" } })).unwrap();

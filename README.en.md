@@ -88,6 +88,7 @@ Each pet has 11 animations, and every one of them has a job:
 - Codex's permission prompts come to the panel too, with **Allow** / **Deny** only (Codex takes no rules from a hook). Codex shows its own dialog only once the panel lets go, so the panel waits 1 minute at most; to answer in the terminal, click Handle in terminal.
 - OpenCode's permission asks come to the panel too: **Allow** / **Always allow** / **Deny**. OpenCode asks in its own window at the same time, and the first answer counts; OpenCode keeps an "always" for that project.
 - omp's (oh-my-pi's) plan reviews come to the panel too: **Approve** executes the plan, **Deny** has omp refine it; omp's own review stays open in the terminal meanwhile, and answering there first puts the panel away. omp's tool approvals she can't answer (omp gives an extension no way to), only remind you to go to the terminal.
+- ZCode's permission prompts too, with **Allow** / **Deny** only; ZCode shows its own dialog at the same time, the first answer counts, and Handle in ZCode hands it back.
 
 ## Install
 
@@ -157,6 +158,25 @@ How it differs from Claude Code:
 - omp runs in yolo by default and asks for no tool approvals; set to `always-ask` or `write`, when omp wants a tool approved she shows "Approve it in the terminal: …", and the approval is given in omp (omp has no way for an extension to answer it).
 - omp's plan reviews (plan mode) can be approved or turned down on her panel, whichever of it and the terminal's review answers first.
 - The extension runs inside omp's own process: each event is sent and let go, and omp never waits on her; with her not running, omp works as ever. When she isn't running and you didn't quit her from her menu, a new omp session starts her. Clicking the session goes to the terminal window omp runs in.
+
+### 7. Connect ZCode (optional)
+
+Z.ai's [ZCode](https://zcode.z.ai/) is supported: the desktop app (tried with 3.15) and its CLI. Click Install in the ZCode part of the Connect page. It adds one hook of ours to each of its 7 events under `hooks.events` in `~/.zcode/cli/config.json` and turns `hooks.enabled` on (backed up first; removing takes out only our entries and puts `hooks.enabled` back as it was). **New tasks** connect from then on; tasks already open don't. ZCode's settings list these hooks and can turn each off; the Connect page says so when one is.
+
+Nearly as with Claude Code: starting, working, each step's tool, finishing (with its last words), edits, and Today counts it. When ZCode needs your approval, the island asks **Allow** / **Deny** (ZCode suggests no rules, so no "always"); ZCode shows its own dialog at the same time, and **whichever you answer first counts**: answered on the island, ZCode's dialog closes; answered in ZCode, the panel goes once that step is done (after a deny, once the turn ends). Handle in ZCode hands it back and brings its window to the front. With her not running, ZCode just shows its own dialog.
+
+ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.exe --wakuwaku-zcode-hook <event>` once (started directly with its arguments, no shell, so a space in the path is fine), which hands it to her. ZCode waits for it at each step, about 0.1 s; the approval one may wait up to 10 minutes (the panel's own wait is shorter, and hands it back to ZCode when it runs out). A new task starts her when she isn't running (unless you quit her from her menu).
+
+### 8. Connect DeepSeek Harness (optional)
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) is supported: the desktop app (tried with 0.2.0-rc.2) and the `dsh` CLI. DSH has no hooks file of its own, everything is a plugin; it ships a bridge plugin that runs a Claude Code hooks.json (`@deepseek-ai/dsh-hooks-claude-code`). Click Install in the DeepSeek Harness part of the Connect page: she hooks that bridge in through `~/.dsh/cordis.patch.yml` (a layer every profile applies, the desktop app's own too; backed up first, and removing takes out only our lines, which sit between `# wakuwaku begin` and `# wakuwaku end`), with the hook list it runs in her data folder (`dsh-hooks.json`). Then **restart DeepSeek Harness**, which reads these only as it starts.
+
+What works: sessions starting, working and finishing (an edit makes it "edited"), with DSH's own session name, the files changed and the to-do list on the island, "waiting for you" while it asks you a question; Today counts its turns and time; a click on its session goes to DSH's window. What doesn't:
+
+- **Approvals stay in DSH's own window**: the bridge has no `PermissionRequest`, so she can't tell it is waiting for your approval (the island shows it working then).
+- **The island can't show its last words**: the bridge's events carry no reply, and DSH's session log is Zstandard-compressed.
+- Not every step's tool: DSH runs hooks through PowerShell in its sandbox, about 1 s each, so only a turn's start and end, edits, the to-do list and questions have one, to keep other tool calls from waiting a second each.
+- A new session doesn't start her: the hook runs in DSH's sandbox, and she couldn't keep anything if started from there.
 
 ### From source
 
@@ -232,7 +252,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 ### Uninstall
 
 1. If you turned on **Start at login**, turn it off on the Connect page (the `Wakuwaku` Run entry and the `Wakuwaku at logon-…` task both go).
-2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`. With OpenCode: click Remove in its part; it deletes `~/.config/opencode/plugins/wakuwaku.js`. With omp: click Remove in its part, which deletes `extensions/wakuwaku.ts`.
+2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`. With OpenCode: click Remove in its part; it deletes `~/.config/opencode/plugins/wakuwaku.js`. With omp: click Remove in its part, which deletes `extensions/wakuwaku.ts`. With ZCode: the same in its part; the backup is `~/.zcode/cli/config.json.wakuwaku.bak`. With DeepSeek Harness: the same in its part; our lines leave `~/.dsh/cordis.patch.yml` (the file goes when nothing else is in it), and the file as it was, if there was one, is beside it as `.wakuwaku.bak`.
 3. Quit her, then delete the exe or the project folder. Notifications register her name in `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`; delete that key too.
 4. Delete her settings and downloaded pets: the `wakuwaku-data` folder beside the exe, or the project's `data/` when run from source.
 
@@ -246,6 +266,8 @@ Claude Code ──HTTP hooks──▶ the pet (127.0.0.1:47213/hook)
 Codex ──command hooks──▶ the app itself --wakuwaku-codex-hook ──▶ the pet (/hook?agent=codex)
 OpenCode ──the plugin wakuwaku.js in its background service──▶ the pet (/hook?agent=opencode)
 omp ──extension wakuwaku.ts (inside omp's process)──▶ the pet (/hook?agent=omp)
+ZCode ──process hooks──▶ the app itself --wakuwaku-zcode-hook <event> ──▶ the pet (/hook?agent=zcode)
+DeepSeek Harness ──Claude Code bridge (PowerShell)──▶ the app itself --wakuwaku-dsh-hook <event> ──▶ the pet (/hook?agent=dsh)
 ```
 
 - Every event is a Claude Code **HTTP hook** sent straight to her, so a tool call starts no process (about 0.3 ms here). She answers `{}` at once, meaning no decision; only a prompt waits until you answer on the panel.
