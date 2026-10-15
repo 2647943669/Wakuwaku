@@ -497,7 +497,12 @@ mod sys {
         (u64::from(t.high) << 32) | u64::from(t.low)
     }
 
-    // (idle, busy) time so far, all cores.
+    // (idle, busy) time so far, all cores. Not what Task Manager shows on
+    // every machine: on some Windows 11 22H2 and 23H2 ones the idle time it
+    // is made of (NtQuerySystemInformation's SystemProcessorPerformanceInformation)
+    // grows while the cores are busy, and a CPU at 45% read 1 to 3% (#51);
+    // HWiNFO and MSI Afterburner moved off it for the same. Only where
+    // Windows' own count (Counter) is not to be had.
     pub fn times() -> Option<(u64, u64)> {
         let (mut idle, mut kernel, mut user) = (FileTime::default(), FileTime::default(), FileTime::default());
         // SAFETY: fills our own structs.
@@ -512,6 +517,124 @@ mod sys {
             let mut s: MemoryStatus = std::mem::zeroed();
             s.length = std::mem::size_of::<MemoryStatus>() as u32;
             (GlobalMemoryStatusEx(&mut s) != 0).then_some(s.load)
+        }
+    }
+
+    // Windows' build (26100 for 24H2), or 0 when it cannot be read.
+    pub fn windows_build() -> u32 {
+        use winreg::enums::HKEY_LOCAL_MACHINE;
+        winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion")
+            .and_then(|k| k.get_value::<String, _>("CurrentBuildNumber"))
+            .ok()
+            .and_then(|b| b.trim().parse().ok())
+            .unwrap_or(0)
+    }
+
+    // PDH, Windows' performance counters (pdh.dll): loaded from System32 the
+    // first time a counter is opened, not at her start, as the monitor is
+    // off by default; None should it or one of its functions be missing.
+    type OpenQuery = unsafe extern "system" fn(source: *const u16, user: usize, query: *mut isize) -> u32;
+    type AddCounter = unsafe extern "system" fn(query: isize, path: *const u16, user: usize, counter: *mut isize) -> u32;
+    type Collect = unsafe extern "system" fn(query: isize) -> u32;
+    type Formatted = unsafe extern "system" fn(counter: isize, format: u32, kind: *mut u32, value: *mut CounterValue) -> u32;
+    type CloseQuery = unsafe extern "system" fn(query: isize) -> u32;
+
+    struct Pdh {
+        open: OpenQuery,
+        add: AddCounter,
+        collect: Collect,
+        formatted: Formatted,
+        close: CloseQuery,
+    }
+
+    // PDH_FMT_COUNTERVALUE: its status, then the value (a union of 8 bytes).
+    #[repr(C)]
+    #[derive(Default)]
+    struct CounterValue {
+        status: u32,
+        value: f64,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LoadLibraryExW(name: *const u16, file: isize, flags: u32) -> isize;
+        fn GetProcAddress(module: isize, name: *const u8) -> *const ();
+    }
+
+    fn pdh() -> Option<&'static Pdh> {
+        static PDH: std::sync::OnceLock<Option<Pdh>> = std::sync::OnceLock::new();
+        PDH.get_or_init(|| {
+            const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x800;
+            let name: Vec<u16> = "pdh.dll".encode_utf16().chain([0]).collect();
+            // SAFETY: Windows' own library, from System32 alone; each
+            // export by its name, cast to the shape PDH documents for it.
+            unsafe {
+                let module = LoadLibraryExW(name.as_ptr(), 0, LOAD_LIBRARY_SEARCH_SYSTEM32);
+                if module == 0 {
+                    return None;
+                }
+                let f = |name: &std::ffi::CStr| Some(GetProcAddress(module, name.as_ptr() as *const u8)).filter(|f| !f.is_null());
+                Some(Pdh {
+                    open: std::mem::transmute::<*const (), OpenQuery>(f(c"PdhOpenQueryW")?),
+                    add: std::mem::transmute::<*const (), AddCounter>(f(c"PdhAddEnglishCounterW")?),
+                    collect: std::mem::transmute::<*const (), Collect>(f(c"PdhCollectQueryData")?),
+                    formatted: std::mem::transmute::<*const (), Formatted>(f(c"PdhGetFormattedCounterValue")?),
+                    close: std::mem::transmute::<*const (), CloseQuery>(f(c"PdhCloseQuery")?),
+                })
+            }
+        })
+        .as_ref()
+    }
+
+    // One of Windows' counters, by its English path (the same whatever
+    // Windows' language), in a query of its own: opened once (the counters'
+    // names looked up then: ~0.3 s on this thread, ~4 MB that PDH keeps),
+    // collected each turn (~0.2 ms).
+    pub struct Counter {
+        pdh: &'static Pdh,
+        query: isize,
+        counter: isize,
+    }
+
+    impl Counter {
+        pub fn open(path: &str) -> Option<Counter> {
+            let pdh = pdh()?;
+            let path: Vec<u16> = path.encode_utf16().chain([0]).collect();
+            let (mut query, mut counter) = (0isize, 0isize);
+            // SAFETY: PDH fills our own handles; the path ends in 0. A query
+            // whose counter would not be added is closed again.
+            unsafe {
+                if (pdh.open)(std::ptr::null(), 0, &mut query) != 0 {
+                    return None;
+                }
+                if (pdh.add)(query, path.as_ptr(), 0, &mut counter) != 0 {
+                    (pdh.close)(query);
+                    return None;
+                }
+                // The first sample: a rate needs two.
+                (pdh.collect)(query);
+            }
+            Some(Counter { pdh, query, counter })
+        }
+
+        // Its value since the last time, or None when Windows has none to
+        // give (too soon after the first sample, or the counter failed).
+        pub fn value(&mut self) -> Option<f64> {
+            const PDH_FMT_DOUBLE: u32 = 0x200;
+            let (mut kind, mut v) = (0u32, CounterValue::default());
+            // SAFETY: our own query and counter, open till dropped; the value
+            // is written into our own struct.
+            let ok = unsafe { (self.pdh.collect)(self.query) == 0 && (self.pdh.formatted)(self.counter, PDH_FMT_DOUBLE, &mut kind, &mut v) == 0 };
+            // PDH_CSTATUS_VALID_DATA or PDH_CSTATUS_NEW_DATA.
+            (ok && v.status <= 1).then_some(v.value)
+        }
+    }
+
+    impl Drop for Counter {
+        fn drop(&mut self) {
+            // SAFETY: our own query, closed once.
+            unsafe { (self.pdh.close)(self.query) };
         }
     }
 }
@@ -539,6 +662,45 @@ mod sys {
     pub fn network_bytes() -> Option<(u64, u64)> {
         None
     }
+    pub fn windows_build() -> u32 {
+        0
+    }
+    pub struct Counter;
+    impl Counter {
+        pub fn open(_path: &str) -> Option<Counter> {
+            None
+        }
+        pub fn value(&mut self) -> Option<f64> {
+            None
+        }
+    }
+}
+
+// The counter Task Manager's CPU figure is, by Windows' build. Its
+// Performance and Processes pages showed "% Processor Utility" from
+// Windows 8 on: the work done, against the cores' base speed, so past
+// 100% (held at 100) while they run faster. Windows 11 24H2 (26100) went
+// over to the share of time busy, "% Processor Time", in its May 2025
+// update (KB5058411): tried on 26300 here, Task Manager 56% with two of
+// four cores busy at 4.5 GHz, % Processor Time 55%, % Processor Utility 101%.
+pub fn processor_counter(build: u32) -> &'static str {
+    if build >= 26100 {
+        r"\Processor Information(_Total)\% Processor Time"
+    } else {
+        r"\Processor Information(_Total)\% Processor Utility"
+    }
+}
+
+// The processor's use, 0 to 100: Windows' count when one was read (Task
+// Manager's figure; past 100 under Utility, held at 100), else the share
+// of time busy between two readings of GetSystemTimes, (idle, busy) passed;
+// None with neither.
+fn cpu_share(counted: Option<f64>, between: Option<(u64, u64)>) -> Option<u64> {
+    if let Some(p) = counted.filter(|p| p.is_finite()) {
+        return Some(p.round().clamp(0.0, 100.0) as u64);
+    }
+    let (idle, busy) = between?;
+    Some(if idle + busy == 0 { 0 } else { (busy * 100 + (idle + busy) / 2) / (idle + busy) })
 }
 
 // The battery: its level, plugged in, charging (a battery kept from charging
@@ -609,6 +771,13 @@ impl Watching {
 // between two readings, memory in use, the battery.
 pub struct Monitor {
     times: Option<(u64, u64)>,
+    // Windows' own count of the CPU's use (processor_counter), while the CPU
+    // part is on: opened at its first reading, tried again only once it is
+    // turned off and on. Given up after three readings in a row without a
+    // value; GetSystemTimes then, as where it could not be opened.
+    counter: Option<sys::Counter>,
+    counter_tried: bool,
+    misses: u8,
     bytes: Option<(u64, u64, std::time::Instant)>,
     // The last CPU use and pace read: kept for a reading that fails once,
     // so a part on stays in sight (pinned, the island keeps its width).
@@ -618,7 +787,7 @@ pub struct Monitor {
 
 impl Monitor {
     pub fn new() -> Self {
-        Monitor { times: None, bytes: None, cpu: None, net: None }
+        Monitor { times: None, counter: None, counter_tried: false, misses: 0, bytes: None, cpu: None, net: None }
     }
 
     // The parts that are on, as icon and number: cpu 12%, memory 45%, down
@@ -628,13 +797,31 @@ impl Monitor {
     pub fn read(&mut self, w: &Watching) -> Option<Value> {
         let mut parts = Vec::new();
         let mut part = |icon: &str, text: String| parts.push(json!({ "icon": icon, "text": text }));
+        if w.cpu && !self.counter_tried {
+            self.counter_tried = true;
+            self.counter = sys::Counter::open(processor_counter(sys::windows_build()));
+        }
+        let counted = self.counter.as_mut().and_then(sys::Counter::value);
+        if self.counter.is_some() {
+            self.misses = if counted.is_some() { 0 } else { self.misses + 1 };
+            if self.misses >= 3 {
+                self.counter = None;
+            }
+        }
+        // GetSystemTimes each turn all the same (a call of nothing), so it
+        // has a reading to go on from should the counter be given up.
         let times = if w.cpu { sys::times() } else { None };
-        if let (Some(now), Some((idle, busy))) = (times, self.times) {
-            let (di, db) = (now.0.saturating_sub(idle), now.1.saturating_sub(busy));
-            self.cpu = Some(format!("{}%", if di + db == 0 { 0 } else { (db * 100 + (di + db) / 2) / (di + db) }));
+        let between = times.zip(self.times).map(|(now, (idle, busy))| (now.0.saturating_sub(idle), now.1.saturating_sub(busy)));
+        // With the counter open, its value or the last one kept (its first
+        // sample has none): never a turn of the other way's.
+        if let Some(share) = cpu_share(counted, if self.counter.is_some() { None } else { between }) {
+            self.cpu = Some(format!("{share}%"));
         }
         if !w.cpu {
             self.cpu = None;
+            self.counter = None;
+            self.counter_tried = false;
+            self.misses = 0;
         }
         if times.is_some() || !w.cpu {
             self.times = times;
@@ -789,6 +976,39 @@ mod tests {
         assert!(second.starts_with(&["cpu".into(), "memory".into()]), "{second:?}");
         let only = Watching::from(&json!({ "cpu": false, "net": false, "battery": false }));
         assert_eq!(icons(m.read(&only)), ["memory"]);
+    }
+
+    // The CPU's use as Task Manager has it: Windows' count, rounded and held
+    // at 100; without it, the time busy between two readings.
+    #[test]
+    fn the_cpu_is_windows_count_else_the_time_busy() {
+        assert_eq!(cpu_share(Some(44.6), Some((990, 10))), Some(45));
+        assert_eq!(cpu_share(Some(173.2), None), Some(100));
+        assert_eq!(cpu_share(Some(-0.4), None), Some(0));
+        // No count (none read yet, the counter given up, or not a number):
+        // the time busy, rounded.
+        assert_eq!(cpu_share(None, Some((550, 450))), Some(45));
+        assert_eq!(cpu_share(Some(f64::NAN), Some((1, 2))), Some(67));
+        assert_eq!(cpu_share(None, Some((0, 0))), Some(0));
+        assert_eq!(cpu_share(None, None), None);
+        // Utility before 24H2, the time busy from it on.
+        assert!(processor_counter(22631).ends_with(r"\% Processor Utility"));
+        assert!(processor_counter(19045).ends_with(r"\% Processor Utility"));
+        assert!(processor_counter(26100).ends_with(r"\% Processor Time"));
+        assert!(processor_counter(26300).starts_with(r"\Processor Information(_Total)\"));
+    }
+
+    // Windows' counter on this machine: opened (its first sample taken),
+    // a share of 0 to 100 at its second; one Windows has not, never opened.
+    #[cfg(windows)]
+    #[test]
+    fn windows_counts_this_machines_cpu() {
+        assert!(sys::windows_build() >= 10240);
+        let mut counter = sys::Counter::open(processor_counter(sys::windows_build())).expect("the processor's counter");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let share = cpu_share(counter.value(), None).expect("a value at the second sample");
+        assert!(share <= 100, "{share}");
+        assert!(sys::Counter::open(r"\Processor Information(_Total)\% No Such Counter").is_none());
     }
 
     #[test]
