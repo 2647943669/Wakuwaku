@@ -916,7 +916,7 @@
   let overMaxTop = false
 
   function plateWanted() {
-    if (!isOn() || now.plate !== true || quiet || view === 'settings' || body.classList.contains('pulling')) return false
+    if (!isOn() || now.plate !== true || quiet || view === 'settings' || body.classList.contains('pulling') || body.classList.contains('isl-stowed')) return false
     const { op, blur } = groundOf(lookNow())
     if (!(op < 1 && blur > 0)) return false
     return home() !== 'taskbar' || view !== 'compact'
@@ -1059,6 +1059,55 @@
     body.classList.toggle('isl-deep', on)
     if (fades && !stillMotion()) island.animate([{ offset: 0, backgroundColor: from }], { id: 'deep', duration: DEEP_MS, easing: 'ease' })
   }
+
+  // --- Out of the way of the window under it (zhoupengjie/Wakuwaku#49) ----------------
+  // At the top of the screen the closed island lay over the window under it
+  // (a maximized browser's tab strip), and a press on a tab there was the
+  // island's. While a window lies under it (island.rs look_under), unless
+  // turned off (islandHideUnder), it slides up out of the way (isl-stowed,
+  // style.css): a sliver of its foot left at the screen's edge, nothing of
+  // it taking the pointer. Never while something wants the person: open
+  // (hovered, a turn done, an error, a widget's nudge), a prompt, the
+  // settings, a session waiting on you, her being taken home. Down again
+  // once the window has gone, and while the pointer calls it (resting at
+  // the edge over it, or on it, until it has been away a moment: island.rs
+  // call_look). Never on the taskbar, nor at a Mac's screen top.
+  let underTop = false
+  let calledDown = false
+  let stowSent = ''
+
+  function stowWanted() {
+    if (home() !== 'island' || screenTop || config.islandHideUnder === false || !underTop || calledDown) return false
+    if (view !== 'compact' || isHover || now.mood === 'waiting') return false
+    return !pull && !isReaching && !isAbsorbing && !isComingHome
+  }
+
+  function setStow() {
+    if (!isOn()) return
+    const on = stowWanted()
+    const was = body.classList.contains('isl-stowed')
+    body.classList.toggle('isl-stowed', on)
+    // Main told whether it is up, and the closed island's size, where a
+    // window under it is looked for (none on the taskbar).
+    const { width, height } = home() === 'island' && !screenTop ? sizeOf('compact') : { width: 0, height: 0 }
+    const sent = JSON.stringify([on, width, height])
+    if (sent !== stowSent) {
+      stowSent = sent
+      window.pet.stow(on, width, height)
+    }
+    // The blur under it goes with it, and comes back once it is down, the
+    // ground as solid as DEEP_OP till then, as when it opens.
+    if (on !== was) placePlate(!on)
+  }
+
+  window.pet.onUnder(({ on } = {}) => {
+    underTop = on === true
+    setStow()
+  })
+  window.pet.onCalled(({ on } = {}) => {
+    calledDown = on === true
+    setStow()
+  })
 
   function setSize({ width, height }) {
     island.style.width = `${width}px`
@@ -3780,6 +3829,8 @@
     const isTimed = time() || now.stepSince || Status.othersOf(now.list, now).some(x => Status.time(x))
     if (isTimed && (view === 'compact' || view === 'expanded')) clockTimer = setInterval(tickTimes, 1000)
     spin()
+    // Up out of the way of a window under it, or down (setStow).
+    setStow()
   }
 
   // Each second while something is timed: the times' words alone, put in
@@ -4082,6 +4133,8 @@
     }
     if (!isReaching) {
       isReaching = true
+      // Down from out of the way, to reach for her.
+      setStow()
       // The next call draws, once the window has grown.
       return whenRoomy(() => isReaching && reach(at))
     }
@@ -4106,6 +4159,7 @@
     isReaching = false
     isAbsorbing = true
     isComingHome = true
+    setStow()
     clearTimeout(comingHomeTimer)
     // Main says she is in a moment after; should it not, she is not.
     comingHomeTimer = setTimeout(() => {

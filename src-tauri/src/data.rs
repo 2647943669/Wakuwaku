@@ -74,6 +74,9 @@ fn defaults() -> Map<String, Value> {
         "out": false,
         // The compact island's width: narrow, normal or wide (island.js WIDTHS).
         "islandWidth": "normal",
+        // At the top of the screen, slid up out of the way while a window
+        // lies under it (island.js setStow, zhoupengjie/Wakuwaku#49).
+        "islandHideUnder": true,
         // The taskbar's strip: mica (the desktop's picture through it, mica.js),
         // black (solid: black, or light in Windows' light mode) or clear (the
         // desktop itself through it, a new user's since 2026-10-13); clear,

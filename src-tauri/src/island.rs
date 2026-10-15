@@ -103,6 +103,30 @@ pub struct Island {
     // The strip, its edge and the window as the page was last told of them
     // (tell_strip).
     strip_told: Option<((i32, i32, i32, i32), Edge, (i32, i32), (i32, i32))>,
+    // At the top of the screen, up out of the way of a window under it.
+    stow: Stow,
+}
+
+// Her island at the top of the screen, up out of the way of the window
+// under it (look_under, call_look; island.js setStow).
+#[derive(Default)]
+struct Stow {
+    // The closed island's size as the page has it (logical), and whether
+    // the page has it up out of the way now.
+    closed: (f64, f64),
+    stowed: bool,
+    // A window under the closed island, and the pointer having called it
+    // down: as the page was told (island:under, island:called).
+    under: bool,
+    called: bool,
+    // Since when the pointer has rested at the edge over it, and whether a
+    // button was held there meanwhile; since when, having called it, the
+    // pointer has been away from it.
+    edge_since: Option<std::time::Instant>,
+    pressed: bool,
+    away_since: Option<std::time::Instant>,
+    // The pointer near the window at the last look.
+    near: bool,
 }
 
 impl Island {
@@ -594,16 +618,153 @@ pub fn look_over_max(sh: &Arc<Shared>) {
     }
 }
 
+// --- Out of the way of the window under it (zhoupengjie/Wakuwaku#49) ------------------
+// At the top of the screen, the closed island lay over the window under it
+// (a maximized browser's tab strip): a tab there was hard to reach or close,
+// the island took the press. So, unless turned off (islandHideUnder), while
+// a window lies under the closed island the page slides it up out of the
+// way, a sliver left at the screen's edge and every press let through, as
+// long as nothing wants the person (island.js setStow). Here: whether a
+// window lies under it, looked at with the full screen's look (every 1.5 s,
+// at once as the pointer comes near or its size changes); and the pointer
+// calling it back down: resting at the screen's edge over it EDGE_MS with
+// no button held (a press there is on the tab, as is one held, a tab or a
+// window dragged up), or on the island. Once called it stays until the
+// pointer has been away from about it (its band: the screen's top to a
+// little below it) for LEAVE_MS.
+const EDGE_PX: f64 = 2.0;
+const EDGE_SIDE: f64 = 8.0;
+const EDGE_MS: u128 = 350;
+const BAND_SIDE: f64 = 24.0;
+const BAND_BELOW: f64 = 12.0;
+const LEAVE_MS: u128 = 600;
+
+// The closed island on the screen (physical x, y, w, h): in the middle of
+// the window's width, TOP below its top edge; none before the page said
+// its size, or in another home.
+fn closed_rect(isl: &Island) -> Option<(i32, i32, i32, i32)> {
+    let (w, h) = isl.stow.closed;
+    if !isl.created || w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let sf = isl.sf();
+    let (w, h) = ((w * sf).round() as i32, (h * sf).round() as i32);
+    Some((isl.pos.0 + (isl.size.0 - w) / 2, isl.pos.1 + (TOP * sf).round() as i32, w, h))
+}
+
+// A window under the closed island, or none now: told the page as it
+// changes (island:under).
+pub fn look_under(sh: &Arc<Shared>) {
+    let wanted = sh.home() == "island" && sh.flag("islandHideUnder");
+    // Kept as it was while it is not up, or nobody is about.
+    let rect = {
+        let isl = sh.island.lock().unwrap();
+        if wanted && (!isl.shown || sh.is_quiet()) {
+            return;
+        }
+        closed_rect(&isl)
+    };
+    let on = wanted && rect.is_some_and(crate::tasks::reaches_into);
+    let called = {
+        let mut isl = sh.island.lock().unwrap();
+        if std::mem::replace(&mut isl.stow.under, on) == on {
+            return;
+        }
+        // Nothing under it: nothing to call it down from.
+        !on && std::mem::take(&mut isl.stow.called)
+    };
+    sh.log(&format!("island: {} {rect:?}", if on { "a window under it" } else { "no window under it now" }));
+    let _ = sh.app.emit_to("island", "island:under", json!({ "on": on }));
+    if called {
+        let _ = sh.app.emit_to("island", "island:called", json!({ "on": false }));
+    }
+}
+
+// The page's island at the top of the screen: up out of the way or not, and
+// its closed size (logical). Of another size, looked at again at once.
+pub fn set_stow(sh: &Shared, stowed: bool, width: f64, height: f64) {
+    let resized = {
+        let mut isl = sh.island.lock().unwrap();
+        let s = &mut isl.stow;
+        let size = (width.max(0.0), height.max(0.0));
+        if stowed != s.stowed {
+            sh.log(&format!("island: {}", if stowed { "up out of the way of the window under it" } else { "down again" }));
+        }
+        s.stowed = stowed;
+        if !stowed {
+            s.edge_since = None;
+        }
+        std::mem::replace(&mut s.closed, size) != size
+    };
+    if resized {
+        crate::fullscreen::ask();
+    }
+}
+
+// One look at the pointer for it (poll; physical), at now; down: whether a
+// button is held, asked only at the edge. Some(true) once it has called the
+// island down, Some(false) once it has gone from it. Not while she is
+// dragged past (passive), nor with no window under it.
+fn call_look(isl: &mut Island, cursor: (i32, i32), passive: bool, now: std::time::Instant, down: impl FnOnce() -> bool) -> Option<bool> {
+    let rect = closed_rect(isl).filter(|_| isl.stow.under && !passive);
+    let (sf, top, over) = (isl.sf(), isl.pos.1, isl.ct.over);
+    let s = &mut isl.stow;
+    let Some((x, y, w, h)) = rect else {
+        s.edge_since = None;
+        s.away_since = None;
+        s.pressed = false;
+        return std::mem::take(&mut s.called).then_some(false);
+    };
+    let px = |v: f64| (v * sf).round() as i32;
+    if s.called {
+        let about = cursor.0 >= x - px(BAND_SIDE) && cursor.0 < x + w + px(BAND_SIDE) && cursor.1 >= top - 1 && cursor.1 < y + h + px(BAND_BELOW);
+        if about || over {
+            s.away_since = None;
+            return None;
+        }
+        if now.duration_since(*s.away_since.get_or_insert(now)).as_millis() < LEAVE_MS {
+            return None;
+        }
+        s.called = false;
+        s.away_since = None;
+        return Some(false);
+    }
+    // On it (the page's island taking the pointer): it is wanted there.
+    if over {
+        s.called = true;
+        s.edge_since = None;
+        return Some(true);
+    }
+    let at_edge = s.stowed && cursor.0 >= x - px(EDGE_SIDE) && cursor.0 < x + w + px(EDGE_SIDE) && cursor.1 >= top - 1 && cursor.1 < top + px(EDGE_PX).max(1);
+    if !at_edge {
+        s.edge_since = None;
+        s.pressed = false;
+        return None;
+    }
+    s.pressed = s.pressed || down();
+    let since = *s.edge_since.get_or_insert(now);
+    if s.pressed || now.duration_since(since).as_millis() < EDGE_MS {
+        return None;
+    }
+    s.called = true;
+    s.edge_since = None;
+    Some(true)
+}
+
 // Its page has its listeners up: draw, show, say hello.
 pub fn ready(sh: &Arc<Shared>) {
     sh.log("island: page ready");
-    // A new page knows of no maximized window yet (look_over_max).
+    // A new page knows of no maximized window yet (look_over_max), nor of
+    // one under it (look_under), and has it down.
     OVER_MAX.store(false, Ordering::SeqCst);
     let pending = {
         let mut isl = sh.island.lock().unwrap();
         isl.ready = true;
+        let closed = isl.stow.closed;
+        isl.stow = Stow { closed, ..Stow::default() };
         isl.pending.take()
     };
+    crate::fullscreen::ask();
     sh.redraw();
     taskbar::resend(sh);
     tell_strip(sh, true);
@@ -850,13 +1011,13 @@ pub fn keep_on_screen(sh: &Shared) {
 pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     // She is being dragged past: the home is not being hovered.
     let passive = crate::pet::is_dragged(sh);
-    let (ignore, pointer, wait) = {
+    let (ignore, pointer, wait, called, came) = {
         let mut isl = sh.island.lock().unwrap();
         if !isl.ready {
             return 500;
         }
         if !isl.shown {
-            (isl.ct.force(Mode::Pass), None, 500)
+            (isl.ct.force(Mode::Pass), None, 500, None, false)
         } else {
             let (pos, size, sf, held) = (isl.pos, isl.size, isl.sf(), isl.holding);
             let seen = isl.ct.look(cursor, pos, size, sf, held, passive && !held);
@@ -864,12 +1025,25 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
                 sh.log(&format!("island: mouse mode bouncing, calmed: cursor {cursor:?}, window {pos:?} {size:?}, scale {sf}"));
             }
             let wait = if held || isl.ct.over { 50 } else if seen.forward { 30 } else if seen.near { 80 } else { 200 };
-            (seen.ignore, seen.pointer, wait)
+            // Out of the way of a window: the pointer calling it down. And
+            // the pointer just come near it: a window come under it since
+            // the last look is looked for now, before a press reaches it.
+            let called = call_look(&mut isl, cursor, passive, std::time::Instant::now(), || crate::pet::any_down().unwrap_or(false));
+            let was_near = std::mem::replace(&mut isl.stow.near, seen.near);
+            let came = seen.near && !was_near && isl.stow.closed.0 > 0.0;
+            (seen.ignore, seen.pointer, wait, called, came)
         }
     };
     set_ignore(sh, ignore);
     if let Some(at) = pointer {
         let _ = sh.app.emit_to("island", "pet:pointer", at);
+    }
+    if let Some(on) = called {
+        sh.log(&format!("island: {}", if on { "called down by the pointer" } else { "the pointer gone from it" }));
+        let _ = sh.app.emit_to("island", "island:called", json!({ "on": on }));
+    }
+    if came && sh.home() == "island" && sh.flag("islandHideUnder") {
+        crate::fullscreen::ask();
     }
     wait
 }
@@ -1173,7 +1347,110 @@ pub fn where_(sh: &Shared) -> Value {
         "temp": isl.temp,
         "settingsOpen": isl.settings_open,
         "bar": isl.bar.map(|b| json!([b.0, b.1, b.2, b.3])),
+        "stow": {
+            "closed": closed_rect(&isl).map(|r| json!([r.0, r.1, r.2, r.3])),
+            "under": isl.stow.under,
+            "stowed": isl.stow.stowed,
+            "called": isl.stow.called,
+        },
     })
+}
+
+#[cfg(test)]
+mod stow_tests {
+    use super::{call_look, closed_rect, Island, Stow, EDGE_MS, LEAVE_MS};
+    use std::time::{Duration, Instant};
+
+    // Her island at 125 % on a 2560-wide display: the window 950 wide at
+    // the top centre, the closed island 300 x 36 in it (375 x 45 on the
+    // screen), up out of the way of a window under it.
+    fn stowed() -> Island {
+        Island { created: true, pos: (805, 0), size: (950, 165), sf: 1.25, stow: Stow { closed: (300.0, 36.0), under: true, stowed: true, ..Stow::default() }, ..Island::default() }
+    }
+
+    fn ms(n: u64) -> Duration {
+        Duration::from_millis(n)
+    }
+
+    #[test]
+    fn the_closed_island_on_the_screen() {
+        assert_eq!(closed_rect(&stowed()), Some((1092, 10, 375, 45)));
+        let mut isl = stowed();
+        isl.stow.closed = (0.0, 0.0);
+        assert_eq!(closed_rect(&isl), None, "no size said yet");
+    }
+
+    // Resting at the screen's edge over it calls it down; a moment there
+    // does not, nor passing beside it.
+    #[test]
+    fn resting_at_the_edge_calls_it() {
+        let mut isl = stowed();
+        let t = Instant::now();
+        let edge = (1280, 0);
+        assert_eq!(call_look(&mut isl, edge, false, t, || false), None);
+        assert_eq!(call_look(&mut isl, edge, false, t + ms(EDGE_MS as u64 - 50), || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 1), false, t + ms(EDGE_MS as u64), || false), Some(true));
+        assert!(isl.stow.called);
+        let mut isl = stowed();
+        for (i, at) in [(1000, 0), (1700, 0), (1280, 4), (1280, 30)].into_iter().enumerate() {
+            assert_eq!(call_look(&mut isl, at, false, t + ms(400 * i as u64), || false), None, "{at:?}");
+        }
+        assert!(!isl.stow.called);
+    }
+
+    // A button held there is a press on what is under it (a tab, a window
+    // dragged up): nothing until the pointer has left the edge and come back.
+    #[test]
+    fn a_press_at_the_edge_does_not() {
+        let mut isl = stowed();
+        let t = Instant::now();
+        assert_eq!(call_look(&mut isl, (1280, 0), false, t, || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 0), false, t + ms(100), || true), None);
+        assert_eq!(call_look(&mut isl, (1280, 0), false, t + ms(2000), || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 200), false, t + ms(2100), || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 0), false, t + ms(2200), || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 0), false, t + ms(2200 + EDGE_MS as u64), || false), Some(true));
+    }
+
+    // Called, it stays while the pointer is about it (above it, on it, a
+    // little below it) and goes once the pointer has been away a while.
+    #[test]
+    fn it_goes_once_the_pointer_has_gone() {
+        let mut isl = stowed();
+        isl.stow.called = true;
+        isl.stow.stowed = false;
+        let t = Instant::now();
+        for (i, at) in [(1280, 0), (1100, 30), (1280, 60), (1480, 20)].into_iter().enumerate() {
+            assert_eq!(call_look(&mut isl, at, false, t + ms(1000 * i as u64), || false), None, "{at:?}");
+        }
+        let t = t + ms(5000);
+        assert_eq!(call_look(&mut isl, (1280, 400), false, t, || false), None);
+        // Over the open island, below the closed one's band: still wanted.
+        isl.ct.over = true;
+        assert_eq!(call_look(&mut isl, (1280, 400), false, t + ms(LEAVE_MS as u64 + 100), || false), None);
+        isl.ct.over = false;
+        assert_eq!(call_look(&mut isl, (1280, 400), false, t + ms(LEAVE_MS as u64 + 200), || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 400), false, t + ms(2 * LEAVE_MS as u64 + 200), || false), Some(false));
+        assert!(!isl.stow.called);
+    }
+
+    // The pointer on the island (down for a nudge, a prompt) keeps it there
+    // once it closes; with no window under it any more, nothing is called.
+    #[test]
+    fn on_it_or_nothing_under_it() {
+        let mut isl = stowed();
+        isl.stow.stowed = false;
+        isl.ct.over = true;
+        let t = Instant::now();
+        assert_eq!(call_look(&mut isl, (1280, 20), false, t, || false), Some(true));
+        isl.stow.under = false;
+        assert_eq!(call_look(&mut isl, (1280, 20), false, t + ms(10), || false), Some(false));
+        assert_eq!(call_look(&mut isl, (1280, 20), false, t + ms(20), || false), None);
+        // She dragged past: none of it.
+        let mut isl = stowed();
+        assert_eq!(call_look(&mut isl, (1280, 0), true, t, || false), None);
+        assert_eq!(call_look(&mut isl, (1280, 0), true, t + ms(2000), || false), None);
+    }
 }
 
 #[cfg(test)]

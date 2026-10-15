@@ -563,6 +563,7 @@ impl Shared {
         let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge", "taskbarDisplays"].iter().any(|k| patch.contains_key(*k));
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
         let touches_monitor = ["monitor", "widgetsOff"].iter().any(|k| patch.contains_key(*k));
+        let touches_stow = patch.contains_key("islandHideUnder");
         let touches_home = patch.get("display").is_some_and(|d| Some(d) != self.settings.lock().unwrap().get("display"));
         {
             let mut settings = self.settings.lock().unwrap();
@@ -571,6 +572,10 @@ impl Shared {
         }
         if touches_monitor {
             wake_monitor();
+        }
+        // A window under her island looked for at once (island.rs look_under).
+        if touches_stow {
+            fullscreen::ask();
         }
         if touches_home {
             self.keep_login(false, None);
@@ -925,6 +930,16 @@ fn taskbar_handoff(what: String) {
 #[tauri::command]
 async fn island_seat(app: AppHandle, x: f64) {
     island::set_seat(&shared(&app), x);
+}
+
+// Her island at the top of the screen: up out of the way of the window
+// under it or not, and its closed size (logical px), for the look for a
+// window under it and the pointer calling it down (island.rs set_stow).
+#[tauri::command]
+async fn island_stow(app: AppHandle, window: WebviewWindow, stowed: bool, width: f64, height: f64) {
+    if is_island(&window) {
+        island::set_stow(&shared(&app), stowed, width, height);
+    }
 }
 
 // Under her island, a blur of what is behind it (backplate.rs): where the
@@ -1295,6 +1310,7 @@ fn main() {
             pet_walk_stop,
             island_holding,
             island_seat,
+            island_stow,
             island_plate,
             island_release,
             island_drop,
@@ -1554,12 +1570,14 @@ fn main() {
             });
 
             // Another app full screen, looked at on this thread alone
-            // (Shared::look_fullscreen).
+            // (Shared::look_fullscreen); with it, a window maximized on her
+            // island's display, and one under it.
             let watcher = sh.clone();
             spawn_named("fullscreen", move || loop {
                 let asked = fullscreen::wait(Duration::from_millis(1500));
                 watcher.look_fullscreen(asked);
                 island::look_over_max(&watcher);
+                island::look_under(&watcher);
             });
 
             // Endings held for a while; prompts out of time; sessions gone

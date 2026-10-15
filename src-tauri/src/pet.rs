@@ -446,6 +446,23 @@ pub fn primary_down() -> Option<bool> {
     None
 }
 
+// Whether any of the mouse's buttons is held right now: the left, the
+// right, the middle (a tab closed), the two at the side.
+#[cfg(windows)]
+pub fn any_down() -> Option<bool> {
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetAsyncKeyState(key: i32) -> i16;
+    }
+    // SAFETY: a plain user32 call with no pointers.
+    Some([0x01, 0x02, 0x04, 0x05, 0x06].iter().any(|&key| unsafe { GetAsyncKeyState(key) } as u16 & 0x8000 != 0))
+}
+
+#[cfg(not(windows))]
+pub fn any_down() -> Option<bool> {
+    None
+}
+
 // One look at the mouse (cursor in physical px): the window's mode, the
 // page's pointer, her eyes, a drag. Returns ms until the next look.
 pub fn poll(sh: &Arc<Shared>, cursor: (i32, i32)) -> u64 {

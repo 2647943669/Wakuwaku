@@ -90,6 +90,13 @@
     onOverFull: on('island:over-full'),
     // A maximized window on her display, at the top of the screen ({ on }, island.rs look_over_max).
     onOverMax: on('island:over-max'),
+    // At the top of the screen, a window under her closed island ({ on },
+    // island.rs look_under); the pointer has called it down from out of
+    // the way, or has gone from it ({ on }, call_look); it is up out of the
+    // way or not, and its closed size (island.js setStow).
+    onUnder: on('island:under'),
+    onCalled: on('island:called'),
+    stow: (stowed, width, height) => send('island_stow', { stowed: stowed === true, width: Number(width) || 0, height: Number(height) || 0 }),
     // The settings in the island (settings.js): open them here or from
     // anywhere else (the tray, her double-click), what they show, what they change.
     onSettings: on('island:settings'),
