@@ -66,6 +66,7 @@ src-tauri/
     detach.rs             以资源管理器为父进程启动她（hook 拉起、更新、守护进程），不落在启动者的作业里；启动时自查
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
   capabilities/           页面能用的 Tauri 权限：两个窗口都要列进去
+  vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic（见 README.md）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 .claude-plugin/           插件市场入口 marketplace.json（位置是 Claude Code 规定的）
 scripts/make-icons.js     画图标（node + ImageMagick），输出提交在 src-tauri/icons
@@ -115,6 +116,8 @@ cd .. && node --test "test/*.test.js"   # 页面的单元测试
 `connection.rs` 的 `status_of()` 判断我们的条目：`ok`、`httpOnly`（没有启动命令）、`missing`、`partial`（缺事件）、`stale`（端口不对、指向另一份程序，或者是旧版本）。识别"是我们的"靠 URL 里的 `from=wakuwaku`、参数里的 `--wakuwaku-ensure-running`，以及改名前的 `claude-pets` 两个记号和更早的 `claude-hook.js`。写之前把原文件备份到 `settings.json.wakuwaku.bak`（只备份一次）。
 
 单实例：谁占着端口谁是宠物。再启动一份时端口被占，这份会 POST `/come-home`（让她重新出现、回到右下角）然后退出。
+
+HTTP 接口用的是 `src-tauri/vendor/tiny_http` 里打过补丁的 tiny_http 0.12.0（`Cargo.toml` 的 `[patch.crates-io]`；改了哪几处、为什么，见那里的 README.md）。原版在连接出错时 `unwrap` 而 panic：套接字复制不出第二个句柄（WSADuplicateSocket 回 WSAEINVAL 10022，某些网络过滤、VPN 或杀毒软件的分层驱动下、以管理员身份运行时会这样；测试虚拟机里以管理员身份启动的一份就这样崩过）、客户端已经断开时取不到对端地址；正式版是 `panic = "abort"`，一个连接就让整个她退出。连接在被接受之前就被重置，原版也会结束接受线程，她从此收不到 hook。现在这几种都只丢掉那一个连接，接着等下一个；丢掉的连接和接受线程的结束由 `tiny_http::tell_failures` 告诉 `server.rs`，写进她的日志，同一句只写一次（这样的过滤驱动下每个 hook 都会失败）。不用 `log` 的 warn：`log` 要设一个 logger，设了之后所有 crate 的日志调用都留在程序里，试过 exe 大了约 130 KB。`cargo test` 用 `test-failed-split` 特性让下一个连接拆不开，看她接着答下一个；正式版没有这个特性。
 
 ## Codex
 

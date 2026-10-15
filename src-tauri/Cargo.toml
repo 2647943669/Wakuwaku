@@ -14,6 +14,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset", "macos-private-api"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Her local HTTP port (server.rs): tiny_http 0.12.0 as patched in
+# vendor/tiny_http (below), which drops a connection it cannot take where
+# 0.12.0 panicked and so ended her.
 tiny_http = "0.12"
 sys-locale = "0.3"
 ureq = { version = "3.4.2", features = ["json"] }
@@ -35,6 +38,16 @@ base64 = "0.22"
 sha2 = "0.10"
 # Tauri's async runtime made with fewer threads (main.rs); already in the tree, under Tauri.
 tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[dev-dependencies]
+# Her tests make a connection's split fail (server.rs); her builds never have it.
+tiny_http = { version = "0.12", features = ["test-failed-split"] }
+
+[patch.crates-io]
+# tiny_http 0.12.0 with its connections' failures dropped, not panicked on
+# (vendor/tiny_http/README.md); 0.12.0 is the latest there is, and its master
+# panics the same way.
+tiny_http = { path = "vendor/tiny_http" }
 
 [features]
 default = ["custom-protocol"]
