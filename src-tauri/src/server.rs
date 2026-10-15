@@ -11,7 +11,7 @@
 //   POST /quit         quit, as the menu does (a new build replacing her; killing her
 //                      would leave the top bar's strip taken)
 use std::io::Read;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tauri::Manager;
@@ -37,8 +37,28 @@ fn agent_of(url: &str) -> Option<&'static str> {
     })
 }
 
+// True the first time a line comes; a few kinds are kept, and past them
+// nothing more is said.
+fn first_time(said: &mut Vec<String>, line: &str) -> bool {
+    if said.len() >= 8 || said.iter().any(|s| s == line) {
+        return false;
+    }
+    said.push(line.to_string());
+    true
+}
+
 pub fn serve(sh: Arc<Shared>, server: Server) {
     let is_debug = std::env::var("WAKUWAKU_DEBUG").as_deref() == Ok("1");
+    // What tiny_http tells of a connection it dropped, where 0.12.0 panicked
+    // (vendor/tiny_http/README.md), or of its accept thread ending, into her
+    // log. Each thing is said once: a socket that a network filter will not
+    // let her split fails so for every hook, and would fill the log.
+    let (said, teller) = (Mutex::new(Vec::new()), sh.clone());
+    tiny_http::tell_failures(move |line| {
+        if first_time(&mut said.lock().unwrap_or_else(|e| e.into_inner()), line) {
+            teller.log(&format!("http: {line}"));
+        }
+    });
     crate::spawn_named("server", move || {
         for req in server.incoming_requests() {
             handle(&sh, req, is_debug);
@@ -238,5 +258,55 @@ mod tests {
         assert_eq!(agent_of("/hook?from=wakuwaku"), None);
         assert_eq!(agent_of("/hook?agent=codexx"), None);
         assert_eq!(agent_of("/hook"), None);
+    }
+
+    // A connection whose socket cannot be split in two (WSADuplicateSocket's
+    // WSAEINVAL, as a copy started elevated in the test VM met) is closed
+    // unanswered, and the next one is served: tiny_http 0.12.0 unwrapped it
+    // on its accept thread, which with panic = "abort" ended her.
+    #[test]
+    fn a_connection_she_cannot_split_is_dropped_and_the_next_served() {
+        use std::io::{ErrorKind, Write};
+        use std::time::Duration;
+        let (tx, told) = std::sync::mpsc::channel();
+        assert!(tiny_http::tell_failures(move |line| drop(tx.send(line.to_string()))));
+        let server = Server::http(("127.0.0.1", 0)).unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        let ask = move || -> std::io::Result<String> {
+            let mut conn = std::net::TcpStream::connect(("127.0.0.1", port))?;
+            conn.set_read_timeout(Some(Duration::from_secs(5)))?;
+            conn.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")?;
+            let mut answer = String::new();
+            conn.read_to_string(&mut answer)?;
+            Ok(answer)
+        };
+        server.fail_next_split();
+        // Closed, or reset for the request left unread; never left open.
+        match ask() {
+            Ok(answer) => assert_eq!(answer, "", "nothing answered"),
+            Err(e) => assert!(!matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock), "left open: {e}"),
+        }
+        assert!(server.try_recv().unwrap().is_none(), "no request from it");
+        let line = told.recv_timeout(Duration::from_secs(1)).expect("told");
+        assert_eq!(line, "a connection dropped, its socket not split: a split failed on purpose");
+        let asker = std::thread::spawn(ask);
+        let req = server.recv_timeout(Duration::from_secs(5)).unwrap().expect("the next request");
+        assert_eq!(req.url(), "/health");
+        req.respond(Response::from_string("{}")).unwrap();
+        let answer = asker.join().unwrap().unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    }
+
+    #[test]
+    fn what_tiny_http_tells_is_logged_once() {
+        let mut said = Vec::new();
+        let dropped = "a connection dropped, its socket not split: os error 10022";
+        assert!(first_time(&mut said, dropped));
+        assert!(!first_time(&mut said, dropped));
+        assert!(first_time(&mut said, "the accept thread ended: os error 10055"));
+        for n in 0..10 {
+            first_time(&mut said, &format!("{n}"));
+        }
+        assert_eq!(said.len(), 8, "a few kinds kept, no more");
     }
 }
