@@ -105,7 +105,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 /plugin install wakuwaku@wakuwaku
 ```
 
-插件由 Claude Code 自己安装和卸载，**我们不改你的设置文件**（Claude Code 会在它自己的 `enabledPlugins` 里记一笔，卸载时去掉）。插件没法自动启动宠物，所以建议在设置的「连接」页打开「开机自动启动」。
+插件由 Claude Code 自己安装和卸载，**我们不改你的设置文件**（Claude Code 会在它自己的 `enabledPlugins` 里记一笔，卸载时去掉）。插件没法自动启动宠物，所以建议在设置的「连接」页打开「开机自动启动」。开机自动启动写在注册表的 Run 里；任务栏模式下还会加一个「登录时」触发的计划任务（`Wakuwaku at logon-<你的 SID>`），登录后马上启动她，不用等 Run 里的程序一个个排队。exe 改了名字或挪了位置，她下次启动时会把两处都改成现在的路径（原来关着的不会被打开）。
 
 不想用插件的话，「连接」页的「高级」里可以直接写入 `~/.claude/settings.json`（会先备份，卸载时只删我们加的条目）。这种方式的好处是新会话开始时能自动把宠物拉起来。两种都装了，「连接」页会提示事件重复。
 
@@ -207,7 +207,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 
 ### 卸载
 
-1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉。
+1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
 2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。

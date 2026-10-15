@@ -404,7 +404,7 @@ pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<Stri
 #[tauri::command]
 pub async fn settings_login(app: AppHandle, on: bool) -> Value {
     let sh = shared(&app);
-    if let Err(err) = connection::set_open_at_login(on) {
+    if let Err(err) = connection::set_open_at_login(on, sh.home() == "taskbar") {
         sh.log(&format!("start at login: {err}"));
     }
     snapshot(&sh)

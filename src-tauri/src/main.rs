@@ -18,6 +18,7 @@
 //   pointer.rs     click-through, for both windows; screen.rs the work areas
 //   asks.rs        prompts answered on her or the island
 //   connection.rs  the plugin, hooks in settings.json and Codex's hooks.json, start at login
+//   logon.rs       her logon task (start at login, the taskbar home), the session's logon
 //   fetch.rs       pets from codex-pets.net
 //   fullscreen.rs, focus.rs, notify.rs   bits of Windows
 //   jump.rs        to a session's window, when you click the session
@@ -52,6 +53,7 @@ mod icons;
 mod inputs;
 mod island;
 mod jump;
+mod logon;
 mod mail;
 mod notch;
 mod notify;
@@ -90,6 +92,9 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 // The island's own animation of taking her in, before she counts as in.
 const ABSORB_MS: u64 = 380;
+
+// Her port, unless WAKUWAKU_PORT says another (a test's copy, mostly).
+const DEFAULT_PORT: u16 = 47213;
 
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -245,6 +250,41 @@ impl Shared {
             Some("taskbar") => "taskbar",
             _ => "island",
         }
+    }
+
+    // Whether she keeps start at login to where she is (connection.rs):
+    // on her own port, with her own data folder; a test's copy on another
+    // port, or with a folder of its own, leaves it as it is.
+    pub fn keeps_login(&self) -> bool {
+        self.port == DEFAULT_PORT && std::env::var_os("WAKUWAKU_USER_DATA").is_none()
+    }
+
+    // Start at login kept up, off the thread asking: as she starts (logged
+    // too, how long after the logon she came up and what started her: `by`,
+    // connection::started_by), and as her home changes (the logon task is
+    // the taskbar's alone).
+    pub fn keep_login(self: &Arc<Self>, starting: bool, by: Option<&'static str>) {
+        let sh = self.clone();
+        spawn_named("login", move || {
+            if starting {
+                if let Some(since) = logon::since_logon() {
+                    let by = match by {
+                        Some(connection::BY_TASK) => ", by her logon task",
+                        Some(_) => ", by the Run value",
+                        None => "",
+                    };
+                    sh.log(&format!("started {} after logon{by}", logon::how_long(since)));
+                }
+            }
+            if !sh.keeps_login() {
+                return;
+            }
+            let taskbar = sh.home() == "taskbar";
+            let said = if starting { connection::login_at_start(taskbar) } else { connection::login_home_changed(taskbar) };
+            for line in said {
+                sh.log(&format!("login: {line}"));
+            }
+        });
     }
 
     pub fn own_window(&self, _win: &WebviewWindow) {
@@ -521,6 +561,7 @@ impl Shared {
         let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge", "taskbarDisplays"].iter().any(|k| patch.contains_key(*k));
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
         let touches_monitor = ["monitor", "widgetsOff"].iter().any(|k| patch.contains_key(*k));
+        let touches_home = patch.get("display").is_some_and(|d| Some(d) != self.settings.lock().unwrap().get("display"));
         {
             let mut settings = self.settings.lock().unwrap();
             settings.extend(patch);
@@ -528,6 +569,9 @@ impl Shared {
         }
         if touches_monitor {
             wake_monitor();
+        }
+        if touches_home {
+            self.keep_login(false, None);
         }
         self.redraw();
         tray::refresh_menu(self);
@@ -1158,7 +1202,7 @@ fn main() {
         icons::given_back(&data);
         return;
     }
-    let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(47213);
+    let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
         return ensure_running(port);
     }
@@ -1169,10 +1213,19 @@ fn main() {
         return agy_hook(port, args.get(at + 1).map_or("", String::as_str));
     }
 
+    // Started at login (connection.rs): by her logon task, or by the Run value.
+    // The task's, with start at login turned off since (the Run value taken
+    // away, or turned off in Task Manager), takes the task away and goes.
+    let at_login = connection::started_by(&args);
+    if at_login == Some(connection::BY_TASK) && connection::login_task_unwanted() {
+        eprintln!("wakuwaku: started by her logon task, but start at login is off: the task is taken away");
+        return;
+    }
+
     // In the job of whoever started her (a hook of an older her, a terminal,
-    // an app's shell), which may end her as it closes: started again as if
-    // opened from Explorer, once, and this copy goes (detach.rs). Not run
-    // from the source tree (cargo run waits on this copy).
+    // an app's shell, the Task Scheduler), which may end her as it closes:
+    // started again as if opened from Explorer, once, and this copy goes
+    // (detach.rs). Not run from the source tree (cargo run waits on this copy).
     if !args.iter().any(|a| a == detach::FLAG) && !data::from_source() && detach::should_leave() {
         let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).chain([detach::FLAG]).collect();
         if let Ok(exe) = std::env::current_exe() {
@@ -1190,12 +1243,17 @@ fn main() {
     let _ = std::fs::create_dir_all(&dir);
 
     // One pet at a time: whoever holds the port is the pet. Started again
-    // while she runs: she comes back into sight, and this copy leaves.
+    // while she runs: she comes back into sight, and this copy leaves. The
+    // second of the two starts at login (her logon task, then the Run value)
+    // leaves without a word: she is just up, and she may be out on the
+    // desktop where she was left, which coming back would undo.
     let listener = match tiny_http::Server::http(("127.0.0.1", port)) {
         Ok(listener) => listener,
         Err(err) => {
             eprintln!("wakuwaku: port {port} is taken ({err}); another pet is up");
-            let _ = ureq::post(&format!("http://127.0.0.1:{port}/come-home")).send_empty();
+            if at_login.is_none() {
+                let _ = ureq::post(&format!("http://127.0.0.1:{port}/come-home")).send_empty();
+            }
             return;
         }
     };
@@ -1353,6 +1411,8 @@ fn main() {
             app.manage(sh.clone());
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
             sh.log(&format!("displays: {}", sh.screens().describe()));
+            // How long after the logon, and start at login kept to where she is now.
+            sh.keep_login(true, at_login);
             taskbar::recover(&sh);
 
             pet::create(&sh)?;
