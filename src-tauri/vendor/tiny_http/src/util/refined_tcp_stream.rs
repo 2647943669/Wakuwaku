@@ -1,25 +1,30 @@
 use std::io::Result as IoResult;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr};
+use std::sync::Arc;
 
 use crate::connection::Connection;
 #[cfg(any(feature = "ssl-openssl", feature = "ssl-rustls"))]
 use crate::ssl::SslStream;
 
 pub(crate) enum Stream {
-    Http(Connection),
+    // Wakuwaku: the one socket, shared by the connection's two halves.
+    Http(Arc<Connection>),
     #[cfg(any(feature = "ssl-openssl", feature = "ssl-rustls"))]
     Https(SslStream),
 }
 
 impl Stream {
-    // Wakuwaku: the socket's second handle may not be had (on Windows
-    // WSADuplicateSocket answers WSAEINVAL under some network filters and in
-    // an elevated process), so this is a Result where 0.12.0 had a Clone that
-    // unwrapped it and took the whole program down with the connection.
+    // Wakuwaku: the other half shares the socket. 0.12.0's Clone took a
+    // second handle to it (TcpStream::try_clone, WSADuplicateSocket on
+    // Windows) and unwrapped it: a process that may not open itself for
+    // DUP_HANDLE (one started from an elevated one with another parent, as
+    // her own copy out of a job) and some network filters have that answer
+    // WSAEINVAL on every connection, and the panic took the whole program
+    // down. Still a Result, for a split that fails (fail_next_split).
     fn try_clone(&self) -> IoResult<Self> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.try_clone().map(Stream::Http),
+            Stream::Http(tcp_stream) => Ok(Stream::Http(Arc::clone(tcp_stream))),
             #[cfg(any(feature = "ssl-openssl", feature = "ssl-rustls"))]
             Stream::Https(ssl_stream) => Ok(Stream::Https(ssl_stream.clone())),
         }
@@ -28,7 +33,7 @@ impl Stream {
 
 impl From<Connection> for Stream {
     fn from(tcp_stream: Connection) -> Self {
-        Stream::Http(tcp_stream)
+        Stream::Http(Arc::new(tcp_stream))
     }
 }
 
@@ -61,7 +66,7 @@ impl Stream {
 impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.read(buf),
+            Stream::Http(tcp_stream) => (&mut &**tcp_stream).read(buf),
             #[cfg(any(feature = "ssl-openssl", feature = "ssl-rustls"))]
             Stream::Https(ssl_stream) => ssl_stream.read(buf),
         }
@@ -71,7 +76,7 @@ impl Read for Stream {
 impl Write for Stream {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.write(buf),
+            Stream::Http(tcp_stream) => (&mut &**tcp_stream).write(buf),
             #[cfg(any(feature = "ssl-openssl", feature = "ssl-rustls"))]
             Stream::Https(ssl_stream) => ssl_stream.write(buf),
         }
@@ -79,7 +84,7 @@ impl Write for Stream {
 
     fn flush(&mut self) -> IoResult<()> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.flush(),
+            Stream::Http(tcp_stream) => (&mut &**tcp_stream).flush(),
             #[cfg(any(feature = "ssl-openssl", feature = "ssl-rustls"))]
             Stream::Https(ssl_stream) => ssl_stream.flush(),
         }
@@ -93,8 +98,9 @@ pub struct RefinedTcpStream {
 }
 
 impl RefinedTcpStream {
-    // Wakuwaku: an Err when the stream cannot be split in two; the stream is
-    // then closed, and the caller goes on without that one connection.
+    // Wakuwaku: an Err when the stream cannot be split in two (only a test's
+    // now, fail_next_split); the stream is then closed, and the caller goes
+    // on without that one connection.
     pub(crate) fn new<S>(stream: S) -> IoResult<(RefinedTcpStream, RefinedTcpStream)>
     where
         S: Into<Stream>,

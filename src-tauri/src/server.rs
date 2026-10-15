@@ -297,6 +297,34 @@ mod tests {
         assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
     }
 
+    // The two halves of a connection share its one socket (no second handle,
+    // which a process started from an elevated one may not have): requests
+    // one after another on one connection are each read and answered, and it
+    // closes when the last asks it to.
+    #[test]
+    fn one_connection_carries_request_after_request() {
+        use std::io::Write;
+        use std::time::Duration;
+        let server = Server::http(("127.0.0.1", 0)).unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        let asker = std::thread::spawn(move || -> std::io::Result<String> {
+            let mut conn = std::net::TcpStream::connect(("127.0.0.1", port))?;
+            conn.set_read_timeout(Some(Duration::from_secs(5)))?;
+            conn.write_all(b"GET /one HTTP/1.1\r\nHost: x\r\n\r\nGET /two HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")?;
+            let mut answer = String::new();
+            conn.read_to_string(&mut answer)?;
+            Ok(answer)
+        });
+        for url in ["/one", "/two"] {
+            let req = server.recv_timeout(Duration::from_secs(5)).unwrap().expect(url);
+            assert_eq!(req.url(), url);
+            req.respond(Response::from_string(&url[1..])).unwrap();
+        }
+        let answer = asker.join().unwrap().unwrap();
+        assert_eq!(answer.matches("HTTP/1.1 200").count(), 2, "{answer}");
+        assert!(answer.ends_with("two"), "{answer}");
+    }
+
     #[test]
     fn what_tiny_http_tells_is_logged_once() {
         let mut said = Vec::new();

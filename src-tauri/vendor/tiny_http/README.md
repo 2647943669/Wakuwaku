@@ -12,15 +12,21 @@ client's or the network's, not hers: a crash report from a test VM (a copy
 started elevated) said `called Result::unwrap() on an Err value: Os { code:
 10022, kind: InvalidInput }` at `src/util/refined_tcp_stream.rs:18`, the
 socket's second handle refused by WSADuplicateSocket, as some network filters
-(VPN or antivirus layers) and elevated processes make it. 0.12.0 is the latest
-release, and upstream's master (2023-05) has the same unwraps
-(tiny-http/tiny-http#195, open since 2021; #285, open).
+(VPN or antivirus layers) make it, and as it does on every connection in a
+process that may not open itself for DUP_HANDLE: hers when an elevated one
+started her and she started herself again out of its job with Explorer as
+the parent (the new process's security is the elevated starter's, its token
+Explorer's). 0.12.0 is the latest release, and upstream's master (2023-05)
+has the same unwraps (tiny-http/tiny-http#195, open since 2021; #285, open).
 
 What is changed, each marked `Wakuwaku:` in the code:
 
-- `src/util/refined_tcp_stream.rs`: `Stream`'s `Clone` (which unwrapped
-  `try_clone`) is a `try_clone` returning a Result, and `RefinedTcpStream::new`
-  returns a Result.
+- `src/util/refined_tcp_stream.rs`, `src/connection.rs`: a connection's two
+  halves share its one socket (`Arc<Connection>`, read and written through
+  `&Connection` as std's `&TcpStream` is) instead of each holding a duplicate
+  (`try_clone`, which `Stream`'s `Clone` unwrapped), so no second handle is
+  asked for. The split is still a `try_clone` returning a Result, and
+  `RefinedTcpStream::new` returns one, for a test's failed split.
 - `src/lib.rs`, the accept loop: a connection that cannot be split is closed
   and the next one waited for; a connection reset or aborted before it was
   accepted (WSAECONNRESET, ECONNABORTED) is let go the same way, where 0.12.0
