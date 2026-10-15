@@ -1075,7 +1075,7 @@ fn read_event() -> Option<Value> {
 // Start her, detached so she outlives the hook and the session (she greets on
 // her own), out of its agent's job and inheriting no handle (detach.rs).
 fn start_detached() {
-    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe) = data::exe() else { return };
     detach::spawn(&exe, &[]);
 }
 
@@ -1226,20 +1226,23 @@ fn main() {
 
     // In the job of whoever started her (a hook of an older her, a terminal,
     // an app's shell, the Task Scheduler), which may end her as it closes:
-    // started again as if opened from Explorer, once, and this copy goes
-    // (detach.rs). Not run from the source tree (cargo run waits on this copy).
-    if !args.iter().any(|a| a == detach::FLAG) && !data::from_source() && detach::should_leave() {
+    // started again out of it, once, and this copy goes (detach.rs). Not run
+    // from the source tree (cargo run waits on this copy), nor started by an
+    // update or a restart: the one before her saw to its own job as it
+    // started, and hers is that one's.
+    let after_update = args.iter().any(|a| a == updates::AFTER_UPDATE);
+    if !after_update && !args.iter().any(|a| a == detach::FLAG) && !data::from_source() && detach::should_leave() {
         let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).chain([detach::FLAG]).collect();
-        if let Ok(exe) = std::env::current_exe() {
+        if let Ok(exe) = data::exe() {
             if detach::spawn(&exe, &rest) {
                 return;
             }
         }
     }
 
-    // Started by an update: the one it replaces waited for, so this one
-    // gets the port (and the taskbar), not just wakes that one.
-    updates::wait_after_update(&args);
+    // Started by an update: the one it replaces told she is up, and waited
+    // for, so this one gets the port (and the taskbar), not just wakes that one.
+    updates::wait_after_update(&args, port);
 
     let dir = data::folder();
     let _ = std::fs::create_dir_all(&dir);
@@ -1264,6 +1267,10 @@ fn main() {
     // hand, at login, an update), and the sessions' hooks may start her
     // from here on.
     data::clear_quit(&dir);
+
+    // Started as the exe an update left, its new one gone since: her own
+    // name back before anything names her exe (updates.rs).
+    updates::take_name_back(&dir);
 
     // Her crashes caught from here on, and a guard to see her end while
     // her reports can go and are not off (the taskbar home starts one

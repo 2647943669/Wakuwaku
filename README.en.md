@@ -192,8 +192,9 @@ The downloaded exe looks at the latest release on GitHub and on Gitee as it star
 
 - What's downloaded is the release's `wakuwaku-v<version>-windows-x64.exe`: from Gitee first in China, from GitHub first elsewhere, and from the other if that fails (Download from, under Updates, picks one).
 - It's checked against the SHA-256 GitHub gives for it, or, when GitHub gives none, the `.sha256` file in the Gitee release. If it doesn't match, none is given, or the two differ, it isn't installed and no file is touched.
-- Once it checks out, your exe is renamed `<its name>.old.exe` and the new one put in its place (your file name kept); the new one starts and the old one quits, after any prompt waiting for you is answered. Once the new one has run a minute, `.old.exe` is deleted.
-- If the new one won't start, `.old.exe` is still there: quit her, delete the new exe and rename `.old.exe` back to the name it had.
+- Once it checks out, your exe is renamed `<its name>.old.exe` and the new one put in its place (your file name kept); the new one starts, and the old one quits once the new one has said it is up and run on for a few seconds, after any prompt waiting for you is answered. Once the new one has run a minute, `.old.exe` is deleted.
+- If an antivirus stops it (the exe is not signed, and some take a new version just downloaded and started for something suspicious, ending it or taking it away): the old one doesn't quit; it takes its own name back and runs on, and says on the island and under Updates that the update was stopped. Trust Wakuwaku (or its folder) in the antivirus and click Update again, or download it from the release page yourself. Taken away after it had started, the new one leaves only `<its name>.old.exe` in the folder: open it, and it takes its own name back.
+- If the new one won't start and is still there: quit her, delete the new exe and rename `.old.exe` back to the name it had.
 - To stop the checks: turn off Check for updates there, and click Check now when you want to.
 - Run from source, she never checks or updates: building it again is the update.
 
