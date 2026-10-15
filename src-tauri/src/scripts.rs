@@ -645,6 +645,8 @@ mod tests {
         assert!(!is_ok(&json!({ "ci": { "Prs": "yes" } })));
     }
 
+    // PowerShell's line with Windows paths: elsewhere a backslash is no separator.
+    #[cfg(windows)]
     #[test]
     fn a_script_runs_with_what_it_was_given_quoted() {
         let ci = script("ci").unwrap();
