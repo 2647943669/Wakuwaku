@@ -16,7 +16,7 @@
 | `countdown.ps1 -At '2026-10-10 18:00' -Title 交周报` | 交周报 还有 1 天 6 小时 | 也可以 `-File deadlines.txt`，一行一个；提前 1 小时和到点各提醒一次 |
 | `devserver.ps1 -Url http://localhost:3000,http://localhost:5173` | 开发服务器 3000 ✓ 5173 ✗ | 有响应就算在跑；在跑的停了就叫开灵动岛 |
 | `stock.ps1 -Symbol 600519.SS,USDCNY=X,BTC-USD -Name 茅台,美元,比特币` | 茅台 1,263 ▲0.58% | 股票、汇率、币价，Yahoo Finance 的图表数据（非官方接口） |
-| `weather.ps1 -City 上海` | Shanghai · 多云 22° | Open-Meteo，不用注册；城市可以写中文 |
+| `weather.ps1 -City 上海` | Shanghai · 多云 22°，展开时加上今天的 14°~22° | Open-Meteo，不用注册；城市可以写中文 |
 | `stretch.ps1 -Minutes 50` | 坐久了，起来走走 12 分钟后 | 到点叫开灵动岛 |
 | `mail-imap.ps1 -Address you@qq.com` | 王总：周五的方案 3 封未读 | IMAP：QQ、163、126、Gmail、iCloud……见下面"邮件" |
 | `mail-microsoft.ps1 -ClientId <id>` | 同上 | Outlook.com、Hotmail、Microsoft 365 |
@@ -45,7 +45,7 @@
 ## 发什么
 
 ```json
-{ "id": "weather", "label": "上海 · 多云", "value": "22°", "icon": "weather", "color": "#ffb340", "ttl": 720 }
+{ "id": "weather", "label": "上海 · 多云", "value": "22°", "detail": "14°~22°", "icon": "weather", "color": "#ffb340", "ttl": 720 }
 ```
 
 | 字段 | 说明 |
@@ -53,6 +53,7 @@
 | `id` | 小写字母、数字、`_`、`-`，最长 40；同一个 id 再发一次就是更新 |
 | `label` | 最长 40 个字 |
 | `value` | 可选，最长 24 个字，显示在右边，用 `color` 的颜色 |
+| `detail` | 可选，最长 24 个字，只在岛展开时显示在 `value` 后面（比如天气的当天温度范围）；收起时不显示 |
 | `icon` | 可选：`cpu` `weather` `note` `calendar` `bell` `stock` `today` `clock` `mail` `music` `code` `star` `dot` `chart` `battery` `timer` `flag` `server` `check` `terminal` `coin` `gauge` `memory` `down` `up` `bolt` |
 | `color` | 可选，`#rgb` 或 `#rrggbb` |
 | `ttl` | 可选，多少秒没再收到就消失，默认 300，10 到 86400 |

@@ -1,6 +1,7 @@
 ﻿# A weather widget for Wakuwaku's island: the sky and the temperature in a
-# city, from Open-Meteo (no key needed), every 10 minutes. The city can be
-# named in English or Chinese.
+# city, and today's lowest and highest (shown when the island is open), from
+# Open-Meteo (no key needed), every 10 minutes. The city can be named in
+# English or Chinese.
 #
 #   pwsh examples/widgets/weather.ps1 -City Shanghai
 #   pwsh examples/widgets/weather.ps1 -City 杭州 -Once
@@ -34,7 +35,12 @@ while ($true) {
       $place = $found.results | Select-Object -First 1
       if (-not $place) { throw $(if ($Lang -eq 'zh') { "找不到这个城市：$City" } else { "no city called $City" }) }
     }
-    $now = (Invoke-RestMethod "https://api.open-meteo.com/v1/forecast?latitude=$($place.latitude)&longitude=$($place.longitude)&current=temperature_2m,weather_code" -TimeoutSec 20).current
+    # Now, and today's lowest and highest there (its own time zone).
+    $got = Invoke-RestMethod "https://api.open-meteo.com/v1/forecast?latitude=$($place.latitude)&longitude=$($place.longitude)&current=temperature_2m,weather_code&daily=temperature_2m_min,temperature_2m_max&timezone=auto&forecast_days=1" -TimeoutSec 20
+    $now = $got.current
+    $low, $high = @($got.daily.temperature_2m_min)[0], @($got.daily.temperature_2m_max)[0]
+    # The range, shown after the temperature in the open island only.
+    $range = if ($null -ne $low -and $null -ne $high) { "$([Math]::Round([double]$low))°$(if ($Lang -eq 'zh') { '~' } else { '–' })$([Math]::Round([double]$high))°" } else { '' }
     $words = $sky[[int]$now.weather_code]
     $words = if (-not $words) { '' } elseif ($Lang -eq 'zh') { $words[0] } else { $words[1] }
     $widget = @{
@@ -43,6 +49,7 @@ while ($true) {
       color = '#ffb340'
       label = "$City · $words".TrimEnd(' ', '·')
       value = "$([Math]::Round([double]$now.temperature_2m))°"
+      detail = $range
       # A little longer than the wait, so it stays between two updates.
       ttl   = $Minutes * 60 + 120
     } | ConvertTo-Json -Compress

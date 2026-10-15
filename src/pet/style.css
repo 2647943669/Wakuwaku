@@ -1003,6 +1003,13 @@ body {
   font-weight: 600;
 }
 
+/* A widget's detail after its value (the weather's range), in the row's own grey. */
+#island-expanded .wrow .wd {
+  flex: none;
+  margin-left: -2px;
+  font-variant-numeric: tabular-nums;
+}
+
 #island-expanded .head .wicon {
   width: 16px;
   height: 16px;

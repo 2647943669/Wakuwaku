@@ -15,9 +15,11 @@ test('every icon a widget may name has a drawing', () => {
 
 test('a widget says its words, a built-in one in her language', () => {
   const today = { label: { key: 'widget.today', vars: {} }, value: { key: 'widget.todayValue', vars: { turns: '12', time: '1:43', approvals: '5' } } }
-  assert.deepEqual(Widgets.words('zh', today), { label: '今天', value: '12 轮 · 1:43 · 批准 5' })
-  assert.deepEqual(Widgets.words('en', today), { label: 'Today', value: '12 turns · 1:43 · 5 approved' })
-  assert.deepEqual(Widgets.words('zh', { label: '上海 · 多云', value: '22°' }), { label: '上海 · 多云', value: '22°' })
+  assert.deepEqual(Widgets.words('zh', today), { label: '今天', value: '12 轮 · 1:43 · 批准 5', detail: '' })
+  assert.deepEqual(Widgets.words('en', today), { label: 'Today', value: '12 turns · 1:43 · 5 approved', detail: '' })
+  assert.deepEqual(Widgets.words('zh', { label: '上海 · 多云', value: '22°' }), { label: '上海 · 多云', value: '22°', detail: '' })
+  // A script's detail (the weather's range), for the open island.
+  assert.deepEqual(Widgets.words('zh', { label: '上海 · 多云', value: '22°', detail: '14°~22°' }), { label: '上海 · 多云', value: '22°', detail: '14°~22°' })
   // Under a minute in seconds; Antigravity's turns alone, no approvals to count (widgets.rs Today::words).
   const short = { ...today, value: { key: 'widget.todayValueAgy', vars: { turns: '2', time: { key: 'widget.todaySeconds', vars: { n: '45' } }, approvals: '0' } } }
   assert.equal(Widgets.words('zh', short).value, '2 轮 · 45 秒 · 批准 —')
