@@ -129,7 +129,7 @@ pub fn owner_of(widget: &str) -> Option<&'static str> {
 
 // A PowerShell string: in single quotes, which PowerShell also takes in
 // their curly forms, each doubled inside.
-fn quote(s: &str) -> String {
+pub(crate) fn quote(s: &str) -> String {
     let mut out = String::from("'");
     for c in s.chars() {
         if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {

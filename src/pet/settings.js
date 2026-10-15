@@ -222,8 +222,12 @@
   // --- Small parts -------------------------------------------------------------------
 
   const sw = (key, on, extra = '') => `<button class="sw${on ? ' on' : ''}" data-sw="${key}" ${extra}></button>`
+  // A few choices side by side; one marked off ([value, label, true]) is
+  // there, greyed, and can't be picked.
   const seg = (key, options, current) =>
-    `<span class="seg" data-seg="${key}">${options.map(([value, label]) => `<span data-value="${esc(value)}" class="${String(value) === String(current) ? 'on' : ''}">${esc(label)}</span>`).join('')}</span>`
+    `<span class="seg" data-seg="${key}">${options
+      .map(([value, label, off]) => `<span data-value="${esc(value)}" class="${String(value) === String(current) ? 'on' : off ? 'off' : ''}"${off ? ' aria-disabled="true"' : ''}>${esc(label)}</span>`)
+      .join('')}</span>`
   const row = (title, note, control) =>
     `<div class="r"><div class="grow"><div>${title}</div>${note ? `<div class="d">${note}</div>` : ''}</div>${control}</div>`
   const sec = text => `<div class="sec">${esc(text)}</div>`
@@ -942,9 +946,16 @@
   }
 
   // Who a letter goes to first (the setting), and each in that order:
-  // Antigravity only where it is (or set first), as few have it.
+  // Antigravity only where it is (or set first), as few have it: its agy
+  // found, or Antigravity on this computer as the Connect page has it (agy's
+  // folder, or the 2.0 app's: connection.rs agy_here). The app alone brings
+  // no agy, which mail runs: Antigravity is listed then, greyed, with a line
+  // on why (zhoupengjie/Wakuwaku#42). agent.rs looks for agy again while the
+  // settings are open, and once installed it can be picked.
   const firstAgent = () => (['codex', 'agy'].includes(snap.settings.mailAgent) ? snap.settings.mailAgent : 'claude')
-  const agentsHere = () => ['claude', 'codex', ...((snap.mailAgents || {}).agy || firstAgent() === 'agy' ? ['agy'] : [])]
+  const agyHere = () => !!snap.agy && snap.agy.hooks !== 'absent'
+  const agentsHere = () => ['claude', 'codex', ...((snap.mailAgents || {}).agy || firstAgent() === 'agy' || agyHere() ? ['agy'] : [])]
+  const agyWanted = () => !(snap.mailAgents || {}).agy && agentsHere().includes('agy')
   // A letter's talk going on now, by its key (agent.rs).
   const talkOf = key => (key && (snap.mailTalks || {})[key]) || null
   const letterKey = l => l.messageId || `${l.account}:${l.uid}`
@@ -1083,11 +1094,14 @@
   // one effort already). Not found, it says so there.
   function agentsHTML() {
     const ag = firstAgent()
-    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', agentsHere().map(a => [a, AGENT_NAMES[a]]), ag))
-    const note = (snap.mailAgents || {})[ag] ? T(`mail.conf.note.${ag}`) : T('mail.err.noAgent', { agent: AGENT_NAMES[ag] })
+    const found = snap.mailAgents || {}
+    const options = agentsHere().map(a => [a, AGENT_NAMES[a], a === 'agy' && !found.agy && ag !== 'agy'])
+    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', options, ag))
+    const why = agyWanted() ? `<div class="note">${esc(T('mail.agyCli'))} <span class="link" data-site="agyCli">${esc(T('mail.agyCliHow'))}</span></div>` : ''
+    const note = found[ag] ? T(`mail.conf.note.${ag}`) : T('mail.err.noAgent', { agent: AGENT_NAMES[ag] })
     const pickers = ag === 'agy' ? pickerHTML(ag, 'model') : pickerHTML(ag, 'model') + pickerHTML(ag, 'effort')
     const model = row(esc(T(ag === 'agy' ? 'mail.conf.model' : 'mail.conf.session')), esc(note), `<span class="btns">${pickers}</span>`)
-    return `<div class="grp agent-pick">${agent}${model}</div>`
+    return `<div class="grp agent-pick">${agent}${why}${model}</div>`
   }
 
   // How a letter goes to an agent (mailAgentConf, agent.rs): its model and
@@ -2410,6 +2424,7 @@
     }
     const option = at('[data-seg] > span')
     if (option) {
+      if (option.classList.contains('off')) return
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
       if (key === 'taskbarLayout') {

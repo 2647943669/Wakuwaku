@@ -89,8 +89,9 @@ pub fn snapshot(sh: &Shared) -> Value {
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.
         "mail": mail::view(sh),
-        // Who a letter can go to (claude, codex: found or not), and the
-        // letters being read in the background or read this time.
+        // Who a letter can go to (claude, codex, agy: found or not; looked
+        // for again while the settings are open), and the letters being
+        // read in the background or read this time.
         "mailAgents": mail::agent::available(),
         // The models each can be asked for, with the efforts they take.
         "mailModels": mail::agent::models(sh),
@@ -525,11 +526,14 @@ pub async fn settings_crash(app: AppHandle, what: String) -> Value {
 }
 
 // Only these places, whatever the page asks: the project, codex-pets.net,
-// or where a mail provider makes app passwords (the Mail page's hint).
+// where a mail provider makes app passwords (the Mail page's hint), or how
+// Antigravity's command line agy is installed (the Mail page, with
+// Antigravity here but not agy).
 #[tauri::command]
 pub async fn settings_open_site(app: AppHandle, place: String) {
     let url = match place.as_str() {
         "repo" => REPO,
+        "agyCli" => "https://antigravity.google/docs/cli/install",
         "googleAppPasswords" => "https://myaccount.google.com/apppasswords",
         "appleAppPasswords" => "https://account.apple.com/account/manage",
         "yahooAppPasswords" => "https://login.yahoo.com/account/security",

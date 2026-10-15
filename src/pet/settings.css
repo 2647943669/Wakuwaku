@@ -589,6 +589,12 @@
   font-weight: 600;
 }
 
+/* One choice there but not to be picked yet (Antigravity without agy). */
+#island-settings .seg span.off {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Not to be changed here (a side taskbar's buttons are icons alone). */
 #island-settings .seg.off {
   opacity: 0.45;
