@@ -84,6 +84,38 @@ test("a reading's glyph is Windows' own, the battery's by its level", () => {
   assert.equal(glyph('bolt', '0%'), 'E85A')
 })
 
+// The hardware's sensors from LibreHardwareMonitor (lhm.rs): { icon, kind, text }.
+test("a sensor's reading: its hardware's glyph, full and orange by its kind, after the machine's in the rows", () => {
+  const s = (icon, kind, text) => ({ icon, kind, text })
+  // A temperature from 30 °C empty to 100 °C full, orange from 90 °C; a
+  // load as the CPU's; watts, a fan and a clock never full nor orange.
+  assert.equal(Widgets.shareOf(s('cpu', 'temp', '62°')), 46)
+  assert.equal(Widgets.shareOf(s('gpu', 'temp', '25°')), 0)
+  assert.equal(Widgets.shareOf(s('gpu', 'temp', '104°')), 100)
+  assert.equal(Widgets.shareOf(s('gpu', 'load', '37%')), 37)
+  assert.equal(Widgets.shareOf(s('gpu', 'power', '122W')), 0)
+  assert.equal(Widgets.shareOf(s('fan', 'fan', '1180')), 0)
+  assert.equal(Widgets.isHigh(s('cpu', 'temp', '90°')), true)
+  assert.equal(Widgets.isHigh(s('cpu', 'temp', '89°')), false)
+  assert.equal(Widgets.isHigh(s('gpu', 'load', '95%')), true)
+  assert.equal(Widgets.isHigh(s('gpu', 'power', '300W')), false)
+  assert.equal(Widgets.isHigh(s('fan', 'fan', '2400')), false)
+  const glyph = icon => Widgets.glyphOf({ icon, kind: 'temp', text: '50°' })
+  assert.deepEqual(['cpu', 'gpu', 'board', 'disk', 'fan', 'memory', 'sensor', 'what'].map(glyph), ['E950', 'F211', 'F20C', 'EDA2', 'E72C', 'E964', 'E9D9', 'E950'])
+  assert.match(Widgets.partsHTML({ value: { parts: [s('cpu', 'temp', '95°')] } }), /^<span class="wcell high" style="--p:93%">.*95°/)
+  // In the taskbar's two rows, as many over as under, the machine's first.
+  const icons = rows => rows.map(row => row.map(x => x.icon + (x.kind ? `:${x.kind}` : '')))
+  const p = icon => ({ icon, text: '1' })
+  assert.deepEqual(icons(Widgets.rowsOf([p('cpu'), p('memory'), p('down'), p('up'), s('cpu', 'temp', '62°'), s('gpu', 'temp', '58°'), s('gpu', 'load', '37%')])), [
+    ['cpu', 'memory', 'cpu:temp', 'gpu:temp'],
+    ['down', 'up', 'gpu:load'],
+  ])
+  assert.deepEqual(icons(Widgets.rowsOf([p('cpu'), p('memory'), p('down'), p('up'), s('cpu', 'temp', '62°')])), [['cpu', 'memory', 'cpu:temp'], ['down', 'up']])
+  // Sensors alone, or with one kind: half over half.
+  assert.deepEqual(icons(Widgets.rowsOf([s('cpu', 'temp', '62°'), s('gpu', 'temp', '58°'), s('gpu', 'load', '37%')])), [['cpu:temp', 'gpu:temp'], ['gpu:load']])
+  assert.deepEqual(icons(Widgets.rowsOf([p('down'), p('up'), s('cpu', 'temp', '62°')])), [['down', 'up'], ['cpu:temp']])
+})
+
 test('a colour deepened until it reads on the light island, its hue kept', () => {
   const ratio = (a, b) => {
     const lum = hex => {

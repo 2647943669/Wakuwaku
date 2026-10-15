@@ -46,8 +46,11 @@
   // The monitor's readings' glyphs, as Windows' own: the processor, memory,
   // the network's down and up as small solid triangles (drawn smaller,
   // style.css .wg.tri); the battery by its level (Battery0 to Battery10),
-  // charging too (BatteryCharging0 to BatteryCharging10).
-  const PART_GLYPH = { cpu: 'E950', memory: 'E964', down: 'EDDC', up: 'EDDB' }
+  // charging too (BatteryCharging0 to BatteryCharging10). The hardware's
+  // sensors (lhm.rs) by their hardware: a graphics card (F211), the
+  // motherboard (F20C), a drive (EDA2, HardDrive), a fan turning (E72C),
+  // another (E9D9, the monitor's own); the unit in the text says what of it.
+  const PART_GLYPH = { cpu: 'E950', memory: 'E964', down: 'EDDC', up: 'EDDB', gpu: 'F211', board: 'F20C', disk: 'EDA2', fan: 'E72C', sensor: 'E9D9' }
   const BATTERY = ['E850', 'E851', 'E852', 'E853', 'E854', 'E855', 'E856', 'E857', 'E858', 'E859', 'E83F']
   const CHARGING = ['E85A', 'E85B', 'E85C', 'E85D', 'E85E', 'E85F', 'E860', 'E861', 'E862', 'E863', 'E83E']
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
@@ -73,10 +76,14 @@
   // are shares already ("23%"). The network's rate ("5.1K", "337K", "48M",
   // widgets.rs rate) has no 100%: by its order of magnitude, 1 KB/s empty
   // and 100 MB/s full, each tenfold a fifth, so a rate is always as full.
+  // A sensor's by its kind: a load a share, a temperature from 30 °C empty
+  // to 100 °C full, the others (watts, a fan, a clock) none.
   function shareOf(p) {
     const n = parseFloat(p.text)
     if (!Number.isFinite(n)) return 0
-    if (p.icon !== 'down' && p.icon !== 'up') return Math.max(0, Math.min(100, Math.round(n)))
+    const clamp = v => Math.max(0, Math.min(100, Math.round(v)))
+    if (p.kind) return p.kind === 'load' ? clamp(n) : p.kind === 'temp' ? clamp(((n - 30) / 70) * 100) : 0
+    if (p.icon !== 'down' && p.icon !== 'up') return clamp(n)
     const bytes = n * ({ K: 1e3, M: 1e6, G: 1e9 }[String(p.text).trim().slice(-1)] || 1)
     return Math.max(0, Math.min(100, Math.round(((Math.log10(Math.max(bytes, 1e3)) - 3) / 5) * 100)))
   }
@@ -120,22 +127,29 @@
   }
 
   // The readings in two rows, as the taskbar has its clock's time over the
-  // date: the machine's (CPU, memory, battery) over the network's; with only
-  // one kind, half over half.
+  // date: the machine's (CPU, memory, battery) over the network's, the
+  // hardware's sensors after them, as many over as under (one more over);
+  // with only one kind, half over half.
   function rowsOf(parts) {
     const isNet = p => p.icon === 'down' || p.icon === 'up'
     const net = parts.filter(isNet)
-    const rest = parts.filter(p => !isNet(p))
-    if (net.length && rest.length) return [rest, net]
-    const all = net.length ? net : rest
+    const own = parts.filter(p => !isNet(p) && !p.kind)
+    const sensors = parts.filter(p => !isNet(p) && p.kind)
+    if (net.length && own.length) {
+      const over = Math.max(0, Math.ceil(parts.length / 2) - own.length)
+      return [[...own, ...sensors.slice(0, over)], [...net, ...sensors.slice(over)]]
+    }
+    const all = net.length ? [...net, ...sensors] : [...own, ...sensors]
     const half = Math.ceil(all.length / 2)
     return [all.slice(0, half), all.slice(half)].filter(row => row.length)
   }
 
   // A reading that wants a look: the CPU or the memory at 90% or more, the
-  // battery (not charging) at 20% or less.
+  // battery (not charging) at 20% or less; a sensor's load at 90% or more,
+  // its temperature at 90 °C or more.
   function isHigh(p) {
     const n = parseFloat(p.text)
+    if (p.kind) return (p.kind === 'load' || p.kind === 'temp') && n >= 90
     if (p.icon === 'cpu' || p.icon === 'memory') return n >= 90
     return p.icon === 'battery' && n <= 20
   }
