@@ -433,6 +433,9 @@ mod tests {
     fn a_permission_prompt_and_its_answers() {
         let view = view_of(&permission()).unwrap();
         assert_eq!(view["kind"], "permission");
+        // The project is the last part of the cwd, D:\work\pet: a Windows path
+        // (elsewhere a backslash is no separator).
+        #[cfg(windows)]
         assert_eq!(view["project"], "pet");
         assert_eq!(view["summary"], "npm test");
         assert_eq!(view["always"]["rules"], json!(["Bash(npm test:*)"]));

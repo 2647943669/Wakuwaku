@@ -619,6 +619,8 @@ mod tests {
         println!("is_listening: {:?} each", t.elapsed() / 20);
     }
 
+    // Windows' TCP table: elsewhere client_of knows no connection's process.
+    #[cfg(windows)]
     #[test]
     fn a_connection_names_its_client() {
         let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

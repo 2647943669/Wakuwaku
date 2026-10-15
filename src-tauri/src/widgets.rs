@@ -772,9 +772,16 @@ mod tests {
         assert_eq!(scripted(w.view(0, &[], &[], &|_| None))[0]["private"], true);
         assert_eq!(w.label_of("mail").map(|l| l.2), Some(true));
         assert_eq!([rate(80.0), rate(8_400.0), rate(81_234.0), rate(1_234_567.0), rate(250_000_000.0)], ["80B", "8.4K", "81K", "1.2M", "250M"]);
-        // On this machine: the second reading has CPU use and the network's pace.
         let all = Watching::from(&json!({ "every": 99 }));
         assert_eq!((all.cpu, all.battery, all.every), (true, true, 10));
+    }
+
+    // On this machine: the second reading has CPU use and the network's pace.
+    // Windows' counters (sys): elsewhere there is nothing to read yet.
+    #[cfg(windows)]
+    #[test]
+    fn the_monitor_reads_this_machine() {
+        let all = Watching::from(&json!({ "every": 99 }));
         let mut m = Monitor::new();
         let _ = m.read(&all);
         let icons = |v: Option<Value>| v.map(|v| v["parts"].as_array().unwrap().iter().map(|p| p["icon"].as_str().unwrap().to_string()).collect::<Vec<_>>()).unwrap_or_default();

@@ -16,6 +16,7 @@ fn draw(icon: isize, size: i32) -> Option<String> {
     (icon != 0).then(|| format!("<icon at {size} px>"))
 }
 
+#[cfg(windows)]
 #[link(name = "user32")]
 extern "system" {
     fn GetForegroundWindow() -> *mut std::ffi::c_void;
@@ -24,6 +25,7 @@ extern "system" {
 }
 
 // As the taskbar's keys thread does: the layout in front told four times a second.
+#[cfg(windows)]
 fn watch(seconds: u64) {
     inputs::set_size(24);
     inputs::start(draw, Box::new(|| println!("now {}", inputs::now())), Box::new(|line: &str| println!("log {line}")));
@@ -41,6 +43,7 @@ fn watch(seconds: u64) {
     }
 }
 
+#[cfg(windows)]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -66,3 +69,7 @@ fn main() {
         _ => eprintln!("inputs list | watch [seconds] | pick <id>"),
     }
 }
+
+// Windows' input switcher only: elsewhere there is nothing to look at.
+#[cfg(not(windows))]
+fn main() {}
