@@ -134,10 +134,31 @@ fn write_json(file: &Path, value: &Value) -> Result<(), String> {
     }
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     let written = fs::write(file, format!("{text}\n")).map_err(|e| e.to_string());
-    // As last read no longer: read again next time, whatever its stamp.
+    forget_read(file);
+    written
+}
+
+// As last read no longer: read again next time, whatever its stamp.
+fn forget_read(file: &Path) {
     if let Some(read) = READ.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         read.remove(file);
     }
+}
+
+// An agent's file with our part taken out: written back with no backup made
+// (what is there is ours alone; a backup then held our hooks, seen
+// 2026-10-16), or, when she made the file (no backup beside it: there was
+// nothing of the person's to keep when she first wrote it) and nothing is
+// left in it, taken away, as it was before.
+fn write_back(file: &Path, value: &Value) -> Result<(), String> {
+    if value.as_object().is_some_and(|o| o.is_empty()) && !backup_of(file).exists() {
+        let gone = fs::remove_file(file).map_err(|e| e.to_string());
+        forget_read(file);
+        return gone;
+    }
+    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    let written = fs::write(file, format!("{text}\n")).map_err(|e| e.to_string());
+    forget_read(file);
     written
 }
 
@@ -562,7 +583,7 @@ pub fn write_codex_hooks(action: &str, waiting: &str) -> Result<(), String> {
     let before = read_json_now(&file)?;
     let after = match action {
         "remove" if !file.exists() => return Ok(()),
-        "remove" => uninstall(&before),
+        "remove" => return write_back(&file, &uninstall(&before)),
         "install" => codex_install(&before, &codex_command(&launch_command()), waiting, codex_runs_async()),
         _ => return Err(format!("unknown action {action}")),
     };
@@ -719,7 +740,7 @@ pub fn write_agy_hooks(action: &str) -> Result<(), String> {
     let before = read_json_now(&file)?;
     let after = match action {
         "remove" if !file.exists() => return Ok(()),
-        "remove" => agy_uninstall(&before),
+        "remove" => return write_back(&file, &agy_uninstall(&before)),
         "install" => {
             let exe = launch_command();
             let Some(program) = agy_program(&exe) else { return Err(format!("{exe}: {AGY_NO_NAME} (a space in its path, and no short name for it)")) };
@@ -830,7 +851,14 @@ pub fn write_opencode_plugin(action: &str, port: u16) -> Result<(), String> {
             fs::write(&file, opencode_plugin(port)).map_err(|e| e.to_string())
         }
         "remove" if theirs.is_some() || !file.exists() => Ok(()),
-        "remove" => fs::remove_file(&file).map_err(|e| e.to_string()),
+        "remove" => {
+            fs::remove_file(&file).map_err(|e| e.to_string())?;
+            // Its plugins folder too, once nothing else is in it (as omp's).
+            if let Some(dir) = file.parent() {
+                let _ = fs::remove_dir(dir);
+            }
+            Ok(())
+        }
         _ => Err(format!("unknown action {action}")),
     }
 }
@@ -1140,7 +1168,7 @@ pub fn write_zcode_hooks(action: &str) -> Result<(), String> {
         "remove" if !file.exists() => Ok(()),
         "remove" => {
             let was = read_json_now(&note).ok().and_then(|n| n.get("enabledBefore").cloned());
-            write_json(&file, &zcode_uninstall(&before, was.as_ref()))?;
+            write_back(&file, &zcode_uninstall(&before, was.as_ref()))?;
             let _ = fs::remove_file(&note);
             Ok(())
         }
@@ -1974,6 +2002,32 @@ mod tests {
         assert_eq!(hooks["hooks"]["PreToolUse"][0]["matcher"], "ask_user_question");
         assert!(hooks["hooks"]["SessionStart"][0].get("matcher").is_none());
         assert_eq!(hooks["hooks"].as_object().unwrap().len(), 5);
+    }
+
+    // A file she made, left empty by a remove, goes again, with no backup
+    // made of what was ours; one the person had (its backup beside it) is
+    // written back, its backup kept as it was.
+    #[test]
+    fn a_remove_leaves_no_file_of_ours_and_no_backup_of_ours() {
+        let dir = std::env::temp_dir().join(format!("wakuwaku-writeback-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let made = dir.join("hooks.json");
+        write_json(&made, &json!({ "hooks": { "Stop": [] } })).unwrap();
+        assert!(!backup_of(&made).exists(), "nothing of the person's to back up");
+        write_back(&made, &json!({})).unwrap();
+        assert!(!made.exists() && !backup_of(&made).exists());
+        // Theirs: backed up as she first wrote it, written back on a remove.
+        let theirs = dir.join("config.json");
+        fs::write(&theirs, "{ \"model\": \"m\" }").unwrap();
+        write_json(&theirs, &json!({ "model": "m", "hooks": {} })).unwrap();
+        write_back(&theirs, &json!({ "model": "m" })).unwrap();
+        assert_eq!(read_json_now(&theirs).unwrap(), json!({ "model": "m" }));
+        assert_eq!(fs::read_to_string(backup_of(&theirs)).unwrap(), "{ \"model\": \"m\" }");
+        // Emptied, but the person's once: kept, as {}.
+        write_back(&theirs, &json!({})).unwrap();
+        assert_eq!(read_json_now(&theirs).unwrap(), json!({}));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
