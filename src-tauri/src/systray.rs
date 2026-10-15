@@ -11,6 +11,20 @@
 // A press on an icon is told to its program as Explorer tells it, by the
 // version of the protocol it asked for (NIM_SETVERSION). Windows only.
 //
+// Some programs never hand theirs again (zhoupengjie/Wakuwaku#52): the
+// NVIDIA App's (NvUI.dll in nvcontainer.exe, run as SYSTEM in the person's
+// session) adds it once, when a timer first finds a Shell_TrayWnd, and has
+// no TaskbarCreated at all, which could not reach a SYSTEM window from hers
+// anyway; ACE-Tray's window is message-only and has none either; Windows
+// Security's answers TaskbarCreated with a NIM_MODIFY, for it had added its
+// icon already (to Explorer's). Explorer's tray, handed everything, holds
+// them, and Explorer itself loses them the same way when it restarts. So an
+// icon changed that ours does not have is taken from the change when
+// Explorer's says it holds it, and an icon Explorer's holds that never came
+// at all is shown from Windows' own record of it (held, scan_held), until
+// its program speaks to ours. Neither can be pressed unless the program
+// named its callback message to ours: only an add carries it.
+//
 // The window has to be made on a thread that runs a message loop: start()
 // makes it on the caller's; what changes is posted to a window of the
 // caller's (notify).
@@ -39,6 +53,84 @@ pub struct Shown {
     // the person keeps it (in the taskbar, or folded away).
     pub uid: u32,
     pub name: String,
+    // Its guid, when its program names it by one (where Windows keeps it).
+    pub guid: Option<[u8; 16]>,
+    // Whether a press on it reaches its program: not when the program never
+    // told ours which message to send (an icon taken from a change, or one
+    // only Explorer's holds).
+    pub reach: bool,
+    // Windows' own picture of it (a PNG, from its record), for an icon ours
+    // was never handed; empty otherwise.
+    pub snapshot: Vec<u8>,
+    // Kept out on Windows' taskbar, as its record says, for such an icon.
+    pub out: Option<bool>,
+}
+
+// What shell32 hands the tray with an add (seen 2026-10-15 on 26300): 520
+// bytes after the 964 of SHELLTRAYDATA, the program's path (as Windows keeps
+// it in NotifyIconSettings: a known folder's guid for its start); Explorer
+// refuses an add without it. Empty in the other messages.
+#[cfg_attr(not(windows), allow(dead_code))]
+const PATH_AT: usize = 964;
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn path_in(copied: &[u8]) -> Option<String> {
+    let rest = copied.get(PATH_AT..)?;
+    let units: Vec<u16> = rest.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take(260).take_while(|&u| u != 0).collect();
+    (!units.is_empty()).then(|| String::from_utf16_lossy(&units))
+}
+
+// A program's file name from its path, either kind of slash.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn file_name(path: &str) -> String {
+    path.rsplit(['\\', '/']).next().unwrap_or(path).to_string()
+}
+
+// A guid as Windows writes it ({7120A42D-CB02-4A51-B3B5-58E36E8B14E1}),
+// as its 16 bytes are in memory (the first three parts little-endian).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn guid_bytes(text: &str) -> Option<[u8; 16]> {
+    let hex: String = text.trim().trim_start_matches('{').trim_end_matches('}').split('-').collect();
+    if hex.len() != 32 {
+        return None;
+    }
+    let mut raw = [0u8; 16];
+    for (i, byte) in raw.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    let mut out = raw;
+    out[..4].copy_from_slice(&[raw[3], raw[2], raw[1], raw[0]]);
+    out[4..6].copy_from_slice(&[raw[5], raw[4]]);
+    out[6..8].copy_from_slice(&[raw[7], raw[6]]);
+    Some(out)
+}
+
+// An icon's name that stays from one run to the next: its program, and its
+// guid or its id.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn icon_name(exe: &str, guid: Option<[u8; 16]>, id: u32) -> String {
+    let which = guid.map_or_else(|| id.to_string(), |g| g.iter().map(|b| format!("{b:02x}")).collect());
+    format!("{}:{which}", exe.to_lowercase())
+}
+
+// What Explorer's tray answers when asked where an icon is (message 3): 0
+// for one it does not hold, all ones for one it holds hidden (NIS_HIDDEN),
+// else a corner of where it is (in its folded ones: where ^ is).
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(PartialEq, Debug)]
+enum Holds {
+    No,
+    Hidden,
+    Shown,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn holds(answer: usize) -> Holds {
+    match answer as u32 {
+        0 => Holds::No,
+        u32::MAX => Holds::Hidden,
+        _ => Holds::Shown,
+    }
 }
 
 #[cfg(windows)]
@@ -47,7 +139,7 @@ mod imp {
     use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, AtomicU64, Ordering};
     use std::sync::Mutex;
 
-    use super::{Press, Shown};
+    use super::{file_name, guid_bytes, holds, icon_name, path_in, Holds, Press, Shown};
 
     type Hwnd = *mut c_void;
     type Handle = isize;
@@ -128,6 +220,7 @@ mod imp {
         fn DestroyWindow(hwnd: Hwnd) -> i32;
         fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize;
         fn FindWindowW(class: *const u16, title: *const u16) -> Hwnd;
+        fn FindWindowExW(parent: Hwnd, after: Hwnd, class: *const u16, title: *const u16) -> Hwnd;
         fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
         fn SetWindowPos(hwnd: Hwnd, after: isize, x: i32, y: i32, w: i32, h: i32, flags: u32) -> i32;
         fn SendMessageTimeoutW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize, flags: u32, ms: u32, result: *mut usize) -> isize;
@@ -150,6 +243,25 @@ mod imp {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
         fn CloseHandle(handle: Handle) -> i32;
         fn QueryFullProcessImageNameW(process: Handle, flags: u32, name: *mut u16, size: *mut u32) -> i32;
+        fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> Handle;
+        fn Process32FirstW(snapshot: Handle, entry: *mut ProcessEntry) -> i32;
+        fn Process32NextW(snapshot: Handle, entry: *mut ProcessEntry) -> i32;
+    }
+
+    // PROCESSENTRY32W: every process's file name, SYSTEM's too, which
+    // OpenProcess does not give a person's process (nvcontainer.exe's).
+    #[repr(C)]
+    struct ProcessEntry {
+        size: u32,
+        usage: u32,
+        pid: u32,
+        heap: usize,
+        module: u32,
+        threads: u32,
+        parent: u32,
+        priority: i32,
+        flags: u32,
+        exe: [u16; 260],
     }
 
     const WM_COMMAND: u32 = 0x0111;
@@ -185,6 +297,9 @@ mod imp {
     const SWP_NOACTIVATE: u32 = 0x10;
     const SMTO_ABORTIFHUNG: u32 = 0x2;
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const HWND_MESSAGE: isize = -3;
+    const TH32CS_SNAPPROCESS: u32 = 0x2;
+    const INVALID_HANDLE: Handle = -1;
 
     struct Icon {
         key: u64,
@@ -201,6 +316,9 @@ mod imp {
         modified: u32,
         // It has had an icon: its place is kept while it has none (blinking).
         had_icon: bool,
+        // Taken from a change, its add having gone to Explorer's: a press
+        // reaches it once a message names its callback.
+        taken: bool,
     }
 
     static OURS: AtomicIsize = AtomicIsize::new(0);
@@ -215,6 +333,8 @@ mod imp {
     // Something could not be handed on to Explorer: on stopping, every program is asked again.
     static LOST: AtomicBool = AtomicBool::new(false);
     static ICONS: Mutex<Vec<Icon>> = Mutex::new(Vec::new());
+    // Icons Explorer's tray holds that never came to ours (scan_held).
+    static HELD: Mutex<Vec<HeldIcon>> = Mutex::new(Vec::new());
     // What came, for the log: (kind, count).
     static SEEN: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
     static NOTES: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -254,23 +374,45 @@ mod imp {
         SEEN.lock().unwrap().iter().map(|(k, n)| format!("{k} ×{n}")).collect::<Vec<_>>().join(", ")
     }
 
+    // A process's file name; for one ours may not open (a SYSTEM one), as
+    // the list of processes has it.
     fn exe_of(pid: u32) -> String {
+        if pid == 0 {
+            return "pid 0".to_string();
+        }
         // SAFETY: a handle we close; the name goes into our own buffer.
-        unsafe {
+        let named = unsafe {
             let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if process == 0 {
-                return format!("pid {pid}");
-            }
             let mut name = [0u16; 512];
             let mut size = 512u32;
-            let ok = QueryFullProcessImageNameW(process, 0, name.as_mut_ptr(), &mut size);
-            CloseHandle(process);
-            if ok == 0 {
-                return format!("pid {pid}");
+            let ok = process != 0 && QueryFullProcessImageNameW(process, 0, name.as_mut_ptr(), &mut size) != 0;
+            if process != 0 {
+                CloseHandle(process);
             }
-            let path = String::from_utf16_lossy(&name[..size as usize]);
-            path.rsplit('\\').next().unwrap_or(&path).to_string()
+            ok.then(|| file_name(&String::from_utf16_lossy(&name[..size as usize])))
+        };
+        named.or_else(|| processes().into_iter().find(|(p, _)| *p == pid).map(|(_, exe)| exe)).unwrap_or_else(|| format!("pid {pid}"))
+    }
+
+    // Every process running, with its file name.
+    fn processes() -> Vec<(u32, String)> {
+        let mut list = Vec::new();
+        // SAFETY: a snapshot we close; each entry into our own struct, its size set.
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot == INVALID_HANDLE {
+                return list;
+            }
+            let mut entry: ProcessEntry = std::mem::zeroed();
+            entry.size = std::mem::size_of::<ProcessEntry>() as u32;
+            let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+            while more {
+                list.push((entry.pid, text(&entry.exe)));
+                more = Process32NextW(snapshot, &mut entry) != 0;
+            }
+            CloseHandle(snapshot);
         }
+        list
     }
 
     // Explorer's taskbar window: never another copy's of ours (shell.rs).
@@ -348,7 +490,6 @@ mod imp {
         }
     }
 
-    // A NIM_ message: whether ours took it.
     // A program's tip noted in the log at most every ten seconds: Task
     // Manager's changes every second.
     fn tip_note_due(exe: &str) -> bool {
@@ -365,7 +506,27 @@ mod imp {
         }
     }
 
-    fn on_icon(message: u32, nid: &IconData) -> bool {
+    // An icon new to ours, from an add (path: its program's, as the add
+    // carries it) or a change.
+    fn new_icon(nid: &IconData, path: Option<&str>) -> Icon {
+        let mut pid = 0;
+        // SAFETY: our own out-parameter; a gone window leaves it 0.
+        unsafe { GetWindowThreadProcessId(hwnd_of(nid.hwnd), &mut pid) };
+        let guid = (nid.flags & NIF_GUID != 0 && nid.guid != [0; 16]).then_some(nid.guid);
+        let exe = path.map(file_name).filter(|e| !e.is_empty()).unwrap_or_else(|| exe_of(pid));
+        let mut icon = Icon { key: NEXT_KEY.fetch_add(1, Ordering::SeqCst), hwnd: nid.hwnd, id: nid.id, guid, callback: 0, icon: 0, tip: String::new(), version: 0, hidden: false, pid, exe, modified: 0, had_icon: false, taken: false };
+        update(&mut icon, nid);
+        // One shown from Windows' record until now: this one in its place,
+        // once it has a picture.
+        if icon.had_icon {
+            HELD.lock().unwrap().retain(|h| !h.is(&icon.exe, icon.id, icon.guid));
+        }
+        icon
+    }
+
+    // A NIM_ message: whether ours took it. held: Explorer's tray answered
+    // a change of it yes (it holds the icon).
+    fn on_icon(message: u32, nid: &IconData, path: Option<&str>, held: bool) -> bool {
         let mut icons = ICONS.lock().unwrap();
         let at = icons.iter().position(|i| same(i, nid));
         match (message, at) {
@@ -379,13 +540,21 @@ mod imp {
                 true
             }
             (NIM_ADD, None) => {
-                let mut pid = 0;
-                // SAFETY: our own out-parameter; a gone window leaves it 0.
-                unsafe { GetWindowThreadProcessId(hwnd_of(nid.hwnd), &mut pid) };
-                let guid = (nid.flags & NIF_GUID != 0 && nid.guid != [0; 16]).then_some(nid.guid);
-                let mut icon = Icon { key: NEXT_KEY.fetch_add(1, Ordering::SeqCst), hwnd: nid.hwnd, id: nid.id, guid, callback: 0, icon: 0, tip: String::new(), version: 0, hidden: false, pid, exe: exe_of(pid), modified: 0, had_icon: false };
-                update(&mut icon, nid);
-                note(format!("tray: added {} (id {}, {}) \"{}\"{}", icon.exe, icon.id, if guid.is_some() { "by guid" } else { "by window" }, icon.tip, if icon.hidden { ", hidden" } else { "" }));
+                let icon = new_icon(nid, path);
+                note(format!("tray: added {} (id {}, {}) \"{}\"{}", icon.exe, icon.id, if icon.guid.is_some() { "by guid" } else { "by window" }, icon.tip, if icon.hidden { ", hidden" } else { "" }));
+                icons.push(icon);
+                true
+            }
+            // A change of an icon ours never had, which Explorer's holds: its
+            // add went there (before ours was up, or while Explorer's came
+            // first), and its program does not add it again when asked (or
+            // answers with this change, as Windows Security's does). Taken
+            // from the change; a press reaches it only if the change names
+            // its callback message.
+            (NIM_MODIFY, None) if held && nid.hwnd != 0 => {
+                let mut icon = new_icon(nid, None);
+                icon.taken = true;
+                note(format!("tray: took {}'s icon (id {}, {}) \"{}\" from a change: its add went to Windows' taskbar{}", icon.exe, icon.id, if icon.guid.is_some() { "by guid" } else { "by window" }, icon.tip, if icon.callback == 0 { "; no callback named, presses cannot reach it" } else { "" }));
                 icons.push(icon);
                 true
             }
@@ -397,6 +566,18 @@ mod imp {
                     unsafe { DestroyIcon(icon.icon) };
                 }
                 true
+            }
+            // One shown from Windows' record, removed by its program: gone
+            // now, not at the next look.
+            (NIM_DELETE, None) => {
+                let guid = (nid.flags & NIF_GUID != 0 && nid.guid != [0; 16]).then_some(nid.guid);
+                let mut held = HELD.lock().unwrap();
+                let before = held.len();
+                held.retain(|h| match guid {
+                    Some(g) => h.guid != Some(g),
+                    None => h.guid.is_some() || h.hwnd != nid.hwnd || h.uid != nid.id,
+                });
+                held.len() != before
             }
             (NIM_SETVERSION, Some(i)) => {
                 icons[i].version = nid.version;
@@ -490,7 +671,10 @@ mod imp {
                         NIM_SETVERSION => "NIM_SETVERSION",
                         _ => "NIM_other",
                     });
-                    if on_icon(data.message, &data.nid) {
+                    // SAFETY: Windows' copy of what was sent, cds.size bytes, for this call.
+                    let path = (data.message == NIM_ADD).then(|| path_in(unsafe { std::slice::from_raw_parts(cds.ptr as *const u8, cds.size as usize) })).flatten();
+                    let held = data.message == NIM_MODIFY && answer.is_some_and(|a| a != 0);
+                    if on_icon(data.message, &data.nid, path.as_deref(), held) {
                         changed();
                         return 1;
                     }
@@ -599,6 +783,7 @@ mod imp {
                 unsafe { DestroyIcon(icon.icon) };
             }
         }
+        HELD.lock().unwrap().clear();
         if LOST.load(Ordering::SeqCst) {
             ask_again();
         }
@@ -625,17 +810,217 @@ mod imp {
         }
     }
 
+    // An icon Explorer's tray holds, shown in it, that ours was never
+    // handed: its program (as Windows recorded it), its uID or guid, its
+    // window when found by its uID, and from Windows' record of it its first
+    // tip, its picture and whether it is kept out on the taskbar.
+    struct HeldIcon {
+        key: u64,
+        exe: String,
+        uid: u32,
+        guid: Option<[u8; 16]>,
+        hwnd: u32,
+        tip: String,
+        png: Vec<u8>,
+        out: bool,
+    }
+
+    impl HeldIcon {
+        // Whether it is this icon of ours: by its guid, else its program and
+        // uID (whatever ours is named by: a record from before its program
+        // named it by a guid).
+        fn is(&self, exe: &str, id: u32, guid: Option<[u8; 16]>) -> bool {
+            match self.guid {
+                Some(a) => guid == Some(a),
+                None => self.uid == id && self.exe.eq_ignore_ascii_case(exe),
+            }
+        }
+    }
+
+    // Asked as Shell_NotifyIconGetRect asks, of Explorer's own window (not
+    // the first Shell_TrayWnd, which is ours): whether it holds this icon,
+    // shown. None: it did not answer.
+    fn explorer_holds(explorer: Hwnd, hwnd: u32, id: u32, guid: [u8; 16]) -> Option<bool> {
+        for message in [1, 2] {
+            let q = RectQuestion { signature: SIGNATURE, message, size: 32, padding: 0, hwnd, id, guid };
+            let cds = CopyData { data: 3, size: std::mem::size_of::<RectQuestion>() as u32, ptr: &q as *const RectQuestion as *const c_void };
+            let mut answer = 0usize;
+            // SAFETY: Explorer's window; the struct is ours for the call and copied across.
+            let ok = unsafe { SendMessageTimeoutW(explorer, WM_COPYDATA, 0, &cds as *const CopyData as isize, SMTO_ABORTIFHUNG, 500, &mut answer) };
+            if ok == 0 {
+                return None;
+            }
+            match holds(answer) {
+                Holds::Shown => return Some(true),
+                Holds::Hidden => return Some(false),
+                // A corner at 0 is one half of the answer: the other asked.
+                Holds::No => {}
+            }
+        }
+        Some(false)
+    }
+
+    extern "system" fn list_one(hwnd: Hwnd, list: isize) -> i32 {
+        let mut pid = 0;
+        // SAFETY: a window being enumerated; our own out-parameter; the Vec outlives the walk.
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            (*(list as *mut Vec<(u32, u32)>)).push((hwnd as isize as u32, pid));
+        }
+        1
+    }
+
+    // Every window a tray icon may be named by: the top-level ones and the
+    // message-only ones (ACE-Tray's), each with its process.
+    fn windows() -> Vec<(u32, u32)> {
+        let mut list: Vec<(u32, u32)> = Vec::new();
+        // SAFETY: the callback pushes onto the Vec, which outlives the call;
+        // FindWindowEx walks the message-only windows one after another.
+        unsafe {
+            EnumWindows(list_one, &mut list as *mut Vec<(u32, u32)> as isize);
+            let mut at: Hwnd = std::ptr::null_mut();
+            loop {
+                at = FindWindowExW(HWND_MESSAGE as Hwnd, at, std::ptr::null(), std::ptr::null());
+                if at.is_null() {
+                    break;
+                }
+                let mut pid = 0;
+                GetWindowThreadProcessId(at, &mut pid);
+                list.push((at as isize as u32, pid));
+            }
+        }
+        list
+    }
+
+    // Windows' record of every tray icon it has shown (HKCU\Control Panel\
+    // NotifyIconSettings, a key per icon: ExecutablePath, UID or IconGuid,
+    // InitialTooltip, IsPromoted, IconSnapshot, a PNG), for the programs
+    // that run (by file name, lower case): once per program and icon.
+    fn records(running: &std::collections::HashSet<String>) -> Vec<HeldIcon> {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let Ok(root) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Control Panel\NotifyIconSettings") else { return Vec::new() };
+        let mut list: Vec<HeldIcon> = Vec::new();
+        for name in root.enum_keys().flatten() {
+            let Ok(key) = root.open_subkey(&name) else { continue };
+            let Ok(path) = key.get_value::<String, _>("ExecutablePath") else { continue };
+            let exe = file_name(&path).to_lowercase();
+            // Explorer's own icons come back when asked, or are hers to draw (the volume, the network).
+            if exe == "explorer.exe" || !running.contains(&exe) {
+                continue;
+            }
+            let guid = key.get_value::<String, _>("IconGuid").ok().and_then(|g| guid_bytes(&g));
+            let uid = key.get_value::<u32, _>("UID").ok();
+            if guid.is_none() && uid.is_none() {
+                continue;
+            }
+            let uid = uid.unwrap_or(0);
+            // The same icon recorded again (another path to the program).
+            if list.iter().any(|h| h.guid == guid && (guid.is_some() || (h.uid == uid && h.exe == exe))) {
+                continue;
+            }
+            let png = key.get_raw_value("IconSnapshot").map(|v| v.bytes.into_owned()).unwrap_or_default();
+            let tip = key.get_value::<String, _>("InitialTooltip").unwrap_or_default();
+            let out = key.get_value::<u32, _>("IsPromoted").unwrap_or(0) != 0;
+            list.push(HeldIcon { key: 0, exe, uid, guid, hwnd: 0, tip, png, out });
+        }
+        list
+    }
+
+    // The icons Explorer's tray holds, shown, that ours has not, of the
+    // records of the programs that run (but ours): each one named by a guid
+    // asked by it; one named by its window and uID asked of each window of
+    // its program until one is held (at most 400 asked in all). None:
+    // Explorer's did not answer (hung, or starting again).
+    fn look_held(explorer: Hwnd, ours: &[(String, u32, Option<[u8; 16]>)]) -> Option<Vec<HeldIcon>> {
+        let own = std::process::id();
+        let procs: Vec<(u32, String)> = processes().into_iter().filter(|(pid, _)| *pid != own).map(|(pid, exe)| (pid, exe.to_lowercase())).collect();
+        let running: std::collections::HashSet<String> = procs.iter().map(|(_, exe)| exe.clone()).collect();
+        let mut wins: Option<Vec<(u32, u32)>> = None;
+        let mut asked = 0;
+        let mut found = Vec::new();
+        for mut record in records(&running) {
+            if record.png.is_empty() || ours.iter().any(|(exe, id, guid)| record.is(exe, *id, *guid)) {
+                continue;
+            }
+            if let Some(guid) = record.guid {
+                asked += 1;
+                if explorer_holds(explorer, 0, record.uid, guid)? {
+                    found.push(record);
+                }
+                continue;
+            }
+            let pids: Vec<u32> = procs.iter().filter(|(_, exe)| *exe == record.exe).map(|(pid, _)| *pid).collect();
+            for (hwnd, _) in wins.get_or_insert_with(windows).iter().filter(|(_, pid)| pids.contains(pid)) {
+                if asked >= 400 {
+                    break;
+                }
+                asked += 1;
+                if explorer_holds(explorer, *hwnd, record.uid, [0; 16])? {
+                    record.hwnd = *hwnd;
+                    found.push(record);
+                    break;
+                }
+            }
+        }
+        Some(found)
+    }
+
+    // Looked for again (some seconds after programs were asked for their
+    // icons, and every so often): the icons only Explorer's tray holds,
+    // shown in ours from Windows' record of them until their program hands
+    // ours one. Each keeps its key from one look to the next.
+    pub fn scan_held() {
+        let explorer = explorers();
+        if OURS.load(Ordering::SeqCst) == 0 || explorer.is_null() {
+            return;
+        }
+        // Those ours shows (one taken from a change without a picture yet is
+        // still shown from Windows').
+        let ours: Vec<(String, u32, Option<[u8; 16]>)> = ICONS.lock().unwrap().iter().filter(|i| !i.hidden && i.had_icon).map(|i| (i.exe.clone(), i.id, i.guid)).collect();
+        // Explorer's not answering: what was found last kept until it does.
+        let Some(mut found) = look_held(explorer, &ours) else { return };
+        let mut held = HELD.lock().unwrap();
+        for h in found.iter_mut() {
+            match held.iter().find(|was| was.is(&h.exe, h.uid, h.guid) && was.hwnd == h.hwnd) {
+                Some(was) => h.key = was.key,
+                None => {
+                    h.key = NEXT_KEY.fetch_add(1, Ordering::SeqCst);
+                    let which = h.guid.map_or_else(|| format!("id {}, window {:#x}", h.uid, h.hwnd), |_| "by guid".to_string());
+                    note(format!("tray: Windows' taskbar holds {}'s icon ({which}) \"{}\", never handed to hers: shown from Windows' picture of it, presses cannot reach it", h.exe, h.tip));
+                }
+            }
+        }
+        for was in held.iter().filter(|was| !found.iter().any(|h| h.key == was.key)) {
+            note(format!("tray: {}'s icon no longer held by Windows' taskbar alone", was.exe));
+        }
+        let differs = found.len() != held.len() || found.iter().zip(held.iter()).any(|(a, b)| a.key != b.key);
+        *held = found;
+        drop(held);
+        if differs {
+            changed();
+        }
+    }
+
+    // The icons ours has, then those only Explorer's holds (none that ours
+    // has now).
     pub fn shown() -> Vec<Shown> {
-        ICONS
+        let mut list: Vec<Shown> = ICONS
             .lock()
             .unwrap()
             .iter()
             .filter(|i| !i.hidden && i.had_icon)
-            .map(|i| {
-                let which = i.guid.map_or_else(|| i.id.to_string(), |g| g.iter().map(|b| format!("{b:02x}")).collect());
-                Shown { key: i.key, icon: i.icon, tip: i.tip.clone(), exe: i.exe.clone(), uid: i.id, name: format!("{}:{which}", i.exe.to_lowercase()) }
-            })
-            .collect()
+            .map(|i| Shown { key: i.key, icon: i.icon, tip: i.tip.clone(), exe: i.exe.clone(), uid: i.id, name: icon_name(&i.exe, i.guid, i.id), guid: i.guid, reach: !i.taken || i.callback != 0, snapshot: Vec::new(), out: None })
+            .collect();
+        let held: Vec<Shown> = HELD
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|h| !list.iter().any(|s| h.is(&s.exe, s.uid, s.guid)))
+            .map(|h| Shown { key: h.key, icon: 0, tip: h.tip.clone(), exe: h.exe.clone(), uid: h.uid, name: icon_name(&h.exe, h.guid, h.uid), guid: h.guid, reach: false, snapshot: h.png.clone(), out: Some(h.out) })
+            .collect();
+        list.extend(held);
+        list
     }
 
     // The spike writes it down (tray.txt); the pet only logs the icons as they come.
@@ -732,12 +1117,108 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
+        use super::*;
+
         #[test]
         fn the_structs_are_the_size_the_tray_is_handed() {
-            // NOTIFYICONDATAW in its 32-bit form, and SHELLTRAYDATA around it.
-            assert_eq!(std::mem::size_of::<super::IconData>(), 956);
-            assert_eq!(std::mem::size_of::<super::TrayData>(), 964);
-            assert_eq!(std::mem::size_of::<super::RectQuestion>(), 40);
+            // NOTIFYICONDATAW in its 32-bit form, and SHELLTRAYDATA around it,
+            // the program's path after it.
+            assert_eq!(std::mem::size_of::<IconData>(), 956);
+            assert_eq!(std::mem::size_of::<TrayData>(), 964);
+            assert_eq!(std::mem::size_of::<TrayData>(), super::super::PATH_AT);
+            assert_eq!(std::mem::size_of::<RectQuestion>(), 40);
+        }
+
+        fn nid(hwnd: u32, id: u32, flags: u32, tip: &str) -> IconData {
+            // SAFETY: plain numbers and arrays, all zero.
+            let mut nid: IconData = unsafe { std::mem::zeroed() };
+            nid.size = 956;
+            nid.hwnd = hwnd;
+            nid.id = id;
+            nid.flags = flags;
+            for (i, u) in tip.encode_utf16().enumerate() {
+                nid.tip[i] = u;
+            }
+            nid
+        }
+
+        fn ours(hwnd: u32, id: u32) -> Option<(String, u32, bool, String)> {
+            ICONS.lock().unwrap().iter().find(|i| i.hwnd == hwnd && i.id == id).map(|i| (i.exe.clone(), i.callback, i.had_icon, i.tip.clone()))
+        }
+
+        #[test]
+        fn a_change_of_an_icon_only_explorers_tray_holds_is_taken() {
+            // Windows Security's answer to TaskbarCreated: a change, its
+            // icon, tip and state, no callback (seen in SecurityHealthSSO.dll).
+            let change = nid(0x7a01, 100, NIF_TIP | NIF_STATE, "Windows Security");
+            assert!(!on_icon(NIM_MODIFY, &change, None, false), "one Explorer's does not hold either is not taken");
+            assert_eq!(ours(0x7a01, 100), None);
+            assert!(on_icon(NIM_MODIFY, &change, None, true));
+            let (_, callback, _, tip) = ours(0x7a01, 100).expect("taken");
+            assert_eq!((callback, tip.as_str()), (0, "Windows Security"));
+            // Named by no window: not taken (it would be swept at once).
+            assert!(!on_icon(NIM_MODIFY, &nid(0, 101, NIF_TIP, "x"), None, true));
+            // Its program's add, later, is the same icon: its callback filled in.
+            let mut add = nid(0x7a01, 100, NIF_MESSAGE | NIF_TIP, "Windows Security");
+            add.callback = 0x8077;
+            assert!(on_icon(NIM_ADD, &add, None, false));
+            assert_eq!(ours(0x7a01, 100).map(|o| o.1), Some(0x8077));
+            assert!(on_icon(NIM_DELETE, &add, None, false));
+        }
+
+        #[test]
+        fn an_add_names_its_program_by_the_path_it_carries() {
+            // A SYSTEM process's, which ours may not open (nvcontainer.exe).
+            let add = nid(0x7a02, 1, NIF_TIP, "NVIDIA");
+            assert!(on_icon(NIM_ADD, &add, Some(r"{6D809377-6AF0-444B-8957-A3773F02200E}\NVIDIA Corporation\NvContainer\nvcontainer.exe"), false));
+            assert_eq!(ours(0x7a02, 1).map(|o| o.0).as_deref(), Some("nvcontainer.exe"));
+            assert!(on_icon(NIM_DELETE, &add, None, false));
+        }
+
+        #[test]
+        fn an_icon_its_program_hands_ours_takes_the_place_of_the_one_shown_from_windows_record() {
+            let guid = super::super::guid_bytes("{7120A42D-CB02-4A51-B3B5-58E36E8B14E1}").unwrap();
+            HELD.lock().unwrap().push(HeldIcon { key: 9_000_001, exe: "nvcontainer.exe".into(), uid: 0, guid: Some(guid), hwnd: 0, tip: String::new(), png: vec![0x89], out: false });
+            let other = HeldIcon { key: 9_000_002, exe: "ace-tray.exe".into(), uid: 10001, guid: None, hwnd: 0x7a03, tip: String::new(), png: vec![0x89], out: true };
+            HELD.lock().unwrap().push(other);
+            let held = shown().into_iter().filter(|s| s.key >= 9_000_001).map(|s| (s.name, s.reach, s.out)).collect::<Vec<_>>();
+            assert!(held.contains(&("nvcontainer.exe:2da4207102cb514ab3b558e36e8b14e1".to_string(), false, Some(false))), "{held:?}");
+            assert!(held.contains(&("ace-tray.exe:10001".to_string(), false, Some(true))), "{held:?}");
+            // Its add without a picture leaves Windows' in its place; with one, not.
+            let mut add = nid(0x7a04, 1, NIF_GUID | NIF_TIP, "NVIDIA");
+            add.guid = guid;
+            assert!(on_icon(NIM_ADD, &add, Some(r"C:\Program Files\NVIDIA Corporation\NvContainer\nvcontainer.exe"), false));
+            assert!(HELD.lock().unwrap().iter().any(|h| h.key == 9_000_001));
+            assert!(on_icon(NIM_DELETE, &add, None, false));
+            #[link(name = "user32")]
+            extern "system" {
+                fn LoadIconW(instance: isize, name: usize) -> isize;
+            }
+            add.flags |= NIF_ICON;
+            // SAFETY: Windows' own application icon.
+            add.icon = unsafe { LoadIconW(0, 32512) } as u32;
+            assert!(on_icon(NIM_ADD, &add, Some(r"C:\Program Files\NVIDIA Corporation\NvContainer\nvcontainer.exe"), false));
+            let keys: Vec<u64> = HELD.lock().unwrap().iter().map(|h| h.key).collect();
+            assert!(!keys.contains(&9_000_001) && keys.contains(&9_000_002), "{keys:?}");
+            assert!(on_icon(NIM_DELETE, &add, None, false));
+            // Its program removing one shown from Windows' record: gone at once.
+            assert!(on_icon(NIM_DELETE, &nid(0x7a03, 10001, 0, ""), None, false));
+            assert!(!HELD.lock().unwrap().iter().any(|h| h.key == 9_000_002));
+        }
+
+        // What only Explorer's tray holds on this computer, as she would
+        // look (her own icons left out: there are none here). By hand:
+        // cargo test only_explorers -- --ignored --nocapture
+        #[test]
+        #[ignore]
+        fn only_explorers_tray_holds_these_here() {
+            let explorer = explorers();
+            assert!(!explorer.is_null(), "no Explorer taskbar");
+            let started = std::time::Instant::now();
+            for h in look_held(explorer, &[]).expect("Explorer's tray answers") {
+                println!("{} uid {} guid {:?} window {:#x} out {} tip {:?} picture {} bytes", h.exe, h.uid, h.guid.map(|g| super::super::icon_name("", Some(g), 0)), h.hwnd, h.out, h.tip, h.png.len());
+            }
+            println!("looked in {:?}", started.elapsed());
         }
     }
 }
@@ -759,6 +1240,7 @@ mod imp {
     }
     pub fn ask_again() {}
     pub fn sweep() {}
+    pub fn scan_held() {}
     pub fn shown() -> Vec<Shown> {
         Vec::new()
     }
@@ -778,4 +1260,48 @@ mod imp {
 }
 
 #[allow(unused_imports)]
-pub use imp::{ask_again, describe, first, keep_first, notes, place, seen, set_rects, shown, start, stop, sweep, tell};
+pub use imp::{ask_again, describe, first, keep_first, notes, place, scan_held, seen, set_rects, shown, start, stop, sweep, tell};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_add_carries_its_programs_path_after_the_icon() {
+        // As shell32 sent it on 26300: SHELLTRAYDATA, then 520 bytes, the path.
+        let path = r"{6D809377-6AF0-444B-8957-A3773F02200E}\PowerShell\7\pwsh.exe";
+        let mut copied = vec![0u8; PATH_AT + 520];
+        for (i, u) in path.encode_utf16().enumerate() {
+            copied[PATH_AT + 2 * i..PATH_AT + 2 * i + 2].copy_from_slice(&u.to_le_bytes());
+        }
+        assert_eq!(path_in(&copied).as_deref(), Some(path));
+        assert_eq!(file_name(&path_in(&copied).unwrap()), "pwsh.exe");
+        // The other messages carry it empty; older senders not at all.
+        assert_eq!(path_in(&vec![0u8; PATH_AT + 520]), None);
+        assert_eq!(path_in(&vec![0u8; PATH_AT]), None);
+        assert_eq!(path_in(&vec![0u8; 152 + 8]), None);
+    }
+
+    #[test]
+    fn a_guid_as_windows_writes_it_is_its_bytes_in_memory() {
+        let g = guid_bytes("{7120A42D-CB02-4A51-B3B5-58E36E8B14E1}").unwrap();
+        assert_eq!(g, [0x2d, 0xa4, 0x20, 0x71, 0x02, 0xcb, 0x51, 0x4a, 0xb3, 0xb5, 0x58, 0xe3, 0x6e, 0x8b, 0x14, 0xe1]);
+        assert_eq!(guid_bytes("7120a42d-cb02-4a51-b3b5-58e36e8b14e1"), Some(g));
+        assert_eq!(guid_bytes("{7120A42D-CB02}"), None);
+        assert_eq!(guid_bytes("{7120A42D-CB02-4A51-B3B5-58E36E8B14EZ}"), None);
+        // Named as the icons handed to ours are, so where it is kept carries over.
+        assert_eq!(icon_name("NVContainer.exe", Some(g), 0), "nvcontainer.exe:2da4207102cb514ab3b558e36e8b14e1");
+        assert_eq!(icon_name("ACE-Tray.exe", None, 10001), "ace-tray.exe:10001");
+    }
+
+    #[test]
+    fn explorers_answer_says_whether_it_holds_an_icon_shown() {
+        // Seen 2026-10-15: none; one hidden (NIS_HIDDEN); one folded away
+        // (where ^ is, 2159,1380).
+        assert_eq!(holds(0), Holds::No);
+        assert_eq!(holds(-1isize as usize), Holds::Hidden);
+        assert_eq!(holds(0xFFFF_FFFF), Holds::Hidden);
+        assert_eq!(holds(2159 | (1380 << 16)), Holds::Shown);
+        assert_eq!(file_name("C:/x/y.exe"), "y.exe");
+    }
+}
