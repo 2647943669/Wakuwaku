@@ -218,6 +218,13 @@ mod imp {
         fn SHLoadIndirectString(source: *const u16, out: *mut u16, len: u32, reserved: *mut c_void) -> i32;
     }
 
+    #[link(name = "version")]
+    extern "system" {
+        fn GetFileVersionInfoSizeW(name: *const u16, handle: *mut u32) -> u32;
+        fn GetFileVersionInfoW(name: *const u16, handle: u32, len: u32, data: *mut c_void) -> i32;
+        fn VerQueryValueW(block: *const c_void, sub: *const u16, buffer: *mut *mut c_void, len: *mut u32) -> i32;
+    }
+
     #[link(name = "shell32")]
     extern "system" {
         fn SHDefExtractIconW(file: *const u16, index: i32, flags: u32, large: *mut isize, small: *mut isize, sizes: u32) -> i32;
@@ -535,6 +542,45 @@ mod imp {
         until_nul(&out)
     }
 
+    // Windows' own input method: its icon among Windows' files and made by
+    // Microsoft. Among Windows' files alone was not enough: 小狼毫 (Weasel)
+    // keeps its text service and its icon in System32 too, and was taken
+    // for Windows' own, 中 / 英 drawn for it rather than its own picture
+    // (zhoupengjie/Wakuwaku#26). windows: lower case.
+    pub fn is_windows_own(file: &str, windows: &str, company: &str) -> bool {
+        file.to_lowercase().starts_with(windows) && company.to_lowercase().contains("microsoft")
+    }
+
+    // Who made a file, as its version information says (CompanyName), or
+    // nothing.
+    fn company(path: &str) -> String {
+        let file = wide(path);
+        // SAFETY: a buffer of the size the call asks for; the value read
+        // points into it and is copied before it goes.
+        unsafe {
+            let size = GetFileVersionInfoSizeW(file.as_ptr(), std::ptr::null_mut());
+            if size == 0 {
+                return String::new();
+            }
+            let mut data = vec![0u8; size as usize];
+            if GetFileVersionInfoW(file.as_ptr(), 0, size, data.as_mut_ptr() as *mut c_void) == 0 {
+                return String::new();
+            }
+            let mut at: *mut c_void = std::ptr::null_mut();
+            let mut len = 0u32;
+            let translation = wide("\\VarFileInfo\\Translation");
+            if VerQueryValueW(data.as_ptr() as *const c_void, translation.as_ptr(), &mut at, &mut len) == 0 || len < 4 {
+                return String::new();
+            }
+            let (lang, page) = (*(at as *const u16), *(at as *const u16).add(1));
+            let key = wide(&format!("\\StringFileInfo\\{lang:04x}{page:04x}\\CompanyName"));
+            if VerQueryValueW(data.as_ptr() as *const c_void, key.as_ptr(), &mut at, &mut len) == 0 || len <= 1 {
+                return String::new();
+            }
+            String::from_utf16_lossy(std::slice::from_raw_parts(at as *const u16, len as usize)).trim_end_matches('\0').trim().to_string()
+        }
+    }
+
     // The input methods to pick from, in the order of Windows' language
     // list: each language (Languages), then its input methods by their
     // order there. A text service's name and icon as it registered them
@@ -572,7 +618,8 @@ mod imp {
                     let file: String = reg.get_value("IconFile").unwrap_or_default();
                     let index: u32 = reg.get_value("IconIndex").unwrap_or(0);
                     if !file.is_empty() {
-                        m.own = expand(&file).to_lowercase().starts_with(&windows);
+                        let path = expand(&file);
+                        m.own = is_windows_own(&path, &windows, &company(&path));
                         m.icon = Some((file, index as i32));
                     }
                 } else if let Ok(klid) = u32::from_str_radix(rest, 16) {
@@ -656,8 +703,10 @@ mod imp {
     }
 
     // The input method in front read again: told to the page (taskbar.rs
-    // keys_loop) when it changed.
-    fn look(control: Option<&Control>, changed: &dyn Fn()) {
+    // keys_loop) when it changed; which one it was taken for, in the log,
+    // when that changed (a person's log then says which way it went: its
+    // name, id, icon and Windows' own or not, #26).
+    fn look(control: Option<&Control>, changed: &dyn Fn(), log: &dyn Fn(&str)) {
         let size = SIZE.load(Ordering::SeqCst);
         let profile = control.and_then(Control::profile);
         let mode = control.and_then(|c| c.mode(size));
@@ -685,6 +734,13 @@ mod imp {
         };
         let mut was = NOW.lock().unwrap();
         if *was != now {
+            if was["id"] != now["id"] || was["own"] != now["own"] {
+                let said = match &found {
+                    Some(m) => format!("{} ({}), icon {}, {}", m.name, m.id, m.icon.as_ref().map_or("none", |i| i.0.as_str()), if m.own { "Windows' own" } else { "not Windows' own" }),
+                    None => format!("{} (not in the language list)", profile.as_ref().map_or("?", |p| p.name.as_str())),
+                };
+                log(&format!("input method in front: {said}"));
+            }
             *was = now;
             drop(was);
             changed();
@@ -719,7 +775,7 @@ mod imp {
                 None
             }
         };
-        look(control.as_ref(), &*changed);
+        look(control.as_ref(), &*changed, &*log);
         // SAFETY: this thread's own queue, its messages dispatched (the
         // switcher's windows' among them).
         unsafe {
@@ -728,14 +784,14 @@ mod imp {
                     WM_LOOK => {
                         // A burst of what it is told, read once.
                         while PeekMessageW(&mut msg, std::ptr::null_mut(), WM_LOOK, WM_LOOK, PM_REMOVE) != 0 {}
-                        look(control.as_ref(), &*changed);
+                        look(control.as_ref(), &*changed, &*log);
                     }
                     WM_PICK => {
                         let id = Box::from_raw(msg.lparam as *mut Vec<u16>);
                         if !control.as_ref().is_some_and(|c| c.activate(&id)) {
                             pick_by_layout(&until_nul(&id));
                         }
-                        look(control.as_ref(), &*changed);
+                        look(control.as_ref(), &*changed, &*log);
                     }
                     _ => {
                         DispatchMessageW(&msg);
@@ -944,5 +1000,17 @@ mod tests {
         assert_eq!(id(find(&all, None, 0x0411_0411)), Some("Microsoft IME".into()));
         assert_eq!(id(find(&all, None, 0x0804_0804)), None);
         assert_eq!(id(find(&all, None, 0x0407_0407)), None);
+    }
+
+    #[test]
+    fn windows_own_by_its_maker_not_only_its_folder() {
+        use super::imp::is_windows_own;
+        let windows = r"c:\windows";
+        assert!(is_windows_own(r"C:\Windows\System32\InputMethod\CHS\ChsIME.exe", windows, "Microsoft Corporation"));
+        // 小狼毫 keeps its icon in System32 (#26): not Windows' own.
+        assert!(!is_windows_own(r"C:\WINDOWS\system32\weasel.dll", windows, "式恕堂"));
+        assert!(!is_windows_own(r"C:\WINDOWS\system32\weasel.dll", windows, ""));
+        // Microsoft's, elsewhere (an input method from the Store): not Windows' own either.
+        assert!(!is_windows_own(r"C:\Program Files\WindowsApps\x\ime.dll", windows, "Microsoft Corporation"));
     }
 }
