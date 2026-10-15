@@ -68,6 +68,14 @@ pub fn snapshot(sh: &Shared) -> Value {
             "backup": connection::backup_of(&connection::agy_hooks_file()).exists(),
             "seen": sh.agy_seen.load(Ordering::SeqCst) > 0,
         },
+        // ZCode's config.json (connection.rs), the same; absent without its folder.
+        "zcode": {
+            "hooks": connection::zcode_hooks_status(),
+            "file": connection::zcode_config_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::zcode_config_file()),
+            "backup": connection::backup_of(&connection::zcode_config_file()).exists(),
+            "seen": sh.zcode_seen.load(Ordering::SeqCst) > 0,
+        },
         // How many displays there are: her taskbar on all of them is offered
         // only with more than one (Look, taskbarDisplays).
         "displayCount": sh.screens().areas.len(),
@@ -453,6 +461,16 @@ pub async fn settings_agy_hooks(app: AppHandle, action: String) -> Value {
             let folder = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.to_string_lossy().into_owned())).unwrap_or_default();
             json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "folder": folder, "snapshot": snapshot(&sh) })
         }
+    }
+}
+
+// install, remove: ZCode's config.json.
+#[tauri::command]
+pub async fn settings_zcode_hooks(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_zcode_hooks(&action) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }
 }
 

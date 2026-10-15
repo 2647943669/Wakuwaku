@@ -45,6 +45,7 @@ mod detach;
 mod events;
 mod events_agy;
 mod events_codex;
+mod events_zcode;
 mod fetch;
 mod focus;
 mod fullscreen;
@@ -134,6 +135,8 @@ pub struct Shared {
     pub codex_seen: std::sync::atomic::AtomicU64,
     // The same for Antigravity's.
     pub agy_seen: std::sync::atomic::AtomicU64,
+    // And ZCode's.
+    pub zcode_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -1206,6 +1209,46 @@ fn agy_hook(port: u16, name: &str) {
     }
 }
 
+// ZCode's hook (connection::ZCODE_FLAG and the event's name): the event
+// handed to her port and let go (post_and_go: ZCode waits on each hook),
+// with where the session runs as it starts or a turn begins (jump.rs); its
+// session starting with her not up starts her, unless the person quit her,
+// as Codex's does. A prompt waits for her answer, printed for ZCode in Claude
+// Code's words (asks.rs); ZCode shows its own dialog meanwhile, takes the
+// first answer, and ends this hook should the person answer there. Nothing
+// printed otherwise: ZCode takes JSON a hook prints as its output, and fails
+// the hook on one that does not fit. Her not up, nothing to wait on.
+fn zcode_hook(port: u16, name: &str) {
+    let Some(mut event) = read_event() else { return };
+    let name = event["hook_event_name"].as_str().unwrap_or(name).to_string();
+    if let Some(fields) = event.as_object_mut() {
+        fields.insert("hook_event_name".into(), json!(name));
+        if matches!(name.as_str(), "SessionStart" | "UserPromptSubmit") {
+            fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
+        }
+    }
+    if name != "PermissionRequest" {
+        if !post_and_go(port, "zcode", &event) && name == "SessionStart" && data::may_start(&data::folder()) {
+            start_detached();
+        }
+        return;
+    }
+    if !jump::is_listening(port) {
+        return;
+    }
+    // Just under the hook's own timeout.
+    let wait = Duration::from_millis(connection::ZCODE_PROMPT_TIMEOUT_MS - 5_000);
+    let agent = ureq::Agent::config_builder().timeout_global(Some(wait)).build().new_agent();
+    if let Ok(mut res) = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku&agent=zcode")).send_json(&event) {
+        let body = res.body_mut().read_to_string().unwrap_or_default();
+        if serde_json::from_str::<Value>(&body).is_ok_and(|v| v.get("hookSpecificOutput").is_some()) {
+            let mut out = std::io::stdout();
+            let _ = out.write_all(body.as_bytes());
+            let _ = out.flush();
+        }
+    }
+}
+
 fn main() {
     // Her exe again, as the taskbar's guard (shell.rs): it waits for her to
     // end, and gives Windows' taskbar back if she could not; and sees
@@ -1228,6 +1271,9 @@ fn main() {
     }
     if let Some(at) = args.iter().position(|a| a == connection::AGY_FLAG) {
         return agy_hook(port, args.get(at + 1).map_or("", String::as_str));
+    }
+    if let Some(at) = args.iter().position(|a| a == connection::ZCODE_FLAG) {
+        return zcode_hook(port, args.get(at + 1).map_or("", String::as_str));
     }
 
     // Started at login (connection.rs): by her logon task, or by the Run value.
@@ -1335,6 +1381,7 @@ fn main() {
             settings::settings_hooks,
             settings::settings_codex_hooks,
             settings::settings_agy_hooks,
+            settings::settings_zcode_hooks,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1426,6 +1473,7 @@ fn main() {
                 greeted: AtomicBool::new(false),
                 codex_seen: std::sync::atomic::AtomicU64::new(0),
                 agy_seen: std::sync::atomic::AtomicU64::new(0),
+                zcode_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),

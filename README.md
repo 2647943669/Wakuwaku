@@ -84,6 +84,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
   - `claude -p` 这类非交互模式会先等 hook 回复再做决定，没人点的话最多会卡到面板等待时间结束。
   - MCP 弹出的表单（Elicitation）只做提醒。
 - Codex 的授权请求也会弹到面板上，但只有**允许** / **拒绝**（Codex 不接受 hook 加规则）。Codex 要等面板交出才会弹自己的确认框，所以面板最多等 1 分钟；想在终端里答，点「去终端处理」。
+- ZCode 的授权请求也一样只有**允许** / **拒绝**；ZCode 自己的确认框同时弹出，两边先答的算数，点「去 ZCode 处理」交回 ZCode。
 
 ## 安装
 
@@ -134,6 +135,14 @@ Codex 桌面版里装过的宠物（`~/.codex/pets`）格式相同，会直接�
 和 Claude Code 的区别：Antigravity 没有「等你批准」的事件，所以她能跟着开始、干活、调用工具、做完和出错，但提醒不了批准，也不能在她这里确认。
 
 Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：程序的路径里有空格时，用它的 8.3 短路径写进去；连短路径也没有（有的盘关掉了短文件名），就装不上，把程序放到路径没有空格的文件夹即可。agy 每一步都会等 hook 跑完，大约 0.1–0.2 秒。
+
+### 5. 连上 ZCode（可选）
+
+支持智谱 Z.ai 的 [ZCode](https://zcode.z.ai/)：桌面版（3.15 实测）和它的命令行。在「连接」页的 ZCode 一栏点「安装」，会在 `~/.zcode/cli/config.json` 的 `hooks.events` 里给 7 个事件各加一条我们的 hook，并打开 `hooks.enabled`（先备份；移除时只删我们的条目，`hooks.enabled` 也还原成原来的样子）。之后**新建的任务**就会连上，已经开着的任务不算。ZCode 设置里能看到这几条 hook，也能一条条关掉，关掉后「连接」页会提示。
+
+和 Claude Code 几乎一样：开始、干活、每一步的工具、做完（带上它最后说的话）、改好了都能显示，「今天」也算上它。ZCode 要你批准时，岛上会弹出**允许** / **拒绝**（ZCode 不给建议规则，所以没有「以后都允许」）；ZCode 自己的确认框同时弹出，**先答的那边算数**：在岛上点了，ZCode 的框会关掉；在 ZCode 里答了，岛上的面板会在这一步做完时收起（拒绝的话，要等这一轮结束）。点「去 ZCode 处理」就交回 ZCode，并把它的窗口拉到前面。她没开时，ZCode 照常只弹自己的框。
+
+ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwaku.exe --wakuwaku-zcode-hook <事件名>`（按参数直接启动，不经过 shell，路径里有空格也没关系），把事件转给她。ZCode 每一步都会等它跑完，大约 0.1 秒；确认请求的那条最多等 10 分钟（面板自己的等待时间更短，到时间就交回 ZCode）。新任务开始时她没开，也会把她拉起来（除非你从菜单里退出了她）。
 
 ### 从源码运行
 
@@ -209,7 +218,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 ZCode 的：在 ZCode 一栏点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
@@ -221,6 +230,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 Claude Code ──HTTP hooks──▶ 宠物窗口 (127.0.0.1:47213/hook)
             └─SessionStart─▶ 程序本身 --wakuwaku-ensure-running（后台运行，她没开就启动）
 Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ 宠物窗口 (/hook?agent=codex)
+ZCode ──process hooks──▶ 程序本身 --wakuwaku-zcode-hook <事件> ──▶ 宠物窗口 (/hook?agent=zcode)
 ```
 
 - 所有事件都用 Claude Code 的 **HTTP hook** 直接发给她，调用工具时不启动任何进程（本机实测每次约 0.3ms）。她立刻回 `{}`，表示不做任何决定；只有确认请求会等你在面板上点了再回。

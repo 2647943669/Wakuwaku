@@ -2,7 +2,8 @@
 //
 //   GET  /health       { ok, app, runtime, state }; with WAKUWAKU_DEBUG=1, the windows and settings too
 //   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
-//                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook)
+//                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook);
+//                      ?agent=agy, ?agent=zcode the same for Antigravity's and ZCode's
 //   POST /state        a message (state.rs)
 //   POST /widget       a widget for the island, from a script (widgets.rs)
 //   POST /come-home    started again while running: back into sight
@@ -19,7 +20,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::{events, events_agy, events_codex, island, jump, now_ms, pet, Responder, Shared};
+use crate::{events, events_agy, events_codex, events_zcode, island, jump, now_ms, pet, Responder, Shared};
 
 // Hook events carry whole files (an Edit's PostToolUse has the file before
 // the edit), so this is generous.
@@ -28,13 +29,14 @@ const MAX_BODY: u64 = 16 * 1024 * 1024;
 // holds one this long at most.
 const CODEX_ASK_MS: u64 = 60 * 1000;
 
-// Which agent's hook the request comes from (?agent=codex, ?agent=agy: handed
-// on by this program, main.rs); none for Claude Code's.
+// Which agent's hook the request comes from (?agent=codex, ?agent=agy,
+// ?agent=zcode: handed on by this program, main.rs); none for Claude Code's.
 fn agent_of(url: &str) -> Option<&'static str> {
     let (_, query) = url.split_once('?')?;
     query.split('&').find_map(|p| match p {
         "agent=codex" => Some("codex"),
         "agent=agy" => Some("agy"),
+        "agent=zcode" => Some("zcode"),
         _ => None,
     })
 }
@@ -117,6 +119,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             let seen = match agent {
                 Some("codex") => &sh.codex_seen,
                 Some("agy") => &sh.agy_seen,
+                Some("zcode") => &sh.zcode_seen,
                 _ => &sh.claude_seen,
             };
             seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
@@ -130,6 +133,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                     }
                     events_agy::to_message(&event)
                 }
+                Some("zcode") => events_zcode::to_message(&event),
                 _ => events::to_message(&event),
             };
             if let Some(mut msg) = msg {
@@ -266,6 +270,7 @@ mod tests {
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=codex"), Some("codex"));
         assert_eq!(agent_of("/hook?agent=codex"), Some("codex"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=agy"), Some("agy"));
+        assert_eq!(agent_of("/hook?from=wakuwaku&agent=zcode"), Some("zcode"));
         assert_eq!(agent_of("/hook?from=wakuwaku"), None);
         assert_eq!(agent_of("/hook?agent=codexx"), None);
         assert_eq!(agent_of("/hook"), None);

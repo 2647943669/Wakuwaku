@@ -86,6 +86,7 @@ Each pet has 11 animations, and every one of them has a job:
   - Non-interactive runs such as `claude -p` wait for the hook before deciding, so with nobody clicking they wait until the panel gives up.
   - MCP forms (Elicitation) are announced, not filled in.
 - Codex's permission prompts come to the panel too, with **Allow** / **Deny** only (Codex takes no rules from a hook). Codex shows its own dialog only once the panel lets go, so the panel waits 1 minute at most; to answer in the terminal, click Handle in terminal.
+- ZCode's permission prompts too, with **Allow** / **Deny** only; ZCode shows its own dialog at the same time, the first answer counts, and Handle in ZCode hands it back.
 
 ## Install
 
@@ -136,6 +137,14 @@ Google's Antigravity is supported: the `agy` CLI and the Antigravity 2.0 desktop
 How it differs from Claude Code: Antigravity has no "needs your approval" event, so she follows its sessions starting, working, using tools, finishing and failing, but can't remind you to approve, and you can't approve on her.
 
 Antigravity hooks can only be commands, run by `cmd` without reading quotes: if the app's path has a space, its 8.3 short path is written instead; with no short path either (some drives have short names turned off), installing fails, and moving the app to a folder with no spaces in its path fixes it. agy waits for the hook at each step, about 0.1–0.2 s.
+
+### 5. Connect ZCode (optional)
+
+Z.ai's [ZCode](https://zcode.z.ai/) is supported: the desktop app (tried with 3.15) and its CLI. Click Install in the ZCode part of the Connect page. It adds one hook of ours to each of its 7 events under `hooks.events` in `~/.zcode/cli/config.json` and turns `hooks.enabled` on (backed up first; removing takes out only our entries and puts `hooks.enabled` back as it was). **New tasks** connect from then on; tasks already open don't. ZCode's settings list these hooks and can turn each off; the Connect page says so when one is.
+
+Nearly as with Claude Code: starting, working, each step's tool, finishing (with its last words), edits, and Today counts it. When ZCode needs your approval, the island asks **Allow** / **Deny** (ZCode suggests no rules, so no "always"); ZCode shows its own dialog at the same time, and **whichever you answer first counts**: answered on the island, ZCode's dialog closes; answered in ZCode, the panel goes once that step is done (after a deny, once the turn ends). Handle in ZCode hands it back and brings its window to the front. With her not running, ZCode just shows its own dialog.
+
+ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.exe --wakuwaku-zcode-hook <event>` once (started directly with its arguments, no shell, so a space in the path is fine), which hands it to her. ZCode waits for it at each step, about 0.1 s; the approval one may wait up to 10 minutes (the panel's own wait is shorter, and hands it back to ZCode when it runs out). A new task starts her when she isn't running (unless you quit her from her menu).
 
 ### From source
 
@@ -211,7 +220,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 ### Uninstall
 
 1. If you turned on **Start at login**, turn it off on the Connect page (the `Wakuwaku` Run entry and the `Wakuwaku at logon-…` task both go).
-2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`.
+2. With the plugin: in Claude Code, `/plugin uninstall wakuwaku@wakuwaku`, then `/plugin marketplace remove wakuwaku`. With hooks in settings.json: click Remove on the Connect page; only this project's entries go, your own hooks stay, and the file as it was before the first change is at `~/.claude/settings.json.wakuwaku.bak`. With Codex: click Remove in its part of the Connect page; the backup is `~/.codex/hooks.json.wakuwaku.bak`. With ZCode: the same in its part; the backup is `~/.zcode/cli/config.json.wakuwaku.bak`.
 3. Quit her, then delete the exe or the project folder. Notifications register her name in `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`; delete that key too.
 4. Delete her settings and downloaded pets: the `wakuwaku-data` folder beside the exe, or the project's `data/` when run from source.
 
@@ -223,6 +232,7 @@ After she quits unexpectedly (a crash), the island asks you once, at her next st
 Claude Code ──HTTP hooks──▶ the pet (127.0.0.1:47213/hook)
             └─SessionStart─▶ the app itself --wakuwaku-ensure-running (in the background; starts her if she's not up)
 Codex ──command hooks──▶ the app itself --wakuwaku-codex-hook ──▶ the pet (/hook?agent=codex)
+ZCode ──process hooks──▶ the app itself --wakuwaku-zcode-hook <event> ──▶ the pet (/hook?agent=zcode)
 ```
 
 - Every event is a Claude Code **HTTP hook** sent straight to her, so a tool call starts no process (about 0.3 ms here). She answers `{}` at once, meaning no decision; only a prompt waits until you answer on the panel.

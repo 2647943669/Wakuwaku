@@ -11,7 +11,9 @@
 //
 // Codex's prompts come the same way (events_codex.rs), but Codex shows its
 // own dialog only once the hook has answered with no decision, and takes
-// only allow or deny: no rules to add, so never "always".
+// only allow or deny: no rules to add, so never "always". ZCode's too
+// (events_zcode.rs): its dialog shows at once, as Claude Code's does, and
+// it suggests no rules either.
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
