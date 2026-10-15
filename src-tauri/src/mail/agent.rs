@@ -56,8 +56,12 @@ const MOST_TEXT_ATTACHMENT: u64 = 20 << 10;
 pub enum Agent {
     Claude,
     Codex,
-    // Google's Antigravity, its agy command (the 2.0 app's own agent is not
-    // run from outside).
+    // Google's Antigravity, its agy command. The 2.0 app's own agent is not
+    // run from outside: the app brings no command line (its bin has its
+    // language_server.exe, an undocumented server for its own window, and
+    // webm_encoder.exe; its installer names no command, as winget's
+    // Google.AntigravityCLI names agy), so with the app alone the Mail page
+    // shows Antigravity greyed and says agy is wanted.
     Agy,
 }
 
@@ -195,32 +199,234 @@ pub struct Talks {
 
 // --- Finding the agents --------------------------------------------------------------------
 
-// A program on the PATH (or where its installer puts it), as Windows runs
-// one: name.exe, name.cmd, name.bat.
-fn find(name: &str) -> Option<PathBuf> {
-    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
-    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-    let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
-    dirs.extend(home.map(|h| h.join(".local").join("bin")));
-    dirs.extend(local.iter().map(|l| l.join("Programs").join("OpenAI").join("Codex").join("bin")));
-    // Antigravity's installer (agy).
-    dirs.extend(local.iter().map(|l| l.join("agy").join("bin")));
-    dirs.extend(roaming.map(|r| r.join("npm")));
-    let exts: &[&str] = if cfg!(windows) { &["exe", "cmd", "bat"] } else { &[""] };
-    dirs.iter().flat_map(|d| exts.iter().map(move |e| if e.is_empty() { d.join(name) } else { d.join(format!("{name}.{e}")) })).find(|p| p.is_file())
+// How Windows runs a program by its name: name.exe, name.cmd, name.bat;
+// and here name.ps1 as well, as npm and scoop leave one (run by
+// PowerShell: launch).
+const EXTS: &[&str] = if cfg!(windows) { &["exe", "cmd", "bat", "ps1"] } else { &[""] };
+
+// A program by its name: in the first of these folders that has it, and in
+// a folder an .exe before a .cmd, a .bat or a script.
+fn find_in(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter().flat_map(|d| EXTS.iter().map(move |e| if e.is_empty() { d.join(name) } else { d.join(format!("{name}.{e}")) })).find(|p| p.is_file())
 }
 
-// Which of them are here, looked for again at most every 10 s.
-pub fn available() -> Value {
-    static SEEN: Mutex<Option<(Instant, Value)>> = Mutex::new(None);
-    let mut seen = SEEN.lock().unwrap();
-    if let Some((_, v)) = seen.as_ref().filter(|(at, _)| at.elapsed() < Duration::from_secs(10)) {
-        return v.clone();
+fn find(name: &str) -> Option<PathBuf> {
+    find_in(name, &search_dirs())
+}
+
+// Where a program is looked for: the PATH she was started with, then the
+// PATH as Windows keeps it now (the person's and the machine's, read from
+// the registry: one installed or a PATH changed since she started is found
+// without starting her again, zhoupengjie/Wakuwaku#42), then where
+// installers put them whether the PATH says so or not: ~\.local\bin
+// (Claude's), Codex's, agy's (its install script's, and winget's links,
+// Google.AntigravityCLI), npm's (%APPDATA%\npm, or a prefix of the
+// person's own), scoop's shims (the person's and the machine's). Each
+// folder once.
+fn search_dirs() -> Vec<PathBuf> {
+    let home = env_var("USERPROFILE").map(PathBuf::from);
+    let local = env_var("LOCALAPPDATA").map(PathBuf::from);
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    for path in saved_env("Path") {
+        dirs.extend(std::env::split_paths(&expand(&path, &env_var)));
     }
-    let v = json!({ "claude": find("claude").is_some(), "codex": find("codex").is_some(), "agy": find("agy").is_some() });
-    *seen = Some((Instant::now(), v.clone()));
-    v
+    dirs.extend(home.iter().map(|h| h.join(".local").join("bin")));
+    dirs.extend(local.iter().map(|l| l.join("Programs").join("OpenAI").join("Codex").join("bin")));
+    dirs.extend(local.iter().map(|l| l.join("agy").join("bin")));
+    dirs.extend(local.iter().map(|l| l.join("Microsoft").join("WinGet").join("Links")));
+    dirs.extend(env_var("ProgramFiles").map(|p| PathBuf::from(p).join("WinGet").join("Links")));
+    dirs.extend(env_var("APPDATA").map(|r| PathBuf::from(r).join("npm")));
+    let npmrc = home.as_ref().and_then(|h| std::fs::read_to_string(h.join(".npmrc")).ok());
+    let prefix = env_var("NPM_CONFIG_PREFIX").or_else(|| npmrc.as_deref().and_then(|rc| npm_prefix(rc, &env_var)));
+    dirs.extend(prefix.map(|p| if cfg!(windows) { PathBuf::from(p) } else { PathBuf::from(p).join("bin") }));
+    dirs.extend(env_var("SCOOP").map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join("scoop"))).map(|s| s.join("shims")));
+    dirs.extend(env_var("SCOOP_GLOBAL").map(PathBuf::from).or_else(|| env_var("ProgramData").map(|p| PathBuf::from(p).join("scoop"))).map(|s| s.join("shims")));
+    // Windows' folders are the same in any case, and with a \ at the end.
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|d| !d.as_os_str().is_empty() && seen.insert(d.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase()));
+    dirs
+}
+
+// A variable of the environment: hers, else as Windows keeps it now (one
+// set since she started, scoop's SCOOP say).
+fn env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty()).or_else(|| {
+        let own = |n: &str| std::env::var(n).ok();
+        saved_env(name).into_iter().find(|v| !v.is_empty()).map(|v| expand(&v, &own))
+    })
+}
+
+// A variable as the registry keeps it, the person's first, then the
+// machine's (Path is both), each as written: %USERPROFILE% and the like
+// not yet expanded.
+#[cfg(windows)]
+fn saved_env(name: &str) -> Vec<String> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+    [(HKEY_CURRENT_USER, "Environment"), (HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")]
+        .into_iter()
+        .filter_map(|(root, key)| RegKey::predef(root).open_subkey(key).ok()?.get_value::<String, _>(name).ok())
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn saved_env(_name: &str) -> Vec<String> {
+    Vec::new()
+}
+
+// %NAME% in a value, as Windows expands it: each one known by its value,
+// one not known left as it is.
+fn expand(s: &str, var: &dyn Fn(&str) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find('%') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('%') else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let name = &after[..end];
+        match (!name.is_empty()).then(|| var(name)).flatten() {
+            Some(value) => out.push_str(&value),
+            None => out.push_str(&rest[start..start + end + 2]),
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+// Where npm puts the programs it installs for everyone, when the person
+// said where (claude and codex may be there): prefix= in ~\.npmrc, the
+// last one, as npm reads it (in quotes or not, ${NAME} for a variable, ~
+// for the home folder). Read, not asked of npm: npm config get prefix
+// takes a second or more.
+fn npm_prefix(npmrc: &str, var: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let value = npmrc
+        .lines()
+        .rev()
+        .map(str::trim)
+        .filter(|l| !l.starts_with(';') && !l.starts_with('#'))
+        .find_map(|l| l.split_once('=').filter(|(key, _)| key.trim() == "prefix").map(|(_, v)| v.trim()))?;
+    let unquoted = match value.as_bytes() {
+        [b'"', .., b'"'] => serde_json::from_str::<String>(value).unwrap_or_else(|_| value[1..value.len() - 1].to_string()),
+        [b'\'', .., b'\''] => value[1..value.len() - 1].to_string(),
+        // Up to a ; or # (a comment after it), \; \# \\ for the mark itself.
+        _ => {
+            let mut s = String::new();
+            let mut chars = value.chars();
+            while let Some(c) = chars.next() {
+                match c {
+                    ';' | '#' => break,
+                    '\\' => match chars.next() {
+                        Some(n @ ('\\' | ';' | '#')) => s.push(n),
+                        Some(n) => s.extend(['\\', n]),
+                        None => s.push('\\'),
+                    },
+                    c => s.push(c),
+                }
+            }
+            s.trim().to_string()
+        }
+    };
+    let mut out = String::new();
+    let mut rest = unquoted.as_str();
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        let Some(end) = rest[start..].find('}') else { break };
+        let name = &rest[start + 2..start + end];
+        match var(name.trim_end_matches('?')) {
+            Some(v) => out.push_str(&v),
+            None => out.push_str(&rest[start..=start + end]),
+        }
+        rest = &rest[start + end + 1..];
+    }
+    out.push_str(rest);
+    let out = match out.strip_prefix('~').filter(|r| r.starts_with(['/', '\\'])) {
+        Some(r) => format!("{}{r}", var("USERPROFILE").unwrap_or_default()),
+        None => out,
+    };
+    (!out.is_empty()).then_some(out)
+}
+
+// How a program found is started: as it is (a .cmd or .bat Rust runs by
+// cmd), or a PowerShell script by Windows PowerShell, every Windows has
+// it: by -Command with the script and its arguments quoted, not -File, so
+// what goes on stdin reaches the program the script starts as it came
+// (with -File PowerShell reads stdin itself and hands it on in its own
+// encoding: a letter's 你好 came out as ??? in 5.1, as mojibake in 7), and
+// the run fails when the script does.
+fn launch(exe: &Path, args: &[String]) -> (PathBuf, Vec<String>) {
+    if !exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("ps1")) {
+        return (exe.to_path_buf(), args.to_vec());
+    }
+    let windows = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| "C:\\Windows".into());
+    let line: Vec<String> = std::iter::once(exe.to_string_lossy().into_owned()).chain(args.iter().cloned()).map(|a| crate::scripts::quote(&a)).collect();
+    let mut all: Vec<String> = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"].map(String::from).to_vec();
+    all.push(format!("& {}", line.join(" ")));
+    (windows.join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe"), all)
+}
+
+fn command(exe: &Path, args: &[String]) -> Command {
+    let (program, args) = launch(exe, args);
+    let mut command = Command::new(program);
+    command.args(args);
+    command
+}
+
+const NAMES: [&str; 3] = ["claude", "codex", "agy"];
+
+// How often those not found are looked for again; the settings, while
+// open, ask a little less often than that (watch).
+const LOOK_AGAIN: Duration = Duration::from_secs(4);
+const WATCH_EVERY: Duration = Duration::from_secs(5);
+
+// Which of them are here. Looked for again at most every few seconds: one
+// found before by a look at its file (still there, found), only the others
+// in every folder (some 50 of them, four names in each).
+pub fn available() -> Value {
+    static SEEN: Mutex<Option<(Instant, Vec<Option<PathBuf>>)>> = Mutex::new(None);
+    let mut seen = SEEN.lock().unwrap();
+    if seen.as_ref().is_none_or(|(at, _)| at.elapsed() >= LOOK_AGAIN) {
+        let before = seen.take().map(|(_, found)| found).unwrap_or_default();
+        let mut dirs: Option<Vec<PathBuf>> = None;
+        let found = NAMES.iter().enumerate().map(|(i, name)| before.get(i).cloned().flatten().filter(|p| p.is_file()).or_else(|| find_in(name, dirs.get_or_insert_with(search_dirs)))).collect();
+        *seen = Some((Instant::now(), found));
+    }
+    let found = &seen.as_ref().expect("just looked").1;
+    Value::Object(NAMES.iter().zip(found).map(|(name, at)| (name.to_string(), Value::Bool(at.is_some()))).collect())
+}
+
+// While the settings are open, those not found are looked for every few
+// seconds, and the page is sent the snapshot again when that changes: agy
+// installed with the Mail page open shows there by itself, no restart and
+// no reopening (zhoupengjie/Wakuwaku#42). One watch at a time; it ends
+// with the settings.
+pub fn watch(sh: &Arc<Shared>) {
+    static WATCHING: AtomicBool = AtomicBool::new(false);
+    if WATCHING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let sh = sh.clone();
+    std::thread::spawn(move || loop {
+        let open = || sh.island.lock().unwrap().settings_open;
+        let mut was = available();
+        while open() {
+            std::thread::sleep(WATCH_EVERY);
+            let now = available();
+            if now != was {
+                sh.log(&format!("mail: agents found now {now}"));
+                was = now;
+                sh.push_settings();
+            }
+        }
+        WATCHING.store(false, Ordering::SeqCst);
+        // Opened again in the moment between the last look and letting go.
+        if !open() || WATCHING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+    });
 }
 
 // --- The letter's folder -------------------------------------------------------------------
@@ -693,8 +899,8 @@ fn agy_models(sh: &Shared) -> Vec<Value> {
 // `agy models`, hidden, a minute at most: its list.
 fn list_agy_models(exe: &Path, cwd: &Path) -> Vec<Value> {
     let _ = std::fs::create_dir_all(cwd);
-    let mut command = Command::new(exe);
-    command.arg("models").current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut command = command(exe, &["models".into()]);
+    command.current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
     hidden(&mut command);
     let Ok(mut child) = command.spawn() else { return Vec::new() };
     let reading = child.stdout.take().map(|mut o| std::thread::spawn(move || {
@@ -754,15 +960,16 @@ fn read_models() -> Value {
 // A session on the letter, in a terminal: Windows Terminal when there is
 // one, else a console window of its own.
 fn open_session(exe: &Path, cwd: &Path, args: &[String], prompt: &str) -> std::io::Result<()> {
+    let (program, args) = launch(exe, &args.iter().cloned().chain([prompt.to_string()]).collect::<Vec<_>>());
     let mut command = match find("wt") {
         Some(wt) => {
             let mut c = Command::new(wt);
-            c.args(["-w", "new", "-d"]).arg(cwd).arg(exe).args(args).arg(prompt);
+            c.args(["-w", "new", "-d"]).arg(cwd).arg(&program).args(&args);
             c
         }
         None => {
             let mut c = Command::new("cmd.exe");
-            c.args(["/c", "start", "", "/D"]).arg(cwd).arg(exe).args(args).arg(prompt);
+            c.args(["/c", "start", "", "/D"]).arg(cwd).arg(&program).args(&args);
             hidden(&mut c);
             c
         }
@@ -932,8 +1139,8 @@ fn hear(talk: &mut Talk, line: &str) -> bool {
 // refused, is asked once more to answer (agy_go_on); silent still, the turn
 // failed, and says why.
 fn run_turn(sh: &Arc<Shared>, key: String, exe: &Path, args: Vec<String>, stdin: String) -> Result<(), String> {
-    let mut command = Command::new(exe);
-    command.args(&args).current_dir(home(sh)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut command = command(exe, &args);
+    command.current_dir(home(sh)).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     hidden(&mut command);
     let mut child = command.spawn().map_err(|e| e.to_string())?;
     {
@@ -1435,5 +1642,95 @@ mod tests {
         let md = letter_md(&m, &[("notes.txt".into(), 2048)], false);
         assert!(md.starts_with("# Lunch\n\n- From: Alice <a@example.com>\n- To: me@example.test\n- Date: 2026-10-05T12:03:00+02:00\n- Attachments (in this folder): notes.txt (2 KB)\n"), "{md}");
         assert!(md.ends_with("---\n\nFree on Friday?\n"));
+    }
+
+    // The registry's Path as written, expanded by what is known.
+    #[test]
+    fn a_saved_path_is_expanded_as_windows_does() {
+        let var = |name: &str| match name {
+            "USERPROFILE" => Some(r"C:\Users\Ann".to_string()),
+            "SCOOP" => Some(r"D:\scoop".to_string()),
+            _ => None,
+        };
+        assert_eq!(expand(r"%USERPROFILE%\.local\bin;%SCOOP%\shims", &var), r"C:\Users\Ann\.local\bin;D:\scoop\shims");
+        assert_eq!(expand(r"%NOPE%\bin;C:\x", &var), r"%NOPE%\bin;C:\x");
+        assert_eq!(expand("100%", &var), "100%");
+    }
+
+    // npm's prefix of one's own, as ~\.npmrc has it.
+    #[test]
+    fn npm_s_prefix_is_read_from_npmrc() {
+        let var = |name: &str| match name {
+            "APPDATA" => Some(r"C:\Users\Ann\AppData\Roaming".to_string()),
+            "USERPROFILE" => Some(r"C:\Users\Ann".to_string()),
+            _ => None,
+        };
+        assert_eq!(npm_prefix("registry=https://registry.npmmirror.com/\nprefix=D:\\npm-global\n", &var).as_deref(), Some(r"D:\npm-global"));
+        assert_eq!(npm_prefix("prefix = \"D:\\\\npm global\"\r\n", &var).as_deref(), Some(r"D:\npm global"));
+        assert_eq!(npm_prefix("prefix=${APPDATA}\\npm2 ; mine\n", &var).as_deref(), Some(r"C:\Users\Ann\AppData\Roaming\npm2"));
+        assert_eq!(npm_prefix("prefix=~/npm\n", &var).as_deref(), Some(r"C:\Users\Ann/npm"));
+        assert_eq!(npm_prefix("prefix=D:\\a\nprefix=E:\\b\n", &var).as_deref(), Some(r"E:\b"));
+        assert_eq!(npm_prefix(";prefix=D:\\old\ncache=D:\\cache\n", &var), None);
+        assert_eq!(npm_prefix("prefix=\n", &var), None);
+    }
+
+    // A folder with agy: its .exe first; a scoop or npm folder with only a
+    // PowerShell script (or a .cmd beside it) found as well (on Windows,
+    // where they are run so).
+    #[test]
+    fn a_program_is_found_in_its_folder_a_script_too() {
+        let root = std::env::temp_dir().join(format!("wakuwaku-find-{}", std::process::id()));
+        let (empty, shims, both) = (root.join("empty"), root.join("shims"), root.join("both"));
+        for d in [&empty, &shims, &both] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let dirs = vec![empty.clone(), shims.clone(), both.clone()];
+        assert_eq!(find_in("agy", &dirs), None);
+        if cfg!(windows) {
+            std::fs::write(both.join("agy.exe"), b"").unwrap();
+            assert_eq!(find_in("agy", &dirs), Some(both.join("agy.exe")));
+            std::fs::write(shims.join("agy.ps1"), b"").unwrap();
+            assert_eq!(find_in("agy", &dirs), Some(shims.join("agy.ps1")));
+            std::fs::write(shims.join("agy.cmd"), b"").unwrap();
+            assert_eq!(find_in("agy", &dirs), Some(shims.join("agy.cmd")));
+            // A folder named so is no program.
+            std::fs::create_dir_all(empty.join("agy.exe")).unwrap();
+            assert_eq!(find_in("agy", &dirs), Some(shims.join("agy.cmd")));
+        } else {
+            std::fs::write(shims.join("agy"), b"").unwrap();
+            assert_eq!(find_in("agy", &dirs), Some(shims.join("agy")));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // A script is run by PowerShell, its path and arguments quoted on one
+    // line; anything else as it is.
+    #[test]
+    fn a_script_is_launched_by_powershell() {
+        let args = vec!["--model".to_string(), "it's a b".to_string()];
+        let (program, same) = launch(Path::new(r"C:\x\agy.exe"), &args);
+        assert_eq!((program, same), (PathBuf::from(r"C:\x\agy.exe"), args.clone()));
+        let (program, line) = launch(Path::new(r"C:\Users\Ann\scoop\shims\agy.PS1"), &args);
+        assert!(program.ends_with("powershell.exe"), "{program:?}");
+        assert_eq!(line, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", r"& 'C:\Users\Ann\scoop\shims\agy.PS1' '--model' 'it''s a b'"]);
+    }
+
+    // And so run, its arguments reach it, what goes on stdin reaches the
+    // program it starts byte for byte (a letter's Chinese), and its output
+    // comes back the same.
+    #[cfg(windows)]
+    #[test]
+    fn a_script_passes_stdin_on_as_it_came() {
+        let dir = std::env::temp_dir().join(format!("wakuwaku-ps1-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("echo it.ps1");
+        std::fs::write(&script, "[Console]::Out.Write(($args -join '|') + \"`n\")\n& \"$env:SystemRoot\\System32\\findstr.exe\" /R '^'\n").unwrap();
+        let mut child = command(&script, &["a b".into(), "it's".into(), "--x".into()]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+        let line = "{\"content\":\"你好 letter\"}\n";
+        child.stdin.take().unwrap().write_all(line.as_bytes()).unwrap();
+        let out = child.wait_with_output().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n"), format!("a b|it's|--x\n{line}"));
     }
 }
