@@ -117,7 +117,7 @@ cd .. && node --test "test/*.test.js"   # 页面的单元测试
 
 单实例：谁占着端口谁是宠物。再启动一份时端口被占，这份会 POST `/come-home`（让她重新出现、回到右下角）然后退出。
 
-HTTP 接口用的是 `src-tauri/vendor/tiny_http` 里打过补丁的 tiny_http 0.12.0（`Cargo.toml` 的 `[patch.crates-io]`；改了哪几处、为什么，见那里的 README.md）。原版在连接出错时 `unwrap` 而 panic：套接字复制不出第二个句柄（WSADuplicateSocket 回 WSAEINVAL 10022，某些网络过滤、VPN 或杀毒软件的分层驱动下、以管理员身份运行时会这样；测试虚拟机里以管理员身份启动的一份就这样崩过）、客户端已经断开时取不到对端地址；正式版是 `panic = "abort"`，一个连接就让整个她退出。连接在被接受之前就被重置，原版也会结束接受线程，她从此收不到 hook。现在这几种都只丢掉那一个连接，接着等下一个；丢掉的连接和接受线程的结束由 `tiny_http::tell_failures` 告诉 `server.rs`，写进她的日志，同一句只写一次（这样的过滤驱动下每个 hook 都会失败）。不用 `log` 的 warn：`log` 要设一个 logger，设了之后所有 crate 的日志调用都留在程序里，试过 exe 大了约 130 KB。`cargo test` 用 `test-failed-split` 特性让下一个连接拆不开，看她接着答下一个；正式版没有这个特性。
+HTTP 接口用的是 `src-tauri/vendor/tiny_http` 里打过补丁的 tiny_http 0.12.0（`Cargo.toml` 的 `[patch.crates-io]`；改了哪几处、为什么，见那里的 README.md）。原版在连接出错时 `unwrap` 而 panic：套接字复制不出第二个句柄（WSADuplicateSocket 回 WSAEINVAL 10022，某些网络过滤、VPN 或杀毒软件的分层驱动下、以管理员身份运行时会这样；测试虚拟机里以管理员身份启动的一份就这样崩过）、客户端已经断开时取不到对端地址；正式版是 `panic = "abort"`，一个连接就让整个她退出。那个 10022 的来历：管理员身份的进程启动她，她为了离开它的作业对象以 Explorer 为父进程重新启动自己，新进程的安全描述符来自那个管理员令牌，自己的普通令牌打不开自己（DUP_HANDLE），于是每个连接都复制失败。所以现在一个连接的读写两半共用同一个套接字（`Arc<Connection>`，像 `&TcpStream` 那样读写），根本不再复制句柄。连接在被接受之前就被重置，原版也会结束接受线程，她从此收不到 hook。现在这几种都只丢掉那一个连接，接着等下一个；丢掉的连接和接受线程的结束由 `tiny_http::tell_failures` 告诉 `server.rs`，写进她的日志，同一句只写一次（这样的过滤驱动下每个 hook 都会失败）。不用 `log` 的 warn：`log` 要设一个 logger，设了之后所有 crate 的日志调用都留在程序里，试过 exe 大了约 130 KB。`cargo test` 用 `test-failed-split` 特性让下一个连接拆不开，看她接着答下一个；正式版没有这个特性。
 
 ## Codex
 
