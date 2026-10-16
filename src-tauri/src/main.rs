@@ -77,6 +77,7 @@ mod power;
 mod proxy;
 mod screen;
 mod scripts;
+mod sensors;
 mod server;
 mod settings;
 mod shell;
@@ -1315,6 +1316,28 @@ fn main() {
         }
         return;
     }
+    // The sensor helper and its elevated setup/removal (sensors.rs, #18 part
+    // B): each ends without starting a pet. The helper takes her port and
+    // data folder; the setup takes the port, the user's SID and the data
+    // folder (and "pawnio" to install the driver first); the removal the SID
+    // and the folder.
+    if let Some(at) = args.iter().position(|a| a == sensors::SENSORS_FLAG) {
+        let port = args.get(at + 1).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+        let data = args.get(at + 2).map(PathBuf::from).unwrap_or_else(data::folder);
+        return sensors::run_helper(port, &data);
+    }
+    if let Some(at) = args.iter().position(|a| a == sensors::SETUP_FLAG) {
+        let port = args.get(at + 1).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+        let sid = args.get(at + 2).cloned().unwrap_or_default();
+        let data = args.get(at + 3).map(PathBuf::from).unwrap_or_else(data::folder);
+        let with_pawnio = args.iter().any(|a| a == "pawnio");
+        return sensors::run_setup(port, &sid, &data, with_pawnio);
+    }
+    if let Some(at) = args.iter().position(|a| a == sensors::REMOVE_FLAG) {
+        let sid = args.get(at + 1).cloned().unwrap_or_default();
+        let data = args.get(at + 2).map(PathBuf::from).unwrap_or_else(data::folder);
+        return sensors::run_remove(&sid, &data);
+    }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
         return ensure_running(port);
@@ -1441,6 +1464,7 @@ fn main() {
             settings::settings_omp_hooks,
             settings::settings_zcode_hooks,
             settings::settings_dsh_hooks,
+            settings::settings_cpu_sensors,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,

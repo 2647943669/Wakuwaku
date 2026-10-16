@@ -217,6 +217,9 @@
       ompHooks: action => invoke('settings_omp_hooks', { action }),
       zcodeHooks: action => invoke('settings_zcode_hooks', { action }),
       dshHooks: action => invoke('settings_dsh_hooks', { action }),
+      // The CPU temperature/power helper (#18 part B): 'install',
+      // 'installPawnIO' (download PawnIO first), 'remove'. Each shows one UAC.
+      cpuSensors: action => invoke('settings_cpu_sensors', { action }),
       fetch: reference => invoke('settings_fetch', { reference: String(reference || '') }),
       gallery: (page, sort, query) => invoke('settings_gallery', { page, sort, query }),
       openSite: place => invoke('settings_open_site', { place }),

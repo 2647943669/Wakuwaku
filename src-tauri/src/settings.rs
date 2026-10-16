@@ -129,6 +129,9 @@ pub fn snapshot(sh: &Shared) -> Value {
         "lhm": crate::lhm::view(),
         "hw": crate::hw::view(),
         "monitorSource": crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource"), crate::lhm::view()["status"] == "found").name(),
+        // The CPU temperature/power helper's state (sensors.rs, #18 part B):
+        // off / pawnioMissing / settingUp / running / notAnswering.
+        "cpuSensors": crate::sensors::view(&sh.dir),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.
@@ -537,6 +540,38 @@ pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
     match connection::write_dsh_hooks(&action) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
         Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+    }
+}
+
+// The CPU temperature/power helper (sensors.rs, #18 part B). She is not
+// elevated, so each action launches her own exe elevated (one UAC) and
+// returns at once; the switch's state follows as the helper starts (or does
+// not) answering. "install": set up the task (PawnIO must be present);
+// "installPawnIO": download and install PawnIO first; "remove": take the
+// task away (one more UAC) and leave PawnIO installed.
+#[tauri::command]
+pub async fn settings_cpu_sensors(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    let exe = data::exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let sid = crate::logon::user_sid().unwrap_or_default();
+    let data_dir = sh.dir.to_string_lossy().into_owned();
+    let started = if action == "remove" {
+        let params = format!("{} {} \"{}\"", crate::sensors::REMOVE_FLAG, sid, data_dir);
+        crate::tasks::launch_as_admin_with(&exe, &params) > 32
+    } else {
+        let with_pawnio = if action == "installPawnIO" { " pawnio" } else { "" };
+        let params = format!("{} {} {} \"{}\"{}", crate::sensors::SETUP_FLAG, sh.port, sid, data_dir, with_pawnio);
+        let ok = crate::tasks::launch_as_admin_with(&exe, &params) > 32;
+        if ok {
+            crate::sensors::note_setting_up();
+        }
+        ok
+    };
+    // The person turned the UAC prompt down (ShellExecute gave at most 32).
+    if started {
+        json!({ "ok": true, "snapshot": snapshot(&sh) })
+    } else {
+        json!({ "ok": false, "kind": "cancelled", "snapshot": snapshot(&sh) })
     }
 }
 

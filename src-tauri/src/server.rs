@@ -272,6 +272,17 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             Some(_) => reply(req, 400, json!({ "error": "nothing to do" })),
             None => reply(req, 400, json!({ "error": "bad json" })),
         },
+        // The sensor helper's CPU temperature and power (sensors.rs, #18 part
+        // B): taken only when they carry the token the elevated setup left in
+        // her data folder, so another local program cannot feed her numbers.
+        ("POST", "/hw") => {
+            let ok = read_json(&mut req).is_some_and(|body| crate::sensors::accept(&sh.dir, &body));
+            // The switch's line follows the helper while the settings watch.
+            if ok && sh.island.lock().unwrap().settings_open {
+                sh.push_settings();
+            }
+            reply(req, if ok { 200 } else { 403 }, json!({ "ok": ok }))
+        }
         ("POST", "/debug/eval") if is_debug => {
             let Some(body) = read_json(&mut req) else { return reply(req, 400, json!({ "error": "bad json" })) };
             let page = body["page"].as_str().unwrap_or("pet");

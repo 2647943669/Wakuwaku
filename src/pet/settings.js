@@ -785,7 +785,39 @@
       return { id: h.id, name: hardwareName(h), about, list, more: health }
     })
     const note = `<div class="note lhm-note">${esc(T('mon.builtinNote'))}</div>`
-    return note + sensorGroups(groups, s => (s.toggle ? `mon:${s.toggle}` : `hws:${s.id}`))
+    return note + cpuSensorsRow() + sensorGroups(groups, s => (s.toggle ? `mon:${s.toggle}` : `hws:${s.id}`))
+  }
+
+  // The CPU temperature/power helper (#18 part B, snap.cpuSensors): a switch
+  // with a short line saying what it needs and how it is going. It needs the
+  // PawnIO driver and a helper that runs as administrator (one UAC to set
+  // up). Its state is not set up / setting up / running (with the CPU's
+  // temperature) / PawnIO missing (offer to install it) / not answering
+  // (the task is there but nothing comes — a VM may not expose the
+  // registers). Turning it off removes the task and leaves PawnIO installed.
+  function cpuSensorsRow() {
+    const cs = snap.cpuSensors || {}
+    const state = cs.state || 'off'
+    const on = cs.on === true
+    // Off: set up (or, with no PawnIO, download it first). On: remove.
+    const action = on ? 'remove' : state === 'pawnioMissing' ? 'installPawnIO' : 'install'
+    const bad = state === 'notAnswering' || state === 'pawnioMissing'
+    const temp = typeof cs.temp === 'number' ? `${cs.temp.toFixed(1)} °C` : ''
+    const note =
+      state === 'running'
+        ? T('sensors.running', { reading: temp || '—' })
+        : state === 'settingUp'
+          ? T('sensors.settingUp')
+          : state === 'notAnswering'
+            ? T('sensors.notAnswering')
+            : state === 'pawnioMissing'
+              ? T('sensors.pawnioMissing')
+              : T('sensors.note')
+    const title = `<div class="fr"><span class="fl">${esc(T('sensors.title'))}</span><span class="grow"></span><button class="sw${on ? ' on' : ''}" data-cpu-sensors="${action}"></button></div>`
+    const line = `<div class="note lhm-note${bad ? ' bad' : ''}">${esc(note)}</div>`
+    // On: a dim line saying removing it keeps PawnIO.
+    const removeHint = on ? `<div class="note lhm-note">${esc(T('sensors.removeNote'))}</div>` : ''
+    return title + line + removeHint
   }
 
   // LibreHardwareMonitor's sensors, from one the person runs (lhm.rs,
@@ -2818,6 +2850,18 @@
         connecting = ''
         snap = got.snapshot
         if (action === 'install' && !got.ok) failed.zcode = { error: got.error || '', kind: got.kind || 'other' }
+        draw()
+        relayout()
+      })
+    }
+    // The CPU temperature/power helper's switch (#18 part B): set up, or
+    // remove, through an elevated child of hers (one UAC). The state updates
+    // as the helper starts answering (the backend pushes while the settings
+    // are open).
+    const cpuSensors = at('[data-cpu-sensors]')
+    if (cpuSensors) {
+      return window.pet.settings.cpuSensors(cpuSensors.dataset.cpuSensors).then(got => {
+        snap = got.snapshot
         draw()
         relayout()
       })
