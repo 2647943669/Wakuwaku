@@ -771,6 +771,11 @@ fn look_soon(sh: &Arc<Shared>) {
     let sh = sh.clone();
     std::thread::spawn(move || {
         let seen = look(&sh);
+        // Running and not (yet) answering: asked now, not at the monitor's
+        // next try (30 s apart while not found), before the steps are shown.
+        if seen.running && crate::lhm::view()["status"] != "found" {
+            crate::lhm::ask_now();
+        }
         let changed = with(|s| {
             s.looking = false;
             s.looked = Some(Instant::now());
@@ -1303,6 +1308,12 @@ mod imp {
         fn GetLastError() -> u32;
     }
 
+    #[link(name = "ole32")]
+    extern "system" {
+        fn CoInitializeEx(reserved: *mut c_void, flags: u32) -> i32;
+        fn CoUninitialize();
+    }
+
     #[link(name = "shell32")]
     extern "system" {
         fn ShellExecuteExW(info: *mut ExecInfo) -> i32;
@@ -1318,6 +1329,8 @@ mod imp {
     const SW_SHOWNORMAL: i32 = 1;
     const ERROR_CANCELLED: u32 = 1223;
     const WAIT_OBJECT_0: u32 = 0;
+    const COINIT_APARTMENTTHREADED: u32 = 0x2;
+    const COINIT_DISABLE_OLE1DDE: u32 = 0x4;
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(Some(0)).collect()
@@ -1407,6 +1420,11 @@ mod imp {
         out
     }
 
+    // SHELLEXECUTEINFOW's size as Windows checks it (cbSize).
+    pub fn exec_info_size() -> usize {
+        std::mem::size_of::<ExecInfo>()
+    }
+
     pub fn open_folder(dir: &Path) {
         let dir = wide(&dir.to_string_lossy());
         // SAFETY: strings of our own, null-terminated.
@@ -1434,11 +1452,18 @@ mod imp {
             icon_or_monitor: 0,
             process: 0,
         };
-        // SAFETY: the struct sized as the API asks, its strings ours and
-        // alive through the call; the process handle closed below.
+        // SAFETY: COM up on this thread for ShellExecuteEx (as it asks),
+        // undone if this did it; the struct sized as the API asks, its
+        // strings ours and alive through the call; the process handle
+        // closed below.
         unsafe {
-            if ShellExecuteExW(&mut info) == 0 {
-                let e = GetLastError();
+            let com = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) >= 0;
+            let ran = ShellExecuteExW(&mut info) != 0;
+            let e = GetLastError();
+            if com {
+                CoUninitialize();
+            }
+            if !ran {
                 return if e == ERROR_CANCELLED { Asked::Declined } else { Asked::Failed(format!("error {e}")) };
             }
             let mut code = None;
@@ -1769,6 +1794,20 @@ mod tests {
         // A task whose exe is gone is passed over.
         assert_eq!(pick(None, Some(PathBuf::from(r"Z:\gone\LibreHardwareMonitor.exe")), None, vec![], tools), None);
         assert_eq!(pick(None, None, None, vec![], tools), None);
+    }
+
+    // This machine looked at as the settings look, read-only: its processes,
+    // LHM's task, the Run value, winget's and Scoop's folders, PawnIO, the
+    // .NET desktop runtimes; and ShellExecuteEx's struct as Windows sizes it.
+    #[cfg(windows)]
+    #[test]
+    fn this_machine_is_looked_at() {
+        assert_eq!(imp::exec_info_size(), if cfg!(target_pointer_width = "64") { 112 } else { 60 });
+        let running = imp::running();
+        let task = crate::logon::xml(TASK);
+        println!("running: {running:?}; task: {:?}; elsewhere: {:?}; PawnIO: {:?}; desktop runtimes: {:?}", task.as_ref().map(|t| t.as_ref().map(|x| crate::logon::seen(x).program)), imp::elsewhere(), imp::pawnio(), imp::desktop_runtimes());
+        assert!(task.is_ok(), "{task:?}");
+        assert!(imp::elsewhere().iter().all(|(_, p)| p.is_file()));
     }
 
     // Windows' question answered by a test (WAKUWAKU_TEST_ELEVATE): what
