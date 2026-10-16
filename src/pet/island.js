@@ -169,6 +169,8 @@
   // sessions it lists.
   const OPEN_MAX_W = 420
   const OPEN_BARE_MAX_W = 360
+  // Its padding above and below its lines (style.css #island-expanded).
+  const EXPANDED_PAD_Y = 24
   const OTHERS_SHOWN = 3
   // Pulling her out: the room the window takes for it, how far the drop
   // stretches before it pinches off, and the drop's size.
@@ -295,6 +297,15 @@
   let herTimer
   let room = null
   let roomTimer
+  // On the taskbar, what stands open up from the strip, as last told:
+  // the island (open in any way), and the lists and flyouts over the strip
+  // (watchPresses). Opening, her window is raised over any window come over
+  // it (openedUp, island.rs raise, zhoupengjie/Wakuwaku#55).
+  const openUp = { island: false, pops: false }
+  // The open island's lines scrolled this far (fillExpanded), and a card
+  // just unfolded in them, to be brought into sight.
+  let linesTop = 0
+  let cardFresh = false
   // Her being pulled out: { x0, y0, started, broken, at, carrying }. Once
   // the drop pinches off she is carrying: her window has her, this page only
   // waits for the button to be let go.
@@ -646,6 +657,7 @@
   function showCard(id) {
     cardFor = id
     cardSince = Date.now()
+    cardFresh = !!id
     update()
   }
 
@@ -769,11 +781,33 @@
       off.dataset.hintOff = '1'
       lines.append(off)
     }
+    // On the taskbar, no taller than there is room for (openMaxH, #55): its
+    // lines scroll (style.css), kept where they were scrolled to as it is
+    // drawn anew (every second while a clock runs).
+    const most = openMaxH()
+    const old = expanded.querySelector(':scope > .lines')
+    if (old && view === 'expanded') linesTop = old.scrollTop
+    lines.style.maxHeight = Number.isFinite(most) ? `${Math.max(60, Math.floor(most - EXPANDED_PAD_Y))}px` : ''
     expanded.replaceChildren(...(isHome() ? [] : [stillHer(48)]), lines)
     // A card unfolded: the island at its widest, the card as wide as its
     // lines; a widget's menu open in it: as tall as the menu needs.
     expanded.classList.toggle('has-card', !!expanded.querySelector('.icard'))
-    expanded.style.minHeight = menuRoom ? `${menuRoom}px` : ''
+    expanded.style.minHeight = menuRoom ? `${Math.min(menuRoom, most)}px` : ''
+    expanded.classList.toggle('scrolls', lines.scrollHeight > lines.clientHeight + 1)
+    if (linesTop) lines.scrollTop = linesTop
+    // A card just unfolded below what is in sight: scrolled up into it, once
+    // laid out (its height untransformed: it unfolds from its top, scaled).
+    if (cardFresh) {
+      cardFresh = false
+      requestAnimationFrame(() => {
+        const now = expanded.querySelector(':scope > .lines')
+        const card = now?.querySelector('.icard')
+        if (!card || now.scrollHeight <= now.clientHeight + 1) return
+        const below = card.getBoundingClientRect().top + card.offsetHeight + 4 - now.getBoundingClientRect().bottom
+        if (below > 1) now.scrollTop += below
+        linesTop = now.scrollTop
+      })
+    }
   }
 
   // On to the next widget (or back), and its turn starts over.
@@ -911,6 +945,32 @@
     const width = want.width + 48
     const height = TOP + want.height + 24
     return width <= BASE.width && height <= BASE.height ? null : { width, height }
+  }
+
+  // The most the open island may be on the taskbar (zhoupengjie/Wakuwaku#55):
+  // within the room kept above the strip, so the window never grows up for
+  // it (a window growing up moves its top-left corner, which flashes; the
+  // widgets' rows and the cards unfolded in them can take more than the
+  // room), and within its screen should that be shorter (1080 px at 175%
+  // are 617 for the 688 of strip and room); beside a side bar, from where
+  // it stands to the window's far end, as the settings are. Its lines
+  // scroll inside it past that (fillExpanded).
+  function openMaxH() {
+    if (home() !== 'taskbar') return Infinity
+    if (isSide()) {
+      const at = parseFloat(document.documentElement.style.getPropertyValue('--isl-y')) || 0
+      return innerHeight - at - TASKBAR_GAP - TASKBAR_SHADE
+    }
+    const tall = Math.min(TASKBAR_H + TASKBAR_ROOM, (screen.height || Infinity) - TASKBAR_GAP)
+    return tall - TASKBAR_SHADE - (isCapsule() ? CAPSULE_Y : 0)
+  }
+
+  // Opened up from the strip, or closed (part: island, pops): opening when
+  // nothing was, her window over any other that lies over it.
+  function openedUp(part, on) {
+    const was = openUp.island || openUp.pops
+    openUp[part] = on
+    if (on && !was && isOn() && home() === 'taskbar') window.pet.raise()
   }
 
   // Returns true when the window has to grow first.
@@ -2263,6 +2323,7 @@
     if (want === watching) return
     watching = want
     window.pet.taskbar.watch(want)
+    openedUp('pops', want)
   }
   window.pet.onPress(at => {
     if (!isOn() || home() !== 'taskbar' || !at) return
@@ -4906,6 +4967,7 @@
     // Closed: a card unfolded in it folded again, its widget's menu gone.
     if (view !== 'expanded' && was === 'expanded') {
       cardFor = null
+      linesTop = 0
       if (menuFor?.where === 'isle') {
         menuFor = null
         wmenu.hidden = true
@@ -4993,6 +5055,8 @@
     if (editLayout) sendSolid()
     // Up out of the way of a window under it, or down (setStow).
     setStow()
+    // Opened on the taskbar: over any window come over hers.
+    openedUp('island', view !== 'compact')
   }
 
   // Each second while something is timed: the times' words alone, put in
@@ -5819,6 +5883,8 @@
       'wheel',
       e => {
         if (!isQuiet() || widgets.length < 2 || isSetting() || view === 'ask') return
+        // The open island's lines scrolling (more than it has room for): they scroll.
+        if (view === 'expanded' && expanded.classList.contains('scrolls')) return
         e.preventDefault()
         turnWidget(e.deltaY > 0 ? 1 : -1)
       },

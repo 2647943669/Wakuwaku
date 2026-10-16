@@ -1318,6 +1318,33 @@ pub fn show_asks(sh: &Arc<Shared>) {
     let _ = sh.app.emit_to("island", "island:look-here", json!({}));
 }
 
+// Something opened up from her taskbar's strip (island.js openedUp): the
+// island, a program's windows, a flyout. Her window is kept on top, but a
+// window can lie over it all the same: one kept on top itself that came to
+// the front after hers, or hers no longer kept on top. A maximized window
+// stops at the strip, so only what opens above the strip is under it
+// (zhoupengjie/Wakuwaku#55: the open island cut off at the strip's top, an
+// editor over the rest). Windows' own taskbar opens its flyouts in a band
+// above every window kept on top; hers is raised to the top of them as it
+// opens, should any other lie over it (not while the settings, locked, are
+// let go under other windows), and the line says which.
+pub fn raise(sh: &Arc<Shared>) {
+    let hwnd = hwnd(sh);
+    let shown = sh.island.lock().unwrap().shown;
+    if hwnd == 0 || !shown || sh.home() != "taskbar" || !TOPMOST.load(Ordering::SeqCst) {
+        return;
+    }
+    let own = sh.own.lock().unwrap().clone();
+    let Some((class, on_top)) = crate::tasks::cover(hwnd, &own) else { return };
+    let mine = crate::tasks::is_topmost(hwnd);
+    crate::tasks::raise_top(hwnd);
+    sh.log(&format!(
+        "island: opened under another window ({class}, {}; hers {}): raised over it",
+        if on_top { "kept on top" } else { "not kept on top" },
+        if mine { "kept on top" } else { "not kept on top" }
+    ));
+}
+
 // The prompts answered: an island risen for them goes.
 pub fn asks_answered(sh: &Arc<Shared>) {
     let was = std::mem::take(&mut sh.island.lock().unwrap().for_asks);

@@ -663,6 +663,23 @@ body {
   gap: 3px;
 }
 
+/* On the taskbar no taller than the room above the strip (island.js
+   openMaxH, zhoupengjie/Wakuwaku#55): past that its lines scroll inside
+   it. The rows' light reaches 8 px past their sides, a session's 3 px
+   above and below: the box as far out, the rows where they were. */
+.home-taskbar #island-expanded .lines {
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  margin: -3px -8px;
+  padding: 3px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.isl-light.home-taskbar #island-expanded .lines {
+  scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
+}
+
 /* The session shown: its name and clock, where it is, its reply, its list. */
 #island-expanded .me {
   display: flex;
