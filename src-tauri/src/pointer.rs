@@ -6,6 +6,15 @@
 // back where it is in the page (CSS pixels), for src/pet/bridge.js to play
 // the mouseenter / mouseleave the page waits for. The page then says when the
 // pointer is over something of its own (set_over), and the window takes the click.
+//
+// Caught, the page has the mouse itself, yet its mouseleave may never come:
+// entered by a played mouseenter, WebView2 has seen no move of its own over
+// her, so its first move is already off her and it has nothing to leave
+// (the test VM's taskbar island stayed open for good after a hover, its
+// window taking every click over the bottom of the screen, 2026-10-16). So
+// caught, where the pointer is goes to the page too as it moves (caught:
+// true), and bridge.js leaves what the pointer is no longer on. Only while
+// the page says the pointer is on her, and only as it moves: nothing at rest.
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -101,17 +110,26 @@ impl ClickThrough {
         }
         let near = within(cursor, pos, size, (NEAR_PX * sf) as i32);
         // Over something of ours, yet outside the window: the page missed the
-        // pointer leaving (it was held elsewhere). Stop taking clicks there.
-        // Not while calming a bounce: it stays caught.
+        // pointer leaving (it was held elsewhere). Stop taking clicks there,
+        // and tell the page it has gone (gone(), or where it is now), so
+        // what it still has entered is left. Not while calming a bounce: it
+        // stays caught.
         if self.over && !held && !within(cursor, pos, size, 0) && !self.calm() {
             self.over = false;
+            self.pointing = true;
         }
         // Kept caught while a bounce is calmed, whatever the page said meanwhile.
         let mode = if held || self.over || self.calm() { Mode::Catch } else if near { Mode::Forward } else { Mode::Pass };
         let ignore = self.force(mode);
+        let at = || json!({ "x": (cursor.0 - pos.0) as f64 / sf, "y": (cursor.1 - pos.1) as f64 / sf });
         let pointer = if mode == Mode::Forward && moved {
             self.pointing = true;
-            Some(json!({ "x": (cursor.0 - pos.0) as f64 / sf, "y": (cursor.1 - pos.1) as f64 / sf }))
+            Some(at())
+        } else if mode == Mode::Catch && moved && self.over && !held {
+            // Caught, as it moves: for the page to check what it has entered.
+            let mut at = at();
+            at["caught"] = json!(true);
+            Some(at)
         } else if mode == Mode::Pass {
             self.gone()
         } else {
@@ -199,6 +217,45 @@ mod tests {
         let seen = ct.look((50, 50), pos, size, 1.0, false, false);
         assert_eq!(seen.ignore, None);
         assert!(ct.over);
+    }
+
+    // Caught over her, the page hears where the pointer goes as it moves
+    // (marked caught), to leave what it is no longer on; not at rest, not
+    // while held (a drag), not once the page says it is off her.
+    #[test]
+    fn caught_the_page_hears_the_pointer_as_it_moves() {
+        let mut ct = ClickThrough::default();
+        let (pos, size) = ((100, 200), (400, 300));
+        assert_eq!(ct.set_over(true, false, false), Some(false));
+        let seen = ct.look((300, 250), pos, size, 1.25, false, false);
+        assert_eq!(seen.ignore, None);
+        assert_eq!(seen.pointer, Some(json!({ "x": 160.0, "y": 40.0, "caught": true })));
+        assert!(!seen.forward);
+        // At rest: nothing.
+        assert_eq!(ct.look((300, 250), pos, size, 1.25, false, false).pointer, None);
+        // Held (a drag): nothing.
+        assert_eq!(ct.look((310, 250), pos, size, 1.25, true, false).pointer, None);
+        // Off her (the page said so): forwarded as before, not caught.
+        assert_eq!(ct.set_over(false, false, false), Some(true));
+        let seen = ct.look((320, 250), pos, size, 1.25, false, false);
+        assert_eq!(seen.pointer, Some(json!({ "x": 176.0, "y": 40.0 })));
+    }
+
+    // The page said on her and never heard it leave; the pointer is out of
+    // the window now: clicks pass through again, and the page is told it
+    // has gone, even though nothing was forwarded to it before.
+    #[test]
+    fn a_leave_the_page_missed_is_told() {
+        let mut ct = ClickThrough::default();
+        let (pos, size) = ((0, 0), (100, 100));
+        ct.set_over(true, false, false);
+        let _ = ct.look((50, 50), pos, size, 1.0, false, false);
+        let seen = ct.look((500, 500), pos, size, 1.0, false, false);
+        assert!(!ct.over);
+        assert_eq!(seen.ignore, Some(true));
+        assert_eq!(seen.pointer, Some(Value::Null));
+        // Once.
+        assert_eq!(ct.look((510, 500), pos, size, 1.0, false, false).pointer, None);
     }
 
     #[test]

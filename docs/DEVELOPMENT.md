@@ -9,6 +9,7 @@ src/                      页面，Tauri 直接把整个文件夹打进 exe（ta
   pet/
     index.html            她的窗口（?role=pet）和灵动岛的窗口（?role=island）共用的页面
     bridge.js             window.pet：页面和 Rust 之间的调用和事件；替页面补发鼠标进出（见"点击穿透"）
+    hovers.js             页面进入过、光标已经不在其中的元素：bridge.js 替它们补发 mouseleave（见"点击穿透"第 4 条）
     pet.js                她的动画、空闲时走动和东张西望
     island.js             灵动岛：几种形状、她在岛里、把她拉出来和放回去
     settings.js           长在岛里的设置（五个页签：通用、Agent、外观、插件、邮件）
@@ -424,6 +425,7 @@ mail/proxy.rs      代理：跟随系统 / 手动（HTTP CONNECT、SOCKS5，自�
 1. Rust 轮询光标（`pointer.rs`，由 `pet.rs`、`island.rs` 的 `poll` 调用；平时 200ms，靠近 80ms，在窗口里 30ms）。光标靠近窗口时，把它在页面里的位置发给页面（`pet:pointer`）。
 2. `bridge.js` 用 `elementFromPoint` 算出光标下有哪些元素，替页面补发 `mouseenter` / `mouseleave`。
 3. 页面照旧调用 `window.pet.hover(true)`，Rust 让窗口接住鼠标（`set_ignore_cursor_events(false)`）；离开时再变回穿透。
+4. **接住之后的离开不能只靠 WebView2**（hover-close，2026-10-16）：进入是 `bridge.js` 补发的 `mouseenter` 时，WebView2 自己还没见过光标在她身上；窗口接住后它收到的第一个移动如果已经在她外面，它就没有东西可"离开"，页面永远收不到 `mouseleave`。任务栏模式下这样岛就一直开着（`isHover` 卡住），而且 Rust 那边 `ct.over` 一直为真，窗口一直接住鼠标：任务栏窗口是条带加上面 640 逻辑像素、整屏宽，屏幕下面这一大片的点击全被吃掉，直到光标离开这个窗口（那时 Rust 才把 `over` 清掉，但以前也不告诉页面，岛照样开着）。测试虚拟机里用 SendInput 的大步移动每次都能复现（main 5369763 一样）；真鼠标快速扫过胶囊（采样到光标在胶囊上、补发了进入，窗口接住时光标已经到了条带别处）也会碰上。现在：接住时，只要页面说光标在她身上、光标又动了，Rust 也把位置发过去（`pet:pointer` 带 `caught: true`，在窗口里 50ms 一看，静止时不发）；光标离开窗口、Rust 清掉 `over` 时一定发一次"走了"（null）。`bridge.js` 在捕获阶段记下页面进入过、还没离开的元素（`entered`，真的、补发的都算），每收到一个位置（或"走了"）就把光标已经不在其中的补发 `mouseleave`（`hovers.js` 的 `stale`；接住时还要离元素的框 2px 以上，免得边缘上和 WebView2 自己的判断打架、窗口模式来回跳）。离开走页面原来的 `mouseleave` 处理：`HOVER_CLOSE_MS` 后收起、`dismissed`、自己展开时看过就结束，规则都不变。测试：`pointer.rs` 的两个新测试，`test/hovers.test.js`。
 
 拖动由 Rust 跟随光标，并直接读鼠标按键（`GetAsyncKeyState`）：松手时页面没收到 mouseup 也能结束。鼠标在她身上时 Rust 也盯着按键，按下就开始拖（在岛里进出过之后，Windows 有时会吞掉她窗口的按下）。她被拖着经过灵动岛时，岛只做穿透，不会被"悬停"展开。
 
