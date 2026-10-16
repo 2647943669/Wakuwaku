@@ -1032,7 +1032,10 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             if isl.ct.calmed() {
                 sh.log(&format!("island: mouse mode bouncing, calmed: cursor {cursor:?}, window {pos:?} {size:?}, scale {sf}"));
             }
-            let wait = if held || isl.ct.over { 50 } else if seen.forward { 30 } else if seen.near { 80 } else { 200 };
+            // Editing the taskbar's layout: looked at often wherever the
+            // pointer is, so its bar takes the mouse soon after the pointer
+            // comes onto it from afar (a press at once went under it, #53).
+            let wait = if held || isl.ct.over { 50 } else if seen.forward || isl.editing { 30 } else if seen.near { 80 } else { 200 };
             // Out of the way of a window: the pointer calling it down. And
             // the pointer just come near it: a window come under it since
             // the last look is looked for now, before a press reaches it.

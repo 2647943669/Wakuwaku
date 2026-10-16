@@ -4771,7 +4771,11 @@
   }
 
   // While editing, the parts' own presses (Start, the buttons, the tray, the
-  // menu) are held back: they are being moved, not used.
+  // menu) are held back: they are being moved, not used. A right press
+  // anywhere on the strip opens her menu, not a part's: 退出编辑 is its
+  // first item then (tray.rs menu), a way out whatever the bar does (#53;
+  // held back too, the strip's right press opened nothing while editing, the
+  // test VM showed).
   for (const type of ['click', 'auxclick', 'dblclick', 'contextmenu', 'pointerup']) {
     barRest.addEventListener(
       type,
@@ -4779,9 +4783,17 @@
         if (!editLayout) return
         if (type !== 'pointerup') e.preventDefault()
         e.stopPropagation()
+        if (type === 'contextmenu') window.pet.menu()
       },
       true,
     )
+  }
+  // The same on the bar, the library and the tools over the strip.
+  for (const node of [editBar, library, tools]) {
+    node.addEventListener('contextmenu', e => {
+      e.preventDefault()
+      if (editLayout) window.pet.menu()
+    })
   }
   barRest.addEventListener(
     'pointerdown',
