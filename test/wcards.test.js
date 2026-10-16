@@ -201,9 +201,15 @@ test("a stack's line: its glyph in its colour's block, its name, its number and 
   assert.equal(WCards.titleOf(inbox, en), 'Mail')
 })
 
-test('the stock script says green up and red down, the other way round only when asked (-RedUp)', () => {
-  const text = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'examples', 'widgets', 'stock.ps1'), 'utf8')
-  assert.match(text, /color = \$\(if \(\$isUp -xor \$RedUp\) \{ '#34d27b' \} else \{ '#ff5c6c' \}\)/)
-  assert.equal(WCards.trendOf({ color: '#34d27b' }), 'green')
-  assert.equal(WCards.trendOf({ color: '#ff5c6c' }), 'red')
+test("a stock's rise takes the colour its script sent, red up or green up, on every surface", () => {
+  // Red up (Chinese markets', the Plugins page's 红涨绿跌): the rise red.
+  const redUp = { ...stock, color: '#ff5c6c' }
+  assert.match(WCards.faceHTML(redUp, 'M', dark), /<i style="color:#ff6b6b">\+0\.80%<\/i>/)
+  assert.match(WCards.rowHTML(redUp, 'M', dark), /color:#ff6b6b">230\.40</)
+  assert.match(WCards.stackRowHTML(redUp, '苹果', dark), /<small style="color:#ff6b6b">\+0\.80%<\/small>/)
+  assert.match(WCards.cardHTML(redUp, dark), /<span class="cchip" style="--c:#ff6b6b">\+0\.80%<\/span>/)
+  // Green up: the rise green, as the design draws it.
+  assert.match(WCards.faceHTML(stock, 'M', light), /<i style="color:#0f7b3f">\+0\.80%<\/i>/)
+  assert.match(WCards.stackRowHTML(stock, '苹果', dark), /<small style="color:#34d27b">/)
+  assert.match(WCards.cardHTML(stock, dark), /<span class="cchip" style="--c:#34d27b">\+0\.80%<\/span>/)
 })

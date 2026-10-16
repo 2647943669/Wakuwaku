@@ -15,7 +15,7 @@
 | `pomodoro.ps1` | 专注 · 第 1 轮 18:32 | 25 + 5 分钟，每 4 轮长休息；到点叫开灵动岛 |
 | `countdown.ps1 -At '2026-10-10 18:00' -Title 交周报` | 交周报 还有 1 天 6 小时 | 也可以 `-File deadlines.txt`，一行一个；提前 1 小时和到点各提醒一次 |
 | `devserver.ps1 -Url http://localhost:3000,http://localhost:5173` | 开发服务器 3000 ✓ 5173 ✗ | 有响应就算在跑；在跑的停了就叫开灵动岛 |
-| `stock.ps1 -Symbol 600519.SS,USDCNY=X,BTC-USD -Name 茅台,美元,比特币` | 茅台 1,263 ▲0.58% | 股票、汇率、币价，Yahoo Finance 的图表数据（非官方接口）；绿涨红跌，`-RedUp` 反过来 |
+| `stock.ps1 -Symbol 600519.SS,USDCNY=X,BTC-USD -Name 茅台,美元,比特币` | 茅台 1,263 ▲0.58% | 股票、汇率、币价，Yahoo Finance 的图表数据（非官方接口）；默认红涨绿跌，`-GreenUp` 反过来（她替你跑时按插件页的「涨跌颜色」） |
 | `weather.ps1 -City 上海` | Shanghai · 多云 22°，展开时加上今天的 14°~22° | Open-Meteo，不用注册；城市可以写中文 |
 | `stretch.ps1 -Minutes 50` | 坐久了，起来走走 12 分钟后 | 到点叫开灵动岛 |
 | `mail-imap.ps1 -Address you@qq.com` | 王总：周五的方案 3 封未读 | IMAP：QQ、163、126、Gmail、iCloud……见下面"邮件" |

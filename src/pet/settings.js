@@ -720,6 +720,9 @@
       const key = `${p.id}.${f.name}`
       const label = esc(T(`pl.${key}`))
       if (f.kind === 'flag') return `<div class="fr"><span class="fl">${label}</span><span class="grow"></span>${sw('pf:' + key, f.value === true)}</div>`
+      // One of a few (a stock's up and down colours): the one in effect,
+      // her language's until one is picked (scripts.rs choice).
+      if (f.kind === 'choice') return `<div class="fr"><span class="fl">${label}</span><span class="grow"></span>${seg('pc:' + key, (f.options || []).map(o => [o, T(`pl.${key}.${o}`)]), f.value)}</div>`
       const value = key in drafts ? drafts[key] : f.value || ''
       return `<label class="fr"><span class="fl">${label}${f.required ? ' *' : ''}</span><input class="in" data-field="${esc(key)}" value="${esc(value)}" placeholder="${esc(T(`pl.${key}.hint`))}" spellcheck="false"${f.kind === 'number' ? ' inputmode="decimal"' : ''}></label>`
     })
@@ -2678,6 +2681,12 @@
       if (option.classList.contains('off')) return
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
+      // A plugin's choice (pc:<plugin>.<param>), kept: its script started
+      // again with it (scripts.rs sync).
+      if (key.startsWith('pc:')) {
+        const [id, name] = key.slice(3).split('.')
+        return setPlugin(id, { [name]: raw })
+      }
       // A widget (w:) or a plugin she runs (p:) put on the taskbar, or back
       // in the capsule (island.js placeWidget keeps the layout).
       if (key.startsWith('where:')) {
