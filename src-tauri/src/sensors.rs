@@ -1119,17 +1119,38 @@ mod imp {
     // deleted, so the running helper stops; PawnIO is left installed.
     pub fn run_remove(sid: &str, data: &Path) {
         let log = |line: &str| append(&dir(data).join("setup.log"), line);
+        // The running helper ended first: it only notices its token is gone
+        // on its next round (up to 10 s while she is away), and until then
+        // its exe is held open, so the copy could not be deleted (seen in
+        // the test VM: the folder stayed with the exe in it).
+        let _ = std::process::Command::new("schtasks").args(["/End", "/TN", &task_name(sid)]).output();
         match crate::logon::remove(&task_name(sid)) {
             Ok(true) => log("the task is removed"),
             Ok(false) => log("there was no task to remove"),
             Err(e) => log(&format!("the task was not removed: {e}")),
         }
         let _ = std::fs::remove_file(dir(data).join("token"));
-        // The admin-only helper copy too (PawnIO stays: it is not hers).
+        log("the token is deleted: a helper still running stops");
+        // The admin-only helper copy too (PawnIO stays: it is not hers),
+        // tried for a while as the ended helper's exe is let go; then the
+        // Wakuwaku folder above it, if nothing else is in it.
         if let Some(admin) = admin_dir() {
-            let _ = std::fs::remove_dir_all(&admin);
+            let mut gone = false;
+            for _ in 0..30 {
+                match std::fs::remove_dir_all(&admin) {
+                    Ok(()) => gone = true,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => gone = true,
+                    Err(_) => std::thread::sleep(Duration::from_millis(500)),
+                }
+                if gone {
+                    break;
+                }
+            }
+            if let Some(parent) = admin.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
+            log(if gone { "the helper copy is removed" } else { "the helper copy could not be removed (still in use)" });
         }
-        log("the token is deleted and the helper copy removed: the helper will stop");
     }
 }
 
