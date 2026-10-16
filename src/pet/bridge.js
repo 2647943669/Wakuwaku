@@ -104,6 +104,9 @@
     onUnder: on('island:under'),
     onCalled: on('island:called'),
     stow: (stowed, width, height) => send('island_stow', { stowed: stowed === true, width: Number(width) || 0, height: Number(height) || 0 }),
+    // Something opened up from her taskbar's strip: its window over any
+    // other that has come over it (island.rs raise, zhoupengjie/Wakuwaku#55).
+    raise: () => send('island_raise'),
     // The settings in the island (settings.js): open them here or from
     // anywhere else (the tray, her double-click), what they show, what they change.
     onSettings: on('island:settings'),

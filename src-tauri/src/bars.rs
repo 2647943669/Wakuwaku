@@ -560,6 +560,10 @@ pub fn barpop_place(app: tauri::AppHandle, w: f64, h: f64) {
     if let Some(p) = OPEN.lock().unwrap().as_mut() {
         p.rect = Some(rect);
     }
+    // Where it lies, told the strip's page in its px: the pointer on its way
+    // up to it across another button keeps it (bar.js aimPop, #56).
+    let (left, top) = ((rect.0 - strip.0) as f64 / sf, (rect.1 - strip.1) as f64 / sf);
+    let _ = sh.app.emit_to(bar.as_str(), "bar:pop-at", json!({ "left": left, "top": top, "right": left + rect.2 as f64 / sf, "bottom": top + rect.3 as f64 / sf }));
     taskbar::watch_presses(taskbar::WATCH_BARS, true);
 }
 

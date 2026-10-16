@@ -639,6 +639,12 @@ mod imp {
     // nor one the pointer passes through): another program's own "on top"
     // window that came over it, say.
     pub fn covered(hwnd: isize, own: &[isize]) -> bool {
+        cover(hwnd, own).is_some()
+    }
+
+    // The first such window over it: its class, and whether it is kept on
+    // top itself; and whether this one is (its WS_EX_TOPMOST), to log.
+    pub fn cover(hwnd: isize, own: &[isize]) -> Option<(String, bool)> {
         let me = rect_of(hwnd as Hwnd);
         let mut at = hwnd as Hwnd;
         for _ in 0..2000 {
@@ -646,7 +652,7 @@ mod imp {
             unsafe {
                 at = GetWindow(at, GW_HWNDPREV);
                 if at.is_null() {
-                    return false;
+                    return None;
                 }
                 if own.contains(&(at as isize)) || IsWindowVisible(at) == 0 || GetWindowLongPtrW(at, GWL_EXSTYLE) & WS_EX_TRANSPARENT != 0 || is_cloaked(at) {
                     continue;
@@ -654,10 +660,16 @@ mod imp {
             }
             let r = rect_of(at);
             if r.right > r.left && r.bottom > r.top && r.left < me.right && me.left < r.right && r.top < me.bottom && me.top < r.bottom {
-                return true;
+                return Some((class_of(at), is_topmost(at as isize)));
             }
         }
-        false
+        None
+    }
+
+    pub fn is_topmost(hwnd: isize) -> bool {
+        const WS_EX_TOPMOST: isize = 0x8;
+        // SAFETY: a plain query; a stale handle reads 0.
+        unsafe { GetWindowLongPtrW(hwnd as Hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST != 0 }
     }
 
     // To the top of the windows kept on top, the keyboard where it is.
@@ -1285,6 +1297,12 @@ mod imp {
     pub fn covered(_hwnd: isize, _own: &[isize]) -> bool {
         false
     }
+    pub fn cover(_hwnd: isize, _own: &[isize]) -> Option<(String, bool)> {
+        None
+    }
+    pub fn is_topmost(_hwnd: isize) -> bool {
+        false
+    }
     pub fn raise_top(_hwnd: isize) {}
     pub fn is_desktop(_hwnd: isize) -> bool {
         false
@@ -1369,7 +1387,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, keys_held, launch, launch_as_admin, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, window_menu, with_com, end_task, launch_with, launch_as_admin_with};
+pub use imp::{alive, app_id, app_name, close, cover, covered, is_topmost, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, keys_held, launch, launch_as_admin, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, window_menu, with_com, end_task, launch_with, launch_as_admin_with};
 
 #[cfg(test)]
 mod tests {
