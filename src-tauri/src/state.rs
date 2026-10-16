@@ -19,6 +19,10 @@
 //   file     a file just edited
 //   reply    how the turn ended, in Claude's words; error   why it failed
 //   chain    the processes it runs in, [[pid, started], ...] (jump.rs)
+//   within   true: a subagent's step, told as the session's it works for
+//            (DeepSeek Harness's: events_dsh.rs whose): only into a turn of
+//            that session's under way (working or waiting); it never starts
+//            a session, nor wakes one at rest or ended
 //
 // Each session keeps its own mood; the pet shows the one that most wants you.
 // Instead of callbacks and timers, calls return what happened (Outcome) and
@@ -352,6 +356,10 @@ impl Pet {
             let agent = str_field(msg, "agent", 20);
             let turn = str_field(msg, "turn", 100);
 
+            let is_within = msg.get("within").and_then(Value::as_bool) == Some(true);
+            if is_within && !self.sessions.get(&id).is_some_and(|s| matches!(s.mood.as_str(), "working" | "waiting")) {
+                return None;
+            }
             if event == "session-end" {
                 self.sessions.remove(&id);
             } else {
@@ -696,6 +704,32 @@ mod tests {
         // The next turn starts clean.
         pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 70, Hold::Seen);
         assert_eq!((pet.get(71)["files"].as_u64(), pet.get(71)["reply"].as_str()), (Some(0), Some("")));
+    }
+
+    #[test]
+    fn a_subagent_s_steps_go_only_into_a_turn_under_way() {
+        let mut pet = Pet::default();
+        let edit = json!({ "session": "a", "mood": "working", "detail": "Write", "event": "tool-done", "toolId": "c1", "file": "C:/w/notes.md", "agent": "dsh", "within": true });
+        // No such session: none made.
+        assert!(pet.apply(&msg(edit.clone()), 1, Hold::Seen).is_none());
+        assert_eq!(pet.get(2)["sessions"], 0);
+        // At rest, or its turn ended (an idle review): left as it is.
+        pet.apply(&msg(json!({ "session": "a", "mood": "idle", "agent": "dsh" })), 3, Hold::Seen);
+        assert!(pet.apply(&msg(edit.clone()), 4, Hold::Seen).is_none());
+        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start", "task": "整理笔记" })), 5, Hold::Seen);
+        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 6, Hold::Seen);
+        assert!(pet.apply(&msg(edit.clone()), 7, Hold::Seen).is_none());
+        assert_eq!((pet.get(8)["mood"].as_str(), pet.get(8)["files"].as_u64()), (Some("done"), Some(0)));
+        // Within its turn: its edit is the turn's, and the turn ends in review.
+        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 10, Hold::Seen);
+        assert!(pet.apply(&msg(edit), 11, Hold::Seen).unwrap().changed);
+        assert_eq!(pet.get(12)["files"], 1);
+        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 13, Hold::Seen);
+        assert_eq!(pet.get(14)["mood"], "review");
+        // A subagent's own line, should one have been made: gone.
+        pet.apply(&msg(json!({ "session": "9d1f", "mood": "idle", "agent": "dsh" })), 15, Hold::Seen);
+        pet.apply(&msg(json!({ "session": "9d1f", "mood": "idle", "event": "session-end", "agent": "dsh" })), 16, Hold::Seen);
+        assert_eq!(pet.get(17)["sessions"], 1);
     }
 
     #[test]
