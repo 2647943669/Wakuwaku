@@ -336,7 +336,9 @@
     allWidgets = Array.isArray(all) ? all : []
     monitor = allWidgets.find(w => w.id === 'monitor' && w.on !== false) || null
     const onBar = home() === 'taskbar' ? Widgets.shownOn(tbLayout(), allWidgets) : new Set()
-    widgets = allWidgets.filter(w => w.on !== false && !(w === monitor && isPinned()) && !onBar.has(w.id))
+    // On the desktop (desk.rs) they are there, not in the island.
+    const onDesk = window.DeskGrid ? DeskGrid.shownOn(config.deskLayout, allWidgets) : new Set()
+    widgets = allWidgets.filter(w => w.on !== false && !(w === monitor && isPinned()) && !onBar.has(w.id) && !onDesk.has(w.id))
     const still = widgets.findIndex(w => w.id === was)
     if (still >= 0) widgetAt = still
   }
@@ -772,10 +774,13 @@
     update()
   }
 
-  // Widgets take turns while the island is quiet and compact.
+  // Widgets take turns while the island is quiet and compact; not while
+  // nobody is about (quiet), as the strip's carousels: each turn redraws
+  // the closed island and its slide, which kept the renderer and the GPU
+  // at about 80 wakes a second between them, against 18 held still.
   function spin() {
     const sec = Number(config.widgetSpin ?? 8)
-    if (!(isQuiet() && widgets.length > 1 && sec > 0 && view === 'compact')) {
+    if (!(isQuiet() && !quiet && widgets.length > 1 && sec > 0 && view === 'compact')) {
       clearTimeout(spinTimer)
       spinTimer = null
       return
@@ -2615,7 +2620,7 @@
     if (w || entry) {
       const onBar = !!entry
       const notBar = home() === 'taskbar' ? '' : t(lang, 'menu.notTaskbar')
-      parts.push(line(t(lang, 'menu.where'), opt('where', 'bar', t(lang, 'menu.bar'), onBar, onBar ? '' : notBar) + opt('where', 'isle', t(lang, 'menu.isle'), !onBar && !!w) + opt('where', 'desk', t(lang, 'menu.desk'), false, t(lang, 'menu.later'))))
+      parts.push(line(t(lang, 'menu.where'), opt('where', 'bar', t(lang, 'menu.bar'), onBar, onBar ? '' : notBar) + opt('where', 'isle', t(lang, 'menu.isle'), !onBar && !!w) + opt('where', 'desk', t(lang, 'menu.desk'), false, window.pet.mac ? t(lang, 'menu.noDesk') : '')))
     }
     parts.push('<div class="wmsep"></div>')
     // With others in one place, or apart again.
@@ -2731,6 +2736,7 @@
       case 'where':
         if (v === 'bar' && w && !entry) return putOnBar(w)
         if (v === 'isle' && entry) return backToIsland(w, entry, member)
+        if (v === 'desk') return toDesk(w, entry, member)
         return
       case 'group': {
         const next = entry && neighbourOf(entry.id)
@@ -2779,16 +2785,19 @@
   }
 
   // For the plugins page (settings.js, its "where" column): where a widget
-  // ({ id }) or a plugin she runs ({ plugin }) is, the taskbar or the
-  // island, and put there. On the taskbar alone or in a group; put there, at
+  // ({ id }) or a plugin she runs ({ plugin }) is, the taskbar, the island
+  // or the desktop, and put there. On the taskbar alone or in a group; put there, at
   // the right run's start; back in the island, out of wherever it was.
   const keyFor = item => (item.plugin ? `plugin:${item.plugin}` : `widget:${item.id}`)
   function whereOf(item) {
+    if (DeskGrid.has(config.deskLayout, item)) return 'desk'
     const keys = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string').flatMap(Widgets.membersOf).map(Widgets.memberKey)))
     return keys.has(keyFor(item)) ? 'bar' : 'isle'
   }
   function placeWidget(item, where) {
     const key = keyFor(item)
+    // Off the desktop as it goes elsewhere (the desktop's pages keep the places).
+    if (where !== 'desk' && DeskGrid.has(config.deskLayout, item)) deskOff([item])
     if (where === 'bar') {
       if (whereOf(item) === 'bar') return
       const w = item.plugin ? null : allWidgets.find(x => x.id === item.id)
@@ -2800,18 +2809,81 @@
       placedAt.set(key, Date.now())
       return keepLayout(layout)
     }
-    if (where !== 'isle') return
+    if (where !== 'isle' && where !== 'desk') return
     let layout = tbLayout()
+    let off = false
     for (const k of Object.keys(layout))
       for (const p of [...layout[k]]) {
         if (typeof p === 'string') continue
         if (Widgets.isGroup(p)) {
           const at = p.items.findIndex(m => Widgets.memberKey(m) === key)
-          if (at >= 0) layout = Widgets.dropMember(layout, p.id, at, newId)
-        } else if (Widgets.isSource(p) && Widgets.memberKey(p) === key) layout[k] = layout[k].filter(x => x !== p)
+          if (at >= 0) {
+            layout = Widgets.dropMember(layout, p.id, at, newId)
+            off = true
+          }
+        } else if (Widgets.isSource(p) && Widgets.memberKey(p) === key) {
+          layout[k] = layout[k].filter(x => x !== p)
+          off = true
+        }
       }
-    keepLayout(layout)
+    // The taskbar's layout kept only when it was on it (not written as a
+    // preset's for one put on the desktop from the capsule).
+    if (off || where === 'isle') keepLayout(layout)
+    if (where === 'desk') return putOnDesk(item)
     if (item.id && (config.widgetsOff || []).includes(item.id)) window.pet.settings.set({ widgetsOff: config.widgetsOff.filter(x => x !== item.id) })
+  }
+
+  // On the desktop (desk.rs, deskgrid.js): medium where it has it; where it
+  // stands the desktop's page says (the display the pointer is on, the top
+  // right, clear of the icons).
+  function putOnDesk(item) {
+    if (DeskGrid.has(config.deskLayout, item)) return
+    const w = item.plugin ? allWidgets.find(x => x.plugin === item.plugin) : allWidgets.find(x => x.id === item.id)
+    const sizes = w ? Widgets.sizesOf(w) : ['s', 'm']
+    const source = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
+    const label = w && !w.private && !item.plugin ? [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') : ''
+    const icon = (w?.icon || item.icon) in Widgets.ICONS ? { icon: w?.icon || item.icon } : {}
+    keepDesk([{ id: newId(), ...source, size: sizes.includes('m') ? 'm' : 's', ...icon, ...(label ? { name: label } : {}) }])
+  }
+  function keepDesk(entries) {
+    config.deskLayout = [...(Array.isArray(config.deskLayout) ? config.deskLayout : []), ...entries]
+    window.pet.desk.keep(entries, [])
+    takeWidgets(allWidgets)
+    update()
+  }
+  function deskOff(items) {
+    let next = Array.isArray(config.deskLayout) ? config.deskLayout : []
+    for (const it of items) next = DeskGrid.without(next, it, newId)
+    config.deskLayout = next
+    window.pet.settings.set({ deskLayout: next })
+  }
+  // From the strip or the capsule to the desktop: a group as a stack there
+  // (medium where all of it has that), one alone as itself.
+  function toDesk(w, entry, member) {
+    if (entry && Widgets.isGroup(entry) && member < 0) {
+      const items = entry.items.map(m => ({ type: m.type, of: m.of, ...(m.name ? { name: m.name } : {}), ...(m.icon ? { icon: m.icon } : {}) }))
+      const sizes = DeskGrid.sizesOfEntry({ type: 'stack', items }, allWidgets)
+      if (stackFor === entry.id) closeStackPop()
+      removeEntry(entry.id)
+      return keepDesk([{ id: newId(), type: 'stack', items, size: sizes.includes('m') ? 'm' : sizes[0] || 's' }])
+    }
+    const m = entry ? (Widgets.isGroup(entry) ? entry.items[member] : entry) : null
+    const item = m ? (m.type === 'plugin' ? { plugin: m.of } : { id: m.of }) : w?.plugin ? { plugin: w.plugin } : w ? { id: w.id } : null
+    if (item) placeWidget(item, 'desk')
+  }
+  // A desktop page's asking (desk.rs desk_ask): a widget's settings, or
+  // widgets put elsewhere; a stack onto the taskbar as a stack there.
+  function deskPlace({ items = [], where, stack } = {}) {
+    if (!['bar', 'isle'].includes(where) || !items.length) return
+    if (where === 'bar' && home() !== 'taskbar') return
+    if (where === 'bar' && stack && items.length >= 2) {
+      deskOff(items)
+      const members = items.slice(0, 8).map(it => (it.plugin ? { type: 'plugin', of: it.plugin } : { type: 'widget', of: it.id }))
+      const layout = tbLayout()
+      layout.right.unshift({ id: newId(), type: 'stack', items: members })
+      return keepLayout(layout)
+    }
+    for (const it of items) placeWidget(it, where)
   }
 
   // Back in the island: off the strip (out of its group), and on there.
@@ -5339,6 +5411,14 @@
   // of seconds, main.rs redraw_widgets): on the strip, the readings' node
   // alone; the island drawn anew where it shows them in its lines, or when
   // another widget's words changed (the capsule shows them in turn).
+  window.pet.onDeskAsk(({ what, args } = {}) => {
+    if (what === 'settings') {
+      const w = allWidgets.find(x => x.id === args?.widget)
+      return w && openWidgetSettings(w)
+    }
+    if (what === 'place') deskPlace(args)
+  })
+
   window.pet.onWidgets(({ widgets: all }) => {
     const others = JSON.stringify(widgets)
     takeWidgets(all)
@@ -5362,6 +5442,8 @@
     // on (their turns anew) once someone is.
     if (!quiet) for (const [id, state] of carousels) carousels.set(id, { ...state, since: Date.now() })
     tickCarousels()
+    // The capsule's widgets the same: held, or taking turns again.
+    spin()
   })
 
   // Her reactions with words: a hello rings (its words in the island as it

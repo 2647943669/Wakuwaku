@@ -2,7 +2,7 @@
 // getter waits on the main thread, so not on every move).
 use tauri::{AppHandle, Monitor};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Area {
     pub x: i32,
     pub y: i32,

@@ -278,6 +278,66 @@ pub fn is_on_taskbar(layout: &Value, widget: &str) -> bool {
         .any(|e| shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))
 }
 
+// The desktop's widgets (deskgrid.js isEntry, isLayout): up to 32, each
+// { id, type, of, size, name, icon, d, at } alone (a widget's or a
+// plugin's) or { id, type: "stack", items, size, d, at } several in one, 2
+// to 8 as the taskbar's groups have them; size s, m or l; d the display it
+// is on (desk.rs key_of: a-z 0-9), at where it stood on each display it has
+// been on, 8 at most, { key: [column, row] }. Each id once, each widget or
+// plugin once.
+fn is_desk_entry(v: &Value) -> bool {
+    let Some(e) = v.as_object() else { return false };
+    let Some(id) = e.get("id").and_then(Value::as_str) else { return false };
+    let ok_id = id.len() >= 2 && id.len() <= 16 && id.starts_with('w') && id[1..].chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    let is_key = |k: &str| !k.is_empty() && k.len() <= 40 && k.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    let is_cell = |v: &Value| v.as_array().is_some_and(|a| a.len() == 2 && a.iter().all(|n| n.as_u64().is_some_and(|n| n <= 255)));
+    let stack = e.get("type").and_then(Value::as_str) == Some("stack");
+    let ok_kind = if stack {
+        e.get("of").is_none()
+            && e.get("items").and_then(Value::as_array).is_some_and(|items| (2..=8).contains(&items.len()) && items.iter().all(is_member) && items.iter().enumerate().all(|(i, m)| !items[..i].iter().any(|x| x["type"] == m["type"] && x["of"] == m["of"])))
+    } else {
+        e.get("items").is_none() && is_member(&json!({ "type": e.get("type"), "of": e.get("of") }))
+    };
+    let ok_rest = e.iter().all(|(key, v)| match key.as_str() {
+        "id" | "type" | "of" | "items" => true,
+        "size" => matches!(v.as_str(), Some("s" | "m" | "l")),
+        "name" => !stack && v.as_str().is_some_and(is_name),
+        "icon" => !stack && v.as_str().is_some_and(|i| crate::widgets::ICONS.contains(&i)),
+        "d" => v.as_str().is_some_and(is_key),
+        "at" => v.as_object().is_some_and(|at| at.len() <= 8 && at.iter().all(|(k, c)| is_key(k) && is_cell(c))),
+        _ => false,
+    });
+    ok_id && e.contains_key("size") && ok_kind && ok_rest
+}
+
+pub fn is_desk_layout(v: &Value) -> bool {
+    let Some(entries) = v.as_array() else { return false };
+    if entries.len() > 32 || !entries.iter().all(is_desk_entry) {
+        return false;
+    }
+    let ids: Vec<&Value> = entries.iter().map(|e| &e["id"]).collect();
+    let members: Vec<(Value, Value)> = entries
+        .iter()
+        .flat_map(|e| match e["items"].as_array() {
+            Some(items) => items.iter().map(|m| (m["type"].clone(), m["of"].clone())).collect::<Vec<_>>(),
+            None => vec![(e["type"].clone(), e["of"].clone())],
+        })
+        .collect();
+    ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id)) && members.iter().enumerate().all(|(i, m)| !members[..i].contains(m))
+}
+
+// Whether the desktop shows this widget: put there by itself, or its
+// plugin's; alone or in a stack.
+pub fn is_on_desk(layout: &Value, widget: &str) -> bool {
+    let owner = crate::scripts::owner_of(widget);
+    let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
+        (Some("widget"), Some(of)) => of == widget,
+        (Some("plugin"), Some(of)) => Some(of) == owner,
+        _ => false,
+    };
+    layout.as_array().into_iter().flatten().any(|e| shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))
+}
+
 // Its runs: the parts each once, and up to 32 widgets, each once.
 fn is_taskbar_layout(v: &Value) -> bool {
     let Some(runs) = v.as_object() else { return false };
@@ -327,6 +387,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "taskbarDisplays" => matches!(v.as_str(), Some("main" | "all")),
         // The taskbar's parts in three runs (island.js tbLayout), each once.
         "taskbarLayout" => v.is_null() || is_taskbar_layout(v),
+        // The desktop's widgets (desk.rs, deskgrid.js).
+        "deskLayout" => is_desk_layout(v),
         // The programs' buttons in the order dragged: their keys (paths).
         "taskbarOrder" => v.as_array().is_some_and(|keys| keys.len() <= 200 && keys.iter().all(|k| k.as_str().is_some_and(|s| s.len() <= 1024))),
         "hold" => v.as_str() == Some("seen") || matches!(v.as_u64(), Some(8 | 30 | 120)),
@@ -874,5 +936,45 @@ mod layout_tests {
         assert!(!super::is_on_taskbar(&layout, "today"));
         assert!(!super::is_on_taskbar(&layout, "weather"));
         assert!(!super::is_on_taskbar(&json!(null), "tokens"));
+    }
+
+    // The desktop's widgets, as deskgrid.js isLayout has them.
+    #[test]
+    fn desk_layouts() {
+        let ok = |v: serde_json::Value| super::is_desk_layout(&v);
+        assert!(ok(json!([])));
+        assert!(ok(json!([
+            { "id": "wa", "type": "widget", "of": "weather", "size": "m", "d": "d0a1b2c3d4e5f", "at": { "d0a1b2c3d4e5f": [3, 0], "d1": [0, 2] } },
+            { "id": "wb", "type": "plugin", "of": "stock", "size": "l", "name": "股票", "icon": "chart" },
+            { "id": "ws", "type": "stack", "size": "s", "items": [{ "type": "widget", "of": "monitor" }, { "type": "widget", "of": "countdown", "name": "倒计时" }] }
+        ])));
+        let bad = [
+            json!({}),
+            json!([{ "id": "wa", "type": "widget", "of": "weather", "size": "S" }]),
+            json!([{ "id": "wa", "type": "widget", "of": "weather" }]),
+            json!([{ "id": "Wa", "type": "widget", "of": "weather", "size": "s" }]),
+            json!([{ "id": "wa", "type": "widget", "of": "weather", "size": "s", "d": "D1" }]),
+            json!([{ "id": "wa", "type": "widget", "of": "weather", "size": "s", "at": { "d1": [1, 256] } }]),
+            json!([{ "id": "wa", "type": "widget", "of": "weather", "size": "s", "at": { "d1": [1] } }]),
+            json!([{ "id": "wa", "type": "widget", "of": "weather", "size": "s", "x": 1 }]),
+            json!([{ "id": "wa", "type": "plugin", "of": "nope", "size": "s" }]),
+            json!([{ "id": "wa", "type": "carousel", "size": "s", "items": [{ "type": "widget", "of": "a" }, { "type": "widget", "of": "b" }] }]),
+            json!([{ "id": "ws", "type": "stack", "size": "s", "items": [{ "type": "widget", "of": "a" }] }]),
+            json!([{ "id": "ws", "type": "stack", "size": "s", "items": [{ "type": "widget", "of": "a" }, { "type": "widget", "of": "a" }] }]),
+            json!([{ "id": "ws", "type": "stack", "size": "s", "name": "x", "items": [{ "type": "widget", "of": "a" }, { "type": "widget", "of": "b" }] }]),
+            json!([{ "id": "wa", "type": "widget", "of": "a", "size": "s" }, { "id": "wa", "type": "widget", "of": "b", "size": "s" }]),
+            json!([{ "id": "wa", "type": "widget", "of": "a", "size": "s" }, { "id": "ws", "type": "stack", "size": "s", "items": [{ "type": "widget", "of": "a" }, { "type": "widget", "of": "b" }] }]),
+        ];
+        for b in bad {
+            assert!(!ok(b.clone()), "{b}");
+        }
+        assert!(!ok(serde_json::Value::Array((0..33).map(|i| json!({ "id": format!("w{i}"), "type": "widget", "of": format!("x{i}"), "size": "s" })).collect())));
+        // What it shows.
+        let layout = json!([{ "id": "wa", "type": "widget", "of": "monitor", "size": "m" }, { "id": "ws", "type": "stack", "size": "s", "items": [{ "type": "plugin", "of": "stock" }, { "type": "widget", "of": "today" }] }]);
+        assert!(super::is_on_desk(&layout, "monitor"));
+        assert!(super::is_on_desk(&layout, "stock-aapl"));
+        assert!(super::is_on_desk(&layout, "today"));
+        assert!(!super::is_on_desk(&layout, "weather"));
+        assert!(!super::is_on_desk(&json!(null), "monitor"));
     }
 }

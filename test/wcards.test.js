@@ -159,11 +159,15 @@ test("today's card: its numbers, the turns by the hour up to now lit, the tokens
   const card = WCards.cardHTML(today, dark, [today, tokens])
   assert.match(card, /<b>197<\/b><span>轮<\/span>/)
   assert.match(card, /<b>1\.7B<\/b><span>token<\/span>/)
-  // From the first hour with a turn (9) to now (14): six bars, the last lit.
-  const rects = card.match(/<rect /g) || []
-  assert.equal(rects.length, 6)
+  // Twelve hour slots at least (the design session): from the first turn's
+  // hour (9), twelve back from now (14): 3 to 14; the hours with turns bars,
+  // the hour it is lit, the others a 2 px line; 18 px at most each.
+  const rects = card.match(/<rect [^>]*>/g) || []
+  assert.equal(rects.length, 12)
+  assert.equal(rects.filter(r => /height="2"/.test(r)).length, 6)
+  assert.ok(rects.every(r => Number(/width="([\d.]+)"/.exec(r)[1]) <= 18))
   assert.match(card, /fill="#f08a62"\/><\/svg>/)
-  assert.match(card, /9 时.*14 时/)
+  assert.match(card, /3 时.*14 时/)
   // Not counted yet: greyed.
   assert.match(card, /每小时的 token<\/span><span class="wnone">暂无数据/)
 })

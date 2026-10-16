@@ -47,6 +47,7 @@ mod clock;
 mod connection;
 mod crash;
 mod data;
+mod desk;
 mod detach;
 mod events;
 mod events_agy;
@@ -415,6 +416,8 @@ impl Shared {
         self.to_pages("pet:update", self.payload());
         tray::refresh(self);
         self.push_settings();
+        // The desktop's widgets (desk.rs), their words.
+        desk::push_widgets(self);
     }
 
     // Only a widget's words changed (the monitor's readings every couple of
@@ -423,6 +426,7 @@ impl Shared {
     pub fn redraw_widgets(&self) {
         let _ = self.app.emit_to("island", "pet:widgets", json!({ "widgets": self.widgets_said() }));
         self.push_settings();
+        desk::push_widgets(self);
     }
 
     // The prompts waiting changed.
@@ -493,10 +497,10 @@ impl Shared {
         !self.list_setting("widgetsOff").iter().any(|o| o == id)
     }
 
-    // On in the island, or put on the taskbar (taskbarLayout) while she is
-    // the taskbar: a built-in one is worked out then.
+    // On in the island, put on the taskbar (taskbarLayout) while she is the
+    // taskbar, or on the desktop (deskLayout): a built-in one is worked out then.
     pub fn is_widget_wanted(&self, id: &str) -> bool {
-        self.is_widget_on(id) || (self.setting("display") == "taskbar" && settings::is_on_taskbar(&self.setting("taskbarLayout"), id))
+        self.is_widget_on(id) || (self.setting("display") == "taskbar" && settings::is_on_taskbar(&self.setting("taskbarLayout"), id)) || (cfg!(windows) && settings::is_on_desk(&self.setting("deskLayout"), id))
     }
 
     // The widgets with something to say, each saying whether it is on.
@@ -612,6 +616,8 @@ impl Shared {
         }
         // Her taskbar on the other displays: its material, its buttons' alignment, her language (bars.rs).
         bars::refresh(self);
+        // The desktop's widgets: made or gone as the layout says, told the rest (desk.rs).
+        desk::sync(self);
         if touches_top {
             island::keep_on_top(self);
         }
@@ -1481,6 +1487,13 @@ fn main() {
             settings::settings_dsh_hooks,
             settings::settings_cpu_sensors,
             bars::bar_ready,
+            desk::desk_ready,
+            desk::desk_shapes,
+            desk::desk_hold,
+            desk::desk_keep,
+            desk::desk_icons,
+            desk::desk_where,
+            desk::desk_ask,
             bars::bar_asks,
             bars::bar_pop,
             bars::bar_pop_over,
@@ -1608,6 +1621,8 @@ fn main() {
             server::serve(sh.clone(), listener);
             // The mail accounts that are on, watched from the start.
             mail::sync(&sh);
+            // The desktop's widgets (desk.rs).
+            desk::sync(&sh);
             // Her updates looked for (a downloaded exe only).
             updates::start(&sh);
             // Crashes since: their reports made, sent or asked about.
@@ -1627,7 +1642,7 @@ fn main() {
                     (c, c)
                 };
                 let wait = match at {
-                    (Some(her), Some(home)) => pet::poll(&pointer, her).min(island::poll(&pointer, home)),
+                    (Some(her), Some(home)) => pet::poll(&pointer, her).min(island::poll(&pointer, home)).min(desk::poll(&pointer, home)),
                     _ => 200,
                 };
                 let wait = if pointer.check_quiet() { wait.max(1000) } else { wait };
@@ -1698,8 +1713,9 @@ fn main() {
                     // On in the island, or put on the taskbar (its widget there).
                     let (on, quiet) = (monitored.is_widget_wanted("monitor"), monitored.is_quiet());
                     let listing = monitored.island.lock().unwrap().settings_open;
-                    // The pointer on her home: its widget's card may be looked at.
-                    let looking = !quiet && island::is_over(&monitored);
+                    // The pointer on her home: its widget's card may be looked at;
+                    // on the desktop medium or large, its card's readings show.
+                    let looking = !quiet && (island::is_over(&monitored) || desk::shows_more(&monitored, "monitor"));
                     (watching.quiet, watching.listing, watching.looking) = (quiet, listing, looking);
                     // Any of its settings changed (a sensor picked, too), the
                     // settings opened, the pointer came, or LibreHardwareMonitor
@@ -1710,7 +1726,13 @@ fn main() {
                         // Quiet (nobody looking), every ten seconds at least.
                         let every = if quiet { watching.every.max(10) } else { watching.every };
                         next = std::time::Instant::now() + Duration::from_secs(every);
-                        let words = if on {
+                        // On the desktop alone, and no display shows it (a window
+                        // maximized or full screen over it): not read, kept as it
+                        // was, looked at again at its pace (desk.rs seen).
+                        let unseen = on && !monitored.is_widget_on("monitor") && !(monitored.home() == "taskbar" && settings::is_on_taskbar(&monitored.setting("taskbarLayout"), "monitor")) && !desk::seen(&monitored, "monitor");
+                        let words = if unseen {
+                            None
+                        } else if on {
                             monitor.read(&watching)
                         } else {
                             monitor.rest();
@@ -1720,6 +1742,7 @@ fn main() {
                             let mut widgets = monitored.widgets.lock().unwrap();
                             match words {
                                 Some(value) => widgets.set_built_in_with("monitor", value, monitor.detail(), now_ms()),
+                                None if unseen => false,
                                 None => widgets.remove_built_in("monitor"),
                             }
                         };
@@ -1783,9 +1806,19 @@ fn main() {
                             ticker.push_asks();
                         }
                     }
+                    // The desktop's widgets' counts, each minute (desk.rs minute).
+                    if n % 120 == 0 {
+                        desk::minute(&ticker);
+                    }
                     if n % 4 == 0 {
                         let screens = screen::read(&ticker.app);
+                        // Displays come or go, or change: the desktop's widgets' windows
+                        // with them (only while there are any).
+                        let moved = desk::any() && ticker.screens.lock().unwrap().areas != screens.areas;
                         *ticker.screens.lock().unwrap() = screens;
+                        if moved {
+                            desk::sync(&ticker);
+                        }
                         pet::keep_on_screen(&ticker);
                         island::keep_on_screen(&ticker);
                     }
