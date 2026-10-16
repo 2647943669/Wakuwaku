@@ -1,15 +1,18 @@
 // The settings, grown out of the island: one click on it opens them (and only
 // then does the island take the keyboard); Esc, a click outside, ✕ or the head
 // close them. Five pages:
-//   now       the sessions (a click on one goes to its window), and four quick switches
-//   pets      the pets downloaded, a download by link or id, the gallery
-//   look      her home (island, taskbar), size, strolls, eyes, language; Windows'
-//             own mode and accent colour
-//   alerts    how long endings stay, and idle sessions in sight; notifications,
-//             sound, prompts, quiet
+//   now       General: the welcome (nothing connected yet) or a line on the
+//             agents connected, the sessions (a click on one goes to its
+//             window), four quick switches; the alerts (how long endings
+//             stay, idle sessions, notifications, sound, prompts, quiet),
+//             start at login and the language, her updates, crash reports, about
+//   agents    the agents she follows (agents.js): each found here a row (how
+//             it stands, what she can do for it, connect, repair, remove),
+//             opened in place to its details; the others to get
+//   look      her home (island, taskbar), size, strolls, eyes; Windows' own
+//             mode and accent colour; her and the pets (downloaded, the gallery)
 //   widgets   plugins: the built-in ones, those she runs for you (a switch, their settings folded under), their order, turns, nudges, waku, and how to write one
 //   mail      mail accounts, and setting one up as Thunderbird does: an address and a password, the server found or typed
-//   connect   how Claude Code and Codex reach her, start at login, the hooks, about
 //
 // What they show comes from main as a snapshot, again whenever it changes;
 // what they change goes back as a patch, checked there. island.js decides the
@@ -28,17 +31,20 @@
   const { CLIPS } = window.Sprite
   const Status = window.Status
   const Widgets = window.Widgets
+  const Agents = window.Agents
 
   // The island's colours (on black), the same as island.js.
   const COLOR = { idle: '#8e8e93', working: '#5e9bff', waiting: '#ffb340', done: '#34d27b', review: '#b18cff', error: '#ff5c6c' }
-  // Four pages: General (the sessions, the alerts, connecting, startup and
-  // the language), Look (her home, Windows, her and the pets), Plugins and
-  // Mail. The pets, the alerts and connecting were pages of their own: asked
-  // for by those names (island.rs asks for the pets, or connecting), the
-  // page they are part of opens, scrolled to them (PART_OF, showPart).
-  const TABS = ['now', 'look', 'widgets', 'mail']
-  const TAB_KEY = { now: 's.tabGeneral', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
-  const PART_OF = { pets: 'look', alerts: 'now', connect: 'now', update: 'now', crash: 'now' }
+  // Five pages: General (the sessions, the alerts, startup and the
+  // language), Agent (connecting them, right after General), Look (her
+  // home, Windows, her and the pets), Plugins and Mail. The pets, the alerts
+  // and connecting were pages of their own: asked for by those names
+  // (island.rs asks for the pets, or connecting), the page they are part of
+  // opens, scrolled to them (PART_OF, showPart); connecting while the
+  // welcome shows is the welcome, at General's top.
+  const TABS = ['now', 'agents', 'look', 'widgets', 'mail']
+  const TAB_KEY = { now: 's.tabGeneral', agents: 's.tabAgents', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
+  const PART_OF = { pets: 'look', alerts: 'now', connect: 'agents', update: 'now', crash: 'now' }
   const HEAD_KEY = { working: 's.headWorking', waiting: 's.headWaiting', done: 's.headDone', review: 's.headReview', error: 's.headError' }
   const SIZES = [['small', 0.4], ['medium', 0.55], ['large', 0.75]]
   const HOMES = ['island', 'taskbar']
@@ -113,9 +119,10 @@
   let reading = null
   let handNote = null
   let handNoteTimer
-  const AGENTS = { claude: 'Claude', codex: 'Codex', agy: 'Antigravity' }
-  // Their names on the Mail page's settings.
-  const AGENT_NAMES = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' }
+  // The agents that read mail (agents.js mail): their short names, and
+  // their names on the Mail page's settings.
+  const AGENTS = Object.fromEntries(Agents.TABLE.filter(a => a.mail).map(a => [a.id, a.mail]))
+  const AGENT_NAMES = Object.fromEntries(Agents.TABLE.filter(a => a.mail).map(a => [a.id, a.name]))
   // The letter being written, one at a time: from which account, to whom,
   // the subject and text, the letter it answers or passes on, files added;
   // touched once typed in; sending, what went wrong. Kept until sent or
@@ -271,7 +278,7 @@
           .map(x => {
             const name = Status.nameOf(x, detailed)
             const what = [
-              ({ codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode', dsh: 'DeepSeek Harness' })[x.agent] || '',
+              (x.agent && Agents.byId(x.agent)?.name) || '',
               Status.status(lang, x, { detailed, withClock: false }),
               detailed && x.name && x.project !== name ? x.project : '',
               detailed && Status.isEnding(x) ? x.reply : '',
@@ -1004,17 +1011,17 @@
     return `<div class="note ok">✓ ${esc(how)} ${esc(auths)}</div>${domain}`
   }
 
-  // Who a letter goes to first (the setting), and each in that order:
-  // Antigravity only where it is (or set first), as few have it: its agy
-  // found, or Antigravity on this computer as the Connect page has it (agy's
-  // folder, or the 2.0 app's: connection.rs agy_here). The app alone brings
-  // no agy, which mail runs: Antigravity is listed then, greyed, with a line
-  // on why (zhoupengjie/Wakuwaku#42). agent.rs looks for agy again while the
-  // settings are open, and once installed it can be picked.
-  const firstAgent = () => (['codex', 'agy'].includes(snap.settings.mailAgent) ? snap.settings.mailAgent : 'claude')
-  const agyHere = () => !!snap.agy && snap.agy.hooks !== 'absent'
-  const agentsHere = () => ['claude', 'codex', ...((snap.mailAgents || {}).agy || firstAgent() === 'agy' || agyHere() ? ['agy'] : [])]
-  const agyWanted = () => !(snap.mailAgents || {}).agy && agentsHere().includes('agy')
+  // Who a letter goes to first (the setting), and the others that read mail
+  // (agents.js mailAgents): Antigravity only where it is (or set first), as
+  // few have it: its agy found, or Antigravity on this computer as the Agent
+  // page has it (agy's folder, or the 2.0 app's: connection.rs agy_here).
+  // The app alone brings no agy, which mail runs: Antigravity is listed
+  // then, greyed, with a line on why (zhoupengjie/Wakuwaku#42). agent.rs
+  // looks for agy again while the settings are open, and once installed it
+  // can be picked.
+  const firstAgent = () => (AGENTS[snap.settings.mailAgent] ? snap.settings.mailAgent : 'claude')
+  const mailList = () => Agents.mailAgents(snap, firstAgent())
+  const agyWanted = () => mailList().some(a => a.id === 'agy' && !a.found)
   // A letter's talk going on now, by its key (agent.rs).
   const talkOf = key => (key && (snap.mailTalks || {})[key]) || null
   const letterKey = l => l.messageId || `${l.account}:${l.uid}`
@@ -1150,12 +1157,13 @@
   // which agent, its model, its effort, and no more): its model and effort
   // (mailAgentConf, agent.rs; empty is the agent's own setting), what a talk
   // may do the least it has, said under them (Antigravity's models are each
-  // one effort already). Not found, it says so there.
+  // one effort already). Not found, it says so there. Which agent: a
+  // dropdown of those that read mail, the ones whose command is not found
+  // greyed with why (agentChoices).
   function agentsHTML() {
     const ag = firstAgent()
     const found = snap.mailAgents || {}
-    const options = agentsHere().map(a => [a, AGENT_NAMES[a], a === 'agy' && !found.agy && ag !== 'agy'])
-    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), seg('mailAgent', options, ag))
+    const agent = row(esc(T('mail.agent')), esc(T('mail.agentNote')), `<button class="pick" data-mail-agent>${esc(AGENT_NAMES[ag])} ▾</button>`)
     const why = agyWanted() ? `<div class="note">${esc(T('mail.agyCli'))} <span class="link" data-site="agyCli">${esc(T('mail.agyCliHow'))}</span></div>` : ''
     const note = found[ag] ? T(`mail.conf.note.${ag}`) : T('mail.err.noAgent', { agent: AGENT_NAMES[ag] })
     const pickers = ag === 'agy' ? pickerHTML(ag, 'model') : pickerHTML(ag, 'model') + pickerHTML(ag, 'effort')
@@ -1260,12 +1268,19 @@
     return `<div class="talk ${talk.state}"><div class="talk-h"><span class="grow">${esc(state)}</span>${going ? '' : `<span class="link" data-hand="${talk.agent}:talk">${esc(T('mail.talk.again'))}</span>`}</div>${turns}${thinking}${ask}</div>`
   }
 
+  // The Mail page's agents as the dropdown has them: [id, name, why not].
+  const agentChoices = () => mailList().map(a => [a.id, a.name, a.found ? '' : T(`mail.agentMissing.${a.id}`)])
+
   // The buttons above an open letter: its star, reply, hand it to the first
-  // agent (when no talk is there yet), and ⋯ for the rest.
+  // agent (when no talk is there yet), and ⋯ for the rest. Handing it is a
+  // split button: its left part to the first agent, ▾ to another one found
+  // for this letter only, or that one made the first (handMenu).
   function handButtons(l, talk) {
     const ag = firstAgent()
     const off = !(snap.mailAgents || {})[ag] ? 'disabled' : ''
-    const give = talk ? '' : `<button class="pbtn sm al" data-hand="${ag}:talk" ${off}>${esc(T('mail.hand.talk', { agent: AGENTS[ag] }))}</button>`
+    const others = mailList().filter(a => a.found && a.id !== ag)
+    const more = others.length ? `<button class="pbtn sm al more" data-hand-more title="${esc(T('mail.hand.others'))}">▾</button>` : ''
+    const give = talk ? '' : `<span class="split${more ? ' two' : ''}"><button class="pbtn sm al" data-hand="${ag}:talk" ${off}>${esc(T('mail.hand.talk', { agent: AGENTS[ag] }))}</button>${more}</span>`
     const reply = `<button class="pbtn sm" data-w-reply="reply">${esc(T('mail.reply'))}</button>`
     return `${starHTML(l.account, l.uid, l.flagged)}${reply}${give}<button class="pbtn sm" data-mail-menu title="${esc(T('mail.hand.more'))}">⋯</button>`
   }
@@ -1769,17 +1784,36 @@
 
   // A menu of [value, label, off] under a button, the first (the agent's or
   // server's own, autodetect, every account) apart unless `together`; one
-  // that is off is there, greyed.
+  // that is off is there, greyed, with why (off's words, else "not
+  // supported").
   function openChoices(button, choices, value, onPick, together = false) {
     menuEl.innerHTML = choices
       .map(
         ([v, label, off], i) =>
-          `${i === 1 && !together ? '<div class="mi-sep"></div>' : ''}<button class="mi${v === value ? ' on' : ''}" data-pick="${esc(v)}" ${off ? 'disabled' : ''}>${esc(label)}${off ? ` <span class="d">${esc(T('mail.unsupported'))}</span>` : ''}</button>`,
+          `${i === 1 && !together ? '<div class="mi-sep"></div>' : ''}<button class="mi${v === value ? ' on' : ''}" data-pick="${esc(v)}" ${off ? 'disabled' : ''}>${esc(label)}${off ? ` <span class="d">${esc(typeof off === 'string' ? off : T('mail.unsupported'))}</span>` : ''}</button>`,
       )
       .join('')
     menuPick = onPick
     const r = button.getBoundingClientRect()
     placeMenu(r.left, r.bottom + 4)
+  }
+
+  // The split button's ▾ on an open letter: the other agents found, each
+  // to hand this letter to (the first agent stays as it is), and under
+  // them each made the first instead.
+  function handMenu(button) {
+    const ag = firstAgent()
+    const others = mailList().filter(a => a.found && a.id !== ag)
+    menuEl.innerHTML = `${others.map(a => `<button class="mi" data-pick="hand:${a.id}">${esc(T('mail.hand.talk', { agent: a.short }))}</button>`).join('')}<div class="mi-sep"></div>${others
+      .map(a => `<button class="mi" data-pick="first:${a.id}">${esc(T('mail.hand.makeFirst', { agent: a.short }))}</button>`)
+      .join('')}`
+    menuPick = v => {
+      const [what, id] = v.split(':')
+      if (what === 'first') return patch({ mailAgent: id })
+      if (reading) hand(reading.account, Number(reading.uid), id, 'talk', reading.folder || 'inbox')
+    }
+    const r = button.getBoundingClientRect()
+    placeMenu(r.right - 220, r.bottom + 4)
   }
 
   function openPicker(button) {
@@ -1802,195 +1836,204 @@
   })
   body.addEventListener('scroll', closeMenu)
 
-  function pageConnect() {
-    const conn = { plugin: 'home.connPlugin', hooks: 'home.connHooks', both: 'home.connBoth', none: 'home.connNone' }[snap.connection] || 'home.connNone'
-    const isOk = snap.connection === 'plugin' || snap.connection === 'hooks'
-    const sessions = (snap.sessions || []).length
-    const hooksWord = {
-      ok: 'settings.hooksOk',
-      missing: 'settings.hooksMissing',
-      stale: 'settings.hooksStale',
-      partial: 'settings.hooksPartial',
-      httpOnly: 'settings.hooksHttpOnly',
-      unreadable: 's.hooksUnreadable',
-    }[snap.hooks]
-    const hooksButtons =
-      snap.hooks === 'missing'
-        ? `<button class="pbtn" data-hooks="install">${esc(T('settings.install'))}</button>`
-        : snap.hooks === 'unreadable'
-          ? ''
-          : `<button class="pbtn" data-hooks="install">${esc(T(snap.hooks === 'ok' || snap.hooks === 'httpOnly' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-hooks="remove">${esc(T('settings.remove'))}</button>`
-    // Codex: hooks in its hooks.json, which it runs only once trusted (/hooks):
-    // until an event came, they may be waiting for that.
-    const codex = snap.codex || {}
-    // upgradable: all works; Codex was updated since and runs background hooks now.
-    const codexIn = ['ok', 'stale', 'upgradable', 'partial'].includes(codex.hooks)
-    const codexConn =
-      codex.hooks === 'ok' && codex.seen
-        ? 's.codexConnOk'
-        : codex.hooks === 'ok'
-          ? 's.codexConnTrust'
-          : codex.hooks === 'upgradable'
-            ? 's.codexConnUpgrade'
-            : codexIn
-              ? 's.codexConnRepair'
-              : 's.codexConnNone'
-    const codexColor = codexConn === 's.codexConnOk' ? COLOR.done : codex.hooks === 'upgradable' ? COLOR.working : codexIn ? COLOR.waiting : COLOR.idle
-    const codexWord = {
-      ok: 'settings.hooksOk',
-      missing: 'settings.hooksMissing',
-      stale: 'settings.hooksStale',
-      upgradable: 's.codexUpgradable',
-      partial: 'settings.hooksPartial',
-      unreadable: 's.codexUnreadable',
-      absent: 's.codexAbsent',
-    }[codex.hooks]
-    const codexButtons =
-      codex.hooks === 'missing'
-        ? `<button class="pbtn" data-codex="install">${esc(T('settings.install'))}</button>`
-        : codexIn
-          ? `<button class="pbtn" data-codex="install">${esc(T(codex.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-codex="remove">${esc(T('settings.remove'))}</button>`
-          : ''
-    // Antigravity: hooks in ~/.gemini/config/hooks.json, a block of ours.
-    const agy = snap.agy || {}
-    const agyConn = agyIn() && agy.seen ? 's.agyConnOk' : agyIn() ? 's.agyConnWait' : 's.agyConnNone'
-    const agyColor = agyConn === 's.agyConnOk' ? COLOR.done : agyIn() ? COLOR.waiting : COLOR.idle
-    const agyWord = {
-      ok: 'settings.hooksOk',
-      missing: 'settings.hooksMissing',
-      stale: 'settings.hooksStale',
-      off: 's.agyOff',
-      unreadable: 's.agyUnreadable',
-      absent: 's.agyAbsent',
-    }[agy.hooks]
-    const agyButtons =
-      agy.hooks === 'missing'
-        ? `<button class="pbtn" data-agy="install">${esc(T('settings.install'))}</button>`
-        : ['ok', 'stale', 'off'].includes(agy.hooks)
-          ? `<button class="pbtn" data-agy="install">${esc(T(agy.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-agy="remove">${esc(T('settings.remove'))}</button>`
-          : ''
-    // OpenCode: our plugin in its plugin folder (OpenCode 2), which it loads by itself.
-    const oc = snap.opencode || {}
-    const ocConn = opencodeIn() && oc.seen ? 's.opencodeConnOk' : oc.plugin === 'ok' ? 's.opencodeConnWait' : opencodeIn() ? 's.opencodeConnRepair' : 's.opencodeConnNone'
-    const ocColor = ocConn === 's.opencodeConnOk' ? COLOR.done : opencodeIn() ? COLOR.waiting : COLOR.idle
-    const ocWord = {
-      ok: 'settings.hooksOk',
-      missing: 'settings.hooksMissing',
-      stale: 's.opencodeStale',
-      unreadable: 's.opencodeUnreadable',
-      absent: 's.opencodeAbsent',
-    }[oc.plugin]
-    const ocButtons =
-      oc.plugin === 'missing'
-        ? `<button class="pbtn" data-opencode="install">${esc(T('settings.install'))}</button>`
-        : opencodeIn()
-          ? `<button class="pbtn" data-opencode="install">${esc(T(oc.plugin === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-opencode="remove">${esc(T('settings.remove'))}</button>`
-          : ''
-    // omp: an extension in its agent folder (and each profile's), loaded by
-    // an omp started after it is written.
-    const omp = snap.omp || {}
-    const ompConn = ompIn() && omp.seen ? 's.ompConnOk' : omp.hooks === 'ok' ? 's.ompConnWait' : ompIn() ? 's.ompConnRepair' : 's.ompConnNone'
-    const ompColor = ompConn === 's.ompConnOk' ? COLOR.done : ompIn() ? COLOR.waiting : COLOR.idle
-    const ompWord = {
-      ok: 's.ompOk',
-      missing: 's.ompMissing',
-      stale: 's.ompStale',
-      partial: 's.ompPartial',
-      unreadable: 's.ompUnreadable',
-      absent: 's.ompAbsent',
-    }[omp.hooks]
-    const ompButtons =
-      omp.hooks === 'missing'
-        ? `<button class="pbtn" data-omp="install">${esc(T('settings.install'))}</button>`
-        : ompIn()
-          ? `<button class="pbtn" data-omp="install">${esc(T(omp.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-omp="remove">${esc(T('settings.remove'))}</button>`
-          : ''
-    const ompWhere = omp.file ? `${omp.fileShown || omp.file}${omp.more ? T('s.ompMore', { n: omp.more }) : ''}` : ''
-    // ZCode: hooks of ours in ~/.zcode/cli/config.json.
-    const zcode = snap.zcode || {}
-    const zcodeConn = zcodeIn() && zcode.seen ? 's.zcodeConnOk' : zcodeIn() ? 's.zcodeConnWait' : zcode.hooks === 'off' ? 's.zcodeConnOff' : 's.zcodeConnNone'
-    const zcodeColor = zcodeConn === 's.zcodeConnOk' ? COLOR.done : zcodeIn() || zcode.hooks === 'off' ? COLOR.waiting : COLOR.idle
-    const zcodeWord = {
-      ok: 'settings.hooksOk',
-      missing: 'settings.hooksMissing',
-      stale: 'settings.hooksStale',
-      partial: 'settings.hooksPartial',
-      off: 's.zcodeOff',
-      unreadable: 's.zcodeUnreadable',
-      absent: 's.zcodeAbsent',
-    }[zcode.hooks]
-    const zcodeButtons =
-      zcode.hooks === 'missing'
-        ? `<button class="pbtn" data-zcode="install">${esc(T('settings.install'))}</button>`
-        : ['ok', 'stale', 'partial', 'off'].includes(zcode.hooks)
-          ? `<button class="pbtn" data-zcode="install">${esc(T(zcode.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-zcode="remove">${esc(T('settings.remove'))}</button>`
-          : ''
-    // DeepSeek Harness: its Claude Code hook bridge, inserted in ~/.dsh/cordis.patch.yml.
-    const dsh = snap.dsh || {}
-    const dshConn = dshIn() && dsh.seen ? 's.dshConnOk' : dshIn() ? 's.dshConnWait' : 's.dshConnNone'
-    const dshColor = dshConn === 's.dshConnOk' ? COLOR.done : dshIn() ? COLOR.waiting : COLOR.idle
-    const dshWord = {
-      ok: 'settings.hooksOk',
-      missing: 'settings.hooksMissing',
-      stale: 'settings.hooksStale',
-      unreadable: 's.dshUnreadable',
-      absent: 's.dshAbsent',
-    }[dsh.hooks]
-    const dshButtons =
-      dsh.hooks === 'missing'
-        ? `<button class="pbtn" data-dsh="install">${esc(T('settings.install'))}</button>`
-        : ['ok', 'stale'].includes(dsh.hooks)
-          ? `<button class="pbtn" data-dsh="install">${esc(T(dsh.hooks === 'ok' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn no" data-dsh="remove">${esc(T('settings.remove'))}</button>`
-          : ''
-    return `${sec(T('s.status'))}<div class="grp"><div class="r"><span class="dot" style="background:${isOk ? COLOR.done : snap.connection === 'both' ? COLOR.waiting : COLOR.idle}"></span><div class="grow">${esc(T(conn))}</div><span class="d">${esc(T('s.sessionsOnline', { n: sessions }))}</span></div>
-        <div class="r"><span class="dot" style="background:${codexColor}"></span><div class="grow">${esc(T(codexConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${agyColor}"></span><div class="grow">${esc(T(agyConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${ocColor}"></span><div class="grow">${esc(T(ocConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${ompColor}"></span><div class="grow">${esc(T(ompConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${zcodeColor}"></span><div class="grow">${esc(T(zcodeConn))}</div></div>
-        <div class="r"><span class="dot" style="background:${dshColor}"></span><div class="grow">${esc(T(dshConn))}</div></div></div>
-      ${sec(T('home.plugin'))}<div class="grp"><div class="note">${esc(T('home.pluginWhy'))}</div>
-        ${snap.pluginCommands.map(c => `<div class="r"><span class="cmd mono">${esc(c)}</span><button class="pbtn" data-copy="${esc(c)}">${esc(T('home.copy'))}</button></div>`).join('')}
-      </div>
-      ${sec(T('home.advanced'))}<div class="grp">
-        <div class="note">${esc(T('home.advancedWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(hooksWord))}</div><div class="d mono ellip">${esc(snap.settingsFile)}</div></div>${hooksButtons}</div>
-      </div>
-      ${sec(T('s.codex'))}<div class="grp">
-        <div class="note">${esc(T('s.codexWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(codexWord))}</div><div class="d mono ellip">${esc(codex.file)}</div></div>${codexButtons}</div>
-        ${codex.hooks === 'upgradable' ? `<div class="note">${esc(T('s.codexUpgradeNote'))}</div>` : ''}
-        ${codexIn && codex.hooks !== 'upgradable' && !codex.seen ? `<div class="note">${esc(T('s.codexTrust'))}</div>` : ''}
-        ${codex.hooks !== 'absent' && !codex.async ? `<div class="note">${esc(T('s.codexOld', { version: codex.version }))}</div>` : ''}
-      </div>
-      ${sec(T('s.agy'))}<div class="grp">
-        <div class="note">${esc(T('s.agyWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(agyWord))}</div><div class="d mono ellip">${esc(agy.file || '')}</div></div>${agyButtons}</div>
-      </div>
-      ${sec(T('s.opencode'))}<div class="grp">
-        <div class="note">${esc(T('s.opencodeWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('s.opencodePlugin'))}: ${esc(T(ocWord))}</div><div class="d mono ellip">${esc(oc.file || '')}</div></div>${ocButtons}</div>
-      </div>
-      ${sec(T('s.omp'))}<div class="grp">
-        <div class="note">${esc(T('s.ompWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('s.ompExtension'))}: ${esc(T(ompWord))}</div><div class="d mono ellip">${esc(ompWhere)}</div></div>${ompButtons}</div>
-        ${ompIn() && !omp.seen ? `<div class="note">${esc(T('s.ompNew'))}</div>` : ''}
-      </div>
-      ${sec(T('s.zcode'))}<div class="grp">
-        <div class="note">${esc(T('s.zcodeWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(zcodeWord))}</div><div class="d mono ellip">${esc(zcode.file || '')}</div></div>${zcodeButtons}</div>
-        ${zcode.hooks === 'off' ? `<div class="note">${esc(T('s.zcodeOffNote'))}</div>` : ''}
-      </div>
-      ${sec(T('s.dsh'))}<div class="grp">
-        <div class="note">${esc(T('s.dshWhy'))}</div>
-        <div class="r"><div class="grow"><div>${esc(T('settings.hooks'))}: ${esc(T(dshWord))}</div><div class="d mono ellip">${esc(dsh.file || '')}</div></div>${dshButtons}</div>
-        ${dshIn() && !dsh.seen ? `<div class="note">${esc(T('s.dshRestart'))}</div>` : ''}
-      </div>
-      ${sec(T('settings.about'))}<div class="grp">
+  // --- The Agent page (agents.js) ---------------------------------------------------------
+  // One row for each agent found on this computer: a dot for how it stands
+  // (in the island's colours: connected green, written and waiting for its
+  // first event blue, to repair amber, unreadable or not written red, not
+  // connected grey; colour says how it stands, never which one it is), its
+  // name (and version, where known), what she can do for it (five icons,
+  // lit, half or dim, each with a tooltip saying which buttons or why not),
+  // one button: connect, repair, or remove… (which opens it). A row opens in
+  // place, one at a time, to its details: how it connects and the file
+  // written (the whole path, ~ for the home folder), what works and what
+  // does not, what she can do in words, what to know, the buttons; Claude
+  // Code's two ways (the plugin, settings.json). Connect all at the top, for
+  // those not connected yet; those not found folded under "Other supported
+  // tools", each with where to get it.
+  let connecting = ''
+  // Why each could not be written: { error, kind, folder } (locked, invalid, path, other).
+  const failed = {}
+  let pluginOpen = false
+  let agentOpen = ''
+  let othersOpen = false
+  let connectingAll = false
+  const known = () => ({ busy: connecting, failed })
+
+  // One written or removed (its call in bridge.js, agents.js call): what
+  // came back shown; not written, why (the card names the file), its row
+  // open to say so, and Claude Code's plugin the other way.
+  async function agentDo(id, action) {
+    const a = Agents.byId(id)
+    if (!a || connecting) return
+    if (action === 'install') {
+      connecting = id
+      delete failed[id]
+      draw()
+    }
+    const got = await window.pet.settings[a.call](action)
+    connecting = ''
+    snap = got.snapshot
+    if (action === 'install' && !got.ok) {
+      failed[id] = { error: got.error || '', kind: got.kind || 'other', folder: got.folder || '' }
+      if (id === 'claude') pluginOpen = true
+      if (tab === 'agents') agentOpen = id
+    }
+    draw()
+    relayout()
+    return got.ok
+  }
+
+  // Connect all: each found and not connected, one after another.
+  async function connectAll() {
+    if (connectingAll) return
+    connectingAll = true
+    for (const id of Agents.toConnect(snap, known())) await agentDo(id, 'install')
+    connectingAll = false
+    draw()
+  }
+
+  const capTip = (cap, key) => T('ag.capTip', { cap: T(`ag.cap.${cap}`), what: T(key) })
+  const capIcon = (cap, level, key) => `<span class="cap ${level}" title="${esc(capTip(cap, key))}">${Agents.CAP_GLYPH[cap]}</span>`
+
+  // How one stands, in its row's second line.
+  function agentLine(id, state) {
+    const r = Agents.read(snap, id)
+    if (state === 'on') {
+      const n = Agents.sessionsOf(snap, id)
+      return n ? T(n === 1 ? 'ag.st.on1' : 'ag.st.onN', { n }) : T('ag.st.on')
+    }
+    if (state === 'set') return T(`ag.st.set.${id}`)
+    if (state === 'busy') return T('wc.busy')
+    if (state === 'failed') return T('ag.st.failed')
+    if (state === 'repair' || state === 'error') return T(Agents.wordOf(id, r.status))
+    return T('ag.st.none')
+  }
+
+  function agentRow(id) {
+    const a = Agents.byId(id)
+    const r = Agents.read(snap, id)
+    const state = Agents.stateOf(snap, id, known())
+    const action = Agents.actionOf(snap, id, known())
+    const open = agentOpen === id
+    const small = [a.aka, r.version].filter(Boolean).map(text => `<span class="ver">${esc(text)}</span>`).join('')
+    const line = agentLine(id, state)
+    let button = ''
+    if (state === 'busy') button = `<button class="pbtn sm" disabled><span class="spin"></span>${esc(T('wc.busy'))}</button>`
+    else if (action?.act === 'open') button = `<button class="pbtn sm" data-ag-open="${id}" data-ag-keep>${esc(T(action.label))}</button>`
+    else if (action) button = `<button class="pbtn sm" data-agent="${id}:${action.act}" ${connecting ? 'disabled' : ''}>${esc(T(action.label))}</button>`
+    const caps = `<span class="caps">${Agents.capsOf(snap, id).map(([cap, level, key]) => capIcon(cap, level, key)).join('')}</span>`
+    return `<div class="r ag-row${open ? ' open' : ''}" data-ag-open="${id}"><span class="dot" style="background:${COLOR[Agents.MOOD[state]]}"></span><div class="grow"><div class="ag-name ellip">${esc(a.name)}${small}</div><div class="d ellip" title="${esc(line)}">${esc(line)}</div></div>${caps}${button}</div>${open ? agentDetails(id, state) : ''}`
+  }
+
+  // What to know about one now: a step left (amber), or how it is.
+  function agentNotes(id, state) {
+    const r = Agents.read(snap, id)
+    const warn = []
+    if (id === 'codex' && state === 'set') warn.push(T('s.codexTrust'))
+    if (id === 'codex' && r.status === 'upgradable') warn.push(T('s.codexUpgradeNote'))
+    if (id === 'codex' && r.here && snap.codex?.async === false) warn.push(T('s.codexOld', { version: r.version }))
+    if (id === 'zcode' && r.status === 'off') warn.push(T('s.zcodeOffNote'))
+    if (id === 'omp' && state === 'set') warn.push(T('s.ompNew'))
+    if (id === 'dsh' && state === 'set') warn.push(T('s.dshRestart'))
+    if (id === 'claude' && r.status === 'both') warn.push(T('ag.claude.both'))
+    return `${warn.map(text => `<div class="ag-note warn">${esc(text)}</div>`).join('')}<div class="ag-note">${esc(T(`ag.note.${id}`))}</div>`
+  }
+
+  // A field of the details: its name, what it is.
+  const field = (key, value) => `<div class="kv"><span class="k">${esc(T(key))}</span><span class="v">${value}</span></div>`
+  const pathOf = text => `<span class="mono path">${esc(text)}</span>`
+
+  // Where one is written: the file (omp's in each profile too; DSH's hook
+  // list in her data folder), its backup.
+  function agentFiles(id) {
+    const r = Agents.read(snap, id)
+    return [
+      field('ag.file', `${pathOf(r.shown)}${r.more ? esc(T('s.ompMore', { n: r.more })) : ''}`),
+      r.list ? field('ag.list', pathOf(r.list)) : '',
+      r.backup ? field('ag.backup', pathOf(`${r.shown}.wakuwaku.bak`)) : '',
+    ].join('')
+  }
+
+  // Claude Code's two ways, each its own: the plugin (recommended: Claude
+  // Code installs and removes it, nothing of ours in its settings) and the
+  // hooks written straight into settings.json (new sessions start her).
+  function claudeWays() {
+    const commands = snap.pluginCommands || []
+    const plugged = snap.connection === 'plugin' || snap.connection === 'both'
+    const plugin = `<div class="ag-way"><div class="ag-way-h"><b>${esc(T('home.plugin'))}</b><span class="grow"></span><span class="d">${esc(T(plugged ? 'home.pluginOn' : 'ag.claude.pluginOff'))}</span></div>
+      <div class="d">${esc(T(plugged ? 'ag.claude.pluginRemove' : 'home.pluginWhy'))}</div>
+      ${plugged ? '' : `${commands.map(c => `<div class="wc-cmd mono">${esc(c)}</div>`).join('')}<div class="ag-btns"><button class="pbtn sm" data-copy="${esc(commands.join('\n'))}" data-label="${esc(T('wc.copyBoth'))}">${esc(T('wc.copyBoth'))}</button><span class="d">${esc(T('home.pluginStart'))}</span></div>`}</div>`
+    const status = snap.hooks
+    const word = { ok: 'settings.hooksOk', missing: 'settings.hooksMissing', stale: 'settings.hooksStale', partial: 'settings.hooksPartial', httpOnly: 'settings.hooksHttpOnly', unreadable: 's.hooksUnreadable' }[status] || 'settings.hooksMissing'
+    const busy = connecting === 'claude'
+    // Not written while the plugin is on: every event would come twice.
+    const buttons =
+      status === 'unreadable' || (plugged && status === 'missing')
+        ? ''
+        : status === 'missing'
+          ? `<button class="pbtn sm" data-agent="claude:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('settings.install'))}</button>`
+          : `<button class="pbtn sm" data-agent="claude:install" ${connecting ? 'disabled' : ''}>${esc(T(status === 'ok' || status === 'httpOnly' ? 'settings.reinstall' : 'settings.repair'))}</button><button class="pbtn sm no" data-agent="claude:remove" ${connecting ? 'disabled' : ''}>${esc(T('settings.remove'))}</button>`
+    const direct = `<div class="ag-way"><div class="ag-way-h"><b>${esc(T('ag.claude.direct'))}</b><span class="grow"></span><span class="d">${esc(T(plugged && status === 'missing' ? 'ag.claude.notNeeded' : word))}</span></div>
+      ${agentFiles('claude')}<div class="d">${esc(T('home.advancedWhy'))}</div>${buttons ? `<div class="ag-btns">${buttons}</div>` : ''}</div>`
+    return plugin + direct
+  }
+
+  // How one connects, in one word for all (the plugin or the hooks for Claude Code, as connected).
+  function viaOf(id) {
+    if (id !== 'claude') return T(`ag.via.${Agents.byId(id).via}`)
+    const c = snap.connection
+    return c === 'plugin' ? T('ag.via.plugin') : c === 'hooks' ? T('ag.via.hooks') : c === 'both' ? `${T('ag.via.plugin')} + ${T('ag.via.hooks')}` : T('ag.via.claudeNone')
+  }
+
+  function agentDetails(id, state) {
+    const caps = Agents.capsOf(snap, id)
+      .map(([cap, level, key]) => `<div class="ag-cap ${level}">${capIcon(cap, level, key)}<span class="ag-cap-n">${esc(T(`ag.cap.${cap}`))}</span><span class="d">${esc(T(key))}</span></div>`)
+      .join('')
+    const ours = Agents.isIn(snap, id) || state === 'repair'
+    const busy = connecting === id
+    // Connect, repair or install again; remove, with the file it is taken out of.
+    const buttons =
+      state === 'error'
+        ? ''
+        : ours
+          ? `<button class="pbtn sm" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'repair' ? 'settings.repair' : 'settings.reinstall'))}</button><button class="pbtn sm no" data-agent="${id}:remove" ${connecting ? 'disabled' : ''}>${esc(T('settings.remove'))}</button>`
+          : `<button class="pbtn sm al" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'failed' ? 'wc.toolRetry' : 'ag.do.install'))}</button>`
+    const top = id === 'claude' ? claudeWays() : `${field('ag.via', esc(viaOf(id)))}${agentFiles(id)}`
+    return `<div class="ag-det">${top}
+        <div class="ag-what">${esc(T(`ag.what.${id}`))}</div>
+        <div class="ag-caps">${caps}</div>
+        ${agentNotes(id, state)}${failed[id] ? failedHTML(id) : ''}
+        ${id === 'claude' ? '' : `<div class="ag-btns">${buttons}</div>`}
+      </div>`
+  }
+
+  function pageAgents() {
+    const here = Agents.here(snap)
+    const away = Agents.elsewhere(snap)
+    const left = Agents.toConnect(snap, known())
+    const all = left.length
+      ? `<button class="pbtn sm al" data-ag-all ${connecting || connectingAll ? 'disabled' : ''}>${connectingAll ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('ag.connectAll', { n: left.length }))}</button>`
+      : ''
+    const rows = here.length ? here.map(agentRow).join('') : `<div class="note">${esc(T('ag.noneHere'))}</div>`
+    // What the icons are, once.
+    const legend = Agents.CAPS.map(cap => `<span class="ag-key"><span class="cap yes">${Agents.CAP_GLYPH[cap]}</span>${esc(T(`ag.cap.${cap}`))}</span>`).join('')
+    const others = away.length
+      ? `${sec(T('ag.others'))}<div class="grp">
+          <div class="r go" data-ag-others><span class="fi chev${othersOpen || !here.length ? ' open' : ''}">\uE76C</span><div class="grow ellip">${esc(nameList(lang, away.map(id => Agents.byId(id).name), 'and'))}</div><span class="d">${esc(T('ag.othersNote'))}</span></div>
+          ${othersOpen || !here.length ? away.map(id => `<div class="r"><div class="grow"><div>${esc(Agents.byId(id).name)}${Agents.byId(id).aka ? `<span class="ver">${esc(Agents.byId(id).aka)}</span>` : ''}</div><div class="d">${esc(T(`ag.how.${id}`))}</div></div><span class="link" data-site="${Agents.byId(id).site}">${esc(T('ag.get'))} ›</span></div>`).join('') : ''}
+        </div>`
+      : ''
+    return `<div class="sec row-sec"><span class="ellip">${esc(T('ag.found', { n: here.length }))}</span><span class="grow"></span>${all}</div>
+      <div class="grp ag-list">${rows}</div>
+      ${here.length ? `<div class="ag-legend">${legend}</div><div class="note ag-legend-note">${esc(T('ag.legend'))}</div>` : ''}
+      ${others}`
+  }
+
+  // About: this version, the project's page, the credits (General's foot).
+  const aboutHTML = () => `${sec(T('settings.about'))}<div class="grp">
         <div class="r"><div class="grow">${esc(T('s.version', { version: snap.version }))}</div><span class="link" data-site="repo">${esc(T('home.repo'))} ›</span></div>
         <div class="note">${esc(T('home.credits'))}</div>
       </div>`
-  }
 
   // Her updates (updates.rs): this version and the latest, its notes and
   // Update, or a look now; how an update goes (downloaded, checked, waiting
@@ -2056,61 +2099,44 @@
       </div>`
   }
 
-  // --- The welcome: Claude Code, Codex and Antigravity connected, at the top of General ---
-  // While nothing is connected, and on the first open after one is (until
-  // she is set up, onboarded): a card with a button for each of the three on
-  // this computer, as equals (whichever one uses, or all), in a row: its name,
+  // --- The welcome: the agents connected, at the top of General -----------------------
+  // While nothing is connected (and until one sends its first event, before
+  // she is set up, onboarded): a card with a button for each one on this
+  // computer, as equals (whichever one uses, or all), in a row: its name,
   // and under it how it stands; under them what each still needs, or why it
   // could not be written; what the buttons write; Claude Code's plugin the
-  // other way. Connected (a session of any seen), one row, and the others on
-  // this computer offered under it. Managing the connections stays in the
-  // page's Connect part. (The appearance session's spec, 2026-10-13.)
-  let connecting = ''
-  // Why each could not be written: { error, kind } (locked, invalid, path, other).
-  const failed = {}
-  let pluginOpen = false
+  // other way. The same model as the Agent page (agents.js: what is here,
+  // how each stands, the same buttons). Once one is connected, General has
+  // a line on them instead, which opens the Agent page (agentsLine). (The
+  // appearance session's spec, 2026-10-13.)
   // "Not now" said (connectHintOff: the welcome's 以后再说, the island's
   // 不用提醒) and nothing connected: the welcome folded to one row at the
   // page's top; opened again by its 去连接, or by asking for connecting.
   let welcomeOpen = false
-  const TOOL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode', dsh: 'DeepSeek Harness' }
-  // What each one's buttons say they are for (the handlers below).
-  const ACT = { claude: 'data-hooks', codex: 'data-codex', agy: 'data-agy', opencode: 'data-opencode', omp: 'data-omp', zcode: 'data-zcode', dsh: 'data-dsh' }
-  const codexIn = () => ['ok', 'stale', 'upgradable', 'partial'].includes(snap.codex?.hooks)
-  const claudeIn = () => snap.connection !== 'none'
-  const agyIn = () => ['ok', 'stale'].includes(snap.agy?.hooks)
-  const opencodeIn = () => ['ok', 'stale'].includes(snap.opencode?.plugin)
-  const ompIn = () => ['ok', 'stale', 'partial'].includes(snap.omp?.hooks)
-  const zcodeIn = () => ['ok', 'stale', 'partial'].includes(snap.zcode?.hooks)
-  const dshIn = () => ['ok', 'stale'].includes(snap.dsh?.hooks)
-  const anyIn = () => claudeIn() || codexIn() || agyIn() || opencodeIn() || ompIn() || zcodeIn() || dshIn()
+  const anyIn = () => Agents.TABLE.some(a => Agents.isIn(snap, a.id))
   const welcomeFolded = () => snap.settings.connectHintOff === true && !welcomeOpen && !anyIn()
   const showWelcome = () => !anyIn() || !snap.settings.onboarded
+  // The card itself, not General's line: shown, and none connected for real yet.
+  const cardShows = () => showWelcome() && !toolsHere().some(tool => toolState(tool) === 'seen')
 
-  // The ones on this computer, in this order: Claude Code by its folder (or
-  // connected), Codex, Antigravity, OpenCode, omp, ZCode and DeepSeek Harness
-  // by theirs. None found: the first four (it cannot be told).
+  // The ones on this computer, in the table's order (agents.js here). None
+  // found: the first four (it cannot be told).
   function toolsHere() {
-    const isHere = tool => (tool === 'claude' ? snap.claudeHere !== false || claudeIn() : tool === 'opencode' ? snap.opencode?.plugin !== 'absent' : !!snap[tool] && snap[tool].hooks !== 'absent')
-    const here = ['claude', 'codex', 'agy', 'opencode', 'omp', 'zcode', 'dsh'].filter(isHere)
+    const here = Agents.here(snap)
     return here.length ? here : ['claude', 'codex', 'agy', 'opencode']
   }
 
   // Their names as one says them: 「A、B 或 C」, "A, B and C".
-  const toolNames = (tools, kind = 'or') => nameList(lang, tools.map(tool => TOOL[tool]), kind)
+  const toolNames = (tools, kind = 'or') => nameList(lang, tools.map(tool => Agents.byId(tool).name), kind)
 
-  // How one stands: busy, seen (a session's event came, or the plugin in),
-  // set (written, no session yet: Codex's to be trusted first), failed, none.
+  // How one stands on the card: busy, seen (a session's event came, or the
+  // plugin in), set (written, no session yet: Codex's to be trusted first;
+  // ours there to repair counts as written), failed, none.
   function toolState(tool) {
-    if (connecting === tool) return 'busy'
-    if (tool === 'claude' && claudeIn()) return snap.claudeSeen || snap.connection === 'plugin' ? 'seen' : 'set'
-    if (tool === 'codex' && codexIn()) return snap.codex?.seen ? 'seen' : 'set'
-    if (tool === 'agy' && agyIn()) return snap.agy?.seen ? 'seen' : 'set'
-    if (tool === 'opencode' && opencodeIn()) return snap.opencode?.seen ? 'seen' : 'set'
-    if (tool === 'omp' && ompIn()) return snap.omp?.seen ? 'seen' : 'set'
-    if (tool === 'zcode' && zcodeIn()) return snap.zcode?.seen ? 'seen' : 'set'
-    if (tool === 'dsh' && dshIn()) return snap.dsh?.seen ? 'seen' : 'set'
-    return failed[tool] ? 'failed' : 'none'
+    const state = Agents.stateOf(snap, tool, known())
+    if (state === 'on') return 'seen'
+    if (state === 'repair' && Agents.isIn(snap, tool)) return Agents.read(snap, tool).seen ? 'seen' : 'set'
+    return ['busy', 'set', 'failed'].includes(state) ? state : 'none'
   }
 
   // Windows' accent for the accent-filled buttons: its light shade on the
@@ -2125,55 +2151,45 @@
   // connected in green, a step left (Codex) in amber, and those do nothing.
   function toolButton(tool) {
     const state = toolState(tool)
-    const name = `<span class="wt-name">${esc(TOOL[tool])}</span>`
+    const name = `<span class="wt-name">${esc(Agents.byId(tool).name)}</span>`
     const line = text => `<span class="wt-state">${text}</span>`
     if (state === 'busy') return `<button class="wc-tool" disabled>${name}${line(`<span class="spin"></span>${esc(T('wc.busy'))}`)}</button>`
     if (state === 'seen') return `<button class="wc-tool done" disabled>${name}${line(esc(T('wc.toolOn')))}</button>`
     if (state === 'set' && tool === 'codex') return `<button class="wc-tool warn" disabled>${name}${line(esc(T('wc.toolStep')))}</button>`
     if (state === 'set') return `<button class="wc-tool done" disabled>${name}${line(esc(T('wc.toolSet')))}</button>`
-    return `<button class="wc-tool" ${ACT[tool]}="install">${name}${line(esc(T(state === 'failed' ? 'wc.toolRetry' : 'wc.toolGo')))}</button>`
+    return `<button class="wc-tool" data-agent="${tool}:install">${name}${line(esc(T(state === 'failed' ? 'wc.toolRetry' : 'wc.toolGo')))}</button>`
   }
 
-  // The file each one's hooks go in, as read (~ for the home folder), and its name.
-  const toolFile = tool =>
-    ({
-      claude: snap.settingsShown || snap.settingsFile,
-      codex: snap.codex?.fileShown || snap.codex?.file,
-      agy: snap.agy?.fileShown || snap.agy?.file,
-      opencode: snap.opencode?.fileShown || snap.opencode?.file,
-      omp: snap.omp?.fileShown || snap.omp?.file,
-      zcode: snap.zcode?.fileShown || snap.zcode?.file,
-      dsh: snap.dsh?.fileShown || snap.dsh?.file,
-    })[tool] || ''
+  // Why one could not be written (the card's and the Agent page's): which
+  // file, the whole path, the reason, what to do.
+  function failedHTML(tool) {
+    const { error, kind, folder } = failed[tool]
+    const name = Agents.byId(tool).name
+    // Her folder's path has a space, which agy can't run: not a file not
+    // written, but where she is (the appearance session's words).
+    if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
+    const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
+    const file = Agents.read(snap, tool).shown
+    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name, file: file.split(/[\\/]/).pop() }))}</b></div>
+        <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
+  }
 
-  // Under the buttons: what each still needs (Claude Code, Antigravity and
-  // ZCode where it was written, and undone), or why it could not be written.
+  // Under the buttons: what each still needs (where it was written, and
+  // undone), or why it could not be written.
   function toolNote(tool) {
     const state = toolState(tool)
     const mono = text => `<span class="mono">${esc(text)}</span>`
-    const file = toolFile(tool)
+    const { shown: file, backup } = Agents.read(snap, tool)
+    const undo = `<span class="link" data-agent="${tool}:remove">${esc(T('wc.undo'))}</span>`
     if (['claude', 'agy', 'zcode', 'dsh'].includes(tool) && state === 'set') {
-      const backed = tool === 'claude' ? snap.settingsBackup : snap[tool]?.backup
-      const where = backed ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
-      return `<div class="wc-tnote"><div>${T(`wc.${tool}Left`)}</div><div class="wc-where">${where}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
+      const where = backup ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
+      return `<div class="wc-tnote"><div>${T(`wc.${tool}Left`)}</div><div class="wc-where">${where}${undo}</div></div>`
     }
     if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
-    if (tool === 'opencode' && state === 'set') {
-      return `<div class="wc-tnote"><div>${T('wc.opencodeLeft')}</div><div class="wc-where">${T('wc.created', { path: mono(file) })}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
-    }
+    if (tool === 'opencode' && state === 'set') return `<div class="wc-tnote"><div>${T('wc.opencodeLeft')}</div><div class="wc-where">${T('wc.created', { path: mono(file) })}${undo}</div></div>`
     // omp: a file of our own in its agent folder, nothing of omp's changed.
-    if (tool === 'omp' && state === 'set') {
-      return `<div class="wc-tnote"><div>${T('wc.ompLeft')}</div><div class="wc-where">${T('wc.ompWritten', { path: mono(file) })}<span class="link" ${ACT[tool]}="remove">${esc(T('wc.undo'))}</span></div></div>`
-    }
-    if (state !== 'failed') return ''
-    const { error, kind, folder } = failed[tool]
-    // Her folder's path has a space, which agy can't run: not a file not
-    // written, but where she is (the appearance session's words).
-    if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name: TOOL[tool] }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
-    const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
-    const named = { claude: 'settings.json', opencode: 'wakuwaku.js', omp: 'wakuwaku.ts', zcode: 'config.json', dsh: 'cordis.patch.yml' }[tool] || 'hooks.json'
-    return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name: TOOL[tool], file: named }))}</b></div>
-        <div class="mono">${esc(file)}</div><div>${esc(error)}</div><div>${esc(way)}</div></div>`
+    if (tool === 'omp' && state === 'set') return `<div class="wc-tnote"><div>${T('wc.ompLeft')}</div><div class="wc-where">${T('wc.ompWritten', { path: mono(file) })}${undo}</div></div>`
+    return state === 'failed' ? failedHTML(tool) : ''
   }
 
   function welcomeBlock() {
@@ -2181,25 +2197,11 @@
     if (welcomeFolded()) {
       return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.idle}"></span><div class="grow d">${esc(T('wc.notYet', { list: toolNames(tools) }))}</div><span class="link" data-welcome-open>${esc(T('hint.go'))} ›</span></div></div>`
     }
-    const seen = tools.filter(tool => toolState(tool) === 'seen')
-    // Connected: one row, this once; the others on this computer not
-    // written yet offered under it.
-    if (seen.length) {
-      const others = tools.filter(tool => ['none', 'failed', 'busy'].includes(toolState(tool)))
-      const offer = tool =>
-        toolState(tool) === 'busy'
-          ? `<button class="pbtn sm" disabled><span class="spin"></span>${esc(TOOL[tool])}</button>`
-          : `<button class="pbtn sm" ${ACT[tool]}="install">${esc(TOOL[tool])}</button>`
-      const more = others.length ? `<div class="wc-also"><span class="d">${esc(T('wc.also'))}</span>${others.map(offer).join('')}</div>` : ''
-      const sessions = (snap.sessions || []).length
-      return `<div class="grp"><div class="r"><span class="dot" style="background:${COLOR.done}"></span><div class="grow"><div>${esc(T('wc.onList', { list: toolNames(seen, 'and') }))}</div>
-          <div class="d">${esc(T(sessions === 1 ? 'wc.online1' : 'wc.online', { n: sessions }))} · <span class="link" data-goto="connect">${esc(T('wc.manage'))}</span></div>${more}</div></div></div>`
-    }
     const many = tools.length > 1
     const pet = (snap.pets || []).find(p => p.id === snap.settings.pet)
     const face = pet ? `<span class="wc-face">${thumb(40, pet.url, pet.version)}</span>` : ''
-    // A nudge to approve only where one of them can ask (Antigravity and DeepSeek Harness can not).
-    const sub = `${T('wc.sub1')}${tools.some(tool => !['agy', 'dsh'].includes(tool)) ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
+    // A nudge to approve only where one of them can ask (agents.js approve).
+    const sub = `${T('wc.sub1')}${tools.some(tool => Agents.byId(tool).caps.approve[0] !== 'no') ? T('wc.subAsk') : ''}${T('wc.sub2')}${many ? T('wc.subMany') : ''}`
     // OpenCode alone: a file of ours, nothing backed up, and she is not woken
     // by it; omp alone: a file of its own is written, nothing to back up.
     const safeKeys = many ? ['wc.safeMany', 'wc.safe2', 'wc.safe3'] : tools[0] === 'opencode' ? ['wc.safe.opencode', 'wc.safeOc2', 'wc.safeOc3'] : tools[0] === 'omp' ? ['wc.safe.omp', 'wc.safe3'] : [`wc.safe.${tools[0]}`, 'wc.safe2', 'wc.safe3']
@@ -2215,14 +2217,28 @@
         ? `<div class="wc-div"></div>
         <button class="wc-plug${pluginOpen ? ' open' : ''}" data-plugin-toggle><span class="fi chev">\uE76C</span><span>${esc(T('wc.plug'))}</span><span class="d">${esc(T('wc.plugNote'))}</span></button>${plugBody}`
         : ''
-    // Nothing connected: "not now" at its foot (as the island's 不用提醒).
+    // Nothing connected: "not now" at its foot (as the island's 不用提醒);
+    // the Agent page for more.
     const later = !anyIn() ? `<button class="wc-later" data-welcome-later>${esc(T('wc.later'))}</button>` : ''
     return `<div class="wcard" style="${accentButton()}">
         <div class="wc-head">${face}<div class="grow"><div class="wc-title">${esc(T('wc.title', { list: toolNames(tools) }))}</div><div class="wc-sub">${esc(sub)}</div></div></div>
         <div class="wc-lead">${esc(T(many ? 'wc.leadMany' : 'wc.leadOne'))}</div>
         <div class="wc-tools" style="grid-template-columns:repeat(${tools.length},minmax(0,1fr))">${tools.map(toolButton).join('')}</div>${tools.map(toolNote).join('')}
-        <div class="wc-safe">${safe}</div>${plugin}${later}
+        <div class="wc-safe">${safe}</div>${plugin}<div class="wc-foot"><span class="link" data-tab="agents">${esc(T('wc.more'))} ›</span><span class="grow"></span>${later}</div>
       </div>`
+  }
+
+  // General's line on the agents once one is connected: how many, their
+  // names, how many to repair or still to connect; a click opens the Agent
+  // page. Its dot: amber while one wants a repair, else green (one seen) or
+  // blue (written, waiting).
+  function agentsLine() {
+    const s = Agents.summary(snap, known())
+    const n = s.connected.length
+    const what = [n ? toolNames(s.connected, 'and') : '', s.repair.length ? T('ag.lineFix', { n: s.repair.length }) : '', s.none.length ? T('ag.lineMore', { n: s.none.length }) : '']
+    const mood = s.repair.length ? 'waiting' : s.on.length ? 'done' : 'working'
+    const title = n ? T(n === 1 ? 'ag.line1' : 'ag.line', { n }) : T('ag.lineRepair')
+    return `<div class="grp"><div class="r go" data-tab="agents"><span class="dot" style="background:${COLOR[mood]}"></span><div class="grow"><div>${esc(title)}</div><div class="d ellip">${esc(what.filter(Boolean).join(' · '))}</div></div><span class="link">${esc(T('wc.manage'))}</span></div></div>`
   }
 
   // Her taskbar on the main display alone (no taskbar on the others), or
@@ -2238,11 +2254,12 @@
     return row(esc(T('s.taskbarDisplays')), esc(note), control)
   }
 
-  // General: the welcome (nothing connected yet), the sessions and the
-  // quick switches, the alerts, startup and the language, her updates, her
-  // crash reports, connecting (the plugin, the hooks) and what this is.
+  // General: the welcome (nothing connected yet) or the line on the agents
+  // connected, the sessions and the quick switches, the alerts, startup and
+  // the language, her updates, her crash reports and what this is.
+  // Connecting them is the Agent page's.
   function pageGeneral() {
-    return `${showWelcome() ? part('welcome', welcomeBlock()) : ''}${pageNow()}
+    return `${cardShows() ? part('welcome', welcomeBlock()) : agentsLine()}${pageNow()}
       ${part('alerts', pageAlerts())}
       ${sec(T('s.startLang'))}<div class="grp">
         ${row(esc(T('settings.startAtLogin')), esc(T('home.pluginStart')), sw('login', snap.loginAtStart))}
@@ -2250,10 +2267,10 @@
       </div>
       ${part('update', pageUpdate())}
       ${part('crash', pageCrash())}
-      ${part('connect', pageConnect())}`
+      ${aboutHTML()}`
   }
 
-  const PAGES = { now: pageGeneral, look: pageLook, widgets: pageWidgets, mail: pageMail }
+  const PAGES = { now: pageGeneral, agents: pageAgents, look: pageLook, widgets: pageWidgets, mail: pageMail }
 
   // --- Drawing --------------------------------------------------------------------------------
 
@@ -2285,6 +2302,8 @@
       b.querySelector('span').textContent = T(TAB_KEY[b.dataset.tab])
     }
     tabs.querySelector('[data-tab="now"] .n').hidden = !(snap.asks || []).length
+    // An agent's connection to repair: the same dot on the Agent page's.
+    tabs.querySelector('[data-tab="agents"] .n').hidden = !Agents.summary(snap, known()).repair.length
   }
 
   // The page, kept as it is when nothing changed; redrawn, the box being
@@ -2353,8 +2372,6 @@
     let name = partToShow
     partToShow = ''
     if (!name) return
-    // Connecting while the welcome shows: the welcome, at the page's top.
-    if (name === 'connect' && showWelcome()) name = 'welcome'
     const go = () => {
       const at = body.querySelector(`[data-part="${CSS.escape(name)}"]`)
       if (at) body.scrollTop += at.getBoundingClientRect().top - body.getBoundingClientRect().top
@@ -2397,6 +2414,12 @@
     }
     window.pet.settings.get().then(got => {
       snap = got
+      // Connecting while the welcome card shows (nothing connected yet):
+      // the card, at General's top; else the Agent page.
+      if (partToShow === 'connect' && cardShows()) {
+        tab = 'now'
+        partToShow = 'welcome'
+      }
       draw(true)
       showPart()
       if (tab === 'look') loadGallery(false)
@@ -2417,6 +2440,9 @@
     // The welcome opened again only for this time: "not now" said since
     // (the island's 不用提醒), the next open shows it folded (the test session).
     welcomeOpen = false
+    // The Agent page opens again with its rows closed.
+    agentOpen = ''
+    othersOpen = false
     clearInterval(clockTimer)
     for (const timer of thumbTimers) clearTimeout(timer)
     thumbTimers = []
@@ -2707,121 +2733,29 @@
     if (at('[data-more]')) return loadGallery(true)
     const copyButton = at('[data-copy]')
     if (copyButton) return copy(copyButton.dataset.copy, copyButton)
-    const hooks = at('[data-hooks]')
-    if (hooks) {
-      const action = hooks.dataset.hooks
-      if (action === 'install') {
-        connecting = 'claude'
-        delete failed.claude
-        draw()
-      }
-      return window.pet.settings.hooks(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        // Not written: why (the welcome names the file), and the plugin the other way.
-        if (action === 'install' && !got.ok) {
-          failed.claude = { error: got.error || '', kind: got.kind || 'other' }
-          pluginOpen = true
-        }
-        draw()
-        relayout()
-      })
+    // An agent connected, repaired, removed (the welcome's buttons and the
+    // Agent page's: data-agent="<id>:<install | remove>"); before a row's
+    // own click, which opens it.
+    const agentButton = at('[data-agent]')
+    if (agentButton) {
+      if (agentButton.disabled) return
+      const [id, action] = agentButton.dataset.agent.split(':')
+      return agentDo(id, action)
     }
-    const agyHooks = at('[data-agy]')
-    if (agyHooks) {
-      const action = agyHooks.dataset.agy
-      if (action === 'install') {
-        connecting = 'agy'
-        delete failed.agy
-        draw()
-      }
-      return window.pet.settings.agyHooks(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.agy = { error: got.error || '', kind: got.kind || 'other', folder: got.folder || '' }
-        draw()
-        relayout()
-      })
+    if (at('[data-ag-all]')) return connectAll()
+    // A row opened in place, or closed; one at a time. Its Remove… opens it.
+    const agentRowAt = at('[data-ag-open]')
+    if (agentRowAt) {
+      const id = agentRowAt.dataset.agOpen
+      agentOpen = agentOpen === id && !agentRowAt.hasAttribute('data-ag-keep') ? '' : id
+      draw()
+      relayout()
+      return requestAnimationFrame(() => body.querySelector(`.ag-row[data-ag-open="${id}"] + .ag-det`)?.scrollIntoView({ block: 'nearest' }))
     }
-    const dshHooks = at('[data-dsh]')
-    if (dshHooks) {
-      const action = dshHooks.dataset.dsh
-      if (action === 'install') {
-        connecting = 'dsh'
-        delete failed.dsh
-        draw()
-      }
-      return window.pet.settings.dshHooks(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.dsh = { error: got.error || '', kind: got.kind || 'other' }
-        draw()
-        relayout()
-      })
-    }
-    const zcodeHooks = at('[data-zcode]')
-    if (zcodeHooks) {
-      const action = zcodeHooks.dataset.zcode
-      if (action === 'install') {
-        connecting = 'zcode'
-        delete failed.zcode
-        draw()
-      }
-      return window.pet.settings.zcodeHooks(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.zcode = { error: got.error || '', kind: got.kind || 'other' }
-        draw()
-        relayout()
-      })
-    }
-    const codexHooks = at('[data-codex]')
-    if (codexHooks) {
-      const action = codexHooks.dataset.codex
-      if (action === 'install') {
-        connecting = 'codex'
-        delete failed.codex
-        draw()
-      }
-      return window.pet.settings.codexHooks(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.codex = { error: got.error || '', kind: got.kind || 'other' }
-        draw()
-        relayout()
-      })
-    }
-    const opencode = at('[data-opencode]')
-    if (opencode) {
-      const action = opencode.dataset.opencode
-      if (action === 'install') {
-        connecting = 'opencode'
-        delete failed.opencode
-        draw()
-      }
-      return window.pet.settings.opencode(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.opencode = { error: got.error || '', kind: got.kind || 'other' }
-        draw()
-        relayout()
-      })
-    }
-    const ompHooks = at('[data-omp]')
-    if (ompHooks) {
-      const action = ompHooks.dataset.omp
-      if (action === 'install') {
-        connecting = 'omp'
-        delete failed.omp
-        draw()
-      }
-      return window.pet.settings.ompHooks(action).then(got => {
-        connecting = ''
-        snap = got.snapshot
-        if (action === 'install' && !got.ok) failed.omp = { error: got.error || '', kind: got.kind || 'other' }
-        draw()
-        relayout()
-      })
+    if (at('[data-ag-others]')) {
+      othersOpen = !othersOpen
+      draw()
+      return relayout()
     }
     // The welcome folded ("not now", the island's hint put away too), or
     // opened again from its row.
@@ -2835,16 +2769,11 @@
       draw()
       return relayout()
     }
-    // The welcome's plugin, folded out or in; its row to the Connect part.
+    // The welcome's plugin, folded out or in.
     if (at('[data-plugin-toggle]')) {
       pluginOpen = !pluginOpen
       draw()
       return relayout()
-    }
-    const goto = at('[data-goto]')
-    if (goto) {
-      partToShow = goto.dataset.goto
-      return showPart()
     }
     const site = at('[data-site]')
     if (site) return window.pet.settings.openSite(site.dataset.site)
@@ -2864,6 +2793,17 @@
     const picker = at('[data-picker]')
     if (picker) {
       openPicker(picker)
+      return true
+    }
+    // Which agent letters go to: the dropdown; an open letter's ▾.
+    const agentPick = at('[data-mail-agent]')
+    if (agentPick) {
+      openChoices(agentPick, agentChoices(), firstAgent(), v => v !== firstAgent() && patch({ mailAgent: v }), true)
+      return true
+    }
+    const handMore = at('[data-hand-more]')
+    if (handMore) {
+      handMenu(handMore)
       return true
     }
     // The Mail page's proxy: its mode, a manual one's kind.
