@@ -2224,9 +2224,13 @@ mod imp {
             HELD_AT.store(ticks + 8, Ordering::SeqCst);
         }
         // Those that answered are in by now: what only Explorer's tray holds
-        // is shown from Windows' record (zhoupengjie/Wakuwaku#52).
+        // is shown from Windows' record (zhoupengjie/Wakuwaku#52). Not while
+        // nobody is about (quiet): a look costs some 8 ms and 30 round trips
+        // to Explorer (measured 2026-10-16, every half minute, quiet or not),
+        // and no one sees the tray then; the first tick after quiet does it.
         let held = HELD_AT.load(Ordering::SeqCst);
-        if held != 0 && ticks >= held && systray::first() {
+        let quiet = sh().is_some_and(|sh| sh.is_quiet());
+        if held != 0 && ticks >= held && !quiet && systray::first() {
             HELD_AT.store(ticks + 60, Ordering::SeqCst);
             systray::scan_held();
         }
