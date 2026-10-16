@@ -1,6 +1,7 @@
 // The local HTTP port the Claude Code and Codex hooks report to.
 //
-//   GET  /health       { ok, app, runtime, state }; with WAKUWAKU_DEBUG=1, the windows and settings too
+//   GET  /health       { ok, app, runtime, state, ready: { pet, island }, waiting }; with
+//                      WAKUWAKU_DEBUG=1, the windows and settings too
 //   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
 //                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook)
 //                      ?agent=agy, ?agent=zcode, ?agent=dsh: the same for Antigravity's, ZCode's
@@ -259,7 +260,14 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             None => reply(req, 400, json!({ "error": "bad json" })),
         },
         ("GET", "/health") => {
-            let mut body = json!({ "ok": true, "app": "wakuwaku", "runtime": "tauri", "state": sh.pet.lock().unwrap().get(now_ms()) });
+            // Her pages up (each told pet_ready), and whether this copy waits
+            // for another holding the taskbar (taskbar.rs: no island made
+            // meanwhile): what a test waits on after starting a copy, not
+            // the port nor a line of the log. One killed or quit a second
+            // after it started has no page yet, as one that never gets them
+            // (the test VM's two "starts with no page", 2026-10-16).
+            let ready = json!({ "pet": pet::is_ready(sh), "island": island::is_ready(sh) });
+            let mut body = json!({ "ok": true, "app": "wakuwaku", "runtime": "tauri", "state": sh.pet.lock().unwrap().get(now_ms()), "ready": ready, "waiting": crate::taskbar::waiting() });
             if is_debug {
                 body["window"] = pet::where_(sh);
                 body["island"] = island::where_(sh);
