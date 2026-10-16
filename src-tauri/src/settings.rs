@@ -125,10 +125,10 @@ pub fn snapshot(sh: &Shared) -> Value {
         "widgets": sh.widgets_view(),
         // The monitor's hardware sensors: LibreHardwareMonitor found or
         // not, and its sensors (lhm.rs); the built-in ones (hw.rs); which
-        // of them it shows (a setting from before there was a choice, read).
+        // of them it shows: the one chosen, else LHM while it answers.
         "lhm": crate::lhm::view(),
         "hw": crate::hw::view(),
-        "monitorSource": crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource")).name(),
+        "monitorSource": crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource"), crate::lhm::view()["status"] == "found").name(),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.

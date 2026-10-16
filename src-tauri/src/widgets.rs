@@ -371,6 +371,29 @@ fn utc_now(now: u64) -> (u16, u16, u16, u64) {
 
 // --- The machine: CPU and memory ----------------------------------------------------------
 
+// A network adapter's MIB_IFROW that counts: Ethernet (6) or Wi-Fi (71),
+// up (5), with an address of its own: its MAC, bytes in and out (32 bits).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn counted_row(row: &[u8]) -> Option<([u8; 8], u32, u32)> {
+    let dword = |at: usize| row.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let (kind, state) = (dword(516)?, dword(544)?);
+    let mac: [u8; 8] = row.get(532..540)?.try_into().ok()?;
+    ((kind == 6 || kind == 71) && state == 5 && mac != [0; 8]).then_some((mac, dword(552)?, dword(576)?))
+}
+
+// Each adapter once, by its MAC (the most its rows say), summed.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn by_adapter(rows: impl IntoIterator<Item = ([u8; 8], u32, u32)>) -> (u64, u64) {
+    let mut by_mac: Vec<([u8; 8], u32, u32)> = Vec::new();
+    for (mac, got, sent) in rows {
+        match by_mac.iter_mut().find(|m| m.0 == mac) {
+            Some(m) => (m.1, m.2) = (m.1.max(got), m.2.max(sent)),
+            None => by_mac.push((mac, got, sent)),
+        }
+    }
+    by_mac.iter().fold((0, 0), |(a, b), &(_, got, sent)| (a + u64::from(got), b + u64::from(sent)))
+}
+
 #[cfg(windows)]
 mod sys {
     #[repr(C)]
@@ -411,9 +434,15 @@ mod sys {
         fn GetSystemPowerStatus(status: *mut PowerStatus) -> i32;
     }
 
+    // Windows' callback for an IP interface that came, went or changed.
+    type InterfaceChanged = extern "system" fn(context: *mut std::ffi::c_void, row: *mut std::ffi::c_void, kind: i32);
+
     #[link(name = "iphlpapi")]
     extern "system" {
         fn GetIfTable(table: *mut u8, size: *mut u32, order: i32) -> u32;
+        fn GetIfEntry(row: *mut u8) -> u32;
+        fn GetNumberOfInterfaces(count: *mut u32) -> u32;
+        fn NotifyIpInterfaceChange(family: u16, callback: InterfaceChanged, context: *mut std::ffi::c_void, initial: u8, handle: *mut isize) -> u32;
     }
 
     // The battery as Windows' quick settings show it, or None without a
@@ -467,40 +496,108 @@ mod sys {
         Some((p.percent, is_charging, (p.life_secs != u32::MAX && !is_charging).then_some(p.life_secs)))
     }
 
-    // Bytes in and out so far, over the network adapters that are up: each
-    // adapter once (Windows lists one several times, through its filters).
-    pub fn network_bytes() -> Option<(u64, u64)> {
-        // MIB_IFROW: 860 bytes; the type at 516, the MAC at 532 (8), the
-        // state at 544, bytes in at 552, bytes out at 576.
-        const ROW: usize = 860;
-        let mut size = 0u32;
-        // SAFETY: first the size, then a buffer of that size.
-        unsafe { GetIfTable(std::ptr::null_mut(), &mut size, 0) };
-        let mut buf = vec![0u8; size as usize + ROW];
-        // SAFETY: the buffer is as big as the call asked for.
-        if unsafe { GetIfTable(buf.as_mut_ptr(), &mut size, 0) } != 0 {
-            return None;
+    // MIB_IFROW: 860 bytes; its index at 512, the type at 516, the MAC at
+    // 532 (8), the state at 544, bytes in at 552, bytes out at 576.
+    const ROW: usize = 860;
+    const NET_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+
+    // Set as Windows says an IP interface came, went or changed (a link up
+    // or down): the table read whole at the next turn.
+    static NET_CHANGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+    extern "system" fn net_changed(_context: *mut std::ffi::c_void, _row: *mut std::ffi::c_void, _kind: i32) {
+        NET_CHANGED.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    // The network's bytes in and out, over the adapters that are up: each
+    // adapter once (Windows lists one several times, through its filters:
+    // 65 rows on the user's PC, 8 of them counted). GetIfTable asks every
+    // row's counters of the drivers (2.2 ms there, and it was asked twice,
+    // for its size first: 4.5 ms a turn); so the whole table is read only
+    // every minute, when the number of interfaces changes, when Windows says
+    // one changed (NotifyIpInterfaceChange) or when a row counted is no
+    // longer, and in between only the rows counted (GetIfEntry: 0.25 ms),
+    // the same rows and the same numbers.
+    pub struct Net {
+        buf: Vec<u8>,
+        // The rows counted at the last whole reading, by their index.
+        rows: Vec<u32>,
+        interfaces: u32,
+        looked: Option<std::time::Instant>,
+    }
+
+    impl Net {
+        pub fn new() -> Net {
+            static WATCHED: std::sync::Once = std::sync::Once::new();
+            WATCHED.call_once(|| {
+                let mut handle = 0isize;
+                // SAFETY: a callback that only sets a flag, for every family
+                // (AF_UNSPEC), kept for her whole run (never cancelled).
+                unsafe { NotifyIpInterfaceChange(0, net_changed, std::ptr::null_mut(), 0, &mut handle) };
+            });
+            Net { buf: Vec::new(), rows: Vec::new(), interfaces: 0, looked: None }
         }
-        let dword = |at: usize| u32::from_le_bytes([buf[at], buf[at + 1], buf[at + 2], buf[at + 3]]);
-        let count = dword(0) as usize;
-        let mut by_mac: std::collections::HashMap<[u8; 8], (u32, u32)> = std::collections::HashMap::new();
-        for i in 0..count {
-            let row = 4 + i * ROW;
-            if row + ROW > buf.len() {
-                break;
+
+        // Bytes in and out so far, and whether the adapters counted changed
+        // since the last reading (a rate across that would be wrong: one come
+        // up adds its whole count, one gone takes it away).
+        pub fn read(&mut self) -> Option<(u64, u64, bool)> {
+            let mut interfaces = 0u32;
+            // SAFETY: fills our own count.
+            unsafe { GetNumberOfInterfaces(&mut interfaces) };
+            let changed = NET_CHANGED.swap(false, std::sync::atomic::Ordering::SeqCst);
+            let due = self.looked.is_none_or(|t| t.elapsed() >= NET_EVERY);
+            if !(due || changed || interfaces != self.interfaces) {
+                if let Some(bytes) = self.rows_again() {
+                    return Some((bytes.0, bytes.1, false));
+                }
             }
-            let (kind, state) = (dword(row + 516), dword(row + 544));
-            let mut mac = [0u8; 8];
-            mac.copy_from_slice(&buf[row + 532..row + 540]);
-            // Ethernet or Wi-Fi, up, with an address of its own.
-            if !(kind == 6 || kind == 71) || state != 5 || mac == [0; 8] {
-                continue;
-            }
-            let (got, sent) = (dword(row + 552), dword(row + 576));
-            let seen = by_mac.entry(mac).or_insert((got, sent));
-            *seen = (seen.0.max(got), seen.1.max(sent));
+            let (bytes, rows) = self.whole()?;
+            let first = self.looked.is_none();
+            let other = rows != self.rows;
+            (self.rows, self.interfaces, self.looked) = (rows, interfaces, Some(std::time::Instant::now()));
+            Some((bytes.0, bytes.1, other && !first))
         }
-        Some(by_mac.values().fold((0, 0), |(a, b), &(got, sent)| (a + u64::from(got), b + u64::from(sent))))
+
+        // The rows counted last time, each asked again; None should one not
+        // be there or not count any more.
+        fn rows_again(&self) -> Option<(u64, u64)> {
+            let mut row = [0u8; ROW];
+            let mut counted = Vec::with_capacity(self.rows.len());
+            for &index in &self.rows {
+                row[512..516].copy_from_slice(&index.to_le_bytes());
+                // SAFETY: a MIB_IFROW of our own, its index set.
+                if unsafe { GetIfEntry(row.as_mut_ptr()) } != 0 {
+                    return None;
+                }
+                counted.push(super::counted_row(&row)?);
+            }
+            Some(super::by_adapter(counted))
+        }
+
+        // The whole table (its buffer kept, so asked once), and the rows
+        // that count, by their index.
+        fn whole(&mut self) -> Option<((u64, u64), Vec<u32>)> {
+            for _ in 0..3 {
+                let mut size = self.buf.len() as u32;
+                // SAFETY: a buffer of `size` bytes; one too small is told
+                // how large it must be (ERROR_INSUFFICIENT_BUFFER).
+                let status = unsafe { GetIfTable(if self.buf.is_empty() { std::ptr::null_mut() } else { self.buf.as_mut_ptr() }, &mut size, 0) };
+                if status == 122 {
+                    self.buf.resize(size as usize + 4 * ROW, 0);
+                    continue;
+                }
+                if status != 0 {
+                    return None;
+                }
+                let count = u32::from_le_bytes(self.buf[..4].try_into().ok()?) as usize;
+                let rows: Vec<&[u8]> = (0..count).map(|i| 4 + i * ROW).take_while(|&at| at + ROW <= self.buf.len()).map(|at| &self.buf[at..at + ROW]).collect();
+                let counted: Vec<_> = rows.iter().filter(|r| super::counted_row(r).is_some()).collect();
+                let indexes = counted.iter().map(|r| u32::from_le_bytes(r[512..516].try_into().unwrap())).collect();
+                return Some((super::by_adapter(counted.iter().filter_map(|r| super::counted_row(r))), indexes));
+            }
+            None
+        }
     }
 
     fn n(t: FileTime) -> u64 {
@@ -583,8 +680,14 @@ mod sys {
     pub fn battery_percent_shown() -> bool {
         false
     }
-    pub fn network_bytes() -> Option<(u64, u64)> {
-        None
+    pub struct Net;
+    impl Net {
+        pub fn new() -> Net {
+            Net
+        }
+        pub fn read(&mut self) -> Option<(u64, u64, bool)> {
+            None
+        }
     }
     pub fn windows_build() -> u32 {
         0
@@ -677,16 +780,19 @@ pub fn rate(bytes_per_sec: f64) -> String {
 
 // The monitor's settings: which parts are on, and how often it reads; the
 // hardware's sensors, built in (hw.rs) or from LibreHardwareMonitor
-// (lhm.rs), by the source chosen ("monitorSource", hw::Source); whether
-// nobody is at the keyboard, and whether the settings are open (their list
-// of sensors then read whole) (its thread says, main.rs).
+// (lhm.rs), by the source chosen ("monitorSource"; none chosen, decided as
+// it reads, hw::Source::in_effect); whether nobody is at the keyboard, and
+// whether the settings are open (their list of sensors then read whole)
+// (its thread says, main.rs).
 pub struct Watching {
     pub cpu: bool,
     pub memory: bool,
     pub net: bool,
     pub battery: bool,
     pub every: u64,
-    pub source: crate::hw::Source,
+    // The source chosen, if one was; LHM's old switch turned off.
+    pub chosen: Option<crate::hw::Source>,
+    pub lhm_off: bool,
     pub hw: crate::hw::Conf,
     pub lhm: crate::lhm::Conf,
     pub quiet: bool,
@@ -697,17 +803,19 @@ impl Watching {
     // The "monitor" setting and "monitorSource".
     pub fn from(v: &Value, source: &Value) -> Watching {
         let on = |k: &str| v[k] != false;
-        let source = crate::hw::Source::of(v, source);
+        let chosen = crate::hw::Source::chosen(source);
         Watching {
             cpu: on("cpu"),
             memory: on("mem"),
             net: on("net"),
             battery: on("battery"),
             every: v["every"].as_u64().unwrap_or(2).clamp(1, 10),
-            source,
+            chosen,
+            lhm_off: v["lhm"] == false,
             hw: crate::hw::Conf::from(v),
-            // Asked while it is the source, whatever its old switch said.
-            lhm: crate::lhm::Conf { on: source == crate::hw::Source::Lhm, ..crate::lhm::Conf::from(v) },
+            // Asked while it is the source chosen, whatever its old switch
+            // said, or while none is (to know whether it is running).
+            lhm: crate::lhm::Conf { on: crate::hw::Source::asks_lhm(v, source), ..crate::lhm::Conf::from(v) },
             quiet: false,
             listing: false,
         }
@@ -725,6 +833,8 @@ pub struct Monitor {
     counter: Option<sys::Counter>,
     counter_tried: bool,
     misses: u8,
+    // The network's adapters, read once it is first on.
+    adapters: Option<sys::Net>,
     bytes: Option<(u64, u64, std::time::Instant)>,
     // The last CPU use and pace read: kept for a reading that fails once,
     // so a part on stays in sight (pinned, the island keeps its width).
@@ -732,17 +842,37 @@ pub struct Monitor {
     net: Option<(f64, f64)>,
     lhm: crate::lhm::Lhm,
     hw: crate::hw::Hw,
+    // The hardware's source in effect at the last reading.
+    source: crate::hw::Source,
 }
 
 impl Monitor {
     pub fn new() -> Self {
-        Monitor { times: None, counter: None, counter_tried: false, misses: 0, bytes: None, cpu: None, net: None, lhm: crate::lhm::Lhm::new(), hw: crate::hw::Hw::new() }
+        Monitor {
+            times: None,
+            counter: None,
+            counter_tried: false,
+            misses: 0,
+            adapters: None,
+            bytes: None,
+            cpu: None,
+            net: None,
+            lhm: crate::lhm::Lhm::new(),
+            hw: crate::hw::Hw::new(),
+            source: crate::hw::Source::Builtin,
+        }
     }
 
     // Turned off: the hardware's counters and handles let go of (opened
-    // again when it is turned on).
+    // again when it is turned on), LibreHardwareMonitor no longer asked.
     pub fn rest(&mut self) {
         self.hw.stop();
+        self.lhm.turn(&crate::lhm::Conf { on: false, ..crate::lhm::Conf::from(&Value::Null) }, false);
+    }
+
+    // The hardware's source in effect at the last reading.
+    pub fn source(&self) -> crate::hw::Source {
+        self.source
     }
 
     // What the built-in source found, for the dump (hw.rs).
@@ -798,8 +928,11 @@ impl Monitor {
             part("memory", format!("{memory}%"));
             basics.memory = Some(f64::from(memory));
         }
-        let bytes = if w.net { sys::network_bytes().map(|(a, b)| (a, b, std::time::Instant::now())) } else { None };
-        if let (Some((got, sent, now)), Some((g, s, at))) = (bytes, self.bytes) {
+        let read = if w.net { self.adapters.get_or_insert_with(sys::Net::new).read() } else { None };
+        // The adapters counted changed: no pace across that (the last kept).
+        let other = read.is_some_and(|r| r.2);
+        let bytes = read.map(|(a, b, _)| (a, b, std::time::Instant::now()));
+        if let (Some((got, sent, now)), Some((g, s, at)), false) = (bytes, self.bytes, other) {
             let secs = now.duration_since(at).as_secs_f64().max(0.5);
             // The counters are 32 bits: they come round again after 4 GB.
             let d = |a: u64, b: u64| (a as u32).wrapping_sub(b as u32) as f64 / secs;
@@ -824,11 +957,15 @@ impl Monitor {
             }
             basics.battery = Some((percent, is_charging));
         }
-        // LibreHardwareMonitor asked only while it is the source (else its
-        // view says off); the built-in readings read only while they are.
+        // LibreHardwareMonitor asked only while it is the source chosen, or
+        // none is (else its view says off); the source in effect then
+        // decided, and only its readings read.
         self.lhm.turn(&w.lhm, w.quiet);
-        parts.extend(self.lhm.parts(&w.lhm));
-        if w.source == crate::hw::Source::Builtin {
+        self.source = crate::hw::Source::in_effect(w.chosen, w.lhm_off, self.lhm.found());
+        if self.source == crate::hw::Source::Lhm {
+            parts.extend(self.lhm.parts(&w.lhm));
+        }
+        if self.source == crate::hw::Source::Builtin {
             self.hw.turn(&w.hw, w.listing, &basics, [w.cpu, w.memory, w.net, w.battery]);
             parts.extend(self.hw.parts(&w.hw));
         } else {
@@ -855,6 +992,7 @@ pub fn hw_dump() -> Value {
     let island = m.read(&w);
     let second = t.elapsed();
     // The monitor's own readings, each timed once more (µs).
+    let mut net = sys::Net::new();
     let us = |f: &mut dyn FnMut()| {
         let t = std::time::Instant::now();
         f();
@@ -870,8 +1008,13 @@ pub fn hw_dump() -> Value {
         "memoryLoad": us(&mut || {
             let _ = sys::memory_load();
         }),
+        // The adapters' whole table (a new reader: its buffer sized first),
+        // then a turn's rows alone.
+        "networkWhole": us(&mut || {
+            let _ = net.read();
+        }),
         "network": us(&mut || {
-            let _ = sys::network_bytes();
+            let _ = net.read();
         }),
         "battery": us(&mut || {
             let _ = sys::battery();
@@ -882,6 +1025,7 @@ pub fn hw_dump() -> Value {
         "windowsBuild": sys::windows_build(),
         "cpuCounter": processor_counter(sys::windows_build()),
         "readMs": [first.as_secs_f64() * 1000.0, second.as_secs_f64() * 1000.0],
+        "source": m.source().name(),
         "basicsUs": basics,
         // The island's parts for someone who never picked (the defaults).
         "island": island,
@@ -999,13 +1143,89 @@ mod tests {
         assert_eq!([rate(80.0), rate(8_400.0), rate(81_234.0), rate(1_234_567.0), rate(250_000_000.0)], ["80B", "8.4K", "81K", "1.2M", "250M"]);
         let all = Watching::from(&json!({ "every": 99 }), &Value::Null);
         assert_eq!((all.cpu, all.battery, all.every), (true, true, 10));
-        // The built-in source by default, LibreHardwareMonitor asked only
-        // while it is the source; someone who picked its sensors before there
-        // was a choice keeps it.
-        assert_eq!((all.source, all.lhm.on), (crate::hw::Source::Builtin, false));
+        // None chosen: LibreHardwareMonitor asked, to know whether it runs;
+        // chosen, asked while it is the one, whatever its old switch said.
+        assert_eq!((all.chosen, all.lhm.on), (None, true));
         let theirs = Watching::from(&json!({ "lhm": false, "sensors": ["/amdcpu/0/temperature/2"] }), &json!("lhm"));
-        assert_eq!((theirs.source, theirs.lhm.on, theirs.lhm.sensors.map(|s| s.len())), (crate::hw::Source::Lhm, true, Some(1)));
-        assert_eq!(Watching::from(&json!({ "sensors": ["/amdcpu/0/temperature/2"] }), &Value::Null).source, crate::hw::Source::Lhm);
+        assert_eq!((theirs.chosen, theirs.lhm.on, theirs.lhm.sensors.map(|s| s.len())), (Some(crate::hw::Source::Lhm), true, Some(1)));
+        let built_in = Watching::from(&json!({}), &json!("builtin"));
+        assert_eq!((built_in.chosen, built_in.lhm.on), (Some(crate::hw::Source::Builtin), false));
+    }
+
+    // The network's rows (MIB_IFROW) as the user's PC has them: an adapter
+    // listed four times through its filters (each once), one up and one
+    // down of each kind, the loopback and one without an address not counted.
+    #[test]
+    fn the_network_counts_each_adapter_up_once() {
+        let row = |kind: u32, state: u32, mac: u8, got: u32, sent: u32| {
+            let mut r = vec![0u8; 860];
+            r[516..520].copy_from_slice(&kind.to_le_bytes());
+            r[544..548].copy_from_slice(&state.to_le_bytes());
+            if mac > 0 {
+                r[532..538].copy_from_slice(&[0x04, 0x7c, 0x16, 0, 0, mac]);
+            }
+            r[552..556].copy_from_slice(&got.to_le_bytes());
+            r[576..580].copy_from_slice(&sent.to_le_bytes());
+            r
+        };
+        let realtek = (0..4).map(|_| row(6, 5, 1, 4_085_686_149, 843_917_867));
+        let hyper_v = (0..3).map(|_| row(6, 5, 2, 1_069_205_980, 3_285_133_868)).chain([row(6, 5, 2, 1_069_205_990, 3_285_133_800)]);
+        let others = [row(6, 0, 3, 0, 0), row(71, 2, 4, 9, 9), row(24, 5, 5, 7, 7), row(6, 5, 0, 7, 7)];
+        let rows: Vec<Vec<u8>> = realtek.chain(hyper_v).chain(others).collect();
+        assert_eq!(rows.iter().filter(|r| counted_row(r).is_some()).count(), 8);
+        assert_eq!(counted_row(&row(71, 5, 4, 9, 8)), Some(([0x04, 0x7c, 0x16, 0, 0, 4, 0, 0], 9, 8)));
+        assert_eq!(counted_row(&[0u8; 100]), None);
+        // The most each adapter's rows say, summed.
+        assert_eq!(by_adapter(rows.iter().filter_map(|r| counted_row(r))), (4_085_686_149 + 1_069_205_990, 843_917_867 + 3_285_133_868));
+    }
+
+    // On this machine: the whole table first, then the rows counted alone,
+    // the adapters the same.
+    #[cfg(windows)]
+    #[test]
+    fn the_network_is_read_again_by_its_rows() {
+        let mut net = sys::Net::new();
+        let (got, sent, _) = net.read().expect("the table");
+        let (again, again_sent, other) = net.read().expect("its rows");
+        assert!(!other);
+        assert!(again.abs_diff(got) < 1 << 30 && again_sent.abs_diff(sent) < 1 << 30, "{got} {again}");
+    }
+
+    // A LibreHardwareMonitor answering and none chosen: its sensors, the
+    // source in effect LHM's (nothing saved); none answering: the built-in
+    // one; the built-in one chosen: never asked.
+    #[test]
+    fn none_chosen_is_lhm_while_it_answers() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let body = include_str!("../../test/fixtures/lhm/data.json");
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = asked.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let mut request = [0u8; 2048];
+                let _ = stream.read(&mut request);
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes());
+            }
+        });
+        let parts = |v: Option<Value>| v.map(|v| v["parts"].as_array().unwrap().iter().map(|p| format!("{}:{}", p["icon"].as_str().unwrap(), p["kind"].as_str().unwrap_or(""))).collect::<Vec<_>>()).unwrap_or_default();
+        let settings = json!({ "cpu": false, "mem": false, "net": false, "battery": false, "lhmPort": port, "builtinSensors": [] });
+        let mut m = Monitor::new();
+        assert_eq!(parts(m.read(&Watching::from(&settings, &Value::Null))), ["cpu:temp", "gpu:temp", "gpu:load"]);
+        assert_eq!(m.source(), crate::hw::Source::Lhm);
+        // The built-in one chosen: LHM not asked again, none of its sensors.
+        let before = asked.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(parts(m.read(&Watching::from(&settings, &json!("builtin")))).is_empty());
+        assert_eq!((m.source(), asked.load(std::sync::atomic::Ordering::SeqCst)), (crate::hw::Source::Builtin, before));
+        // Nobody on the port: the built-in one.
+        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let mut m = Monitor::new();
+        let nobody = json!({ "cpu": false, "mem": false, "net": false, "battery": false, "lhmPort": free, "builtinSensors": [] });
+        assert!(parts(m.read(&Watching::from(&nobody, &Value::Null))).is_empty());
+        assert_eq!(m.source(), crate::hw::Source::Builtin);
     }
 
     // On this machine: the second reading has CPU use and the network's pace.

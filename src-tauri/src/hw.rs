@@ -1,7 +1,8 @@
 // The monitor's built-in readings (#18, part A): what Windows itself tells a
 // program without the administrator's rights and without installing
-// anything, the monitor's default source ("monitorSource": "builtin"; the
-// other, "lhm", is LibreHardwareMonitor's, lhm.rs). Measured on the user's
+// anything: one of the monitor's two sources ("monitorSource": "builtin";
+// the other, "lhm", is LibreHardwareMonitor's, lhm.rs; none chosen, LHM's
+// while it answers, else this one: Source::in_effect). Measured on the user's
 // PC (a Ryzen 9 9955HX, an RTX 4080 Laptop GPU, three NVMe drives) by the
 // probes of 2026-10-16, whose numbers the tests keep:
 //
@@ -71,20 +72,39 @@ pub enum Source {
 }
 
 impl Source {
-    // As chosen; never chosen (before there was a choice), LibreHardwareMonitor
-    // for someone who had set it up (picked its sensors, or told her its port,
-    // user or password) and had not turned it off, else the built-in one.
-    pub fn of(monitor: &Value, chosen: &Value) -> Source {
+    // The one chosen in the settings ("monitorSource"), if one was.
+    pub fn chosen(chosen: &Value) -> Option<Source> {
         match chosen.as_str() {
-            Some("lhm") => return Source::Lhm,
-            Some("builtin") => return Source::Builtin,
-            _ => {}
+            Some("lhm") => Some(Source::Lhm),
+            Some("builtin") => Some(Source::Builtin),
+            _ => None,
         }
-        let set_up = monitor["sensors"].is_array() || monitor.get("lhmPort").is_some() || monitor["lhmUser"].as_str().is_some_and(|u| !u.is_empty()) || monitor["lhmPass"] == true;
-        if monitor["lhm"] != false && set_up {
-            Source::Lhm
-        } else {
-            Source::Builtin
+    }
+
+    // The one in effect: as chosen; none chosen, decided as she runs and
+    // never saved (until the person picks one): LibreHardwareMonitor while
+    // its web server answers (lhm.rs found), so someone who runs it keeps
+    // its sensors, else the built-in one; the built-in one too where LHM's
+    // old switch was turned off (it is then never asked).
+    pub fn in_effect(chosen: Option<Source>, lhm_off: bool, lhm_found: bool) -> Source {
+        match chosen {
+            Some(source) => source,
+            None if lhm_found && !lhm_off => Source::Lhm,
+            None => Source::Builtin,
+        }
+    }
+
+    // The same from the settings ("monitor" and "monitorSource").
+    pub fn of(monitor: &Value, chosen: &Value, lhm_found: bool) -> Source {
+        Source::in_effect(Source::chosen(chosen), monitor["lhm"] == false, lhm_found)
+    }
+
+    // Whether LibreHardwareMonitor is asked: while it is the one chosen, or
+    // while none is (to know whether it runs) and its old switch is on.
+    pub fn asks_lhm(monitor: &Value, chosen: &Value) -> bool {
+        match Source::chosen(chosen) {
+            Some(source) => source == Source::Lhm,
+            None => monitor["lhm"] != false,
         }
     }
 
@@ -1716,16 +1736,23 @@ mod tests {
         assert!(Want { all: true, ids: &[] }.has("/cpu/0", "clock"));
     }
 
+    // None chosen: LibreHardwareMonitor while it answers, else the built-in
+    // one, never saved; chosen: as chosen, whatever answers.
     #[test]
-    fn the_source_is_chosen_or_was_set_up() {
-        assert_eq!(Source::of(&json!({}), &Value::Null), Source::Builtin);
-        assert_eq!(Source::of(&json!({ "cpu": true }), &json!("lhm")), Source::Lhm);
-        // Someone who picked LHM's sensors, or told her its port, before
-        // there was a choice: LHM still.
-        assert_eq!(Source::of(&json!({ "sensors": ["/amdcpu/0/temperature/2"] }), &Value::Null), Source::Lhm);
-        assert_eq!(Source::of(&json!({ "lhmPort": 9000 }), &Value::Null), Source::Lhm);
-        assert_eq!(Source::of(&json!({ "lhm": false, "sensors": [] }), &Value::Null), Source::Builtin);
-        assert_eq!(Source::of(&json!({ "sensors": [] }), &json!("builtin")), Source::Builtin);
+    fn the_source_is_as_chosen_else_lhm_while_it_answers() {
+        assert_eq!(Source::of(&json!({}), &Value::Null, true), Source::Lhm);
+        assert_eq!(Source::of(&json!({}), &Value::Null, false), Source::Builtin);
+        assert_eq!(Source::of(&json!({ "sensors": ["/amdcpu/0/temperature/2"] }), &Value::Null, false), Source::Builtin);
+        assert_eq!(Source::of(&json!({ "cpu": true }), &json!("lhm"), false), Source::Lhm);
+        assert_eq!(Source::of(&json!({ "sensors": [] }), &json!("builtin"), true), Source::Builtin);
+        // LHM's old switch off: never asked, so the built-in one.
+        assert_eq!(Source::of(&json!({ "lhm": false }), &Value::Null, true), Source::Builtin);
+        assert_eq!(Source::of(&json!({ "lhm": false }), &json!("lhm"), false), Source::Lhm);
+        assert_eq!(Source::in_effect(None, false, true), Source::Lhm);
+        assert_eq!(Source::chosen(&json!("hwinfo")), None);
+        // Asked while chosen, or while none is (to know whether it runs).
+        assert!(Source::asks_lhm(&json!({}), &Value::Null) && Source::asks_lhm(&json!({ "lhm": false }), &json!("lhm")));
+        assert!(!Source::asks_lhm(&json!({}), &json!("builtin")) && !Source::asks_lhm(&json!({ "lhm": false }), &Value::Null));
         assert_eq!((Source::Builtin.picks(), Source::Lhm.picks()), ("builtinSensors", "sensors"));
         assert!(is_source(&json!("builtin")) && is_source(&json!("lhm")) && !is_source(&json!("hwinfo")));
         assert_eq!(is_setting(PICKS, &json!(["/gpu-nvidia/0/temperature/0"])), Some(true));

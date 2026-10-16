@@ -729,14 +729,18 @@
   // The monitor's settings, folded out under it: pinned or not, how often it
   // reads (1 to 10 seconds), where its sensors come from (monitorSource:
   // Windows' own, hw.rs, or LibreHardwareMonitor, lhm.rs; each keeps its own
-  // picks), and those sensors.
+  // picks; none chosen, the one in effect, snap.monitorSource), and those
+  // sensors.
   function monitorFields() {
     const m = snap.settings.monitor || {}
     const source = snap.monitorSource === 'lhm' ? 'lhm' : 'builtin'
     const every = m.every || 2
     const pace = `<div class="fr"><span class="fl">${esc(T('mon.every'))}</span><span class="grow"></span><button class="pbtn sm" data-every="-1" ${every <= 1 ? 'disabled' : ''}>−</button><span class="every">${esc(T('settings.seconds', { n: every }))}</span><button class="pbtn sm" data-every="1" ${every >= 10 ? 'disabled' : ''}>+</button></div>`
     const pin = `<div class="fr"><span class="fl">${esc(T('mon.pin'))}</span><span class="d grow">${esc(T('mon.pinNote'))}</span>${sw('mon:pin', m.pin !== false)}</div>`
-    const from = `<div class="fr lhm-head"><span class="fl">${esc(T('mon.source'))}</span><span class="grow"></span>${seg('monitorSource', [['builtin', T('mon.sourceBuiltin')], ['lhm', 'LibreHardwareMonitor']], source)}</div>`
+    // The one in effect; none chosen yet, it says how that one was found
+    // (hw.rs Source::in_effect), and picking one keeps it.
+    const auto = snap.settings.monitorSource == null ? `<div class="note lhm-note">${esc(T('mon.sourceAuto'))}</div>` : ''
+    const from = `<div class="fr lhm-head"><span class="fl">${esc(T('mon.source'))}</span><span class="grow"></span>${seg('monitorSource', [['builtin', T('mon.sourceBuiltin')], ['lhm', 'LibreHardwareMonitor']], source)}</div>${auto}`
     if (source === 'builtin') return `<div class="pf">${pin}${pace}${from}${builtinFields()}</div>`
     const parts = ['cpu', 'mem', 'net', 'battery'].map(k => `<div class="fr"><span class="fl">${esc(T(`mon.${k}`))}</span><span class="grow"></span>${sw('mon:' + k, m[k] !== false)}</div>`)
     return `<div class="pf">${pin}${pace}${from}${parts.join('')}${sensorFields(m)}</div>`

@@ -367,6 +367,11 @@ impl Lhm {
         Lhm { agent: None, asked: None, with: None, password: String::new(), status: Status::Unread, fails: 0, version: None, sensors: Vec::new() }
     }
 
+    // Its web server answered (and is kept as answering for one more try).
+    pub fn found(&self) -> bool {
+        self.status == Status::Found
+    }
+
     // Asked when it is time, or at once when how to ask changed.
     pub fn turn(&mut self, conf: &Conf, quiet: bool) {
         if !conf.on {
