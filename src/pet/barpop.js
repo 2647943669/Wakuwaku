@@ -14,6 +14,9 @@
   const target = { kind: 'WebviewWindow', label: 'barpop' }
 
   const pop = document.getElementById('pop')
+  // Its room for the pointer out to the strip (barpop.css .reach, #56).
+  const reach = document.createElement('span')
+  reach.className = 'reach'
   // Room round it for its shadow, but on the strip's side: there it is this
   // far off the strip (as her own: 6 px, beside a side bar 8).
   const SHADE = 14
@@ -86,7 +89,7 @@
     const key = JSON.stringify([s.kind, s.app.app, s.app.name, s.app.pinned, (s.app.windows || []).map(w => [w.id, w.title, w.front, (w.png || '').length]), s.lang, edge, light, s.endTask])
     if (key === drawn && !opening) return sendThumbs()
     drawn = key
-    pop.replaceChildren(...rows(s))
+    pop.replaceChildren(...rows(s), reach)
     pop.className = s.kind
     pop.hidden = false
     const pad = { top: SHADE, right: SHADE, bottom: SHADE, left: SHADE, [edge]: GAP[edge] }

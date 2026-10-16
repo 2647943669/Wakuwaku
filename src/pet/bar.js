@@ -306,6 +306,8 @@
   // bar_pop_over) or at a press elsewhere. { app, kind } while open.
   let popFor = null
   let popTimer
+  // Where the list's window lies (aimPop), in this page's px, while it shows.
+  let popAt = null
   const call = (cmd, args) => invoke(cmd, args).catch(() => {})
   function openPop(node, kind) {
     const b = node.getBoundingClientRect()
@@ -314,20 +316,41 @@
   }
   function closePop() {
     clearTimeout(popTimer)
+    popAt = null
     if (!popFor) return
     popFor = null
     call('barpop_hide')
   }
-  wins.addEventListener('mouseover', e => {
-    const node = e.target.closest('[data-app]')
+  // Another's list open: this button's only once the pointer has been on it
+  // as long as Windows' own taskbar waits, and not while it is on its way
+  // up into the list (aim.js, zhoupengjie/Wakuwaku#56), as on the main
+  // taskbar (island.js aimPop). Where the list's window lies, in this
+  // page's px, comes once it is laid (bars.rs barpop_place).
+  const aim = window.Aim.create()
+  listen('bar:pop-at', e => (popAt = e.payload || null), { target })
+  const aimList = () => (popFor?.kind === 'list' && popAt ? { key: popFor.app, rect: popAt, edge: state.edge || 'bottom' } : null)
+  function aimPop() {
     clearTimeout(popTimer)
-    const app = node && (state.windows || []).find(a => a.app === node.dataset.app)
-    if (!app || menuUp || popFor?.kind === 'menu' || popFor?.app === app.app || !(app.windows || []).length) return
-    popTimer = setTimeout(() => openPop(node, 'list'), popFor ? 0 : 500)
+    const key = aim.key()
+    const node = key == null ? null : [...wins.querySelectorAll('[data-app]')].find(n => n.dataset.app === key)
+    const app = node && appOf(key)
+    if (!app || menuUp || popFor?.kind === 'menu' || !(app.windows || []).length) return
+    const wait = aim.due(aimList(), performance.now())
+    if (wait === null) return
+    if (wait === 0) return openPop(node, 'list')
+    popTimer = setTimeout(aimPop, wait)
+  }
+  wins.addEventListener('mousemove', e => aim.move(e.clientX, e.clientY, performance.now()))
+  wins.addEventListener('mouseover', e => {
+    const at = performance.now()
+    aim.move(e.clientX, e.clientY, at)
+    aim.over(e.target.closest('[data-app]')?.dataset.app ?? null, at)
+    aimPop()
   })
   wins.addEventListener('mouseenter', () => call('bar_pop_over', { over: true }))
   wins.addEventListener('mouseleave', () => {
     clearTimeout(popTimer)
+    aim.over(null, performance.now())
     call('bar_pop_over', { over: false })
   })
   // A right press: its menu; with Shift, its window's own (pressApp).
@@ -339,7 +362,14 @@
     pressAt(e, node)
   })
   // Gone by itself (the pointer away, a press elsewhere, its program gone).
-  listen('bar:pop-gone', () => (popFor = null), { target })
+  listen(
+    'bar:pop-gone',
+    () => {
+      popFor = null
+      popAt = null
+    },
+    { target },
+  )
 
   // A file dragged from another program and held over a running program's
   // button half a second, as on the main taskbar (island.js fileHeld): its

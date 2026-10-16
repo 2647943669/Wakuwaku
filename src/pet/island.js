@@ -169,6 +169,8 @@
   // sessions it lists.
   const OPEN_MAX_W = 420
   const OPEN_BARE_MAX_W = 360
+  // Its padding above and below its lines (style.css #island-expanded).
+  const EXPANDED_PAD_Y = 24
   const OTHERS_SHOWN = 3
   // Pulling her out: the room the window takes for it, how far the drop
   // stretches before it pinches off, and the drop's size.
@@ -295,6 +297,15 @@
   let herTimer
   let room = null
   let roomTimer
+  // On the taskbar, what stands open up from the strip, as last told:
+  // the island (open in any way), and the lists and flyouts over the strip
+  // (watchPresses). Opening, her window is raised over any window come over
+  // it (openedUp, island.rs raise, zhoupengjie/Wakuwaku#55).
+  const openUp = { island: false, pops: false }
+  // The open island's lines scrolled this far (fillExpanded), and a card
+  // just unfolded in them, to be brought into sight.
+  let linesTop = 0
+  let cardFresh = false
   // Her being pulled out: { x0, y0, started, broken, at, carrying }. Once
   // the drop pinches off she is carrying: her window has her, this page only
   // waits for the button to be let go.
@@ -646,6 +657,7 @@
   function showCard(id) {
     cardFor = id
     cardSince = Date.now()
+    cardFresh = !!id
     update()
   }
 
@@ -769,11 +781,33 @@
       off.dataset.hintOff = '1'
       lines.append(off)
     }
+    // On the taskbar, no taller than there is room for (openMaxH, #55): its
+    // lines scroll (style.css), kept where they were scrolled to as it is
+    // drawn anew (every second while a clock runs).
+    const most = openMaxH()
+    const old = expanded.querySelector(':scope > .lines')
+    if (old && view === 'expanded') linesTop = old.scrollTop
+    lines.style.maxHeight = Number.isFinite(most) ? `${Math.max(60, Math.floor(most - EXPANDED_PAD_Y))}px` : ''
     expanded.replaceChildren(...(isHome() ? [] : [stillHer(48)]), lines)
     // A card unfolded: the island at its widest, the card as wide as its
     // lines; a widget's menu open in it: as tall as the menu needs.
     expanded.classList.toggle('has-card', !!expanded.querySelector('.icard'))
-    expanded.style.minHeight = menuRoom ? `${menuRoom}px` : ''
+    expanded.style.minHeight = menuRoom ? `${Math.min(menuRoom, most)}px` : ''
+    expanded.classList.toggle('scrolls', lines.scrollHeight > lines.clientHeight + 1)
+    if (linesTop) lines.scrollTop = linesTop
+    // A card just unfolded below what is in sight: scrolled up into it, once
+    // laid out (its height untransformed: it unfolds from its top, scaled).
+    if (cardFresh) {
+      cardFresh = false
+      requestAnimationFrame(() => {
+        const now = expanded.querySelector(':scope > .lines')
+        const card = now?.querySelector('.icard')
+        if (!card || now.scrollHeight <= now.clientHeight + 1) return
+        const below = card.getBoundingClientRect().top + card.offsetHeight + 4 - now.getBoundingClientRect().bottom
+        if (below > 1) now.scrollTop += below
+        linesTop = now.scrollTop
+      })
+    }
   }
 
   // On to the next widget (or back), and its turn starts over.
@@ -911,6 +945,32 @@
     const width = want.width + 48
     const height = TOP + want.height + 24
     return width <= BASE.width && height <= BASE.height ? null : { width, height }
+  }
+
+  // The most the open island may be on the taskbar (zhoupengjie/Wakuwaku#55):
+  // within the room kept above the strip, so the window never grows up for
+  // it (a window growing up moves its top-left corner, which flashes; the
+  // widgets' rows and the cards unfolded in them can take more than the
+  // room), and within its screen should that be shorter (1080 px at 175%
+  // are 617 for the 688 of strip and room); beside a side bar, from where
+  // it stands to the window's far end, as the settings are. Its lines
+  // scroll inside it past that (fillExpanded).
+  function openMaxH() {
+    if (home() !== 'taskbar') return Infinity
+    if (isSide()) {
+      const at = parseFloat(document.documentElement.style.getPropertyValue('--isl-y')) || 0
+      return innerHeight - at - TASKBAR_GAP - TASKBAR_SHADE
+    }
+    const tall = Math.min(TASKBAR_H + TASKBAR_ROOM, (screen.height || Infinity) - TASKBAR_GAP)
+    return tall - TASKBAR_SHADE - (isCapsule() ? CAPSULE_Y : 0)
+  }
+
+  // Opened up from the strip, or closed (part: island, pops): opening when
+  // nothing was, her window over any other that lies over it.
+  function openedUp(part, on) {
+    const was = openUp.island || openUp.pops
+    openUp[part] = on
+    if (on && !was && isOn() && home() === 'taskbar') window.pet.raise()
   }
 
   // Returns true when the window has to grow first.
@@ -2206,6 +2266,8 @@
   const pop = el('div', 'wpop')
   pop.hidden = true
   barRest.append(pop)
+  // Its room for the pointer down to the buttons (style.css .wreach, #56).
+  const popReach = el('span', 'wreach')
   // { app, kind: 'list' | 'menu' } while open, and what it showed last.
   let popFor = null
   let popDrawn = ''
@@ -2263,6 +2325,7 @@
     if (want === watching) return
     watching = want
     window.pet.taskbar.watch(want)
+    openedUp('pops', want)
   }
   window.pet.onPress(at => {
     if (!isOn() || home() !== 'taskbar' || !at) return
@@ -3093,7 +3156,7 @@
     const drawn = JSON.stringify([popFor.app, popFor.kind, app.name, app.pinned, windows.map(w => [w.id, w.title, w.front, (w.png || '').length]), lang, look.endTask])
     if (drawn !== popDrawn || pop.hidden) {
       popDrawn = drawn
-      pop.replaceChildren(...rows)
+      pop.replaceChildren(...rows, popReach)
     }
     pop.classList.toggle('menu', popFor.kind === 'menu')
     pop.classList.toggle('list', isList)
@@ -3369,20 +3432,37 @@
     if (winMarked) winMarked.classList.add(drop.after ? 'drop-after' : 'drop-before')
   }
 
-  // The pointer resting on a running program's button: its windows.
-  windowsBox.addEventListener('mouseover', e => {
-    const app = appOf(e.target.closest('[data-app]')?.dataset.app)
+  // The pointer resting on a running program's button: its windows. With
+  // another's list open, only once it has been on this button as long as
+  // Windows' own taskbar waits, and not while it is on its way up into
+  // the list (aim.js, zhoupengjie/Wakuwaku#56): it changed at once to any
+  // button crossed on the way to a card.
+  const aim = window.Aim.create()
+  const aimList = () => (popFor?.kind === 'list' && !pop.hidden ? { key: popFor.app, rect: pop.getBoundingClientRect(), edge: tbEdge() } : null)
+  function aimPop() {
     clearTimeout(popTimer)
-    if (winPress?.ghost || menuUp) return
-    if (!app || popFor?.kind === 'menu') return
-    if (popFor?.app === app.app) return
-    popTimer = setTimeout(() => (app.windows || []).length && openPop(app.app, 'list'), popFor ? 0 : 500)
+    const app = appOf(aim.key())
+    if (!app || winPress?.ghost || menuUp || popFor?.kind === 'menu' || !(app.windows || []).length) return
+    const wait = aim.due(aimList(), performance.now())
+    if (wait === null) return
+    if (wait === 0) return openPop(app.app, 'list')
+    popTimer = setTimeout(aimPop, wait)
+  }
+  windowsBox.addEventListener('mousemove', e => aim.move(e.clientX, e.clientY, performance.now()))
+  windowsBox.addEventListener('mouseover', e => {
+    const at = performance.now()
+    aim.move(e.clientX, e.clientY, at)
+    aim.over(e.target.closest('[data-app]')?.dataset.app ?? null, at)
+    aimPop()
   })
-  // Gone from the button and the list a moment: it closes.
+  // Gone from the button and the list a moment: it closes. Between them it
+  // is on the list (style.css .wpop::after: its room reaches the strip, as
+  // Windows' own does).
   for (const node of [windowsBox, pop]) {
     node.addEventListener('mouseleave', () => {
+      if (node === windowsBox) aim.over(null, performance.now())
       clearTimeout(popTimer)
-      popTimer = setTimeout(closePop, 400)
+      popTimer = setTimeout(closePop, window.Aim.CLOSE_MS)
     })
     node.addEventListener('mouseenter', () => popFor && clearTimeout(popTimer))
   }
@@ -4906,6 +4986,7 @@
     // Closed: a card unfolded in it folded again, its widget's menu gone.
     if (view !== 'expanded' && was === 'expanded') {
       cardFor = null
+      linesTop = 0
       if (menuFor?.where === 'isle') {
         menuFor = null
         wmenu.hidden = true
@@ -4993,6 +5074,8 @@
     if (editLayout) sendSolid()
     // Up out of the way of a window under it, or down (setStow).
     setStow()
+    // Opened on the taskbar: over any window come over hers.
+    openedUp('island', view !== 'compact')
   }
 
   // Each second while something is timed: the times' words alone, put in
@@ -5819,6 +5902,8 @@
       'wheel',
       e => {
         if (!isQuiet() || widgets.length < 2 || isSetting() || view === 'ask') return
+        // The open island's lines scrolling (more than it has room for): they scroll.
+        if (view === 'expanded' && expanded.classList.contains('scrolls')) return
         e.preventDefault()
         turnWidget(e.deltaY > 0 ? 1 : -1)
       },

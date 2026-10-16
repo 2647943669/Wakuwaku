@@ -137,7 +137,7 @@ pub fn is_setting(key: &str, v: &Value) -> Option<bool> {
 // The built-in source's settings, from "monitor".
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Conf {
-    // The ones picked; None: the defaults.
+    // The ones picked; None: none (the toggles' CPU, memory and network alone).
     pub picks: Option<Vec<String>>,
 }
 
@@ -254,14 +254,6 @@ impl Want<'_> {
     pub fn any<'h>(&self, hardware: impl IntoIterator<Item = &'h str>, kind: &str) -> bool {
         hardware.into_iter().any(|h| self.has(h, kind))
     }
-}
-
-// The ones shown when none were picked: the discrete card's temperature
-// (the most surely discrete, the first of those: gpus are (id, how surely
-// discrete, reports a temperature), in Windows' order).
-pub fn defaults(gpus: &[(String, u8, bool)]) -> Vec<String> {
-    let best = gpus.iter().filter(|g| g.1 > 0 && g.2).max_by_key(|g| (g.1, std::cmp::Reverse(gpus.iter().position(|x| x.0 == g.0))));
-    best.map(|g| vec![format!("{}/temperature/0", g.0)]).unwrap_or_default()
 }
 
 // A number, whole if it is, else to a tenth.
@@ -387,7 +379,7 @@ impl Hw {
     // but neither on the island nor ticked in the settings.
     pub fn turn_also(&mut self, conf: &Conf, listing: bool, also: &[String], basics: &Basics, toggles: [bool; 4]) {
         let reader = self.reader.get_or_insert_with(imp::Reader::new);
-        let picked = conf.picks.clone().unwrap_or_else(|| reader.defaults());
+        let picked = conf.picks.clone().unwrap_or_default();
         let wanted: Vec<String> = picked.iter().chain(also).cloned().collect();
         let mut round = reader.read(&Want { all: listing, ids: &wanted }, basics);
         let joined = joined_now();
@@ -409,12 +401,10 @@ impl Hw {
         }
     }
 
+    // None picked: none (the CPU, memory and network toggles alone, the
+    // user's 2026-10-16 default).
     fn picked(&mut self, conf: &Conf) -> Vec<String> {
-        match (&conf.picks, &mut self.reader) {
-            (Some(picks), _) => picks.clone(),
-            (None, Some(reader)) => reader.defaults(),
-            (None, None) => Vec::new(),
-        }
+        conf.picks.clone().unwrap_or_default()
     }
 
     // The monitor's parts for the readings picked that have a value, in the
@@ -1100,12 +1090,6 @@ mod imp {
             self.gpus.as_mut().unwrap()
         }
 
-        // The ones shown when none were picked (hw::defaults).
-        pub fn defaults(&mut self) -> Vec<String> {
-            let gpus: Vec<(String, u8, bool)> = self.gpus().iter().map(|g| (g.id.clone(), discrete(g.flags, g.vendor, &g.id, &g.name), g.temp)).collect();
-            defaults(&gpus)
-        }
-
         // The value read now; else, with none to be had yet (`fresh` false:
         // a group just opened), the last one, if read in the last 30 s.
         fn keep(&mut self, id: &str, now: Option<f64>, fresh: bool) -> Option<f64> {
@@ -1603,9 +1587,6 @@ mod imp {
         pub fn new() -> Reader {
             Reader
         }
-        pub fn defaults(&mut self) -> Vec<String> {
-            Vec::new()
-        }
         pub fn read(&mut self, _want: &Want, _basics: &Basics) -> Round {
             Round::default()
         }
@@ -1741,9 +1722,10 @@ mod tests {
 
     // The probe's five adapters: the virtual displays are indirect, the
     // basic renderer software; the card, hybrid-discrete, is the discrete
-    // one; an AMD or Intel one by its name.
+    // one; an AMD or Intel one by its name. Nothing of it is shown unless
+    // picked (the CPU, memory and network alone by default).
     #[test]
-    fn the_discrete_card_is_told_and_its_temperature_shown_by_default() {
+    fn the_discrete_card_is_told() {
         assert!(!crate::gpu::renders(0x342) && !crate::gpu::renders(0x105));
         assert!(crate::gpu::renders(0x231b));
         assert_eq!(discrete(0x231b, 0x10DE, "/gpu-nvidia/0", "NVIDIA GeForce RTX 4080 Laptop GPU"), 2);
@@ -1752,12 +1734,7 @@ mod tests {
         assert_eq!(discrete(0x0003, 0x8086, "/gpu-intel/0", "Intel(R) UHD Graphics 770"), 0);
         assert_eq!(discrete(0x0003, 0x8086, "/gpu-intel/0", "Intel(R) Arc(TM) A770 Graphics"), 1);
         assert_eq!((gpu_id(0x10DE, 0), gpu_id(0x1002, 1), gpu_id(0x8086, 0), gpu_id(0x5143, 0)), ("/gpu-nvidia/0".into(), "/gpu-amd/1".into(), "/gpu-intel/0".into(), "/gpu-other/0".into()));
-        let gpus = |list: &[(&str, u8, bool)]| list.iter().map(|g| (g.0.to_string(), g.1, g.2)).collect::<Vec<_>>();
-        assert_eq!(defaults(&gpus(&[("/gpu-amd/0", 0, true), ("/gpu-nvidia/0", 2, true)])), ["/gpu-nvidia/0/temperature/0"]);
-        // Its temperature not reported: none; the processor's card alone: none.
-        assert!(defaults(&gpus(&[("/gpu-nvidia/0", 2, false)])).is_empty());
-        assert!(defaults(&gpus(&[("/gpu-intel/0", 0, true)])).is_empty());
-        assert_eq!(defaults(&gpus(&[("/gpu-amd/0", 1, true), ("/gpu-amd/1", 1, true)])), ["/gpu-amd/0/temperature/0"]);
+        assert!(Hw::new().picked(&Conf::default()).is_empty());
     }
 
     // What is read: everything while the settings are open, else the picks'.

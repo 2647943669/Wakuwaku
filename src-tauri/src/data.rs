@@ -152,8 +152,10 @@ fn defaults() -> Map<String, Value> {
         // Widgets (plugins in the island): which are off, their order, how
         // often the island turns to the next, whether they may open it.
         "widgetsOff": ["monitor"],
-        // The monitor's parts, and how often it reads (seconds, 1 to 10).
-        "monitor": { "cpu": true, "mem": true, "net": true, "battery": true, "every": 2, "pin": true },
+        // The monitor's parts, and how often it reads (seconds, 1 to 10):
+        // the CPU, memory and network's up and down by default, nothing more
+        // (the user, 2026-10-16; Windows' own taskbar has the battery).
+        "monitor": { "cpu": true, "mem": true, "net": true, "battery": false, "every": 2, "pin": true },
         "widgetOrder": [],
         "widgetSpin": 8,
         "widgetNudge": true,

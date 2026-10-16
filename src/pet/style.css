@@ -663,6 +663,23 @@ body {
   gap: 3px;
 }
 
+/* On the taskbar no taller than the room above the strip (island.js
+   openMaxH, zhoupengjie/Wakuwaku#55): past that its lines scroll inside
+   it. The rows' light reaches 8 px past their sides, a session's 3 px
+   above and below: the box as far out, the rows where they were. */
+.home-taskbar #island-expanded .lines {
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  margin: -3px -8px;
+  padding: 3px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.isl-light.home-taskbar #island-expanded .lines {
+  scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
+}
+
 /* The session shown: its name and clock, where it is, its reply, its list. */
 #island-expanded .me {
   display: flex;
@@ -2038,6 +2055,43 @@ body.home-taskbar {
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Its room for the pointer reaches down to the buttons (zhoupengjie/Wakuwaku#56):
+   between a button and its list the pointer was on nothing, and the list
+   closed after 400 ms there. Windows' own stays however long the pointer
+   rests between them. 6 px to the strip, 4 more to its buttons' tops. An
+   element of its own (island.js popReach), not ::after: WebView2 left the
+   list (mouseleave) as the pointer went from its ::after onto the list
+   itself, and it closed under the pointer. */
+#bar-rest .wpop .wreach {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 10px;
+}
+
+.tb-top #bar-rest .wpop .wreach {
+  top: auto;
+  bottom: 100%;
+}
+
+.tb-side #bar-rest .wpop .wreach {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  width: 10px;
+}
+
+.tb-left #bar-rest .wpop .wreach {
+  left: auto;
+  right: 100%;
+}
+
+.tb-right #bar-rest .wpop .wreach {
+  left: 100%;
+  right: auto;
 }
 
 #bar-rest .wpop .wrow,

@@ -995,6 +995,16 @@ async fn island_seat(app: AppHandle, x: f64) {
     island::set_seat(&shared(&app), x);
 }
 
+// Something opened up from her taskbar's strip (the island, a list, a
+// flyout): its window over any other that came over it (island.rs raise,
+// zhoupengjie/Wakuwaku#55).
+#[tauri::command]
+async fn island_raise(app: AppHandle, window: WebviewWindow) {
+    if is_island(&window) {
+        island::raise(&shared(&app));
+    }
+}
+
 // Her island at the top of the screen: up out of the way of the window
 // under it or not, and its closed size (logical px), for the look for a
 // window under it and the pointer calling it down (island.rs set_stow).
@@ -1534,6 +1544,7 @@ fn main() {
             island_editing,
             island_seat,
             island_stow,
+            island_raise,
             island_plate,
             island_release,
             island_drop,
