@@ -137,9 +137,13 @@ fn defaults() -> Map<String, Value> {
         "look": true,
         // Done, changed or failed: shown 8 s, or until seen (8, 30, 120, "seen").
         "hold": 8,
-        // And the island opens by itself for a moment at each (island.js
-        // nudgeFor), unless turned off: then her mood and the sound alone.
-        "openOnEnd": true,
+        // At each, and whenever she has something to tell that needs no
+        // answer (a hello, a plugin's nudge): round her closed island a ring
+        // of colour, then a dot until seen (ring, the flow light: island.js
+        // cue); the island open by itself for a moment (open, all as before
+        // 2026-10-16); or the dot alone (none). A session waiting on you
+        // opens it whatever this says.
+        "endCue": "ring",
         // A session at rest out of sight after this many minutes with nothing
         // new from it (15, 30, 60, 120; 0 never: state.rs is_shown).
         "idleHideMin": crate::state::IDLE_HIDE_MIN,
@@ -162,6 +166,7 @@ pub fn load(dir: &Path) -> Map<String, Value> {
     let mut settings = defaults();
     if let Ok(Value::Object(mut saved)) = fs::read_to_string(dir.join("config.json")).map_err(|_| ()).and_then(|t| serde_json::from_str(&t).map_err(|_| ())) {
         keep_old_look(&mut saved);
+        adopt_end_cue(&mut saved);
         settings.extend(saved);
     }
     // The homes of earlier versions are the island now: the capsule, the
@@ -223,6 +228,17 @@ fn keep_old_look(saved: &mut Map<String, Value>) {
         if !looks.get("dark").is_some_and(Value::is_object) {
             looks.insert("dark".into(), json!({ "bg": "#2c2c2c", "op": 100, "blur": 0, "edge": "line", "bare": false }));
         }
+    }
+}
+
+// The island opening by itself as a turn ended was a switch (openOnEnd, on
+// by default) until 2026-10-16; now a choice of three for all she has to
+// tell that needs no answer (endCue). One who had turned it off gets nothing
+// but the dot (none); everyone else the new default, the ring. The old key goes.
+fn adopt_end_cue(saved: &mut Map<String, Value>) {
+    let Some(old) = saved.remove("openOnEnd") else { return };
+    if !saved.contains_key("endCue") && old == false {
+        saved.insert("endCue".into(), json!("none"));
     }
 }
 
@@ -416,6 +432,28 @@ mod tests {
         assert!(!s.contains_key("taskbarMaterial"));
         // A new user: the new defaults.
         assert_eq!(defaults()["taskbarMaterial"], "clear");
+    }
+
+    #[test]
+    fn opening_by_itself_turned_off_is_the_dot_alone_and_the_rest_ring() {
+        // Turned off: nothing but the dot; the old key gone.
+        let mut s = settings(json!({ "openOnEnd": false, "hold": 30 }));
+        adopt_end_cue(&mut s);
+        assert_eq!(s, settings(json!({ "endCue": "none", "hold": 30 })));
+        // Left on: the new default (none written, the defaults' ring).
+        let mut s = settings(json!({ "openOnEnd": true }));
+        adopt_end_cue(&mut s);
+        assert!(s.is_empty());
+        assert_eq!(defaults()["endCue"], "ring");
+        assert!(!defaults().contains_key("openOnEnd"));
+        // Chosen since: kept, whatever the old key still says.
+        let mut s = settings(json!({ "openOnEnd": false, "endCue": "open" }));
+        adopt_end_cue(&mut s);
+        assert_eq!(s, settings(json!({ "endCue": "open" })));
+        // Never had it: nothing to do.
+        let mut s = settings(json!({ "endCue": "none" }));
+        adopt_end_cue(&mut s);
+        assert_eq!(s, settings(json!({ "endCue": "none" })));
     }
 
     #[test]

@@ -251,7 +251,7 @@ impl Shared {
         quiet
     }
 
-    // Another app is full screen (watched while the setting asks, or the taskbar is her home).
+    // Another app is full screen (watched always: look_fullscreen).
     // The displays she is on (x, y, w, h): her island's or taskbar's, and
     // hers while she is out. An app full screen on another is none of hers.
     pub fn displays(&self) -> Vec<(i32, i32, i32, i32)> {
@@ -369,6 +369,9 @@ impl Shared {
         now["islandTemp"] = json!(temp);
         now["settingsOpen"] = json!(settings_open);
         now["quiet"] = json!(self.is_quiet());
+        // An app full screen on her display: no flow light's ring then, the
+        // dot alone (island.js cue; pet:full-screen as it changes).
+        now["fullScreen"] = json!(self.is_fullscreen());
         // Whether a blur of what is behind the island can be put under it
         // (backplate.rs): Windows 11, transparency effects on.
         now["plate"] = json!(backplate::available());
@@ -627,10 +630,13 @@ impl Shared {
     // every 1.5 s. Never on the taskbar's thread: the strip shown again from
     // there waited on the main thread while that waited on it, and coming
     // back after an app full screen took 3.8 s (2026-10-10). Every look
-    // logged for 10 s after a change: asked how, and what it saw.
+    // logged for 10 s after a change: asked how, and what it saw. Watched
+    // whatever the settings say: her island left up over an app full screen
+    // (hideInFullscreen off) still plays no flow light's ring over it
+    // (island.js), told so as it changes (pet:full-screen).
     pub fn look_fullscreen(self: &Arc<Self>, asked: Option<Instant>) {
         static CHANGED: Mutex<Option<Instant>> = Mutex::new(None);
-        let watching = fullscreen::AVAILABLE && (self.flag("hideInFullscreen") || self.home() == "taskbar");
+        let watching = fullscreen::AVAILABLE;
         let own = self.own.lock().unwrap().clone();
         let cover = if watching { fullscreen::covering(&own) } else { Some(None) };
         // Her taskbar on the other displays steps aside on its own display alone.
@@ -656,6 +662,7 @@ impl Shared {
         let which = if is_full { format!(", {}", fullscreen::front()) } else { String::new() };
         let which = format!("{which}; hers on {:?}", self.displays());
         self.log(&format!("another app full screen: {is_full}{which} ({how})"));
+        let _ = self.app.emit_to("island", "pet:full-screen", json!({ "on": is_full }));
         let t = Instant::now();
         self.apply_visibility();
         self.log(&format!("full screen: {} in {} ms", if is_full { "stepped aside" } else { "back" }, t.elapsed().as_millis()));
@@ -1606,7 +1613,7 @@ fn main() {
             // An app full screen as she starts, known before her home first
             // shows: the taskbar takes its strip only once it can show (one
             // taken with its window hidden keeps no room).
-            if fullscreen::AVAILABLE && (sh.flag("hideInFullscreen") || sh.home() == "taskbar") {
+            if fullscreen::AVAILABLE {
                 sh.by_fullscreen.store(fullscreen::check(&[], &sh.displays()) == Some(true), Ordering::SeqCst);
             }
             island::apply_visibility(&sh);
