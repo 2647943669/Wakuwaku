@@ -2590,10 +2590,22 @@
       } else if (group) {
         parts.push(item('takeOut', t(lang, entry.type === 'stack' ? 'menu.outOfStack' : 'menu.outOfCarousel'), '', String(member)))
       } else {
+        // The one beside it: a group it may join (its kind kept), or both
+        // made one of either kind; a single one by its name (天气).
         const next = neighbourOf(entry.id)
-        const why = next ? '' : t(lang, 'menu.noNeighbour')
-        const with_ = next ? Widgets.nameOf(lang, next, allWidgets, isDetailed()) : ''
-        parts.push(item('group', t(lang, 'menu.stackWith', { name: with_ }), why, 'stack'), item('group', t(lang, 'menu.carouselWith', { name: with_ }), why, 'carousel'))
+        if (!next) {
+          const why = t(lang, 'menu.noNeighbour')
+          parts.push(item('group', t(lang, 'menu.stackWithNone'), why, 'stack'), item('group', t(lang, 'menu.carouselWithNone'), why, 'carousel'))
+        } else if (Widgets.isGroup(next)) {
+          const n = next.items.length
+          const other = next.type === 'stack' ? 'carousel' : 'stack'
+          const full = n >= 8 ? t(lang, 'menu.groupFull') : ''
+          parts.push(item('join', t(lang, `menu.join.${next.type}`, { n }), full), item('group', t(lang, `menu.${other}WithGroup.${next.type}`), '', other))
+        } else {
+          const w = Widgets.sourcesOf(next, allWidgets)[0]
+          const name = w ? WCards.titleOf(w, ctx) : memberName(next)
+          parts.push(item('group', t(lang, 'menu.carouselWith', { name }), '', 'carousel'), item('group', t(lang, 'menu.stackWith', { name }), '', 'stack'))
+        }
       }
     }
     parts.push(item('board', t(lang, 'menu.board'), t(lang, 'menu.later')))
@@ -2685,6 +2697,11 @@
       case 'group': {
         const next = entry && neighbourOf(entry.id)
         return next && keepLayout(Widgets.groupWith(tbLayout(), next.id, entry.id, v, newId))
+      }
+      // Into the group beside it, as its last; its kind kept.
+      case 'join': {
+        const next = entry && neighbourOf(entry.id)
+        return next && Widgets.isGroup(next) && keepLayout(Widgets.groupWith(tbLayout(), entry.id, next.id, next.type, newId))
       }
       case 'regroup':
         return entry && keepLayout(Widgets.regroup(tbLayout(), entry.id, v))

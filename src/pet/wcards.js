@@ -50,9 +50,13 @@
     return pick(GREY, ctx)
   }
 
-  // Which way it went: a stock's up or down, by the colour its script gave it
-  // (red up and green down by default, as Chinese markets show them; its
-  // -GreenUp turns it round): red is DOWN's red, green UP's green.
+  // Which colour its rise or fall takes: the colour its script gave it, the
+  // one place that decides, for every place it is drawn (the taskbar's faces,
+  // carousels and stacks, the capsule's rows and cards; the desktop's to
+  // come), as the compact island's value always took it. stock.ps1 sends
+  // green up and red down, as the design has them; with -RedUp the other way
+  // round, as Chinese markets show them. Drawn in the design's two: green
+  // UP's, red DOWN's.
   function trendOf(w) {
     const c = String(w?.color || '').toLowerCase()
     if (c === '#ff5c6c' || c === '#ff6b6b') return 'red'

@@ -8,12 +8,17 @@
 #   pwsh examples/widgets/stock.ps1 -Symbol USDCNY=X,BTC-USD -Name 美元,比特币
 #   pwsh examples/widgets/stock.ps1 -Symbol AAPL -Once
 #
-# Up is red and down green, as Chinese markets show them; -GreenUp turns it round.
+# Up is green and down red, as the island's widgets draw them everywhere (the
+# widget design of 2026-10-16); -RedUp turns it round, as Chinese markets show
+# them. The colour it sends is the one place that says so: every place the
+# widget is drawn follows it (wcards.js trendOf). -GreenUp, once the way to
+# ask for green up, is still taken.
 [CmdletBinding(PositionalBinding = $false)]
 param(
   [string[]]$Symbol = @('AAPL'),
   [string[]]$Name = @(),
   [double]$Minutes = 5,
+  [switch]$RedUp,
   [switch]$GreenUp,
   [int]$Port = 47213,
   [switch]$Once
@@ -69,7 +74,7 @@ while ($true) {
       Send @{
         id    = "stock-$($s.ToLower() -replace '[^a-z0-9_-]', '-')"
         icon  = $icon
-        color = $(if ($isUp -xor $GreenUp) { '#ff5c6c' } else { '#34d27b' })
+        color = $(if ($isUp -xor $RedUp) { '#34d27b' } else { '#ff5c6c' })
         label = $label
         value = '{0} {1}{2:N2}%' -f (Price $price), $(if ($isUp) { '▲' } else { '▼' }), [math]::Abs($change)
         detail = $detail

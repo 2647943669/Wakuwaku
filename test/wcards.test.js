@@ -45,7 +45,7 @@ const stock = {
   plugin: 'stock',
   label: '苹果',
   value: '230.40 ▲0.80%',
-  color: '#ff5c6c',
+  color: '#34d27b',
   detail: { sizes: ['s', 'm', 'l'], series: { points: [228, 229, 230.4], hi: 231, lo: 227 }, rows: [{ code: 'AAPL', name: '苹果', price: '230.40', change: '+0.80%', value: '48.1M' }] },
 }
 const inbox = {
@@ -68,8 +68,10 @@ test('each kind its colour, dark and light; a script its own, deepened on light'
   assert.equal(WCards.colorOf(stock, light), '#a46a00')
   assert.equal(WCards.colorOf({ id: 'x', color: '#5e9bff' }, dark), '#5e9bff')
   assert.notEqual(WCards.colorOf({ id: 'x', color: '#ffd60a' }, light), '#ffd60a')
-  // Ups and downs by the colour the script gave (red up by default there).
-  assert.equal(WCards.trendOf(stock), 'red')
+  // Ups and downs by the colour the script gave, the one place that decides
+  // (stock.ps1: green up and red down; -RedUp the other way round).
+  assert.equal(WCards.trendOf(stock), 'green')
+  assert.equal(WCards.trendOf({ color: '#ff5c6c' }), 'red')
   assert.equal(WCards.trendOf({ color: '#34d27b' }), 'green')
 })
 
@@ -93,8 +95,8 @@ test('on the taskbar: small its glyph and value, medium its value over its name;
   // The monitor: CPU over memory and the network down.
   assert.match(WCards.faceHTML(monitor, 'M', dark), /CPU 17%<\/b><i>内存 44% · ↓ 7\.4K<\/i>/)
   // A stock: its change in the down colour (its script's red), light deeper.
-  assert.match(WCards.faceHTML(stock, 'M', dark), /苹果 230\.40<\/b><i style="color:#ff6b6b">\+0\.80%<\/i>/)
-  assert.match(WCards.faceHTML(stock, 'M', light), /color:#c42b3c/)
+  assert.match(WCards.faceHTML(stock, 'M', dark), /苹果 230\.40<\/b><i style="color:#34d27b">\+0\.80%<\/i>/)
+  assert.match(WCards.faceHTML(stock, 'M', light), /color:#0f7b3f/)
   // Mail: its count over the letter, "···" while the specifics may not show.
   assert.match(WCards.faceHTML(inbox, 'M', dark), /<i>Anna：周五见<\/i>/)
   assert.match(WCards.faceHTML(inbox, 'M', { ...dark, detailed: false }), /<i>···<\/i>/)
@@ -112,7 +114,7 @@ test('in the open island: a row small or medium, a curve where it has one, a ›
   assert.match(m, /<span class="wtwo"><span class="wl">天气<\/span><span class="wsec">阴 · 8°~16° · Dresden<\/span><\/span>/)
   // The monitor small: its three readings in words; a stock in its trend's colour.
   assert.match(WCards.rowHTML(monitor, 'S', dark), /系统监控<\/span><span class="wv" style="color:#34d27b">17% · 44% · ↓7\.4K/)
-  assert.match(WCards.rowHTML(stock, 'M', dark), /<span class="wsec">AAPL · \+0\.80%<\/span>.*color:#ff6b6b">230\.40</)
+  assert.match(WCards.rowHTML(stock, 'M', dark), /<span class="wsec">AAPL · \+0\.80%<\/span>.*color:#34d27b">230\.40</)
   // Today: its turns and time, its approvals and the tokens widget's.
   const today = { id: 'today', value: { key: 'widget.todayValue', vars: { turns: '197', time: '2:01', approvals: '3' } } }
   assert.match(WCards.rowHTML(today, 'M', { ...dark, all: [{ id: 'tokens', value: { vars: { total: '1.7B' } } }] }), /Claude 今天<\/span><span class="wsec">批准 3 次 · 1\.7B token<\/span>.*>197 轮 · 2:01</)
@@ -136,8 +138,11 @@ test("a card: the weather's curve and hours, the monitor's lines (none read: no 
   assert.match(mon, /cline off"><span class="cn">GPU<\/span><span class="wnone">暂无数据/)
   assert.match(mon, /cline off"><span class="cn">磁盘/)
   assert.match(mon, /运行 3 天 4 小时/)
-  const st = WCards.cardHTML(stock, dark, [stock, { id: 'stock-msft', plugin: 'stock', label: 'MSFT', value: '420.00 ▼1.30%', color: '#34d27b' }])
+  const st = WCards.cardHTML(stock, dark, [stock, { id: 'stock-msft', plugin: 'stock', label: 'MSFT', value: '420.00 ▼1.30%', color: '#ff5c6c' }])
   assert.match(st, /AAPL · 苹果/)
+  // Up green, down red, as the script's colours say.
+  assert.match(st, /<span class="cchip" style="--c:#34d27b">\+0\.80%<\/span>/)
+  assert.match(st, /MSFT<\/span><span class="cv">420\.00<\/span><span class="cchip" style="--c:#ff6b6b">/)
   assert.match(st, /成交 48\.1M/)
   assert.match(st, /最高 231 · 最低 227/)
   assert.match(st, /class="off"[^>]*>1周/)
@@ -194,4 +199,11 @@ test("a stack's line: its glyph in its colour's block, its name, its number and 
   assert.equal(WCards.titleOf(monitor, dark), '系统监控')
   assert.equal(WCards.titleOf(stock, dark), '苹果')
   assert.equal(WCards.titleOf(inbox, en), 'Mail')
+})
+
+test('the stock script says green up and red down, the other way round only when asked (-RedUp)', () => {
+  const text = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'examples', 'widgets', 'stock.ps1'), 'utf8')
+  assert.match(text, /color = \$\(if \(\$isUp -xor \$RedUp\) \{ '#34d27b' \} else \{ '#ff5c6c' \}\)/)
+  assert.equal(WCards.trendOf({ color: '#34d27b' }), 'green')
+  assert.equal(WCards.trendOf({ color: '#ff5c6c' }), 'red')
 })
