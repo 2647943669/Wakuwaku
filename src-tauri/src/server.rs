@@ -130,7 +130,7 @@ fn chain_for(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> 
             let hints = [event.get("session_title").and_then(Value::as_str).unwrap_or(""), if cwd.is_empty() { "" } else { events::base(cwd) }];
             jump::front_chain(client, &hints)
         }
-        Some("dsh") => jump::chain_of(jump::outermost_of(client)),
+        Some("dsh") => jump::chain_of(jump::outermost_of(client, "DeepSeek Harness.exe")),
         _ => jump::chain_of(client),
     };
     (!chain.is_empty()).then_some(chain)
