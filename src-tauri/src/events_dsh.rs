@@ -15,9 +15,13 @@
 // tools have names of their own (read, write, edit, str_replace_editor,
 // pwsh or bash, glob, grep, web_search, web_fetch, todo_write,
 // ask_user_question), told in Claude Code's words here (claude_named). The
-// session's name is DSH's own, from its projection cache (title_of).
-use std::io::Read;
+// session's name is DSH's own, from its projection cache (title_of). A
+// subagent's session is told as any other's: it is no session of hers
+// (whose, #58).
+use std::collections::HashMap;
+use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
@@ -278,8 +282,124 @@ fn last_reply_from(log: &Path, first_window: usize) -> Option<String> {
     }
 }
 
+// --- Whose a session is: the person's, or a subagent's ---------------------------------
+//
+// A subagent DSH starts (its subagent tool, or a plugin's subagents.start(),
+// as dsh-mnemon's idle review does) is a session of its own: its own id and
+// log, and the bridge tells its SessionStart, UserPromptSubmit, tools and
+// Stop as any other session's. Its first prompt, the task it was handed, is
+// written as the person's words (source kind user: dsh-subagent and its
+// in-process driver, 0.2.0-rc.2), so DSH's title is made of it too (#58:
+// "Bounded completed checkpoint (untrusted evidence; …"). What tells it
+// apart is the header its log begins with (childSessionMeta): origin
+// "subagent", parentSession the session that started it, delegationDepth.
+// DSH follows a lineage through origin "subagent" only, as here: a session
+// the person forked has a parentSession and no origin, and is the person's.
+//
+// So a subagent has no line of its own on the pet: its start, its turns and
+// their end take away any line it has (session-end), and nothing of it is
+// named or counted. Its tools are the session's it works for (the one at the
+// top of its lineage), as Claude Code's subagents' are, with `within` (state.rs):
+// only into a turn of that one's under way, never starting one nor waking one
+// at rest (an idle review runs while it is at rest). Its to-do list is its
+// own. The header never changes: read once a session (the log's first line,
+// 64 KB of it at most), kept; a log not there yet tells nothing (the
+// person's, for now, and read again with the next event).
+
+const MAX_HEADER: u64 = 64 * 1024;
+const MAX_LINEAGE: usize = 8;
+const MAX_KNOWN: usize = 512;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Whose {
+    Own,
+    // A subagent's, and the session it works for at the top ("" when not named).
+    Sub(String),
+}
+
+// The first line of a log, as written (no more than MAX_HEADER of it).
+fn first_line(log: &Path) -> Option<String> {
+    let file = std::fs::File::open(log).ok()?;
+    let mut line = Vec::new();
+    if log.extension().is_some_and(|e| e == "zstd") {
+        let decoder = ruzstd::decoding::StreamingDecoder::new_with_max_window_size(std::io::BufReader::new(file), MAX_ZSTD_WINDOW).ok()?;
+        std::io::BufReader::new(decoder.take(MAX_HEADER)).read_until(b'\n', &mut line).ok()?;
+    } else {
+        std::io::BufReader::new(file.take(MAX_HEADER)).read_until(b'\n', &mut line).ok()?;
+    }
+    String::from_utf8(line).ok()
+}
+
+// What a session's header says of it: None when there is none to read,
+// Some(None) for the person's, Some(Some(parent)) for a subagent's.
+fn parent_of(home: &Path, cwd: &str, session: &str) -> Option<Option<String>> {
+    let header: Value = serde_json::from_str(first_line(&session_log(home, cwd, session)?)?.trim()).ok()?;
+    if header["type"] != "session" || header["id"] != session {
+        return None;
+    }
+    Some((header["origin"] == "subagent").then(|| s(&header, "parentSession").to_string()))
+}
+
+// Whose the session is, its lineage followed up to the top (its subagents'
+// logs are in its folder: they keep its cwd).
+pub fn whose(home: &Path, cwd: &str, session: &str) -> Whose {
+    static KNOWN: Mutex<Option<HashMap<String, Whose>>> = Mutex::new(None);
+    if let Some(known) = KNOWN.lock().unwrap().as_ref().and_then(|m| m.get(session)) {
+        return known.clone();
+    }
+    let whose = match parent_of(home, cwd, session) {
+        None => return Whose::Own,
+        Some(None) => Whose::Own,
+        Some(Some(parent)) => {
+            let mut top = parent;
+            for _ in 0..MAX_LINEAGE {
+                match parent_of(home, cwd, &top) {
+                    Some(Some(up)) if !up.is_empty() && up != session => top = up,
+                    _ => break,
+                }
+            }
+            Whose::Sub(top)
+        }
+    };
+    let mut known = KNOWN.lock().unwrap();
+    let known = known.get_or_insert_with(HashMap::new);
+    if known.len() >= MAX_KNOWN {
+        known.clear();
+    }
+    known.insert(session.to_string(), whose.clone());
+    whose
+}
+
+// A subagent's event: its own start, turns and end take its line away; a
+// tool of its, but its to-do list, is the top session's, within a turn of
+// that one's.
+fn of_subagent(e: &Value, top: &str, home: &Path) -> Option<Value> {
+    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop") {
+        return Some(json!({ "mood": "idle", "event": "session-end", "agent": "dsh", "session": s(e, "session_id") }));
+    }
+    if top.is_empty() || s(e, "tool_name") == "todo_write" {
+        return None;
+    }
+    let mut theirs = e.clone();
+    theirs["session_id"] = json!(top);
+    let mut message = message_of(&theirs, home)?;
+    message["within"] = json!(true);
+    Some(message)
+}
+
 // The message for an event, or None for one that changes nothing.
 pub fn to_message(e: &Value, home: &std::path::Path) -> Option<Value> {
+    if !e.is_object() {
+        return None;
+    }
+    match whose(home, s(e, "cwd"), s(e, "session_id")) {
+        Whose::Own => message_of(e, home),
+        Whose::Sub(top) => of_subagent(e, &top, home),
+    }
+}
+
+// The message for an event of a session of the person's.
+fn message_of(e: &Value, home: &std::path::Path) -> Option<Value> {
     let fields: &Map<String, Value> = e.as_object()?;
     let mut claude = fields.clone();
     // A turn's end: its last words, as Claude Code gives them.
@@ -316,16 +436,25 @@ pub fn to_message(e: &Value, home: &std::path::Path) -> Option<Value> {
     Some(message)
 }
 
+// A session's id, short: its first 8 after "session-".
+fn short(id: &str) -> String {
+    id.strip_prefix("session-").unwrap_or(id).chars().take(8).collect()
+}
+
 // A line for her log as a session starts or a turn begins or ends: what came,
 // and whether she found the app it runs in (server.rs chain_for), for
-// telling why its window can't be reached.
-pub fn log_line(e: &Value, found: Option<u32>) -> Option<String> {
+// telling why its window can't be reached; a subagent's, whose it is.
+pub fn log_line(e: &Value, found: Option<u32>, home: &Path) -> Option<String> {
     let name = s(e, "hook_event_name");
     if !matches!(name, "SessionStart" | "UserPromptSubmit" | "Stop") {
         return None;
     }
+    let id = short(s(e, "session_id"));
+    if let Whose::Sub(top) = whose(home, s(e, "cwd"), s(e, "session_id")) {
+        return Some(format!("dsh {name} ({id}): a subagent of {}, not shown", if top.is_empty() { "a session not named".to_string() } else { short(&top) }));
+    }
     let app = found.map_or("no app found".to_string(), |pid| format!("its app found (pid {pid})"));
-    Some(format!("dsh {name} ({}){}", s(e, "session_id").chars().skip(8).take(8).collect::<String>(), if name == "Stop" { String::new() } else { format!(", {app}") }))
+    Some(format!("dsh {name} ({id}){}", if name == "Stop" { String::new() } else { format!(", {app}") }))
 }
 
 #[cfg(test)]
@@ -373,10 +502,10 @@ mod tests {
         assert!(to_message(&event("SubagentStop", json!({ "agent_id": "a" })), &nowhere()).is_none());
         let mut start = event("UserPromptSubmit", json!({ "prompt": "x" }));
         start["session_id"] = json!("session-6aa5a96d-33fc");
-        assert_eq!(log_line(&start, Some(3684)).as_deref(), Some("dsh UserPromptSubmit (6aa5a96d), its app found (pid 3684)"));
+        assert_eq!(log_line(&start, Some(3684), &nowhere()).as_deref(), Some("dsh UserPromptSubmit (6aa5a96d), its app found (pid 3684)"));
         start["hook_event_name"] = json!("Stop");
-        assert_eq!(log_line(&start, None).as_deref(), Some("dsh Stop (6aa5a96d)"));
-        assert!(log_line(&event("PostToolUse", json!({})), None).is_none());
+        assert_eq!(log_line(&start, None, &nowhere()).as_deref(), Some("dsh Stop (6aa5a96d)"));
+        assert!(log_line(&event("PostToolUse", json!({})), None, &nowhere()).is_none());
         assert!(to_message(&json!("nope"), &nowhere()).is_none());
     }
 
@@ -496,6 +625,120 @@ mod tests {
         assert_eq!(m["title"], "Read note.txt and copy it");
         assert_eq!(title_of(&home, "session-none"), None);
         assert_eq!(title_of(&home, "..\\..\\x"), None);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    // A log as DSH writes it, a Zstandard frame for each batch of lines.
+    fn frames(batches: &[Vec<Value>]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for batch in batches {
+            let text: String = batch.iter().map(|v| format!("{v}\n")).collect();
+            out.extend(ruzstd::encoding::compress_to_vec(text.as_bytes(), ruzstd::encoding::CompressionLevel::Fastest));
+        }
+        out
+    }
+
+    // A session's header as the log's first line, as DSH 0.2.0-rc.2 writes
+    // it (SessionStore.prepare), with more fields of its own.
+    fn header(id: &str, more: Value) -> Value {
+        let mut h = json!({ "type": "session", "version": 4, "id": id, "createdAt": 1792100300000u64, "cwd": WORKSPACE });
+        for (k, v) in more.as_object().unwrap() {
+            h[k] = v.clone();
+        }
+        h
+    }
+
+    const WORKSPACE: &str = "C:\\Users\\waku\\Documents\\deepseek-harness\\default-workspace";
+    // The desktop app's session in the test VM (the A6A log): the person's.
+    const PARENT: &str = "session-6aa5a96d-33fc-4973-b085-bf5c8f30a6b7";
+
+    #[test]
+    fn a_subagent_is_no_session_of_its_own() {
+        let home = std::env::temp_dir().join(format!("wakuwaku-dsh-sub-{}", std::process::id()));
+        let folder = home.join("sessions").join(project_key(WORKSPACE));
+        let put = |id: &str, file: &str, bytes: &[u8]| {
+            std::fs::create_dir_all(folder.join(id)).unwrap();
+            std::fs::write(folder.join(id).join(file), bytes).unwrap();
+        };
+        put(PARENT, "session.v4.jsonl.zstd", A6A);
+        // A subagent it started, as dsh-subagent's in-process driver makes
+        // one (childSessionMeta; its id a bare UUID): its header in a frame
+        // of its own, its first turn after it (the task it was handed, as the
+        // person's words), as a plugin's idle review starts one (#58).
+        let child = "9d1f4c2a-5b7e-4f0a-8c3d-2e6b1a7f9c40";
+        let task = "Bounded completed checkpoint (untrusted evidence; some context may be omitted):\n[user/message; checkpoint event 11]";
+        let child_log = frames(&[
+            vec![header(child, json!({ "parentSession": PARENT, "isSeeded": false, "origin": "subagent", "delegationDepth": 1, "agentPreset": "standard" }))],
+            vec![
+                json!({ "type": "approval/policy", "seq": 0, "time": 1792100300001u64, "data": { "policy": "never", "source": "delegation" } }),
+                json!({ "type": "turn/start", "seq": 1, "time": 1792100300002u64, "data": { "turn": 1 } }),
+                json!({ "type": "user/message", "seq": 2, "time": 1792100300003u64, "data": { "content": [{ "type": "text", "text": task }], "source": { "kind": "user" }, "role": "user" } }),
+                json!({ "type": "subagent/descriptor", "seq": 3, "time": 1792100300004u64, "data": { "version": 3, "mode": "one-shot", "provider": "spawn" } }),
+            ],
+        ]);
+        put(child, "session.v4.jsonl.zstd", &child_log);
+        // Its own subagent, in plain JSONL: the top is still the person's session.
+        let grandchild = "0e4b7d21-6c3a-4e9f-b1d8-5a2c9f7e3b16";
+        let line = header(grandchild, json!({ "parentSession": child, "isSeeded": false, "origin": "subagent", "delegationDepth": 2 }));
+        put(grandchild, "session.v4.jsonl", format!("{line}\n").as_bytes());
+        // A session the person forked: a parentSession, no origin: the person's.
+        let fork = "session-3c8e2a91-7d4f-4b6a-9e1c-8f2d5b7a0c63";
+        put(fork, "session.v4.jsonl.zstd", &frames(&[vec![header(fork, json!({ "parentSession": PARENT, "isSeeded": true, "delegationDepth": 0 }))]]));
+        // A subagent whose parent is not named.
+        let orphan = "7a2c5e8b-1d4f-4c9a-8b3e-6f0d2a9c5e71";
+        put(orphan, "session.v4.jsonl.zstd", &frames(&[vec![header(orphan, json!({ "isSeeded": false, "origin": "subagent", "delegationDepth": 1 }))]]));
+        // A header of another session's in this one's folder: none read.
+        let stray = "session-5e1a9c7b-2f4d-4a8e-b6c3-9d0f1e7a2b58";
+        put(stray, "session.v4.jsonl.zstd", &frames(&[vec![header(child, json!({ "parentSession": PARENT, "origin": "subagent" }))]]));
+        // DSH's projection cache names both, the subagent by its task.
+        let cache = home.join("storages").join("session_projcache").join("sessions");
+        std::fs::create_dir_all(&cache).unwrap();
+        let record = |title: &str, subagent: Value| json!({ "version": 7, "record": { "identity": { "formatVersion": 4, "createdAt": 1792100300000u64, "cwd": WORKSPACE, "isSeeded": false, "inheritedEventCount": 0 }, "rows": { "title": { "ver": 1, "seq": 48, "val": title }, "subagent": { "ver": 2, "seq": 3, "val": subagent } } } });
+        std::fs::write(cache.join(format!("{PARENT}.json")), record("Create a file", json!({})).to_string()).unwrap();
+        std::fs::write(cache.join(format!("{child}.json")), record("Bounded completed checkpoint (untrusted", json!({ "identity": { "mode": "one-shot", "seq": 3 } })).to_string()).unwrap();
+
+        assert_eq!(whose(&home, WORKSPACE, PARENT), Whose::Own);
+        assert_eq!(whose(&home, WORKSPACE, child), Whose::Sub(PARENT.into()));
+        assert_eq!(whose(&home, WORKSPACE, grandchild), Whose::Sub(PARENT.into()));
+        assert_eq!(whose(&home, WORKSPACE, fork), Whose::Own);
+        assert_eq!(whose(&home, WORKSPACE, orphan), Whose::Sub(String::new()));
+        assert_eq!(whose(&home, WORKSPACE, stray), Whose::Own);
+        assert_eq!(whose(&home, WORKSPACE, "session-not-there-yet"), Whose::Own);
+        assert_eq!(whose(&home, "", child), Whose::Sub(PARENT.into()), "known once read");
+
+        let of = |id: &str, name: &str, more: Value| {
+            let mut e = json!({ "session_id": id, "transcript_path": "", "cwd": WORKSPACE, "hook_event_name": name });
+            for (k, v) in more.as_object().unwrap() {
+                e[k] = v.clone();
+            }
+            to_message(&e, &home)
+        };
+        // Its start, its turn and its end: no line of its own, no name, no
+        // task, no reply, no wave; any line it had goes.
+        let gone = json!({ "mood": "idle", "event": "session-end", "agent": "dsh", "session": child });
+        assert_eq!(of(child, "SessionStart", json!({ "source": "startup" })), Some(gone.clone()));
+        assert_eq!(of(child, "UserPromptSubmit", json!({ "prompt": task })), Some(gone.clone()));
+        assert_eq!(of(child, "Stop", json!({ "stop_hook_active": false })), Some(gone));
+        // Its edits are its session's, within a turn of that one's.
+        let write = json!({ "tool_name": "write", "tool_input": { "file_path": "C:\\w\\notes.md" }, "tool_use_id": "call_01", "tool_response": "ok" });
+        let m = of(child, "PostToolUse", write.clone()).unwrap();
+        assert_eq!(m, json!({ "mood": "working", "detail": "Write", "event": "tool-done", "file": "C:\\w\\notes.md", "toolId": "call_01", "agent": "dsh", "session": PARENT, "project": "default-workspace", "within": true }));
+        assert_eq!(of(grandchild, "PostToolUse", write.clone()).unwrap()["session"], PARENT);
+        let ask = of(child, "PreToolUse", json!({ "tool_name": "ask_user_question", "tool_input": { "questions": [] } })).unwrap();
+        assert_eq!((ask["mood"].as_str(), ask["session"].as_str(), ask["within"].as_bool()), (Some("waiting"), Some(PARENT), Some(true)));
+        // Its to-do list is its own; one whose parent is not named, nothing.
+        assert_eq!(of(child, "PostToolUse", json!({ "tool_name": "todo_write", "tool_input": { "todos": [] } })), None);
+        assert_eq!(of(orphan, "PostToolUse", write), None);
+        assert_eq!(of(orphan, "UserPromptSubmit", json!({ "prompt": "x" })).unwrap()["event"], "session-end");
+        // The person's sessions as they were: a forked one too.
+        let m = of(PARENT, "UserPromptSubmit", json!({ "prompt": "Create a file named a.txt" })).unwrap();
+        assert_eq!((m["event"].as_str(), m["task"].as_str(), m["title"].as_str(), m.get("within")), (Some("turn-start"), Some("Create a file named a.txt"), Some("Create a file"), None));
+        assert_eq!(of(fork, "SessionStart", json!({ "source": "startup" })).unwrap()["react"], "wave");
+        // Her log says whose.
+        let e = json!({ "session_id": grandchild, "cwd": WORKSPACE, "hook_event_name": "UserPromptSubmit" });
+        assert_eq!(log_line(&e, None, &home).as_deref(), Some("dsh UserPromptSubmit (0e4b7d21): a subagent of 6aa5a96d, not shown"));
+        let e = json!({ "session_id": orphan, "cwd": WORKSPACE, "hook_event_name": "Stop" });
+        assert_eq!(log_line(&e, None, &home).as_deref(), Some("dsh Stop (7a2c5e8b): a subagent of a session not named, not shown"));
         let _ = std::fs::remove_dir_all(&home);
     }
 }

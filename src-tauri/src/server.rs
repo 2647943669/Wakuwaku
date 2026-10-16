@@ -202,10 +202,11 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 _ => events::to_message(&event),
             };
             if let Some(mut msg) = msg {
-                // Where the session runs, for going to its window (jump.rs).
-                let chain = chain_for(sh, &req, &event, agent);
+                // Where the session runs, for going to its window (jump.rs);
+                // none for one going (a DSH subagent's too: events_dsh.rs whose).
+                let chain = if msg["event"] == "session-end" { None } else { chain_for(sh, &req, &event, agent) };
                 if agent == Some("dsh") {
-                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0)) {
+                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &crate::connection::dsh_home()) {
                         sh.log(&line);
                     }
                 }
