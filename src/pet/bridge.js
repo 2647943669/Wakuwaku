@@ -75,6 +75,10 @@
     releaseHer: offset => send('island_release', { offset: offset || {} }),
     dropHer: () => send('island_drop'),
     holding: isHolding => send('island_holding', { isHolding: isHolding === true }),
+    // The taskbar's layout being edited, or not, and where its bar, library
+    // and tools are ([[x, y, w, h]], page px): the window keeps the mouse
+    // there whatever enter and leave say (island.rs set_editing, #53).
+    editing: (on, rects) => send('island_editing', { on: on === true, rects: Array.isArray(rects) ? rects : [] }),
     // Her seat on the taskbar, where the page has laid her island out (logical px from its left).
     seat: x => send('island_seat', { x: Number(x) || 0 }),
     // A blur of what is behind her island, under it (backplate.rs): where
@@ -276,6 +280,14 @@
 
   // The elements under the pointer, outermost first, as last played.
   let inside = []
+  // What the page has had a mouseenter for and no mouseleave since, real or
+  // played, in the order entered (heard in the capture phase: neither
+  // bubbles). Left by the next word from the Rust side that the pointer is
+  // off it (pointer.rs; hovers.js): entered by a played mouseenter, the leave
+  // may never come from WebView2 itself.
+  const entered = new Set()
+  document.addEventListener('mouseenter', e => e.target instanceof Element && e.target !== document.documentElement && entered.add(e.target), true)
+  document.addEventListener('mouseleave', e => entered.delete(e.target), true)
 
   function chainAt(x, y) {
     const chain = []
@@ -292,9 +304,18 @@
       'pet:pointer',
       ({ payload: at }) => {
         const next = at ? chainAt(at.x, at.y) : []
+        // Whatever the page has entered, either way, and the pointer is not
+        // on now (gone: all of it) is left; caught, only once the pointer is
+        // clear of its box (hovers.js).
+        for (const el of [...entered]) if (!el.isConnected) entered.delete(el)
+        for (const el of window.Hovers.stale([...entered], next, at, el => el.getBoundingClientRect())) {
+          entered.delete(el)
+          play('mouseleave', el, at?.x ?? -1, at?.y ?? -1)
+        }
+        // Caught, the window has the mouse: WebView2's own events enter.
+        if (at?.caught) return
         const was = inside
         inside = next
-        for (const el of was) if (!next.includes(el)) play('mouseleave', el, at?.x ?? -1, at?.y ?? -1)
         for (const el of next) if (!was.includes(el)) play('mouseenter', el, at.x, at.y)
       },
       { target },

@@ -38,6 +38,7 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.controlPanel" => if zh { "控制面板" } else { "Control Panel" },
         "menu.taskManager" => if zh { "任务管理器" } else { "Task Manager" },
         "menu.editTaskbar" => if zh { "编辑任务栏布局" } else { "Edit the taskbar layout" },
+        "menu.endEdit" => if zh { "退出编辑" } else { "Stop editing the taskbar" },
         "menu.deviceManager" => if zh { "设备管理器" } else { "Device Manager" },
         // Shift and a right press on a program's button with several windows (tasks.rs window_menu), in Windows' words.
         "taskbar.restoreAll" => if zh { "还原所有窗口" } else { "Restore all windows" },

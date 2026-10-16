@@ -45,6 +45,13 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     let home = sh.home();
     let is_tray = over == Over::Tray;
     let menu = Menu::new(app)?;
+    // The taskbar's layout being edited: a way out first, whatever its bar
+    // does (zhoupengjie/Wakuwaku#53: its buttons took no press, Esc went to
+    // the window in front, and only quitting from the tray ended it).
+    if sh.island.lock().unwrap().editing {
+        menu.append(&MenuItem::with_id(app, "endEdit", t("menu.endEdit"), true, None::<&str>)?)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
 
     if over == Over::Home && home == "taskbar" {
         menu.append(&CheckMenuItem::with_id(app, "dnd", t("menu.dnd"), true, flag("dnd"), None::<&str>)?)?;
@@ -151,6 +158,10 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
         // The taskbar's parts dragged about, on the strip itself (island.js).
         "editTaskbar" => {
             let _ = sh.app.emit_to("island", "taskbar:edit", ());
+        }
+        // Out of editing it, as its 取消 (the layout as it was).
+        "endEdit" => {
+            let _ = sh.app.emit_to("island", "taskbar:edit", json!({ "end": true }));
         }
         "winSettings" => {
             crate::tasks::launch("ms-settings:");

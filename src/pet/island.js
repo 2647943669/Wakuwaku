@@ -4156,6 +4156,11 @@
         keyPaused = !!keyPart
         return window.pet.taskbar.keysPause()
       }
+      // Editing the taskbar's layout: Esc ends it, as 取消 (#53).
+      if (editLayout && e.key === 'Escape') {
+        e.preventDefault()
+        return endEdit(false)
+      }
       if (!keyPart) return
       // The settings opened meanwhile (a press on her capsule): the keys are theirs.
       if (isSetting()) return keysOff()
@@ -4403,6 +4408,47 @@
     node.addEventListener('mouseenter', () => window.pet.hover(true))
     node.addEventListener('mouseleave', () => window.pet.hover(false))
   }
+  // And whatever the page hears of the pointer: where they are goes to the
+  // Rust side as they change (island.rs set_editing), and the window takes
+  // the mouse over them there (pointer.rs solid). By enter and leave alone
+  // its mode flipped while the pointer was on the bar, a press going to the
+  // window under it and only its release coming here, so 完成 and 取消 did
+  // nothing (zhoupengjie/Wakuwaku#53). A couple of px more all round.
+  let solidSent = ''
+  function sendSolid() {
+    if (!isOn()) return
+    const rects = editLayout
+      ? [editBar, library, tools]
+          .filter(n => n.isConnected)
+          .map(n => n.getBoundingClientRect())
+          .filter(r => r.width && r.height)
+          .map(r => [Math.floor(r.left) - 2, Math.floor(r.top) - 2, Math.ceil(r.width) + 4, Math.ceil(r.height) + 4])
+      : []
+    const sent = JSON.stringify([!!editLayout, rects])
+    if (sent === solidSent) return
+    solidSent = sent
+    window.pet.editing(!!editLayout, rects)
+  }
+  const solidWatch = new ResizeObserver(() => sendSolid())
+  for (const node of [editBar, library, tools]) solidWatch.observe(node)
+  // The keyboard while editing, for Esc to cancel it (taken a moment after
+  // it starts: from her menu, which gives the keyboard back as it closes).
+  let editKeys = false
+  // A press whose button went down where the window let it through and
+  // came up on one of the bar's buttons: only its mouseup here, no click
+  // (#53). Done as the click would have been.
+  let pressedHere = false
+  for (const type of ['pointerdown', 'mousedown']) document.addEventListener(type, () => (pressedHere = true), true)
+  document.addEventListener(
+    'mouseup',
+    e => {
+      const pressed = pressedHere
+      pressedHere = false
+      const what = !pressed && e.button === 0 && editLayout && editBar.contains(e.target) && e.target.closest('[data-edit]')?.dataset.edit
+      if (what) editAct(what)
+    },
+    true,
+  )
 
   function editTaskbar() {
     if (home() !== 'taskbar' || editLayout) return
@@ -4425,6 +4471,12 @@
     document.body.append(editBar)
     arranged = ''
     update()
+    requestAnimationFrame(sendSolid)
+    setTimeout(() => {
+      if (!editLayout || editKeys) return
+      editKeys = true
+      window.pet.keyboard(true)
+    }, 250)
   }
 
   function drawEditBar() {
@@ -4452,6 +4504,11 @@
     libOpen = false
     chosen = null
     for (const node of entryNodes.values()) node.classList.remove('tb-chosen')
+    sendSolid()
+    if (editKeys) {
+      editKeys = false
+      window.pet.keyboard(false)
+    }
     if (keep) {
       // Those put on the strip now are there alone (§7): off the desktop.
       const was = tbLayout(config.taskbarLayout)
@@ -4470,8 +4527,10 @@
     update()
   }
 
-  editBar.addEventListener('click', e => {
-    const what = e.target.closest('[data-edit]')?.dataset.edit
+  editBar.addEventListener('click', e => editAct(e.target.closest('[data-edit]')?.dataset.edit))
+
+  // One of the bar's buttons, pressed (a click, or a release alone: above).
+  function editAct(what) {
     if (what === 'done') endEdit(true)
     else if (what === 'cancel') endEdit(false)
     else if (what === 'add') showLibrary(!libOpen)
@@ -4481,7 +4540,7 @@
       arranged = ''
       update()
     }
-  })
+  }
 
   // --- The library -------------------------------------------------------------------
   function showLibrary(open) {
@@ -4924,6 +4983,8 @@
     const isTimed = time() || now.stepSince || Status.othersOf(now.list, now).some(x => Status.time(x))
     if (isTimed && (view === 'compact' || view === 'expanded')) clockTimer = setInterval(tickTimes, 1000)
     spin()
+    // Editing the layout: where its bar and the rest are now, for the Rust side.
+    if (editLayout) sendSolid()
     // Up out of the way of a window under it, or down (setStow).
     setStow()
   }
@@ -5797,6 +5858,7 @@
   const settingsMax = () => (home() === 'taskbar' ? (isSide() ? innerHeight - 2 * TASKBAR_GAP - TASKBAR_SHADE : TASKBAR_ROOM - TASKBAR_GAP - TASKBAR_SHADE) : null)
 
   // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
-  window.pet.onTaskbarEdit(() => editTaskbar())
+  // From her menu: editing it, or (退出编辑, while editing) out of it as 取消.
+  window.pet.onTaskbarEdit(p => (p?.end ? endEdit(false) : editTaskbar()))
   window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget }
 })()
