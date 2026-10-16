@@ -335,10 +335,33 @@ fn publish(view: Value) {
 }
 
 // Readings from elsewhere that join the built-in ones each turn, under the
-// hardware they name: where the sensor helper's are to come in (#18, part B:
-// the CPU's temperature and power through PawnIO, read by an elevated helper
-// and handed to her). Nothing puts any here yet.
+// hardware they name: the sensor helper's come in here (#18, part B: the
+// CPU's temperature and power through PawnIO, read by an elevated helper and
+// handed to her on /hw, sensors::accept). Kept with when they came, so a
+// helper that stopped does not leave its last numbers on the island
+// (joined_now drops them once stale).
 pub static JOINED: Mutex<Vec<Reading>> = Mutex::new(Vec::new());
+static JOINED_AT: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+// After this long with nothing new, the joined readings are let go (the
+// monitor reads every 10 s at most while quiet, the helper posts every 2 s).
+const JOINED_FRESH: std::time::Duration = std::time::Duration::from_secs(8);
+
+// The helper's latest readings (sensors::accept): replace what was there,
+// and mark when.
+pub fn set_joined(readings: Vec<Reading>) {
+    *JOINED.lock().unwrap() = readings;
+    *JOINED_AT.lock().unwrap() = Some(std::time::Instant::now());
+}
+
+// The joined readings if they are fresh, else none.
+pub fn joined_now() -> Vec<Reading> {
+    let fresh = JOINED_AT.lock().unwrap().is_some_and(|t| t.elapsed() < JOINED_FRESH);
+    if fresh {
+        JOINED.lock().unwrap().clone()
+    } else {
+        Vec::new()
+    }
+}
 
 pub struct Hw {
     reader: Option<imp::Reader>,
@@ -367,7 +390,7 @@ impl Hw {
         let picked = conf.picks.clone().unwrap_or_else(|| reader.defaults());
         let wanted: Vec<String> = picked.iter().chain(also).cloned().collect();
         let mut round = reader.read(&Want { all: listing, ids: &wanted }, basics);
-        let joined = JOINED.lock().unwrap().clone();
+        let joined = joined_now();
         for r in joined {
             if let Some(at) = round.readings.iter().rposition(|x| x.hardware_id == r.hardware_id) {
                 round.readings.insert(at + 1, r);

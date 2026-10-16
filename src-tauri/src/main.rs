@@ -21,6 +21,7 @@
 //   logon.rs       her logon task (start at login, the taskbar home), the session's logon
 //   hw.rs          the monitor's built-in hardware readings (Windows' own: PDH, D3DKMT, the drives)
 //   lhm.rs         hardware sensors from LibreHardwareMonitor's web server (the monitor)
+//   lhm_setup.rs   LibreHardwareMonitor downloaded, set up and started, on the person's click
 //   fetch.rs       pets from codex-pets.net
 //   fullscreen.rs, focus.rs, notify.rs   bits of Windows
 //   jump.rs        to a session's window, when you click the session
@@ -65,6 +66,7 @@ mod inputs;
 mod island;
 mod jump;
 mod lhm;
+mod lhm_setup;
 mod logon;
 mod mail;
 mod notch;
@@ -77,6 +79,7 @@ mod power;
 mod proxy;
 mod screen;
 mod scripts;
+mod sensors;
 mod server;
 mod settings;
 mod shell;
@@ -1315,6 +1318,34 @@ fn main() {
         }
         return;
     }
+    // The sensor helper and its elevated setup/removal (sensors.rs, #18 part
+    // B): each ends without starting a pet. The helper takes her port and
+    // data folder; the setup takes the port, the user's SID and the data
+    // folder (and "pawnio" to install the driver first); the removal the SID
+    // and the folder.
+    if let Some(at) = args.iter().position(|a| a == sensors::SENSORS_FLAG) {
+        let port = args.get(at + 1).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+        let data = args.get(at + 2).map(PathBuf::from).unwrap_or_else(data::folder);
+        return sensors::run_helper(port, &data);
+    }
+    if let Some(at) = args.iter().position(|a| a == sensors::SETUP_FLAG) {
+        let port = args.get(at + 1).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+        let sid = args.get(at + 2).cloned().unwrap_or_default();
+        let data = args.get(at + 3).map(PathBuf::from).unwrap_or_else(data::folder);
+        let with_pawnio = args.iter().any(|a| a == "pawnio");
+        return sensors::run_setup(port, &sid, &data, with_pawnio);
+    }
+    if let Some(at) = args.iter().position(|a| a == sensors::REMOVE_FLAG) {
+        let sid = args.get(at + 1).cloned().unwrap_or_default();
+        let data = args.get(at + 2).map(PathBuf::from).unwrap_or_else(data::folder);
+        return sensors::run_remove(&sid, &data);
+    }
+    // One step for LibreHardwareMonitor run as administrator (lhm_setup.rs
+    // admin: put in Program Files, its config, its task, removed), then
+    // gone with its exit code; nothing of her started.
+    if let Some(at) = args.iter().position(|a| a == lhm_setup::ADMIN_FLAG) {
+        std::process::exit(lhm_setup::admin(&args[at + 1..]));
+    }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
         return ensure_running(port);
@@ -1441,6 +1472,7 @@ fn main() {
             settings::settings_omp_hooks,
             settings::settings_zcode_hooks,
             settings::settings_dsh_hooks,
+            settings::settings_cpu_sensors,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1453,6 +1485,7 @@ fn main() {
             settings::settings_gallery,
             settings::settings_open_site,
             settings::settings_update,
+            settings::settings_lhm,
             settings::settings_crash,
             mail::mail_discover,
             mail::mail_probe,
@@ -1662,8 +1695,9 @@ fn main() {
                     let looking = !quiet && island::is_over(&monitored);
                     (watching.quiet, watching.listing, watching.looking) = (quiet, listing, looking);
                     // Any of its settings changed (a sensor picked, too), the
-                    // settings opened, or the pointer came: read now.
-                    if std::time::Instant::now() >= next || (on, &setting, quiet) != (was.0, &was.1, was.2) || (looking && !was.3) || (listing && !watching_listed) {
+                    // settings opened, the pointer came, or LibreHardwareMonitor
+                    // just started answering (lhm::ask_now): read now.
+                    if lhm::take_read_now() | (std::time::Instant::now() >= next) || (on, &setting, quiet) != (was.0, &was.1, was.2) || (looking && !was.3) || (listing && !watching_listed) {
                         was = (on, setting, quiet, looking);
                         watching_listed = listing;
                         // Quiet (nobody looking), every ten seconds at least.
