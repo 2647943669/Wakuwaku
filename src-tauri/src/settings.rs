@@ -10,6 +10,18 @@ use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet
 
 const REPO: &str = "https://github.com/zhoupengjie/wakuwaku";
 
+// Each agent's own page, by its id (src/pet/agents.js), for the Agent page's
+// other supported tools: the only pages it may open.
+const AGENT_SITES: [(&str, &str); 7] = [
+    ("claude", "https://claude.com/product/claude-code"),
+    ("codex", "https://developers.openai.com/codex"),
+    ("agy", "https://antigravity.google/"),
+    ("opencode", "https://opencode.ai/"),
+    ("omp", "https://github.com/can1357/oh-my-pi"),
+    ("zcode", "https://zcode.z.ai/"),
+    ("dsh", "https://github.com/deepseek-ai/deepseek-harness"),
+];
+
 // Everything the settings show.
 pub fn snapshot(sh: &Shared) -> Value {
     let pets: Vec<Value> = data::pets(&sh.dir)
@@ -109,8 +121,13 @@ pub fn snapshot(sh: &Shared) -> Value {
             "file": connection::dsh_patch_file().to_string_lossy(),
             "fileShown": connection::shown_path(&connection::dsh_patch_file()),
             "backup": connection::backup_of(&connection::dsh_patch_file()).exists(),
+            // The bridge's hook list, in her data folder (the Agent page shows both).
+            "listShown": connection::shown_path(&connection::dsh_hooks_file()),
             "seen": sh.dsh_seen.load(Ordering::SeqCst) > 0,
         },
+        // The agents' versions where a file of theirs says (connection.rs
+        // versions; Codex's is its block's): the Agent page shows them.
+        "agentVersions": connection::versions(),
         // How many displays there are: her taskbar on all of them is offered
         // only with more than one (Look, taskbarDisplays).
         "displayCount": sh.screens().areas.len(),
@@ -798,7 +815,11 @@ pub async fn settings_open_site(app: AppHandle, place: String) {
         "appleAppPasswords" => "https://account.apple.com/account/manage",
         "yahooAppPasswords" => "https://login.yahoo.com/account/security",
         "lhm" => "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases",
-        _ => fetch::SITE,
+        // Where to get an agent not on this computer (the Agent page, agents.js site).
+        other => match other.strip_prefix("agent:").and_then(|id| AGENT_SITES.iter().find(|(a, _)| *a == id)) {
+            Some((_, url)) => *url,
+            None => fetch::SITE,
+        },
     };
     // By ShellExecute, not `cmd /c start`: run from the installed pet (no
     // console), cmd got handles that were none and never started ("the

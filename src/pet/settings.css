@@ -1957,6 +1957,287 @@
   text-align: right;
 }
 
+/* --- The Agent page (settings.js pageAgents, agents.js) ---------------------------
+   A row for each agent on this computer, as the other pages' rows: its dot
+   (how it stands, in the island's colours), its name and version, what she
+   can do for it in Windows' own glyphs (lit, half, dim), a button where the
+   person has something to do (else a faint ›). A row
+   opens in place to its details, a shade lighter, under it. A row that
+   goes somewhere (General's line on the agents, the other tools) lights up
+   under the pointer as a session's does. */
+#island-settings .r.go,
+#island-settings .ag-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+#island-settings .r.go:hover,
+#island-settings .ag-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+#island-settings .ag-row.open,
+#island-settings .ag-det {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+/* Its end: a button only where the person has something to do, else a
+   faint › saying the row opens; as wide in every row, so the icons line up. */
+#island-settings .ag-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 96px;
+}
+
+#island-settings .ag-end .chev {
+  color: var(--g4);
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 11px;
+  opacity: 0.7;
+  transition: transform 0.2s ease;
+}
+
+#island-settings .ag-end .chev.open {
+  transform: rotate(90deg);
+}
+
+#island-settings .ag-det + .r {
+  border-top: 1px solid #262628;
+}
+
+/* What she can do: five glyphs, lit (she does it), half (in part), dim (not). */
+#island-settings .caps {
+  display: flex;
+  flex: none;
+  gap: 1px;
+}
+
+#island-settings .cap {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--fg);
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 13px;
+  line-height: 1;
+}
+
+#island-settings .cap.part {
+  opacity: 0.55;
+}
+
+#island-settings .cap.no {
+  color: var(--g4);
+  opacity: 0.38;
+}
+
+/* A row's details: its fields (a name, then what it is; a path whole,
+   wrapped anywhere), what works, what she can do in words, what to know,
+   its buttons. */
+#island-settings .ag-det {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 14px 12px 34px;
+  font-size: 12px;
+}
+
+#island-settings .kv {
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+}
+
+#island-settings .kv .k {
+  flex: none;
+  width: 76px;
+  white-space: nowrap;
+  color: var(--g4);
+}
+
+#island-settings .kv .v {
+  flex: 1;
+  min-width: 0;
+}
+
+#island-settings .path {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+#island-settings .ag-what {
+  color: var(--g5);
+}
+
+/* Each a line: its glyph, its name, what it is; the names as wide as the widest. */
+#island-settings .ag-caps {
+  display: grid;
+  grid-template-columns: 20px max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+#island-settings .ag-cap {
+  display: contents;
+}
+
+#island-settings .ag-cap .cap {
+  align-self: center;
+}
+
+#island-settings .ag-cap.no .ag-cap-n {
+  color: var(--g4);
+}
+
+#island-settings .ag-note {
+  color: var(--g4);
+}
+
+/* A step left to take (Codex's trust, a restart): amber, as the welcome's. */
+#island-settings .ag-note.warn {
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 179, 64, 0.12);
+  color: #ffcf87;
+}
+
+#island-settings .ag-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Claude Code's two ways, one under the other. */
+#island-settings .ag-way {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--g2);
+}
+
+#island-settings .ag-way .wc-cmd {
+  background: var(--g1);
+}
+
+#island-settings .ag-way-h {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* The icons' names once, under the list. */
+#island-settings .ag-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 10px 14px 0;
+  color: var(--g4);
+  font-size: 12px;
+}
+
+#island-settings .ag-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+#island-settings .ag-key .cap {
+  width: 16px;
+  color: var(--g5);
+}
+
+#island-settings .ag-legend-note {
+  padding-top: 4px;
+}
+
+#island-settings .r > .chev {
+  flex: none;
+  color: var(--g4);
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+#island-settings .r > .chev.open {
+  transform: rotate(90deg);
+}
+
+/* A version, or a name besides its own, after a name. */
+#island-settings .s-body .ver {
+  margin-left: 6px;
+  color: var(--g4);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-light #island-settings .r.go:hover,
+.tb-light #island-settings .ag-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tb-light #island-settings .ag-row.open,
+.tb-light #island-settings .ag-det {
+  background: rgba(0, 0, 0, 0.025);
+}
+
+.tb-light #island-settings .ag-det + .r {
+  border-top-color: #ececec;
+}
+
+.tb-light #island-settings .ag-note.warn {
+  background: rgba(157, 93, 0, 0.1);
+  color: #7a4800;
+}
+
+.tb-light #island-settings .ag-way {
+  background: #f6f6f6;
+}
+
+.tb-light #island-settings .ag-way .wc-cmd {
+  background: #ffffff;
+}
+
+/* The welcome's foot: the Agent page, and "not now". */
+#island-settings .wc-foot {
+  display: flex;
+  align-items: baseline;
+  margin-top: -4px;
+}
+
+#island-settings .wc-foot .wc-later {
+  align-self: auto;
+  margin-top: 0;
+}
+
+/* An open letter's 交给 X ▾: the first agent, and the others for this letter. */
+#island-settings .split {
+  display: inline-flex;
+  flex: none;
+}
+
+#island-settings .split.two > .pbtn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+#island-settings .split > .pbtn.more {
+  padding: 0 8px;
+  border-left-color: rgba(0, 0, 0, 0.28);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.tb-light #island-settings .split > .pbtn.more {
+  border-left-color: rgba(255, 255, 255, 0.45);
+}
+
 /* --- The welcome: Claude Code and Codex connected (settings.js welcomeBlock) ------
    A card in a blue tint: her portrait ringed in the accent, what she does
    once connected, an accent-filled button for each of the two on this

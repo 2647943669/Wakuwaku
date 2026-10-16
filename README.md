@@ -101,20 +101,20 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
 ### 2. 连上 Claude Code（推荐用插件）
 
-在 Claude Code 里依次输入（设置的「连接」页有复制按钮）：
+在 Claude Code 里依次输入（设置的「Agent」页，点开 Claude Code 那一行，有复制按钮）：
 
 ```
 /plugin marketplace add zhoupengjie/wakuwaku
 /plugin install wakuwaku@wakuwaku
 ```
 
-插件由 Claude Code 自己安装和卸载，**我们不改你的设置文件**（Claude Code 会在它自己的 `enabledPlugins` 里记一笔，卸载时去掉）。插件没法自动启动宠物，所以建议在设置的「连接」页打开「开机自动启动」。开机自动启动写在注册表的 Run 里；任务栏模式下还会加一个「登录时」触发的计划任务（`Wakuwaku at logon-<你的 SID>`），登录后马上启动她，不用等 Run 里的程序一个个排队。exe 改了名字或挪了位置，她下次启动时会把两处都改成现在的路径（原来关着的不会被打开）。
+插件由 Claude Code 自己安装和卸载，**我们不改你的设置文件**（Claude Code 会在它自己的 `enabledPlugins` 里记一笔，卸载时去掉）。插件没法自动启动宠物，所以建议在设置的「通用」页打开「开机自动启动」。开机自动启动写在注册表的 Run 里；任务栏模式下还会加一个「登录时」触发的计划任务（`Wakuwaku at logon-<你的 SID>`），登录后马上启动她，不用等 Run 里的程序一个个排队。exe 改了名字或挪了位置，她下次启动时会把两处都改成现在的路径（原来关着的不会被打开）。
 
-不想用插件的话，「连接」页的「高级」里可以直接写入 `~/.claude/settings.json`（会先备份，卸载时只删我们加的条目）。这种方式的好处是新会话开始时能自动把宠物拉起来。两种都装了，「连接」页会提示事件重复。
+不想用插件的话，「Agent」页 Claude Code 那一行点「连接」（或点开它，在「直接写入 settings.json」里点「安装」），会写入 `~/.claude/settings.json`（会先备份，卸载时只删我们加的条目）。这种方式的好处是新会话开始时能自动把宠物拉起来。两种都装了，那一行会变成黄点「修复」：点一下移除 settings.json 里我们的条目，留下插件。
 
 ### 3. 连上 Codex（可选）
 
-在「连接」页的 Codex 一栏点「安装」，会写入 `~/.codex/hooks.json`（会先备份，移除时只删我们加的条目）。然后**在 Codex 里输入 `/hooks`，信任 Wakuwaku 的 hook**：Codex 只运行信任过的 hook，收到第一个事件前「连接」页会一直提醒这一步。程序换了位置要点「修复」并重新信任。
+在「Agent」页 Codex 那一行点「连接」，会写入 `~/.codex/hooks.json`（会先备份，移除时只删我们加的条目）。然后**在 Codex 里输入 `/hooks`，信任 Wakuwaku 的 hook**：Codex 只运行信任过的 hook，收到第一个事件前「Agent」页会一直提醒这一步。程序换了位置要点「修复」并重新信任。
 
 和 Claude Code 的区别：
 
@@ -132,7 +132,7 @@ Codex 桌面版里装过的宠物（`~/.codex/pets`）格式相同，会直接�
 
 ### 4. 连上 Antigravity（可选）
 
-支持 Google 的 Antigravity：`agy` 命令行和 Antigravity 2.0 桌面版。在「连接」页的 Antigravity 一栏点「安装」，会在 `~/.gemini/config/hooks.json` 里加一个名为 `wakuwaku` 的块（先备份，移除时只删这一块，别的工具的 hook 不动）。然后新开一个 agy 会话（Antigravity 2.0 要重开一次）就行。独立的 Antigravity IDE 目前不运行 hook，连不上。
+支持 Google 的 Antigravity：`agy` 命令行和 Antigravity 2.0 桌面版。在「Agent」页 Antigravity 那一行点「连接」，会在 `~/.gemini/config/hooks.json` 里加一个名为 `wakuwaku` 的块（先备份，移除时只删这一块，别的工具的 hook 不动）。然后新开一个 agy 会话（Antigravity 2.0 要重开一次）就行。独立的 Antigravity IDE 目前不运行 hook，连不上。
 
 和 Claude Code 的区别：Antigravity 没有「等你批准」的事件，所以她能跟着开始、干活、调用工具、做完和出错，但提醒不了批准，也不能在她这里确认。
 
@@ -140,7 +140,7 @@ Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：�
 
 ### 5. 连上 OpenCode（可选）
 
-支持 [OpenCode](https://opencode.ai/) 2.0 或更新的版本。在「连接」页的 OpenCode 一栏点「安装」，会在 OpenCode 的插件文件夹里放一个 `wakuwaku.js`（`~/.config/opencode/plugins/`；设了 `OPENCODE_CONFIG_DIR` 或 `XDG_CONFIG_HOME` 时跟着 OpenCode 自己找；移除时删掉它）。OpenCode 会自己载入，已经开着的也一样，不用重开。
+支持 [OpenCode](https://opencode.ai/) 2.0 或更新的版本。在「Agent」页 OpenCode 那一行点「连接」，会在 OpenCode 的插件文件夹里放一个 `wakuwaku.js`（`~/.config/opencode/plugins/`；设了 `OPENCODE_CONFIG_DIR` 或 `XDG_CONFIG_HOME` 时跟着 OpenCode 自己找；移除时删掉它）。OpenCode 会自己载入，已经开着的也一样，不用重开。
 
 她能跟着开始、干活、调用工具、做完和出错，显示最后的回复，「今天」也算上它的轮数；OpenCode 要你批准时，面板上能允许、以后都允许或拒绝，OpenCode 自己同时也在问，先答的算。子代理的会话不单独显示，它要的批准算在主会话上。点会话会跳到 OpenCode 所在的终端（同时开着几个 OpenCode 时可能跳错）。
 
@@ -148,7 +148,7 @@ Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：�
 
 ### 6. 连上 oh-my-pi（omp，可选）
 
-支持 [oh-my-pi](https://github.com/can1357/oh-my-pi)（命令行 `omp`，18.11 起）。omp 没有 hooks，只有扩展：在「连接」页的 omp 一栏点「安装」，会在 omp 的 agent 文件夹放一个我们自己的扩展 `~/.omp/agent/extensions/wakuwaku.ts`（设了 `PI_CODING_AGENT_DIR` 就放那里；用 `omp --profile` 的，每个 profile 的 `~/.omp/profiles/<名字>/agent/extensions/` 也各放一份），端口和程序的路径写在文件里，omp 的设置一个字都不改；移除时删掉它。之后新开的 omp 会加载它（已经开着的要重开）。
+支持 [oh-my-pi](https://github.com/can1357/oh-my-pi)（命令行 `omp`，18.11 起）。omp 没有 hooks，只有扩展：在「Agent」页 omp 那一行点「连接」，会在 omp 的 agent 文件夹放一个我们自己的扩展 `~/.omp/agent/extensions/wakuwaku.ts`（设了 `PI_CODING_AGENT_DIR` 就放那里；用 `omp --profile` 的，每个 profile 的 `~/.omp/profiles/<名字>/agent/extensions/` 也各放一份），端口和程序的路径写在文件里，omp 的设置一个字都不改；移除时删掉它。之后新开的 omp 会加载它（已经开着的要重开）。
 
 和 Claude Code 的区别：
 
@@ -159,7 +159,7 @@ Antigravity 的 hook 只能是命令，并且由 `cmd` 运行、不认引号：�
 
 ### 7. 连上 ZCode（可选）
 
-支持智谱 Z.ai 的 [ZCode](https://zcode.z.ai/)：桌面版（3.15 实测）和它的命令行。在「连接」页的 ZCode 一栏点「安装」，会在 `~/.zcode/cli/config.json` 的 `hooks.events` 里给 7 个事件各加一条我们的 hook，并打开 `hooks.enabled`（先备份；移除时只删我们的条目，`hooks.enabled` 也还原成原来的样子）。之后**新建的任务**就会连上，已经开着的任务不算。ZCode 设置里能看到这几条 hook，也能一条条关掉，关掉后「连接」页会提示。
+支持智谱 Z.ai 的 [ZCode](https://zcode.z.ai/)：桌面版（3.15 实测）和它的命令行。在「Agent」页 ZCode 那一行点「连接」，会在 `~/.zcode/cli/config.json` 的 `hooks.events` 里给 7 个事件各加一条我们的 hook，并打开 `hooks.enabled`（先备份；移除时只删我们的条目，`hooks.enabled` 也还原成原来的样子）。之后**新建的任务**就会连上，已经开着的任务不算。ZCode 设置里能看到这几条 hook，也能一条条关掉，关掉后「Agent」页会提示。
 
 和 Claude Code 几乎一样：开始、干活、每一步的工具、做完（带上它最后说的话）、改好了都能显示，「今天」也算上它。ZCode 要你批准时，岛上会弹出**允许** / **拒绝**（ZCode 不给建议规则，所以没有「以后都允许」）；ZCode 自己的确认框同时弹出，**先答的那边算数**：在岛上点了，ZCode 的框会关掉；在 ZCode 里答了，岛上的面板会在这一步做完时收起（拒绝的话，要等这一轮结束）。点「去 ZCode 处理」就交回 ZCode，并把它的窗口拉到前面。她没开时，ZCode 照常只弹自己的框。
 
@@ -167,7 +167,7 @@ ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwak
 
 ### 8. 连上 DeepSeek Harness（可选）
 
-支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；它自带一个运行 Claude Code hooks.json 的「兼容桥」插件（`@deepseek-ai/dsh-hooks-claude-code`）。在「连接」页的 DeepSeek Harness 一栏点「安装」：她把这个桥接进 `~/.dsh/cordis.patch.yml`（所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着），桥要运行的 hook 列表写在她的数据文件夹里（`dsh-hooks.json`）。然后**重开一次 DeepSeek Harness**，它只在启动时读这些。
+支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；它自带一个运行 Claude Code hooks.json 的「兼容桥」插件（`@deepseek-ai/dsh-hooks-claude-code`）。在「Agent」页 DeepSeek Harness 那一行点「连接」：她把这个桥接进 `~/.dsh/cordis.patch.yml`（所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着），桥要运行的 hook 列表写在她的数据文件夹里（`dsh-hooks.json`）。然后**重开一次 DeepSeek Harness**，它只在启动时读这些。
 
 能做的：会话开始、干活、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、它最后说的话、改了哪些文件、任务清单，它向你提问时显示「在等你」；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。最后说的话不在桥给的事件里：一轮结束时，她从这个会话的记录（`~/.dsh/sessions/…/session.v4.jsonl.zstd`，Zstandard 压缩的 JSONL）末尾读出来，读不到就不显示。做不到的：
 
@@ -186,7 +186,7 @@ cargo run                 # 调试版
 cargo build --release     # target/release/wakuwaku.exe，单个文件
 ```
 
-不需要 Node，也不需要 Tauri CLI。第一次运行会自动下载默认宠物；连接 Claude Code 在设置的「连接」页里点就行。从源码运行时，她的设置、下载的宠物和日志都放在项目里的 `data/` 文件夹（不进仓库）。
+不需要 Node，也不需要 Tauri CLI。第一次运行会自动下载默认宠物；连接 Claude Code 等在设置的「Agent」页里点就行（第一次打开时，「通用」页最上面的欢迎卡片也能一键连接）。从源码运行时，她的设置、下载的宠物和日志都放在项目里的 `data/` 文件夹（不进仓库）。
 
 ## 使用
 
@@ -202,7 +202,8 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 - **灵动岛**：嫌整只宠物太大，可以换成屏幕顶部正中的一颗小黑岛，像 iPhone 的灵动岛，她就住在里面。默认是黑色的，「外观」里也能换底色、不透明度、边框，或者挑一个预设（Windows 深灰、云母毛玻璃……），和任务栏模式的外观分开保存；半透明时，Windows 11 会把它后面的窗口模糊掉，用不了模糊时，后面有窗口最大化会自动加深底色。收起时左边是她，中间一行字，右边贴边是用时或插件的数值；宽度固定（设置里选窄、标准、宽），内容换了也不伸缩。「监控」默认固定显示：岛往右加宽一段，一直显示 CPU、内存、网速，中间照常轮换；在它的设置里关掉「固定显示」，它就和别的插件一样轮流出现。平时是她的圆形小头像，外圈颜色表示状态，旁边是当前这一步（做完时是哪个会话）和用时；有事发生（等你确认、做完、改好了、出错）时，岛自己展开，小头像长成她的全身，站在里面播对应的动作，旁边是会话名、做到哪了、Claude 的回复，下面每个别的会话一行，几秒后再缩回去；等不及就点它一下，马上收起（不会打开设置，鼠标停在原地也不会又展开，移开再移回来才算悬停），点会话那一行是跳到它的窗口，岛也一起收起，鼠标在上面停过再移开也马上收起；不想让它自己展开，在设置「通用」的「提醒停留」里关掉「做完时自动展开」，做完、改好、出错时就只换状态和提示音（有会话等你时照样展开）；有确认请求时岛展开成面板，她站在旁边。鼠标停在岛上也会展开。另外还有会话在忙时，用时旁边会标一个小小的「+1」。岛下面有窗口时（比如最大化的浏览器），收起的岛会往上收起让开，屏幕顶边只留一道细边，下面的标签页照样点得到、关得掉；鼠标在那道细边上停一下它就下来，有事要你看（确认、做完、出错）时也会自己下来；不想要可以在「外观」里关掉「有窗口在下面时自动收起」。
 - **任务栏上的 Win 键**（任务栏模式，和 Windows 自己的一样）：Win+1…9、Win+0（第十个）按她任务栏上的顺序打开那个位置的程序：没开的启动，一个窗口的切到前台（已在前台就最小化），几个窗口的每按一下换下一个；Win+Shift+数字再开一个，Win+Ctrl+Shift+数字以管理员身份再开一个，Win+Ctrl+数字切到它最后用过的窗口（Win+Alt+数字在 Windows 上是跳转列表，她的任务栏还没有）。Win+T 把键盘焦点放到程序按钮上（Win+Shift+T 从最后一个开始），Win+B 放到托盘：方向键移动，回车或空格打开，Shift+F10 是右键，Tab 在程序和托盘之间切换，Esc 把焦点还回去；读屏软件能读出按钮。以前这些键交给藏起来的 Windows 任务栏，按的是它自己的顺序，可能打开别的程序。以管理员身份运行的窗口在前台时她收不到这些键，仍由 Windows 处理。
 - **把她放出来、放回去**：按住岛里的她往下拉，岛会像水滴一样拉出一截把她托着；拉够远，水滴"啵"地断开，她就跟着鼠标走，拖到哪都行，松手的地方就是她落脚的地方。她出门后灵动岛还在，座位空着，状态、用时和确认面板照样在岛上（她在桌面上只做动作，不说话）。想让她回家，把她拖到岛下面，岛会伸出一滴去够她，靠得够近时松手，她就被吸回岛里；或者直接双击她，她会自己飞回去。右键菜单里也有「放她出来」「叫她回岛里」。
-- **设置长在岛里**：没有单独的主窗口。单击灵动岛，岛就展开成设置面板（它自己展开着的时候，单击是收起），这时它才拿键盘焦点；悬停展开、自动展开、来了确认请求都不抢焦点，不会吃掉你在终端里打的字。按 Esc、点岛外面、点 ✕ 或点面板头部就收起，焦点还给原来的窗口。五个页签：「现在」是会话列表和 4 个快捷开关；「宠物」管理和下载宠物，带 codex-pets.net 图库；「外观」「提醒」是各种设置；「连接」是连接方式、开机自启和关于。← → 切换页签。设置开着时来了确认请求，它会以横幅插在页签下面，「现在」上出现一个小圆点。只有整只宠物时，打开设置会在屏幕顶部临时升起一颗岛，收起后岛就消失。
+- **设置长在岛里**：没有单独的主窗口。单击灵动岛，岛就展开成设置面板（它自己展开着的时候，单击是收起），这时它才拿键盘焦点；悬停展开、自动展开、来了确认请求都不抢焦点，不会吃掉你在终端里打的字。按 Esc、点岛外面、点 ✕ 或点面板头部就收起，焦点还给原来的窗口。五个页签：「通用」是会话列表、4 个快捷开关、提醒、开机自启和语言、更新和关于，最上面一行说连上了几个 agent（点一下去「Agent」页），还没连接时是欢迎卡片；「Agent」是连接 agent 的地方（见下）；「外观」是她的家、样子和宠物（带 codex-pets.net 图库）；「插件」「邮件」。← → 切换页签。设置开着时来了确认请求，它会以横幅插在页签下面，「通用」上出现一个小圆点；有 agent 的连接要修复时，「Agent」上也有一个。
+- **Agent 页**：这台电脑上找到的 agent 一行一个（没找到的收在下面的「其他支持的工具」里，带官网链接）。每行一个圆点说它的状态，只有四种颜色（绿：连上了、收到过事件；蓝：装好了，等它的第一轮，你什么都不用做；黄：要你动手：修复、被关掉了、在 Codex 的 /hooks 里信任、它的文件读不了或写不进去，「Agent」页签上同时有一个小圆点；灰：没连接），名字和版本（有文件写着的才显示：Codex 问 `codex --version`，Claude Code、ZCode、DeepSeek Harness 读程序文件的版本信息，OpenCode 读 npm 包的 package.json），五个图标说她能替它做什么：状态（跟着会话）、批准（在岛上答，指上去写着有哪几个按钮）、选方案（它问你问题时在岛上选答案，只有 Claude Code）、统计（算进「今天」，Claude Code、Codex、Antigravity 还算 token）、邮件（能把信交给它读）；亮的能做，半亮的只做一部分（omp 只答计划审批），暗的做不到，指上去写着为什么（比如「批准在 DeepSeek Harness 自己的窗口里」）。只有要你做点什么时行尾才有按钮：没连接是「连接」，坏了是「修复」，Codex 装好了还没信任是「怎么信任」（点开那一行，最上面写着怎么做）；别的行尾是一个淡淡的 ›，说这一行能点开。点一行在原地展开：连接方式（hooks、插件、扩展或兼容桥）、写在哪个文件（完整路径，家目录写成 ~）和备份、能做和做不到的、要注意的（Codex 要在 /hooks 里信任、DeepSeek Harness 要重开、omp 的工具批准留在 omp 里、OpenCode 要 2.0 以上），以及「重新安装」「移除」（只在这里有）；Claude Code 展开后是两种方式：插件（推荐）和直接写入 settings.json。最上面「全部连接（N）」把找到了还没连的都连上（没有可连的就不显示，鼠标停上去写着连哪几个）。只有整只宠物时，打开设置会在屏幕顶部临时升起一颗岛，收起后岛就消失。
 - 透明区域会点击穿透，不挡你操作下面的窗口。
 - **找不到她了**：再运行一次程序，她会回到右下角；窗口每 2 秒也会自查一次，跑出屏幕就自己回来。
 
@@ -248,8 +249,8 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 
 ### 卸载
 
-1. 如果打开过**开机自动启动**，先在设置的「连接」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「连接」页点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在 Codex 一栏点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：在 OpenCode 一栏点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：在 omp 一栏点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：在 ZCode 一栏点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：在它那一栏点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
+1. 如果打开过**开机自动启动**，先在设置的「通用」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「Agent」页点开 Claude Code，点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在「Agent」页点开 Codex，点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：点开 OpenCode，点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：点开 omp，点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：点开 ZCode，点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：点开它，点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
