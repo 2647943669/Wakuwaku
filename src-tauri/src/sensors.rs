@@ -61,6 +61,63 @@ pub fn task_name(sid: &str) -> String {
     format!("Wakuwaku sensors-{sid}")
 }
 
+// The helper's protocol. The task runs the helper copy as it was at setup;
+// if a newer build of hers needs a newer helper, the switch asks for an
+// update (one UAC) rather than quietly running an old one against new code.
+// The exe the task runs lives where only administrators can write (see
+// admin_dir), because the task runs it with the highest rights at every
+// logon: her exe usually sits where the user can write (a portable exe in
+// Downloads), and a logon task pointed there would let anything at medium
+// integrity replace it and be started elevated — a UAC bypass.
+pub const HELPER_PROTOCOL: u32 = 1;
+// The helper copy's name in its admin-only folder (see admin_dir); a name of
+// its own, so it is clear in the Task Scheduler and Task Manager what runs.
+pub const HELPER_EXE: &str = "wakuwaku-sensors.exe";
+
+// The DACL the helper's folder is given and then checked against: it and the
+// exe in it are writable by administrators and SYSTEM alone, and the user
+// may read and run them, with no ACE inherited from the parent that could
+// widen it (D:P, protected). SYSTEM and Administrators full, Users
+// read+execute (FRFX). Set and read back by the elevated setup; the setup
+// refuses to register the task if the folder is not admin-only.
+pub fn admin_only_sddl() -> &'static str {
+    "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)"
+}
+
+// Whether a DACL (as SDDL) is admin-only: protected (no inherited ACEs), and
+// no broad group (Users, Everyone, Authenticated, Interactive) granted more
+// than read and execute. A folder that is not is not safe to run elevated
+// from, so the setup stops.
+pub fn acl_is_admin_only(sddl: &str) -> bool {
+    let Some(dacl) = sddl.split("D:").nth(1) else { return false };
+    // Protected: the parent's ACEs do not apply, so a loose parent cannot
+    // widen it. SDDL renders it as P (often PAI on read-back).
+    if !dacl.starts_with('P') {
+        return false;
+    }
+    // Broad groups, by their SDDL aliases and well-known SIDs.
+    const BROAD: [&str; 7] = ["BU", "WD", "AU", "IU", "S-1-1-0", "S-1-5-11", "S-1-5-32-545"];
+    // Rights that let a program replace the exe (or the folder's files).
+    const WRITE: [&str; 9] = ["FA", "FW", "GA", "GW", "WD", "WO", "DC", "0x10000000", "0x40000000"];
+    for ace in dacl.split('(').skip(1) {
+        let fields: Vec<&str> = ace.trim_end_matches(')').split(';').collect();
+        if fields.len() < 6 {
+            continue;
+        }
+        let (kind, rights, sid) = (fields[0], fields[2], fields[5]);
+        // Only allow-ACEs grant; a deny-ACE only narrows.
+        if kind.starts_with('A') && BROAD.contains(&sid) && WRITE.iter().any(|w| rights.contains(w)) {
+            return false;
+        }
+    }
+    true
+}
+
+// Whether the helper copy the task runs is older than this build needs.
+pub fn needs_update(installed: Option<u32>, current: u32) -> bool {
+    installed.is_some_and(|v| v < current)
+}
+
 // The folder in her data where the token and the module blobs live.
 pub fn dir(data: &std::path::Path) -> std::path::PathBuf {
     data.join("sensors")
@@ -356,10 +413,11 @@ fn setting_up() -> bool {
 pub fn view(data: &std::path::Path) -> Value {
     let (installed, task) = cached_state(data);
     let (temp, power) = *READING.lock().unwrap();
-    let state = state_name(installed, task, answering(), setting_up(), temp.is_some());
+    let stale = needs_update(imp::installed_protocol(), HELPER_PROTOCOL);
+    let state = state_name(installed, task, answering(), setting_up(), temp.is_some(), stale);
     json!({
         "state": state,
-        "on": state == "running" || state == "notAnswering" || state == "settingUp",
+        "on": matches!(state, "running" | "notAnswering" | "settingUp" | "needsUpdate"),
         "installed": installed,
         "temp": temp,
         "power": power,
@@ -370,8 +428,12 @@ pub fn view(data: &std::path::Path) -> Value {
 // comes through: the helper may be posting (answering) yet read nothing — a
 // Hyper-V guest does not expose the CPU's temperature registers — which is
 // "not answering" to the person (its note says a VM may be why).
-fn state_name(installed: bool, task: bool, answering: bool, setting_up: bool, has_temp: bool) -> &'static str {
-    if answering && has_temp {
+// "needsUpdate": the task runs a helper copy older than this build needs,
+// so the person is asked to set it up again (one UAC) rather than trust it.
+fn state_name(installed: bool, task: bool, answering: bool, setting_up: bool, has_temp: bool, needs_update: bool) -> &'static str {
+    if task && needs_update {
+        "needsUpdate"
+    } else if answering && has_temp {
         "running"
     } else if task || answering {
         if setting_up {
@@ -472,18 +534,37 @@ mod imp {
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn LoadLibraryW(name: *const u16) -> isize;
+        fn LoadLibraryExW(name: *const u16, file: isize, flags: u32) -> isize;
         fn GetProcAddress(module: isize, name: *const u8) -> *const ();
+        fn SetDefaultDllDirectories(flags: u32) -> i32;
         fn CreateMutexW(attrs: *const core::ffi::c_void, owner: i32, name: *const u16) -> isize;
         fn WaitForSingleObject(handle: isize, ms: u32) -> u32;
         fn ReleaseMutex(handle: isize) -> i32;
         fn CloseHandle(handle: isize) -> i32;
+        fn LocalFree(mem: *mut core::ffi::c_void) -> *mut core::ffi::c_void;
     }
+
+    // A program's DLL search, named so nothing is picked up from a folder a
+    // user can write: System32 for the default, and for PawnIOLib (loaded by
+    // full path) its own admin-only folder for the DLLs it needs.
+    const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x800;
+    const LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR: u32 = 0x100;
 
     #[link(name = "bcrypt")]
     extern "system" {
         fn BCryptGenRandom(algo: isize, buf: *mut u8, len: u32, flags: u32) -> i32;
     }
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl: *const u16, revision: u32, sd: *mut *mut core::ffi::c_void, size: *mut u32) -> i32;
+        fn ConvertSecurityDescriptorToStringSecurityDescriptorW(sd: *const core::ffi::c_void, revision: u32, info: u32, sddl: *mut *mut u16, len: *mut u32) -> i32;
+        fn SetFileSecurityW(file: *const u16, info: u32, sd: *const core::ffi::c_void) -> i32;
+        fn GetFileSecurityW(file: *const u16, info: u32, sd: *mut u8, len: u32, needed: *mut u32) -> i32;
+    }
+
+    const DACL_SECURITY_INFORMATION: u32 = 0x4;
+    const PROTECTED_DACL_SECURITY_INFORMATION: u32 = 0x8000_0000;
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain([0]).collect()
@@ -493,8 +574,10 @@ mod imp {
     // InstallLocation, else %ProgramFiles%\PawnIO), its functions by name.
     fn load_lib() -> Option<PawnIoLib> {
         let path = pawnio_dll_path()?;
-        // SAFETY: the driver's own signed library, by its full path.
-        let module = unsafe { LoadLibraryW(wide(&path.to_string_lossy()).as_ptr()) };
+        // SAFETY: the driver's own signed library, by its full path; its own
+        // (admin-only) folder and System32 are searched for the DLLs it
+        // needs, never a folder a user can write.
+        let module = unsafe { LoadLibraryExW(wide(&path.to_string_lossy()).as_ptr(), 0, LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR) };
         if module == 0 {
             return None;
         }
@@ -549,6 +632,75 @@ mod imp {
     pub fn task_present(_data: &Path) -> bool {
         let Some(sid) = crate::logon::user_sid() else { return false };
         matches!(crate::logon::xml(&task_name(&sid)), Ok(Some(_)))
+    }
+
+    // The admin-only folder the helper copy lives in, and the copy itself:
+    // %ProgramFiles%\Wakuwaku\sensors, writable by administrators alone. The
+    // task runs it with the highest rights at every logon, so it must not sit
+    // where the user can replace it.
+    fn admin_dir() -> Option<std::path::PathBuf> {
+        Some(std::path::Path::new(&std::env::var("ProgramFiles").ok()?).join("Wakuwaku").join("sensors"))
+    }
+
+    // The protocol of the helper copy that is set up (its version left beside
+    // the exe), for telling an old copy from this build's.
+    pub fn installed_protocol() -> Option<u32> {
+        std::fs::read_to_string(admin_dir()?.join("helper.ver")).ok()?.trim().parse().ok()
+    }
+
+    // The folder given a protected, admin-only DACL (admin_only_sddl), then
+    // read back and checked: it must be admin-only, or the setup will not run
+    // a task from it. The exe and files copied in inherit it (OICI).
+    fn set_admin_only(dir: &Path) -> Result<(), String> {
+        let wide_dir = wide(&dir.to_string_lossy());
+        let mut sd: *mut core::ffi::c_void = std::ptr::null_mut();
+        // SAFETY: our SDDL (a constant), the descriptor it makes is ours to free.
+        let made = unsafe { ConvertStringSecurityDescriptorToSecurityDescriptorW(wide(admin_only_sddl()).as_ptr(), 1, &mut sd, std::ptr::null_mut()) };
+        if made == 0 || sd.is_null() {
+            return Err("the security descriptor was not made".into());
+        }
+        // SAFETY: the descriptor just made, applied to our own folder; the
+        // protected flag keeps the parent's ACEs out.
+        let set = unsafe { SetFileSecurityW(wide_dir.as_ptr(), DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, sd) };
+        // SAFETY: the descriptor is ours, freed once.
+        unsafe { LocalFree(sd) };
+        if set == 0 {
+            return Err("the folder's security was not set".into());
+        }
+        if acl_is_admin_only(&read_acl(dir)?) {
+            Ok(())
+        } else {
+            Err("the folder is not administrator-only after setting it".into())
+        }
+    }
+
+    // The folder's DACL read back as SDDL.
+    fn read_acl(dir: &Path) -> Result<String, String> {
+        let wide_dir = wide(&dir.to_string_lossy());
+        let mut needed = 0u32;
+        // SAFETY: first the size with an empty buffer, then a buffer of it.
+        unsafe { GetFileSecurityW(wide_dir.as_ptr(), DACL_SECURITY_INFORMATION, std::ptr::null_mut(), 0, &mut needed) };
+        if needed == 0 {
+            return Err("the folder's security has no size".into());
+        }
+        let mut buf = vec![0u8; needed as usize];
+        // SAFETY: a buffer of the size asked for.
+        if unsafe { GetFileSecurityW(wide_dir.as_ptr(), DACL_SECURITY_INFORMATION, buf.as_mut_ptr(), needed, &mut needed) } == 0 {
+            return Err("the folder's security was not read".into());
+        }
+        let mut text: *mut u16 = std::ptr::null_mut();
+        let mut len = 0u32;
+        // SAFETY: our own descriptor; the string it makes is ours to free.
+        if unsafe { ConvertSecurityDescriptorToStringSecurityDescriptorW(buf.as_ptr() as *const core::ffi::c_void, 1, DACL_SECURITY_INFORMATION, &mut text, &mut len) } == 0 || text.is_null() {
+            return Err("the folder's security did not read as text".into());
+        }
+        // SAFETY: a null-terminated wide string of `len`, freed once read.
+        let sddl = unsafe {
+            let s = String::from_utf16_lossy(std::slice::from_raw_parts(text, len as usize));
+            LocalFree(text as *mut core::ffi::c_void);
+            s
+        };
+        Ok(sddl)
     }
 
     // A loaded PawnIO executor with one module.
@@ -695,6 +847,12 @@ mod imp {
     // turned off), and gives up (exits non-zero, the task restarts it later)
     // when PawnIO cannot be used at all.
     pub fn run_helper(port: u16, data: &Path) {
+        // Nothing loaded from a folder a user can write: System32 for the
+        // default search (PawnIOLib is loaded by its full path with its own
+        // admin-only folder added for its dependencies). The helper's own exe
+        // sits in an admin-only folder too (admin_dir).
+        // SAFETY: a process-wide setting, before any PawnIOLib load.
+        unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) };
         let log = |line: &str| append(&dir(data).join("helper.log"), line);
         let token = match std::fs::read_to_string(dir(data).join("token")) {
             Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
@@ -916,7 +1074,30 @@ mod imp {
             log(&format!("the token could not be written: {e}"));
             return;
         }
-        let exe = crate::data::exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        // The helper runs with the highest rights at logon, so its exe must
+        // sit where only administrators can write: her exe copied into a
+        // protected %ProgramFiles% folder, the task pointed at the copy. Her
+        // own exe usually lives where the user can write (a portable exe), so
+        // the task must never run it directly.
+        let Some(admin) = admin_dir() else {
+            log("there is no ProgramFiles to put the helper in");
+            return;
+        };
+        let source = crate::data::exe().unwrap_or_default();
+        let copy = admin.join(HELPER_EXE);
+        if let Err(e) = (|| -> Result<(), String> {
+            std::fs::create_dir_all(&admin).map_err(|e| e.to_string())?;
+            set_admin_only(&admin)?;
+            if source != copy {
+                std::fs::copy(&source, &copy).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(admin.join("helper.ver"), HELPER_PROTOCOL.to_string()).map_err(|e| e.to_string())
+        })() {
+            log(&format!("the helper copy was not set up (left no task): {e}"));
+            return;
+        }
+        log("the helper is in an administrator-only folder");
+        let exe = copy.to_string_lossy().into_owned();
         let xml = task_xml(sid, &exe, &helper_args(port, data));
         match crate::logon::register(&task_name(sid), &xml) {
             Ok(()) => log("the task is registered"),
@@ -944,7 +1125,11 @@ mod imp {
             Err(e) => log(&format!("the task was not removed: {e}")),
         }
         let _ = std::fs::remove_file(dir(data).join("token"));
-        log("the token is deleted: the helper will stop");
+        // The admin-only helper copy too (PawnIO stays: it is not hers).
+        if let Some(admin) = admin_dir() {
+            let _ = std::fs::remove_dir_all(&admin);
+        }
+        log("the token is deleted and the helper copy removed: the helper will stop");
     }
 }
 
@@ -957,6 +1142,9 @@ mod imp {
     }
     pub fn task_present(_data: &Path) -> bool {
         false
+    }
+    pub fn installed_protocol() -> Option<u32> {
+        None
     }
     pub fn run_helper(_port: u16, _data: &Path) {}
     pub fn run_setup(_port: u16, _sid: &str, _data: &Path, _with_pawnio: bool) {}
@@ -974,7 +1162,7 @@ mod tests {
     #[test]
     fn its_words_are_in_both_languages() {
         let strings = include_str!("../../src/shared/i18n.js");
-        let mut keys = vec!["hw.cpuTemp", "hw.cpuPower", "sensors.title", "sensors.note", "sensors.settingUp", "sensors.running", "sensors.pawnioMissing", "sensors.notAnswering", "sensors.removeNote"];
+        let mut keys = vec!["hw.cpuTemp", "hw.cpuPower", "sensors.title", "sensors.note", "sensors.settingUp", "sensors.running", "sensors.pawnioMissing", "sensors.notAnswering", "sensors.needsUpdate", "sensors.removeNote"];
         keys.extend(CCD_LABELS);
         for key in keys {
             assert_eq!(strings.matches(&format!("'{key}':")).count(), 2, "{key}");
@@ -986,17 +1174,42 @@ mod tests {
     // reads nothing (a VM) is "not answering", not "running".
     #[test]
     fn the_switch_state_follows_what_is_known() {
-        // installed, task, answering, setting_up, has_temp.
-        assert_eq!(state_name(false, false, false, false, false), "pawnioMissing");
-        assert_eq!(state_name(true, false, false, false, false), "off");
-        assert_eq!(state_name(false, false, false, true, false), "settingUp");
-        assert_eq!(state_name(true, true, true, false, true), "running");
+        // installed, task, answering, setting_up, has_temp, needs_update.
+        assert_eq!(state_name(false, false, false, false, false, false), "pawnioMissing");
+        assert_eq!(state_name(true, false, false, false, false, false), "off");
+        assert_eq!(state_name(false, false, false, true, false, false), "settingUp");
+        assert_eq!(state_name(true, true, true, false, true, false), "running");
         // Answering but no temperature yet (a Hyper-V guest): not answering.
-        assert_eq!(state_name(true, true, true, false, false), "notAnswering");
+        assert_eq!(state_name(true, true, true, false, false, false), "notAnswering");
         // The task is there but nothing comes.
-        assert_eq!(state_name(true, true, false, false, false), "notAnswering");
+        assert_eq!(state_name(true, true, false, false, false, false), "notAnswering");
         // Still setting up while the task is registering.
-        assert_eq!(state_name(true, true, false, true, false), "settingUp");
+        assert_eq!(state_name(true, true, false, true, false, false), "settingUp");
+        // An old helper copy the task runs: update it, even if it answers.
+        assert_eq!(state_name(true, true, true, false, true, true), "needsUpdate");
+        assert_eq!(state_name(true, false, false, false, false, true), "off");
+    }
+
+    // The helper's folder is set administrator-only, and that is checked: a
+    // folder a user can write is refused, because the task runs its exe
+    // elevated at every logon.
+    #[test]
+    fn the_helper_folder_must_be_administrator_only() {
+        assert!(acl_is_admin_only(admin_only_sddl()), "{}", admin_only_sddl());
+        // As Windows renders it on read-back (auto-inherited flag, 0x1200a9
+        // for FRFX): still admin-only.
+        assert!(acl_is_admin_only("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)"));
+        // Users granted full or write: refused.
+        assert!(!acl_is_admin_only("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;BU)"));
+        assert!(!acl_is_admin_only("D:P(A;OICI;FA;;;BA)(A;OICI;FW;;;BU)"));
+        assert!(!acl_is_admin_only("D:P(A;OICI;FA;;;BA)(A;OICI;FA;;;WD)"));
+        // Not protected (inherits from the parent, which could be loose): refused.
+        assert!(!acl_is_admin_only("D:AI(A;OICI;FA;;;SY)(A;OICI;FRFX;;;BU)"));
+        assert!(!acl_is_admin_only("not a dacl"));
+        // The helper's protocol: an older copy needs an update, the same or
+        // newer does not, none installed does not.
+        assert!(needs_update(Some(0), 1) && needs_update(Some(1), 2));
+        assert!(!needs_update(Some(1), 1) && !needs_update(Some(2), 1) && !needs_update(None, 1));
     }
 
     #[test]

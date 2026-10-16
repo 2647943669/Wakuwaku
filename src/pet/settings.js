@@ -799,9 +799,10 @@
     const cs = snap.cpuSensors || {}
     const state = cs.state || 'off'
     const on = cs.on === true
-    // Off: set up (or, with no PawnIO, download it first). On: remove.
-    const action = on ? 'remove' : state === 'pawnioMissing' ? 'installPawnIO' : 'install'
-    const bad = state === 'notAnswering' || state === 'pawnioMissing'
+    // needsUpdate: set up again to copy the newer helper. Off: set up (or,
+    // with no PawnIO, download it first). On: remove.
+    const action = state === 'needsUpdate' ? 'install' : on ? 'remove' : state === 'pawnioMissing' ? 'installPawnIO' : 'install'
+    const bad = state === 'notAnswering' || state === 'pawnioMissing' || state === 'needsUpdate'
     const temp = typeof cs.temp === 'number' ? `${cs.temp.toFixed(1)} °C` : ''
     const note =
       state === 'running'
@@ -810,9 +811,11 @@
           ? T('sensors.settingUp')
           : state === 'notAnswering'
             ? T('sensors.notAnswering')
-            : state === 'pawnioMissing'
-              ? T('sensors.pawnioMissing')
-              : T('sensors.note')
+            : state === 'needsUpdate'
+              ? T('sensors.needsUpdate')
+              : state === 'pawnioMissing'
+                ? T('sensors.pawnioMissing')
+                : T('sensors.note')
     const title = `<div class="fr"><span class="fl">${esc(T('sensors.title'))}</span><span class="grow"></span><button class="sw${on ? ' on' : ''}" data-cpu-sensors="${action}"></button></div>`
     const line = `<div class="note lhm-note${bad ? ' bad' : ''}">${esc(note)}</div>`
     // On: a dim line saying removing it keeps PawnIO.
