@@ -33,6 +33,7 @@
   // The wallpaper blurred: { url, size: [w, h] with its margin, margin }.
   let paper = null
   let paperTurn = 0
+  let lastPaper = null
   // The icons on this display (desk_icons), as rects.
   let icons = []
   const nodes = new Map()
@@ -280,6 +281,7 @@
       }
     }
     if (mine !== paperTurn) return
+    lastPaper = p
     const { canvas, margin, scale } = Mica.glassPaper(p, img, { blur: 30, saturate: 1.6 })
     if (img) img.src = ''
     paper = { canvas, margin, scale }
@@ -645,6 +647,22 @@
     shapes()
   })
   menuEl.addEventListener('contextmenu', ev => ev.preventDefault())
+  // While a menu is open the window takes the whole display's desktop
+  // (desk.rs poll): a press anywhere but on it closes it, as Windows' own
+  // menus do; a press in another window closes it too (desk:outside).
+  document.addEventListener(
+    'pointerdown',
+    ev => {
+      if (menu && !menuEl.contains(ev.target) && !ev.target.closest('.tools button')) closeMenu()
+    },
+    true,
+  )
+  document.addEventListener('contextmenu', ev => {
+    if (!ev.target.closest('.dw, .wmenu')) {
+      ev.preventDefault()
+      closeMenu()
+    }
+  })
   menuEl.addEventListener('click', ev => {
     const b = ev.target.closest('[data-act]')
     if (!b || b.classList.contains('off') || !menu) return
@@ -701,11 +719,13 @@
   const on = (name, fn) => listen(name, e => fn(e.payload), { target })
   Promise.all([
     on('desk:state', async s => {
-      const first = !here
+      // The icons first, before anything is drawn (the VM, 2026-10-16: the
+      // widgets' words came while they were asked, and one come from the
+      // other display was drawn over the icons, no longer new here).
+      if (!here) await loadIcons()
       here = s
       layout = Array.isArray(s.layout) ? s.layout : []
       document.body.classList.toggle('lw', !!s.light)
-      if (first) await loadIcons()
       draw()
     }),
     on('desk:widgets', p => {
@@ -716,9 +736,12 @@
     }),
     on('desk:paper', p => setPaper(p)),
     // The pointer went off its widgets: the window lets clicks through again.
-    on('desk:pointer', () => {
+    // The window took the mouse (where the pointer is: the widget under it
+    // shown hovered at once, before any move), or lets it through again.
+    on('desk:pointer', at => {
       if (drag) return
-      for (const n of nodes.values()) n.el.classList.remove('hover')
+      const under = at ? document.elementFromPoint(at.x, at.y)?.closest('.dw') : null
+      for (const n of nodes.values()) n.el.classList.toggle('hover', n.el === under)
     }),
     // A press elsewhere (on the desktop, another window): the menu goes.
     on('desk:outside', () => closeMenu()),
@@ -741,5 +764,5 @@
   }
   window.addEventListener('error', e => console.log('error:', e.message, e.filename, e.lineno))
   // For the tests' eyes: what is drawn where.
-  window.Desk = { state: () => ({ here, layout, spots: Object.fromEntries(spots), icons, paper: !!paper, shapes: sentShapes }), draw, turn: (id, by) => nodes.get(id) && turn(nodes.get(id), by), openMenu }
+  window.Desk = { state: () => ({ here, layout, spots: Object.fromEntries(spots), icons, paper: !!paper, shapes: sentShapes }), draw, turn: (id, by) => nodes.get(id) && turn(nodes.get(id), by), openMenu, paperAgain: () => lastPaper && setPaper(lastPaper) }
 })()

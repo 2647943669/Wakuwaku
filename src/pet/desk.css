@@ -255,10 +255,18 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Room on the right for the two buttons while they show. */
+/* Room on the right for the two buttons while they show: its name cut short
+   before them (the VM, 2026-10-16: a small one's name ran under them). */
 .dw.hover .wd .hd .r,
 .dw.menu .wd .hd .r {
   visibility: hidden;
+}
+
+.dw.hover .tools ~ .wbody .hd,
+.dw.menu .tools ~ .wbody .hd,
+.dw.hover .wd:has(.tools) .hd,
+.dw.menu .wd:has(.tools) .hd {
+  padding-right: 52px;
 }
 
 .big {

@@ -229,6 +229,14 @@ pub fn catch_up(sh: &Shared) {
     }
 }
 
+// The pages' open menus closed (another window came to the front).
+fn close_menus(sh: &Shared) {
+    let open: Vec<String> = DESKS.lock().unwrap().iter().filter(|d| d.menu).map(|d| d.label.clone()).collect();
+    for label in open {
+        let _ = sh.app.emit_to(label.as_str(), "desk:outside", Value::Null);
+    }
+}
+
 fn any_stale() -> bool {
     DESKS.lock().unwrap().iter().any(|d| d.stale)
 }
@@ -375,39 +383,59 @@ pub fn in_shape(x: f64, y: f64, s: &[f64; 5], margin: f64) -> bool {
 // long until the next look (ms): soon while near one.
 pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     let down = crate::pet::any_down().unwrap_or(false);
-    let mut changes: Vec<(String, isize, Option<bool>, bool)> = Vec::new();
+    let mut changes: Vec<(String, isize, Option<bool>, bool, (f64, f64))> = Vec::new();
     let mut near = false;
+    let on_widgets;
     {
         let mut desks = DESKS.lock().unwrap();
+        if desks.is_empty() {
+            return 250;
+        }
+        // The pointer over the desktop itself (not a window over it), on a
+        // display with widgets: looked at often, so that one moved quickly
+        // onto a widget and pressed is caught (the design session's 8: what
+        // passes through lands on the bare desktop, the widgets clear of
+        // the icons, and does nothing there but take an icon's selection).
+        let mine: Vec<isize> = desks.iter().map(|d| d.hwnd).collect();
+        on_widgets = desks.iter().any(|d| !d.shapes.is_empty() && cursor.0 >= d.mon.0 && cursor.0 < d.mon.0 + d.mon.2 && cursor.1 >= d.mon.1 && cursor.1 < d.mon.1 + d.mon.3);
+        let on_desktop = on_widgets && imp::over_desktop(cursor, &mine);
+        near |= on_desktop;
         for d in desks.iter_mut().filter(|d| d.ready) {
             let (x, y) = ((cursor.0 - d.mon.0) as f64 / d.sf, (cursor.1 - d.mon.1) as f64 / d.sf);
             let on_display = cursor.0 >= d.mon.0 && cursor.0 < d.mon.0 + d.mon.2 && cursor.1 >= d.mon.1 && cursor.1 < d.mon.1 + d.mon.3;
             let inside = on_display && d.shapes.iter().any(|s| in_shape(x, y, s, 0.0));
             near |= on_display && d.shapes.iter().any(|s| in_shape(x, y, s, NEAR_PX));
-            let catch = d.held || inside;
+            // A menu open: the whole display's desktop, for a press off it
+            // to close it (the page), as Windows' own menus take that press.
+            let catch = d.held || inside || (d.menu && on_display);
             // A press off its widgets with a menu open: the menu goes.
             let outside = d.menu && down && !d.was_down && !inside && !d.held;
             d.was_down = down;
             if catch != d.catching || outside {
                 let changed = (catch != d.catching).then_some(catch);
                 d.catching = catch;
-                changes.push((d.label.clone(), d.hwnd, changed, outside));
+                changes.push((d.label.clone(), d.hwnd, changed, outside, (x, y)));
             }
         }
     }
-    for (label, hwnd, changed, outside) in changes {
+    for (label, hwnd, changed, outside, at) in changes {
         if let Some(catch) = changed {
             let _ = sh.app.run_on_main_thread(move || imp::set_through(hwnd, !catch));
-            if !catch {
-                let _ = sh.app.emit_to(label.as_str(), "desk:pointer", Value::Null);
-            }
+            // Where the pointer is as the window takes it (the page hears
+            // no move till the next: its hover shown at once), or gone.
+            let _ = sh.app.emit_to(label.as_str(), "desk:pointer", if catch { json!({ "x": at.0, "y": at.1 }) } else { Value::Null });
         }
         if outside {
             let _ = sh.app.emit_to(label.as_str(), "desk:outside", Value::Null);
         }
     }
+    // On a display with widgets (over a window there): every 100 ms, so
+    // that a quick move from the taskbar or a window onto one is caught
+    // (the VM, 2026-10-16: 1 in 4 at 250 ms); elsewhere as her own look.
     if near {
         40
+    } else if on_widgets {
+        100
     } else {
         250
     }
@@ -697,6 +725,9 @@ mod imp {
         fn SetTimer(hwnd: Hwnd, id: usize, ms: u32, f: *const c_void) -> usize;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
         fn GetClassNameW(hwnd: Hwnd, name: *mut u16, max: i32) -> i32;
+        fn KillTimer(hwnd: Hwnd, id: usize) -> i32;
+        fn WindowFromPoint(pt: Point) -> Hwnd;
+        fn GetAncestor(hwnd: Hwnd, flags: u32) -> Hwnd;
         fn IsIconic(hwnd: Hwnd) -> i32;
     }
 
@@ -775,6 +806,37 @@ mod imp {
         }
     }
 
+    // The pointer over the desktop itself: the top window under it is
+    // the one with the icons (or one of hers, while it takes the mouse).
+    pub fn over_desktop(at: (i32, i32), mine: &[isize]) -> bool {
+        const GA_ROOT: u32 = 2;
+        // SAFETY: plain lookups; a buffer of our own.
+        unsafe {
+            let h = WindowFromPoint(Point { x: at.0, y: at.1 });
+            if h.is_null() {
+                return false;
+            }
+            let top = GetAncestor(h, GA_ROOT);
+            if mine.contains(&(top as isize)) {
+                return true;
+            }
+            let mut name = [0u16; 32];
+            let k = GetClassNameW(top, name.as_mut_ptr(), 32).max(0) as usize;
+            matches!(String::from_utf16_lossy(&name[..k]).as_str(), "Progman" | "WorkerW")
+        }
+    }
+
+    // Windows' own taskbars: a display's other than the main one's lies
+    // right over the desktop too (not kept on top in the VM, 2026-10-16),
+    // and Explorer puts it back there; hers stay clear of it (the work
+    // area), and it goes unfought.
+    fn is_taskbar(h: Hwnd) -> bool {
+        let mut name = [0u16; 32];
+        // SAFETY: a buffer of our own.
+        let k = unsafe { GetClassNameW(h, name.as_mut_ptr(), 32) }.max(0) as usize;
+        matches!(String::from_utf16_lossy(&name[..k]).as_str(), "Shell_TrayWnd" | "Shell_SecondaryTrayWnd")
+    }
+
     fn topmost(h: Hwnd) -> bool {
         // SAFETY: a plain read.
         unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) & WS_EX_TOPMOST != 0 }
@@ -790,7 +852,7 @@ mod imp {
                 if h == host {
                     return true;
                 }
-                if IsWindowVisible(h) != 0 && !mine.contains(&(h as isize)) {
+                if IsWindowVisible(h) != 0 && !mine.contains(&(h as isize)) && !is_taskbar(h) {
                     return false;
                 }
                 h = GetWindow(h, GW_HWNDNEXT);
@@ -902,11 +964,31 @@ mod imp {
     // from the taskbar: hers where they belong.
     extern "system" fn on_event(_hook: isize, _event: u32, _hwnd: Hwnd, _object: i32, _child: i32, _thread: u32, _time: u32) {
         keep_all_low();
+        // Another window in front: an open menu closes.
+        if let Some(sh) = super::SHARED.get() {
+            super::close_menus(sh);
+        }
+        // Looked at again a moment later, and once more: shown the desktop
+        // (Win+D), the window with the icons comes to the front first and
+        // only then over the others (the VM, 2026-10-16: hers were put right
+        // over it while it still lay at the bottom, and stayed under it).
+        let hwnd = WINDOW.load(std::sync::atomic::Ordering::SeqCst);
+        if hwnd != 0 {
+            // SAFETY: our own window, on this thread.
+            unsafe {
+                SetTimer(hwnd as Hwnd, AGAIN_SOON, 250, std::ptr::null());
+                SetTimer(hwnd as Hwnd, AGAIN_LATER, 1000, std::ptr::null());
+            }
+        }
         // A desktop seen again: its words caught up.
         if let Some(sh) = super::SHARED.get() {
             super::catch_up(sh);
         }
     }
+
+    const EVERY: usize = 1;
+    const AGAIN_SOON: usize = 2;
+    const AGAIN_LATER: usize = 3;
 
     extern "system" fn wndproc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize {
         match msg {
@@ -932,6 +1014,15 @@ mod imp {
             // (a window restored without another coming to the front);
             // every half minute the pictures (a slideshow's next picture
             // says nothing), nobody about, every other minute.
+            WM_TIMER if wparam == AGAIN_SOON || wparam == AGAIN_LATER => {
+                // SAFETY: our own window's one-shot timer.
+                unsafe { KillTimer(hwnd, wparam) };
+                keep_all_low();
+                if let Some(sh) = super::SHARED.get() {
+                    super::catch_up(sh);
+                }
+                0
+            }
             WM_TIMER => {
                 static TURN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
                 let quiet = super::SHARED.get().is_some_and(|sh| sh.is_quiet());
@@ -984,7 +1075,7 @@ mod imp {
                 SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
                 SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
                 SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZESTART, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-                SetTimer(hwnd, 1, 10_000, std::ptr::null());
+                SetTimer(hwnd, EVERY, 10_000, std::ptr::null());
                 keep_all_low();
                 let mut msg: Msg = std::mem::zeroed();
                 while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
@@ -1024,6 +1115,9 @@ mod imp {
     pub fn set_through(_hwnd: isize, _through: bool) {}
     pub fn desktop_shown(_own: &[isize]) -> bool {
         true
+    }
+    pub fn over_desktop(_at: (i32, i32), _mine: &[isize]) -> bool {
+        false
     }
     pub fn icons(_mon: super::Mon, _sf: f64) -> Vec<[f64; 4]> {
         Vec::new()
