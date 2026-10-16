@@ -557,7 +557,7 @@
     } else if (widget) {
       const said = Widgets.words(lang, widget, isDetailed())
       words = el('span', 'label wlabel')
-      words.insertAdjacentHTML('afterbegin', Widgets.icon(widget.icon))
+      words.insertAdjacentHTML('afterbegin', Widgets.iconHTML(widget, lang))
       words.firstChild.style.color = ink(widget.color) || hue().idle
       words.append(said.label)
       value = el('span', 'clock wvalue', said.value)
@@ -757,7 +757,7 @@
       const words = w.private && !isDetailed() ? '' : w.words
       const card = el('span', 'me')
       const top = el('span', 'head')
-      top.insertAdjacentHTML('afterbegin', Widgets.icon(w.icon))
+      top.insertAdjacentHTML('afterbegin', Widgets.iconHTML(w, lang))
       top.firstChild.style.color = ink(w.color) || hue().idle
       top.append(el('span', 'title', words || label || value))
       card.append(top, el('span', 'sub', words ? [label, value].filter(Boolean).join(' · ') : label ? value : ''))
@@ -1282,7 +1282,7 @@
     if (w) {
       const { label, value } = Widgets.words(lang, w, isDetailed())
       const face = el('span', 'face')
-      face.insertAdjacentHTML('afterbegin', Widgets.icon(w.icon))
+      face.insertAdjacentHTML('afterbegin', Widgets.iconHTML(w, lang))
       face.firstChild.style.color = stripInk(w.color) || stripHue().idle
       const v = el('span', 'v', value)
       v.style.color = stripInk(w.color) || stripHue().idle
@@ -4587,7 +4587,7 @@
       const card = el('div', isOn ? 'tblcard placed' : 'tblcard')
       card.dataset.card = i
       const mark = el('span', 'tblmark')
-      mark.innerHTML = SPACER_MARK[c.entry.type] ? `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SPACER_MARK[c.entry.type]}</svg>` : Widgets.icon(c.w?.icon || c.entry.icon || 'dot')
+      mark.innerHTML = SPACER_MARK[c.entry.type] ? `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SPACER_MARK[c.entry.type]}</svg>` : Widgets.iconHTML(c.w || { id: c.entry.of, icon: c.entry.icon, label: c.entry.name || Widgets.nameOf(lang, { ...c.entry, id: 'w0' }, all, detailed) }, lang)
       mark.style.color = (c.w && stripInk(c.w.color)) || stripHue().idle
       const said = c.w ? Widgets.words(lang, c.w, detailed).value : ''
       const note = isOn

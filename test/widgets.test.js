@@ -223,6 +223,25 @@ test("the monitor's part may be taken off, and stays off; a monitor put there as
   assert.equal(Widgets.monitorAsPart(plain), plain)
 })
 
+test("one without an icon: its name's first character on its colour, or grey, wherever its icon would be", () => {
+  assert.equal(Widgets.markHTML('部署', '#36cfc9'), '<span class="wmark" style="--mark:#36cfc9" aria-hidden="true">部</span>')
+  assert.equal(Widgets.markHTML('build', null, 'gl'), '<span class="wmark gl" style="--mark:#8e8e93" aria-hidden="true">B</span>')
+  // Not a colour: grey; nothing to go by: a middle dot; markup kept out.
+  assert.match(Widgets.markHTML('x', 'red; background:url(x)'), /--mark:#8e8e93/)
+  assert.match(Widgets.markHTML('', ''), />·</)
+  assert.match(Widgets.markHTML('<b>', ''), />&lt;</)
+  // A script's widget that sent none ('dot'): its mark; one with an icon: the icon.
+  assert.match(Widgets.iconHTML({ id: 'deploy', icon: 'dot', label: 'deploy', color: '#ff7a45' }), /wmark.*--mark:#ff7a45.*>D</)
+  assert.match(Widgets.iconHTML({ id: 'mail', icon: 'mail' }), /wicon/)
+  // A label of words to render: in her language.
+  assert.match(Widgets.iconHTML({ id: 'x', icon: 'dot', label: { key: 'widget.today' } }, 'zh'), /wmark/)
+  // The cards' glyph the same (the desktop, the strip, the capsule's rows, the menus).
+  const WCards = require('../src/pet/wcards')
+  assert.match(WCards.glyphHTML({ id: 'deploy', from: 'script', icon: 'dot', label: '部署', color: '#36cfc9' }, 'gl'), /wmark gl.*>部</)
+  assert.match(WCards.memberGlyph({ type: 'widget', of: 'build' }), />B</)
+  assert.match(WCards.memberGlyph({ type: 'widget', of: 'x', name: '部署' }), />部</)
+})
+
 test('a preset takes the parts, and the widgets stay in their runs', () => {
   const weather = { id: 'wa', type: 'plugin', of: 'weather' }
   const sep = { id: 'wb', type: 'sep' }

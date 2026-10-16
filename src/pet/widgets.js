@@ -56,6 +56,24 @@
   const CHARGING = ['E85A', 'E85B', 'E85C', 'E85D', 'E85E', 'E85F', 'E860', 'E861', 'E862', 'E863', 'E83E']
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
+  // One without an icon of its own (a script that sent none: widgets.rs
+  // makes it 'dot'): wherever its icon would be, the first character of its
+  // name on a 16 px rounded square of its colour, or grey, the letter white
+  // (the design session, 2026-10-16: a dot said nothing, and was lost on
+  // the dark). One helper for every place (style.css, desk.css .wmark).
+  const hasIcon = name => typeof name === 'string' && name !== 'dot' && name in ICONS
+  const MARK_GREY = '#8e8e93'
+  function markHTML(name, color, cls = '') {
+    const ch = Array.from(String(name ?? '').trim())[0] || '·'
+    const ground = typeof color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color.trim()) ? color.trim() : MARK_GREY
+    return `<span class="wmark${cls ? ` ${cls}` : ''}" style="--mark:${ground}" aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`
+  }
+  // A widget's name for its mark: its label as it reads (an object of
+  // words rendered when a language is given), else its id.
+  const markName = (w, lang) => (typeof w?.label === 'string' ? w.label : lang && w?.label ? render(lang, w.label) : '') || w?.name || w?.id || ''
+  // Its icon, or that mark.
+  const iconHTML = (w, lang) => (hasIcon(w?.icon) ? icon(w.icon) : markHTML(markName(w, lang), w?.color))
+
   // The monitor's readings, or null for a widget that has none.
   const partsOf = w => (Array.isArray(w?.value?.parts) ? w.value.parts : null)
 
@@ -446,6 +464,9 @@
   const api = {
     ICONS,
     icon,
+    hasIcon,
+    markHTML,
+    iconHTML,
     detailOf,
     sizesOf,
     words,

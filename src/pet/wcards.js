@@ -83,11 +83,14 @@
     if (kindOf(w) === 'today') return `<span class="wher ${cls}" aria-hidden="true"></span>`
     const g = glyphOf(w)
     if (g) return `<span class="wgl ${cls}" aria-hidden="true">&#x${g};</span>`
-    return `<span class="wsvg ${cls}">${Widgets.icon(w?.icon || 'dot')}</span>`
+    // No icon of its own: its name's first character on its colour (widgets.js markHTML).
+    if (!Widgets.hasIcon(w?.icon)) return Widgets.markHTML(w?.markName ?? (typeof w?.label === 'string' ? w.label : w?.id), w?.color, cls)
+    return `<span class="wsvg ${cls}">${Widgets.icon(w.icon)}</span>`
   }
-  // A member with nothing to say: its glyph as it was put there.
+  // A member with nothing to say: its glyph as it was put there (its mark
+  // by the name it was put there with).
   function memberGlyph(m) {
-    const like = m.type === 'plugin' ? { id: m.of, plugin: m.of, icon: m.icon } : { id: m.of, icon: m.icon, from: /^inbox-/.test(m.of) ? 'mail' : undefined }
+    const like = m.type === 'plugin' ? { id: m.of, plugin: m.of, icon: m.icon, markName: m.name || m.of } : { id: m.of, icon: m.icon, from: /^inbox-/.test(m.of) ? 'mail' : undefined, markName: m.name || m.of }
     return glyphHTML(like)
   }
 

@@ -273,7 +273,8 @@
         return `<span class="bgl"${c ? ` style="--c:${c}"` : ''}>${w ? WCards.glyphHTML(w) : WCards.memberGlyph(G.memberOf(x))}</span>`
       })
       const more = e.items.length > BOARD_ICONS ? `<span class="bmore">+${e.items.length - BOARD_ICONS}</span>` : ''
-      const after = e.folded ? `<span class="bicons">${glyphs.join('')}${more}</span>` : `<span class="bcount">${esc(t('desk.boardCount', { n: e.items.length }))}</span>`
+      // Empty: its name alone (no 「0 个小工具」).
+      const after = e.folded ? `<span class="bicons">${glyphs.join('')}${more}</span>` : e.items.length ? `<span class="bcount">${esc(t('desk.boardCount', { n: e.items.length }))}</span>` : ''
       n.el.querySelector('.btitle').innerHTML = `<b class="bname">${esc(boardLabel(e))}</b>${after}`
       fillHer(n.el.querySelector('.btitle'))
     }
@@ -901,7 +902,8 @@
   const boardsHere = () => shown().filter(G.isBoard)
 
   const opt = (act, v, label, on, why = '') => `<button type="button" class="wmo${on ? ' on' : ''}${why ? ' off' : ''}" data-act="${act}" data-v="${v}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
-  const item = (act, label, why = '', v = '') => `<button type="button" class="wmi${why ? ' off' : ''}" data-act="${act}" data-v="${esc(v)}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
+  // An item; sub: a small grey line under it (what it does to the widgets).
+  const item = (act, label, why = '', v = '', sub = '') => `<button type="button" class="wmi${why ? ' off' : ''}" data-act="${act}" data-v="${esc(v)}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}${sub ? `<span class="wmsub">${esc(sub)}</span>` : ''}</button>`
   const line = (label, html) => `<div class="wmr"><span class="wml">${esc(label)}</span><span class="wms">${html}</span></div>`
   const head = (w, glyph, title) => `<div class="wmh" style="--c:${w ? WCards.colorOf(w, ctx()) : 'currentColor'}">${glyph}<b>${esc(title)}</b></div>`
   const whereLine = () => {
@@ -973,12 +975,12 @@
   // back in the capsule).
   function boardMenuHTML(b) {
     return [
-      `<div class="wmh"><b>${esc(boardLabel(b))} · ${esc(t('desk.boardCount', { n: b.items.length }))}</b></div>`,
+      `<div class="wmh"><b>${esc(boardLabel(b))}${b.items.length ? ` · ${esc(t('desk.boardCount', { n: b.items.length }))}` : ''}</b></div>`,
       item('rename', t('desk.rename')),
       item('fold', t(b.folded ? 'desk.unfold' : 'desk.fold')),
       '<div class="wmsep"></div>',
-      item('apart', t('desk.boardApart'), b.items.length ? '' : t('desk.boardEmpty')),
-      item('removeBoard', t('desk.boardRemove')),
+      item('apart', t('desk.boardApart'), b.items.length ? '' : t('desk.boardEmpty'), '', t('desk.boardApartSub')),
+      item('removeBoard', t('desk.boardRemove'), '', '', t('desk.boardRemoveSub')),
       '<div class="wmwhy" hidden></div>',
     ].join('')
   }

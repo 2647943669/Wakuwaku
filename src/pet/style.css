@@ -5532,3 +5532,22 @@ body.has-news #island[data-view='compact'] .news-dot {
 .tb-side #bar-rest .tw-carousel .dots {
   right: 1px;
 }
+
+/* One without an icon of its own (widgets.js markHTML): the first character
+   of its name on a 16 px rounded square of its colour, or grey; the letter
+   white, wherever its icon would be (the design session, 2026-10-16). */
+.wmark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 4px;
+  background: var(--mark, #8e8e93) !important;
+  color: #fff !important;
+  font: 600 10.5px/1 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif !important;
+  font-style: normal;
+  letter-spacing: 0;
+  vertical-align: middle;
+  overflow: hidden;
+}
