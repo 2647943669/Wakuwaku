@@ -328,17 +328,26 @@
   // one of the widgets taking turns.
   let monitor = null
 
+  // Those put elsewhere: on the desktop (desk.rs), or on the taskbar while
+  // it is her home. A widget is in one place (§7): neither taking turns in
+  // the closed island nor pinned at its end; the open island still lists
+  // them all, as an overview.
+  let placedOut = new Set()
+  let monitorPartOn = true
+
   // The widgets as sent: those that take turns are those on, but for the
-  // monitor pinned and what the taskbar shows of its own; the same one
-  // stays shown as the list changes around it.
+  // monitor pinned and what is put elsewhere; the same one stays shown as
+  // the list changes around it.
   function takeWidgets(all) {
     const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
     allWidgets = Array.isArray(all) ? all : []
     monitor = allWidgets.find(w => w.id === 'monitor' && w.on !== false) || null
     const onBar = home() === 'taskbar' ? Widgets.shownOn(tbLayout(), allWidgets) : new Set()
-    // On the desktop (desk.rs) they are there, not in the island.
     const onDesk = window.DeskGrid ? DeskGrid.shownOn(config.deskLayout, allWidgets) : new Set()
-    widgets = allWidgets.filter(w => w.on !== false && !(w === monitor && isPinned()) && !onBar.has(w.id) && !onDesk.has(w.id))
+    placedOut = new Set([...onBar, ...onDesk])
+    // The taskbar her home: the monitor pinned in its part, if the strip has it (#53).
+    monitorPartOn = home() !== 'taskbar' || hasMonitorPart()
+    widgets = allWidgets.filter(w => w.on !== false && !(w === monitor && isPinned()) && !placedOut.has(w.id))
     const still = widgets.findIndex(w => w.id === was)
     if (still >= 0) widgetAt = still
   }
@@ -603,7 +612,11 @@
 
   // How long something new takes to slide into the compact island.
   const TURN_MS = 320
-  const isPinned = () => !!monitor && config.monitor?.pin !== false
+  // Its readings at the closed island's end (or the taskbar's monitor part):
+  // its setting, unless it is put on the desktop or on the taskbar (§7); the
+  // taskbar her home, while the strip has that part (taken off it, #53, it
+  // takes its turns in her capsule as any other).
+  const isPinned = () => !!monitor && config.monitor?.pin !== false && !placedOut.has('monitor') && monitorPartOn
 
   // A widget's line in the open island (the spec's §6, wcards.js rowHTML),
   // the one shown lit: small, its glyph, name and value in one line;
@@ -728,12 +741,16 @@
       lines.append(list)
     }
     // The monitor, and the widgets, the one shown lit: under the sessions too,
-    // a session at work not all the island says (2026-10-10).
-    if ((widgets.length || monitor) && !(isNudging() && nudge.widget)) {
+    // a session at work not all the island says (2026-10-10). All that are
+    // on, wherever each is (the desktop, the taskbar), as an overview (§7);
+    // the monitor first while it is pinned or put elsewhere.
+    const monFirst = !!monitor && (isPinned() || placedOut.has('monitor'))
+    const listed = allWidgets.filter(w => w.on !== false && !(monFirst && w === monitor) && (widgets.includes(w) || placedOut.has(w.id)))
+    if ((listed.length || monFirst) && !(isNudging() && nudge.widget)) {
       const list = el('span', 'wlist')
       const shown = shownWidget()
-      if (isPinned()) list.append(widgetRow(monitor, false))
-      for (const w of widgets) list.append(widgetRow(w, w === shown))
+      if (monFirst) list.append(widgetRow(monitor, false))
+      for (const w of listed) list.append(widgetRow(w, w === shown))
       lines.append(list)
     }
     // A widget that asked to open the island: what it says, over all else.
@@ -1526,6 +1543,8 @@
   // dragging the parts about on the strip itself (editTaskbar).
   const TB_PARTS = ['her', 'start', 'apps', 'monitor', 'tray', 'keys', 'quick', 'clock']
   const TB_RIGHT = ['monitor', 'tray', 'keys', 'quick', 'clock']
+  // Those that may be taken off the strip (the rest stay: the ghost says so).
+  const TB_OPTIONAL = ['monitor']
   const TB_PRESETS = {
     win11: { left: ['her'], center: ['start', 'apps'], right: TB_RIGHT },
     left: { left: ['her', 'start', 'apps'], center: [], right: TB_RIGHT },
@@ -1550,10 +1569,15 @@
   // (zhoupengjie/Wakuwaku#38): the settings are a press on her capsule, or
   // her menus', away, as Windows 11's taskbar has none; one kept in an old
   // layout is left out, as a part no longer there.
+  // The monitor's part may be taken off (#53): dragged off the strip it is
+  // gone from the layout, not put back as a part new since; a monitor put
+  // there as a widget is that part (widgets.js monitorAsPart).
   function tbLayout(saved = editLayout || config.taskbarLayout) {
     const base = saved && typeof saved === 'object' ? saved : config.taskbarAlign === 'left' ? TB_PRESETS.left : TB_PRESETS.win11
-    return Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11)
+    return Widgets.monitorAsPart(Widgets.layoutOf(base, TB_PARTS, TB_PRESETS.win11, TB_OPTIONAL))
   }
+  // Whether the strip has the monitor's part.
+  const hasMonitorPart = (layout = tbLayout()) => Object.values(layout).some(run => run.includes('monitor'))
   // Which preset its parts are as ('custom': none), whatever widgets are there.
   const presetOf = layout => {
     const parts = JSON.stringify(Widgets.partsAlone(tbLayout(layout)))
@@ -2789,8 +2813,11 @@
   // or the desktop, and put there. On the taskbar alone or in a group; put there, at
   // the right run's start; back in the island, out of wherever it was.
   const keyFor = item => (item.plugin ? `plugin:${item.plugin}` : `widget:${item.id}`)
+  // The monitor on the strip is its part (#53): there while her home is the taskbar.
+  const isMonitorItem = item => !item.plugin && item.id === 'monitor'
   function whereOf(item) {
     if (DeskGrid.has(config.deskLayout, item)) return 'desk'
+    if (isMonitorItem(item) && home() === 'taskbar' && hasMonitorPart()) return 'bar'
     const keys = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string').flatMap(Widgets.membersOf).map(Widgets.memberKey)))
     return keys.has(keyFor(item)) ? 'bar' : 'isle'
   }
@@ -2800,11 +2827,17 @@
     if (where !== 'desk' && DeskGrid.has(config.deskLayout, item)) deskOff([item])
     if (where === 'bar') {
       if (whereOf(item) === 'bar') return
+      const layout = tbLayout()
+      // The monitor: its part, at the right run's start.
+      if (isMonitorItem(item)) {
+        for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== 'monitor')
+        layout.right.unshift('monitor')
+        return keepLayout(layout)
+      }
       const w = item.plugin ? null : allWidgets.find(x => x.id === item.id)
       const source = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
       const named = w && !w.private ? { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') } : {}
       const icon = (w?.icon || item.icon) in Widgets.ICONS ? { icon: w?.icon || item.icon } : {}
-      const layout = tbLayout()
       layout.right.unshift({ id: newId(), ...source, size: !w || Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...icon, ...named })
       placedAt.set(key, Date.now())
       return keepLayout(layout)
@@ -2812,6 +2845,13 @@
     if (where !== 'isle' && where !== 'desk') return
     let layout = tbLayout()
     let off = false
+    // The monitor's part off the strip: always for the desktop (one place,
+    // whatever her home); for the island while the taskbar is her home (in
+    // the island's home the strip is not there, its part left for it).
+    if (isMonitorItem(item) && (where === 'desk' || home() === 'taskbar') && hasMonitorPart(layout)) {
+      for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== 'monitor')
+      off = true
+    }
     for (const k of Object.keys(layout))
       for (const p of [...layout[k]]) {
         if (typeof p === 'string') continue
@@ -4284,6 +4324,10 @@
     editBar.replaceChildren(el('span', 'hint', t(lang, isSide() ? 'taskbar.edit.hintSide' : 'taskbar.edit.hint')), button('add', t(lang, libOpen ? 'taskbar.edit.hideAdd' : 'taskbar.edit.add')), button('reset'), button('cancel'), button('done'))
   }
 
+  // What a layout puts on the strip, as placeWidget takes them: its widgets
+  // and plugins, and the monitor while it has its part.
+  const barItems = layout => [...Object.values(layout).flatMap(run => run.filter(p => typeof p !== 'string').flatMap(Widgets.membersOf).map(m => (m.type === 'plugin' ? { plugin: m.of } : { id: m.of }))), ...(hasMonitorPart(layout) ? [{ id: 'monitor' }] : [])]
+
   function endEdit(keep) {
     if (!editLayout) return
     const layout = editLayout
@@ -4297,6 +4341,10 @@
     chosen = null
     for (const node of entryNodes.values()) node.classList.remove('tb-chosen')
     if (keep) {
+      // Those put on the strip now are there alone (§7): off the desktop.
+      const was = tbLayout(config.taskbarLayout)
+      const onDeskToo = barItems(layout).filter(it => !barItems(was).some(x => keyFor(x) === keyFor(it)) && DeskGrid.has(config.deskLayout, it))
+      if (onDeskToo.length) deskOff(onDeskToo)
       config.taskbarLayout = layout
       const patch = { taskbarLayout: layout }
       // A plugin put there that was not running: it runs now.
@@ -4352,6 +4400,8 @@
     return cards
   }
 
+  const isMonitorCard = c => c.entry.type === 'widget' && c.entry.of === 'monitor'
+
   function drawLibrary() {
     const all = libSnap?.widgets || allWidgets
     const detailed = isDetailed()
@@ -4368,7 +4418,7 @@
     const grid = el('div', 'tblgrid')
     for (const [i, c] of libCards.entries()) {
       if (libKind !== 'all' && c.kind !== libKind) continue
-      const isOn = Widgets.isSource(c.entry) && placed.has(`${c.entry.type}:${c.entry.of}`)
+      const isOn = (Widgets.isSource(c.entry) && placed.has(`${c.entry.type}:${c.entry.of}`)) || (isMonitorCard(c) && hasMonitorPart())
       const card = el('div', isOn ? 'tblcard placed' : 'tblcard')
       card.dataset.card = i
       const mark = el('span', 'tblmark')
@@ -4405,7 +4455,8 @@
     const c = libCards[card.dataset.card]
     if (!c) return
     e.preventDefault()
-    const fresh = { ...c.entry, id: newId(), ...(Widgets.isSource(c.entry) ? { size: 'M' } : {}) }
+    // The monitor's card puts its part there (#53: never a widget besides it).
+    const fresh = isMonitorCard(c) ? 'monitor' : { ...c.entry, id: newId(), ...(Widgets.isSource(c.entry) ? { size: 'M' } : {}) }
     drag = { fresh, node: card, label: card.querySelector('b')?.textContent || '', x: e.clientX, y: e.clientY, moved: false }
     try {
       library.setPointerCapture(e.pointerId)
@@ -4514,6 +4565,17 @@
     if (libOpen) drawLibrary()
   }
 
+  // A part that may go (the monitor's, #53) taken off the strip: back in the
+  // library, the monitor in her capsule then (isPinned).
+  function removePart(key) {
+    const layout = tbLayout()
+    for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== key)
+    editLayout = layout
+    arranged = ''
+    update()
+    if (libOpen) drawLibrary()
+  }
+
   function endDrag() {
     if (!drag) return
     drag.ghost?.remove()
@@ -4592,10 +4654,15 @@
       drag.ghost.style.top = `${e.clientY}px`
       const strip = barRest.getBoundingClientRect()
       const away = { bottom: e.clientY < strip.top - OFF_STRIP_PX, top: e.clientY > strip.bottom + OFF_STRIP_PX, left: e.clientX > strip.right + OFF_STRIP_PX, right: e.clientX < strip.left - OFF_STRIP_PX }[tbEdge()]
-      const off = (!!drag.entry || !!drag.fresh) && (overLibrary(e.clientX, e.clientY) || away)
+      // A widget, and the monitor's part (#53), go when let go off the
+      // strip; the other parts stay, the ghost saying so.
+      const removable = !!drag.entry || !!drag.fresh || TB_OPTIONAL.includes(drag.key)
+      const off = removable && (overLibrary(e.clientX, e.clientY) || away)
+      const stays = !removable && (overLibrary(e.clientX, e.clientY) || away)
       drag.off = off
       drag.ghost.classList.toggle('off', off)
-      drag.ghost.textContent = off && drag.entry ? t(lang, 'taskbar.w.drop', { name: drag.label }) : drag.label
+      drag.ghost.classList.toggle('stays', stays)
+      drag.ghost.textContent = off && !drag.fresh ? t(lang, 'taskbar.w.drop', { name: drag.label }) : stays ? t(lang, 'taskbar.edit.fixed') : drag.label
       drag.into = off ? null : intoAt(e.clientX, e.clientY)
       for (const n of entryNodes.values()) n.classList.toggle('tb-into', n === drag.into)
       editMark.hidden = off || !!drag.into
@@ -4618,11 +4685,11 @@
         // strip is chosen (again: no longer); elsewhere, none is.
         if (d.fresh) {
           if (Widgets.isSource(d.fresh)) placedAt.set(Widgets.memberKey(d.fresh), Date.now())
-          return movePart(d.fresh.id, 'right', 0, d.fresh)
+          return movePart(Widgets.keyOf(d.fresh), 'right', 0, d.fresh)
         }
         return choose(d.entry && chosen !== d.entry.id ? d.entry.id : null)
       }
-      if (d.off) return d.entry ? removeEntry(d.entry.id) : undefined
+      if (d.off) return d.entry ? removeEntry(d.entry.id) : TB_OPTIONAL.includes(d.key) && !d.fresh ? removePart(d.key) : undefined
       if (d.into) {
         // A library card: put in first, then with the one it was let go over.
         const into = d.into.dataset.entry
@@ -4637,7 +4704,7 @@
         if (libOpen) drawLibrary()
         return
       }
-      if (d.at) movePart(d.fresh ? d.fresh.id : d.key, d.at.zone, d.at.index, d.fresh)
+      if (d.at) movePart(d.fresh ? Widgets.keyOf(d.fresh) : d.key, d.at.zone, d.at.index, d.fresh)
       if (d.at && d.fresh && Widgets.isSource(d.fresh)) placedAt.set(Widgets.memberKey(d.fresh), Date.now())
     },
     true,

@@ -3560,6 +3560,12 @@ body.isl-right .tblib {
   background: #5a2a2a;
 }
 
+/* A part that stays (Start, the programs, the tray, the clock, her) dragged
+   off the strip: it says so, dimmed, not red (#53). */
+.tbghost.stays {
+  opacity: 0.8;
+}
+
 .tb-light .tblib,
 .tb-light .tbtools {
   background: #f3f3f3;

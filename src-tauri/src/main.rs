@@ -497,6 +497,13 @@ impl Shared {
         !self.list_setting("widgetsOff").iter().any(|o| o == id)
     }
 
+    // In the closed island: on, and not put on the desktop, nor on the
+    // taskbar while that is her home (a widget in one place, settings.rs
+    // is_placed_out).
+    pub fn is_in_island(&self, id: &str) -> bool {
+        self.is_widget_on(id) && !settings::is_placed_out(&self.setting("deskLayout"), &self.setting("taskbarLayout"), self.home() == "taskbar", id)
+    }
+
     // On in the island, put on the taskbar (taskbarLayout) while she is the
     // taskbar, or on the desktop (deskLayout): a built-in one is worked out then.
     pub fn is_widget_wanted(&self, id: &str) -> bool {
@@ -1726,10 +1733,12 @@ fn main() {
                         // Quiet (nobody looking), every ten seconds at least.
                         let every = if quiet { watching.every.max(10) } else { watching.every };
                         next = std::time::Instant::now() + Duration::from_secs(every);
-                        // On the desktop alone, and no display shows it (a window
-                        // maximized or full screen over it): not read, kept as it
-                        // was, looked at again at its pace (desk.rs seen).
-                        let unseen = on && !monitored.is_widget_on("monitor") && !(monitored.home() == "taskbar" && settings::is_on_taskbar(&monitored.setting("taskbarLayout"), "monitor")) && !desk::seen(&monitored, "monitor");
+                        // On the desktop alone (not in the closed island, nor on
+                        // the taskbar), no display shows it (a window maximized or
+                        // full screen over it) and the open island is not being
+                        // looked at (its overview lists it): not read, kept as
+                        // it was, looked at again at its pace (desk.rs seen).
+                        let unseen = on && !monitored.is_in_island("monitor") && !(monitored.home() == "taskbar" && settings::is_on_taskbar(&monitored.setting("taskbarLayout"), "monitor")) && !desk::seen(&monitored, "monitor") && !island::is_over(&monitored);
                         let words = if unseen {
                             None
                         } else if on {

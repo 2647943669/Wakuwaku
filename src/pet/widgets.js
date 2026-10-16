@@ -237,8 +237,11 @@
   const keyOf = item => (typeof item === 'string' ? item : item.id)
 
   // A layout as kept, made whole: each of the parts once, and one missing
-  // (new since) where the default has it; each widget once, 32 at most.
-  function layoutOf(saved, parts, base) {
+  // (new since) where the default has it, but for those that may be taken
+  // off (optional: the monitor's, #53), missing from one kept because they
+  // were; each widget once, 32 at most.
+  function layoutOf(saved, parts, base, optional = []) {
+    const kept = !!saved && typeof saved === 'object' && ['left', 'center', 'right'].some(k => Array.isArray(saved[k]))
     const seen = new Set()
     let entries = 0
     const keep = p => {
@@ -250,7 +253,31 @@
     const copy = p => (typeof p === 'string' ? p : isGroup(p) ? { ...p, items: p.items.map(m => ({ ...m })) } : { ...p })
     const run = k => (Array.isArray(saved?.[k]) ? saved[k] : []).filter(keep).map(copy)
     const out = { left: run('left'), center: run('center'), right: run('right') }
-    for (const [k, list] of Object.entries(base)) for (const p of list) if (!seen.has(p)) out[k].push(p)
+    for (const [k, list] of Object.entries(base)) for (const p of list) if (!seen.has(p) && !(kept && optional.includes(p))) out[k].push(p)
+    return out
+  }
+
+  // The monitor on the strip is its part (its readings in two rows, as the
+  // clock has its two: island.js widgetFaces), never besides a widget put
+  // there for it (#53, and §7: a widget in one place). One put there alone
+  // (a layout of before) becomes the part where it stood; one in a group
+  // stays there and the part goes.
+  function monitorAsPart(layout) {
+    const isMon = p => typeof p !== 'string' && p?.type === 'widget' && p.of === 'monitor'
+    const runs = Object.keys(layout)
+    const inGroup = runs.some(k => layout[k].some(p => isGroup(p) && p.items.some(m => m.type === 'widget' && m.of === 'monitor')))
+    let first = null
+    for (const k of runs) {
+      const at = layout[k].findIndex(isMon)
+      if (at >= 0 && !first) first = { k, at }
+    }
+    if (!first && !inGroup) return layout
+    const out = {}
+    for (const k of runs)
+      out[k] = layout[k].flatMap((p, i) => {
+        if (isMon(p)) return !inGroup && first.k === k && first.at === i ? ['monitor'] : []
+        return p === 'monitor' ? [] : [p]
+      })
     return out
   }
 
@@ -440,6 +467,7 @@
     membersOf,
     keyOf,
     layoutOf,
+    monitorAsPart,
     partsAlone,
     withParts,
     findEntry,

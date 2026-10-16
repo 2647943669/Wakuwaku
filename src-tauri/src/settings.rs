@@ -338,6 +338,14 @@ pub fn is_on_desk(layout: &Value, widget: &str) -> bool {
     layout.as_array().into_iter().flatten().any(|e| shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))
 }
 
+// Put elsewhere than the island: on the desktop, or on the taskbar while
+// that is her home. A widget is in one place (the widget design's §7): it
+// neither takes turns in the closed island nor stays pinned at its end
+// there (island.js placedOut); the open island lists it all the same.
+pub fn is_placed_out(desk: &Value, taskbar: &Value, taskbar_home: bool, widget: &str) -> bool {
+    (cfg!(windows) && is_on_desk(desk, widget)) || (taskbar_home && is_on_taskbar(taskbar, widget))
+}
+
 // Its runs: the parts each once, and up to 32 widgets, each once.
 fn is_taskbar_layout(v: &Value) -> bool {
     let Some(runs) = v.as_object() else { return false };
@@ -976,5 +984,18 @@ mod layout_tests {
         assert!(super::is_on_desk(&layout, "today"));
         assert!(!super::is_on_desk(&layout, "weather"));
         assert!(!super::is_on_desk(&json!(null), "monitor"));
+    }
+
+    // A widget in one place: on the desktop, or on the taskbar while that is
+    // her home, it is out of the island (not pinned there either).
+    #[test]
+    fn a_widget_in_one_place() {
+        let desk = json!([{ "id": "wa", "type": "widget", "of": "monitor", "size": "m" }]);
+        let bar = json!({ "left": ["her"], "center": ["start", "apps"], "right": [{ "id": "w1", "type": "widget", "of": "today", "size": "S" }, "tray", "clock"] });
+        assert_eq!(super::is_placed_out(&desk, &bar, false, "monitor"), cfg!(windows));
+        assert!(super::is_placed_out(&json!([]), &bar, true, "today"));
+        // The taskbar not her home: its layout is not there to show it.
+        assert!(!super::is_placed_out(&json!([]), &bar, false, "today"));
+        assert!(!super::is_placed_out(&desk, &bar, true, "weather"));
     }
 }

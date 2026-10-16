@@ -201,6 +201,28 @@ test('a layout made whole: each part once, the missing ones where Windows has th
   assert.equal(Widgets.layoutOf({ right: many }, PARTS, WIN11).right.filter(p => typeof p !== 'string').length, 32)
 })
 
+test("the monitor's part may be taken off, and stays off; a monitor put there as a widget is that part (#53)", () => {
+  // Taken off and kept so: not put back as a part new since.
+  const off = { left: ['her'], center: ['start', 'apps'], right: ['tray', 'keys', 'quick', 'clock'] }
+  assert.deepEqual(Widgets.layoutOf(off, PARTS, WIN11, ['monitor']).right, ['tray', 'keys', 'quick', 'clock'])
+  // The others are, as before (a layout kept from before a part was there).
+  assert.deepEqual(Widgets.layoutOf({ left: ['her'], right: ['clock'] }, PARTS, WIN11, ['monitor']).right, ['clock', 'tray', 'keys', 'quick'])
+  // Nothing kept: Windows' own, the monitor's part in it.
+  assert.deepEqual(Widgets.layoutOf(null, PARTS, WIN11, ['monitor']), WIN11)
+  // A monitor put there alone (a layout of before): the part, where it stood.
+  const mon = { id: 'wm', type: 'widget', of: 'monitor', size: 'M' }
+  const today = { id: 'wt', type: 'widget', of: 'today', size: 'S' }
+  assert.deepEqual(Widgets.monitorAsPart({ left: ['her', mon], center: ['start', 'apps'], right: ['monitor', 'tray', 'clock'] }), { left: ['her', 'monitor'], center: ['start', 'apps'], right: ['tray', 'clock'] })
+  // Twice: once, the first.
+  assert.deepEqual(Widgets.monitorAsPart({ left: [mon], center: [], right: [{ ...mon, id: 'wn' }, today] }), { left: ['monitor'], center: [], right: [today] })
+  // In a group: it stays there, the part goes.
+  const group = { id: 'wg', type: 'carousel', items: [{ type: 'widget', of: 'monitor' }, { type: 'widget', of: 'today' }] }
+  assert.deepEqual(Widgets.monitorAsPart({ left: ['her'], center: [group], right: ['monitor', 'clock'] }), { left: ['her'], center: [group], right: ['clock'] })
+  // Neither: as it was (the same layout).
+  const plain = { left: ['her'], center: [today], right: ['monitor'] }
+  assert.equal(Widgets.monitorAsPart(plain), plain)
+})
+
 test('a preset takes the parts, and the widgets stay in their runs', () => {
   const weather = { id: 'wa', type: 'plugin', of: 'weather' }
   const sep = { id: 'wb', type: 'sep' }
