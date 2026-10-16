@@ -204,15 +204,25 @@ mod imp {
     // The outermost process above one, by the processes' list (their numbers
     // and parents): the app a hook runs under, past the shell and the hook
     // runners that are gone a moment later (DeepSeek Harness's: server.rs
-    // chain_for). A parent that started after its child, where both may be
-    // asked, has a reused number. Itself when nothing is above it.
-    pub fn outermost_of(pid: u32) -> u32 {
-        let all = processes();
+    // chain_for). The app (its exe's name, `app`) ends the climb at its
+    // outermost process of that name (an Electron app's helpers bear its
+    // name too): what started it (a terminal, a script, Explorer) is not
+    // where the session is (DSH started from a shell went to the shell's
+    // console, seen 2026-10-16). A parent that started after its child,
+    // where both may be asked, has a reused number. Itself when nothing is
+    // above it.
+    pub fn outermost_of(pid: u32, app: &str) -> u32 {
+        outermost_in(&processes(), pid, app, started)
+    }
+
+    // outermost_of's climb over a list of processes and their start times.
+    pub(super) fn outermost_in(all: &HashMap<u32, (u32, String)>, pid: u32, app: &str, started: impl Fn(u32) -> Option<u64>) -> u32 {
+        let is_app = |p: u32| all.get(&p).is_some_and(|(_, name)| name.eq_ignore_ascii_case(app));
         let (mut cur, mut outermost) = (pid, pid);
         for _ in 0..MAX_CHAIN {
             let Some(&(parent, _)) = all.get(&cur) else { break };
             let Some((_, name)) = all.get(&parent) else { break };
-            if parent == 0 || parent == cur || ROOTS.contains(&name.as_str()) {
+            if parent == 0 || parent == cur || ROOTS.contains(&name.as_str()) || (is_app(cur) && !is_app(parent)) {
                 break;
             }
             if let (Some(child), Some(at)) = (started(cur), started(parent)) {
@@ -595,7 +605,7 @@ mod imp {
     pub fn hook_chain() -> Chain {
         Vec::new()
     }
-    pub fn outermost_of(pid: u32) -> u32 {
+    pub fn outermost_of(pid: u32, _app: &str) -> u32 {
         pid
     }
     pub fn client_of(_client_port: u16, _server_port: u16) -> Option<u32> {
@@ -696,11 +706,31 @@ mod tests {
     #[test]
     fn the_outermost_process_above_this_one() {
         // Above this test: cargo, a shell, a terminal… up to what all run under.
-        let top = outermost_of(std::process::id());
+        let top = outermost_of(std::process::id(), "no such app.exe");
         assert_ne!(top, std::process::id());
         assert!(chain_of(std::process::id()).iter().any(|&(pid, _)| pid == top) || chain_of(top).len() == 1);
         // None such: itself.
-        assert_eq!(outermost_of(u32::MAX - 3), u32::MAX - 3);
+        assert_eq!(outermost_of(u32::MAX - 3, "no such app.exe"), u32::MAX - 3);
+    }
+
+    // DeepSeek Harness's hook (wakuwaku ← pwsh ← runner ← host ← the app,
+    // its helpers bearing its name) climbs to the app's outermost process
+    // and no further, whoever started the app; with no app above it, up to
+    // what all run under.
+    #[cfg(windows)]
+    #[test]
+    fn the_climb_stops_at_the_app() {
+        use std::collections::HashMap;
+        let app = "DeepSeek Harness.exe";
+        let list = |pairs: &[(u32, u32, &str)]| pairs.iter().map(|&(pid, parent, name)| (pid, (parent, name.to_string()))).collect::<HashMap<_, _>>();
+        // Each started after its parent (a higher number here).
+        let started = |pid: u32| Some(u64::from(pid) * 10);
+        let from_explorer = list(&[(9, 8, "wakuwaku.exe"), (8, 7, "pwsh.exe"), (7, 6, "deepseek harness.exe"), (6, 5, "deepseek harness.exe"), (5, 4, "explorer.exe")]);
+        assert_eq!(super::imp::outermost_in(&from_explorer, 9, app, started), 6);
+        let from_a_shell = list(&[(9, 8, "wakuwaku.exe"), (8, 7, "pwsh.exe"), (7, 6, "deepseek harness.exe"), (6, 5, "deepseek harness.exe"), (5, 4, "pwsh.exe"), (4, 3, "windowsterminal.exe"), (3, 2, "explorer.exe")]);
+        assert_eq!(super::imp::outermost_in(&from_a_shell, 9, app, started), 6);
+        let no_app = list(&[(9, 8, "wakuwaku.exe"), (8, 7, "pwsh.exe"), (7, 6, "cmd.exe"), (6, 5, "explorer.exe")]);
+        assert_eq!(super::imp::outermost_in(&no_app, 9, app, started), 7);
     }
 
     #[cfg(windows)]
