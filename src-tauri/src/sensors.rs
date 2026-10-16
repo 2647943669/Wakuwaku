@@ -356,21 +356,7 @@ fn setting_up() -> bool {
 pub fn view(data: &std::path::Path) -> Value {
     let (installed, task) = cached_state(data);
     let (temp, power) = *READING.lock().unwrap();
-    let state = if answering() {
-        "running"
-    } else if task {
-        if setting_up() {
-            "settingUp"
-        } else {
-            "notAnswering"
-        }
-    } else if setting_up() {
-        "settingUp"
-    } else if !installed {
-        "pawnioMissing"
-    } else {
-        "off"
-    };
+    let state = state_name(installed, task, answering(), setting_up(), temp.is_some());
     json!({
         "state": state,
         "on": state == "running" || state == "notAnswering" || state == "settingUp",
@@ -378,6 +364,28 @@ pub fn view(data: &std::path::Path) -> Value {
         "temp": temp,
         "power": power,
     })
+}
+
+// The switch's state from what is known. "running" means a reading actually
+// comes through: the helper may be posting (answering) yet read nothing — a
+// Hyper-V guest does not expose the CPU's temperature registers — which is
+// "not answering" to the person (its note says a VM may be why).
+fn state_name(installed: bool, task: bool, answering: bool, setting_up: bool, has_temp: bool) -> &'static str {
+    if answering && has_temp {
+        "running"
+    } else if task || answering {
+        if setting_up {
+            "settingUp"
+        } else {
+            "notAnswering"
+        }
+    } else if setting_up {
+        "settingUp"
+    } else if !installed {
+        "pawnioMissing"
+    } else {
+        "off"
+    }
 }
 
 // PawnIO present, and her task registered: both looked at afresh at most
@@ -971,6 +979,24 @@ mod tests {
         for key in keys {
             assert_eq!(strings.matches(&format!("'{key}':")).count(), 2, "{key}");
         }
+    }
+
+    // The switch's state from what is known: off until PawnIO is there, then
+    // set up, then running once a reading comes; a helper that posts but
+    // reads nothing (a VM) is "not answering", not "running".
+    #[test]
+    fn the_switch_state_follows_what_is_known() {
+        // installed, task, answering, setting_up, has_temp.
+        assert_eq!(state_name(false, false, false, false, false), "pawnioMissing");
+        assert_eq!(state_name(true, false, false, false, false), "off");
+        assert_eq!(state_name(false, false, false, true, false), "settingUp");
+        assert_eq!(state_name(true, true, true, false, true), "running");
+        // Answering but no temperature yet (a Hyper-V guest): not answering.
+        assert_eq!(state_name(true, true, true, false, false), "notAnswering");
+        // The task is there but nothing comes.
+        assert_eq!(state_name(true, true, false, false, false), "notAnswering");
+        // Still setting up while the task is registering.
+        assert_eq!(state_name(true, true, false, true, false), "settingUp");
     }
 
     #[test]
