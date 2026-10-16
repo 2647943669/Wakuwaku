@@ -4399,7 +4399,11 @@ body.hinting #island[data-view='compact'] .hint-dot {
   visibility: hidden;
 }
 
-.oled-shift #flow {
+/* OLED's guard moves the island a pixel or two (translate): laid over it by
+   its anchor, the ring goes with it already (it went twice as far with this
+   too, the test VM showed); placed from the island's box (no anchors), it
+   is moved the same way. */
+.oled-shift #flow.placed {
   translate: var(--oled-x) var(--oled-y);
 }
 

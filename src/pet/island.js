@@ -4910,6 +4910,9 @@
       flow.style.setProperty('--flow-r', (island.style.borderRadius || '18px').split(/\s+/).map(r => `${(parseFloat(r) || 0) + 3}px`).join(' '))
     }
     if (ANCHORED) return
+    // From the box, which leaves the island's own translate out (OLED's
+    // guard): style.css moves it the same way (placed).
+    flow.classList.add('placed')
     const [x, y, w, h] = round ? [island.offsetLeft + ax, island.offsetTop + ay, 36, 36] : [island.offsetLeft - 3, island.offsetTop - 3, island.offsetWidth + 6, island.offsetHeight + 6]
     Object.assign(flow.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, right: 'auto', bottom: 'auto' })
   }
