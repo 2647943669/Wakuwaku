@@ -283,29 +283,19 @@ impl Shared {
         self.port == DEFAULT_PORT && std::env::var_os("WAKUWAKU_USER_DATA").is_none()
     }
 
-    // Start at login kept up, off the thread asking: as she starts (logged
-    // too, how long after the logon she came up and what started her: `by`,
-    // connection::started_by), and as her home changes (the logon task is
-    // the taskbar's alone).
-    pub fn keep_login(self: &Arc<Self>, starting: bool, by: Option<&'static str>) {
+    // Start at login kept up as she starts, off the thread starting her
+    // (logged too: how long after the logon she came up and what started
+    // her, `by`: connection::started_by).
+    pub fn keep_login(self: &Arc<Self>, by: Option<&'static str>) {
         let sh = self.clone();
         spawn_named("login", move || {
-            if starting {
-                if let Some(since) = logon::since_logon() {
-                    let by = match by {
-                        Some(connection::BY_TASK) => ", by her logon task",
-                        Some(_) => ", by the Run value",
-                        None => "",
-                    };
-                    sh.log(&format!("started {} after logon{by}", logon::how_long(since)));
-                }
+            if let Some(since) = logon::since_logon() {
+                sh.log(&format!("started {} after logon{}", logon::how_long(since), connection::said_by(by)));
             }
             if !sh.keeps_login() {
                 return;
             }
-            let taskbar = sh.home() == "taskbar";
-            let said = if starting { connection::login_at_start(taskbar) } else { connection::login_home_changed(taskbar) };
-            for line in said {
+            for line in connection::login_at_start() {
                 sh.log(&format!("login: {line}"));
             }
         });
@@ -600,7 +590,6 @@ impl Shared {
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
         let touches_monitor = ["monitor", "monitorSource", "widgetsOff"].iter().any(|k| patch.contains_key(*k));
         let touches_stow = patch.contains_key("islandHideUnder");
-        let touches_home = patch.get("display").is_some_and(|d| Some(d) != self.settings.lock().unwrap().get("display"));
         {
             let mut settings = self.settings.lock().unwrap();
             settings.extend(patch);
@@ -612,9 +601,6 @@ impl Shared {
         // A window under her island looked for at once (island.rs look_under).
         if touches_stow {
             fullscreen::ask();
-        }
-        if touches_home {
-            self.keep_login(false, None);
         }
         self.redraw();
         tray::refresh_menu(self);
@@ -1627,7 +1613,7 @@ fn main() {
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
             sh.log(&format!("displays: {}", sh.screens().describe()));
             // How long after the logon, and start at login kept to where she is now.
-            sh.keep_login(true, at_login);
+            sh.keep_login(at_login);
             taskbar::recover(&sh);
 
             pet::create(&sh)?;
@@ -1640,8 +1626,15 @@ fn main() {
             // An app full screen as she starts, known before her home first
             // shows: the taskbar takes its strip only once it can show (one
             // taken with its window hidden keeps no room).
-            if fullscreen::AVAILABLE {
-                sh.by_fullscreen.store(fullscreen::check(&[], &sh.displays()) == Some(true), Ordering::SeqCst);
+            // Said: her home then waits unseen, and the start looks like
+            // none. The lock screen is one, as a session begins locked
+            // (Windows signing in by itself to finish an update): started at
+            // login, she came up behind it and took the taskbar the moment
+            // it was unlocked, 170 s on, and the log said nothing of it (the
+            // user's PC, 2026-10-13).
+            if fullscreen::AVAILABLE && fullscreen::check(&[], &sh.displays()) == Some(true) {
+                sh.by_fullscreen.store(true, Ordering::SeqCst);
+                sh.log(&format!("an app full screen as she starts: {}; her home waits for it to go", fullscreen::front()));
             }
             island::apply_visibility(&sh);
             tray::create(&sh)?;

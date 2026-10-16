@@ -27,7 +27,7 @@ pub struct TaskSeen {
     pub enabled: bool,
 }
 
-const DESCRIPTION: &str = "Starts Wakuwaku as you log on: her Start at login, with her taskbar as home. She keeps it to where her program is, and takes it away when Start at login is turned off. 登录时启动 Wakuwaku（她的「开机自动启动」，任务栏模式）。";
+const DESCRIPTION: &str = "Starts Wakuwaku as you log on: her Start at login. She keeps it to where her program is, and takes it away when Start at login is turned off. 登录时启动 Wakuwaku（她的「开机自动启动」）。";
 
 fn escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
