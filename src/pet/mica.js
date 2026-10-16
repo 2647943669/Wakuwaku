@@ -111,6 +111,58 @@
     return out
   }
 
+  // The display's picture as the desktop's widgets take it (the widget
+  // design's §2: their glass is the wallpaper under them, blurred 30 and
+  // saturated 1.6, the glass colour over it; desk.js): the whole display
+  // (the desk window is the display, paper.mon from its corner), its edges
+  // carried on into a margin round it as the strip's are, blurred and
+  // saturated, no tint. Each widget shows its own part of it (desk.js
+  // paperFor). Gives { canvas, margin, scale }: the canvas covers the
+  // display and the margin, at scale.
+  function glassPaper(paper, img, { blur = 30, saturate = 1.6, scale = SCALE } = {}) {
+    const [mx, my, mw, mh] = paper.mon
+    const margin = 2 * blur
+    const W = Math.ceil((mw + 2 * margin) * scale)
+    const H = Math.ceil((mh + 2 * margin) * scale)
+    const raw = document.createElement('canvas')
+    raw.width = W
+    raw.height = H
+    const c = raw.getContext('2d')
+    c.fillStyle = paper.color || '#000'
+    c.fillRect(0, 0, W, H)
+    c.setTransform(scale, 0, 0, scale, (margin - mx) * scale, (margin - my) * scale)
+    if (img) {
+      const at = place(paper, { w: img.naturalWidth, h: img.naturalHeight })
+      c.imageSmoothingQuality = 'high'
+      if (at.tile) {
+        const tiles = c.createPattern(img, 'repeat')
+        tiles.setTransform(new DOMMatrix().translate(at.x, at.y).scale(at.w / img.naturalWidth, at.h / img.naturalHeight))
+        c.fillStyle = tiles
+        c.fillRect(mx - margin, my - margin, mw + 2 * margin, mh + 2 * margin)
+      } else {
+        c.drawImage(img, at.x, at.y, at.w, at.h)
+      }
+    }
+    c.setTransform(1, 0, 0, 1, 0, 0)
+    // Past the display's edges, its own edge carried on (blurred with nothing
+    // there, a widget near the edge would darken on that side).
+    const L = Math.min(W, Math.ceil(margin * scale))
+    const R = Math.max(L + 1, Math.min(W, Math.floor((margin + mw) * scale)))
+    const T = Math.min(H, Math.ceil(margin * scale))
+    const B = Math.max(T + 1, Math.min(H, Math.floor((margin + mh) * scale)))
+    if (L > 0) c.drawImage(raw, L, 0, 1, H, 0, 0, L, H)
+    if (R < W) c.drawImage(raw, R - 1, 0, 1, H, R, 0, W - R, H)
+    if (T > 0) c.drawImage(raw, 0, T, W, 1, 0, 0, W, T)
+    if (B < H) c.drawImage(raw, 0, B - 1, W, 1, 0, B, W, H - B)
+    const out = document.createElement('canvas')
+    out.width = W
+    out.height = H
+    const o = out.getContext('2d')
+    o.filter = `blur(${blur * scale}px) saturate(${saturate})`
+    o.drawImage(raw, 0, 0)
+    return { canvas: out, margin, scale }
+  }
+
   // The Mica in box (the strip's own size): set to a picture (taskbar.rs's
   // paper), the strip's size and Windows' mode, drawn anew only when one
   // changes, the new faded in over the old; cleared.
@@ -157,7 +209,7 @@
     }
   }
 
-  const api = { place, draw, mount }
+  const api = { place, draw, mount, glassPaper }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

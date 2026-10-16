@@ -938,11 +938,12 @@
   function pageWidgets() {
     const s = snap.settings
     const left = ms => (ms >= 60000 ? T('settings.minutes', { n: Math.round(ms / 60000) }) : T('settings.seconds', { n: Math.max(1, Math.round(ms / 1000)) }))
-    // Where each goes (the widget design's §10): a row in the capsule, or on
-    // the taskbar (island.js placeWidget; where she lives there); the
-    // desktop to come. Its switch stays what turns it off.
-    const onBarHome = s.display === 'taskbar' && !!window.Island?.whereOf
-    const whereSeg = item => (onBarHome ? seg(`where:${item.plugin ? `p:${item.plugin}` : `w:${item.id}`}`, [['isle', T('menu.isle')], ['bar', T('menu.bar')]], window.Island.whereOf(item)) : '')
+    // Where each goes (the widget design's §10): a row in the capsule, on
+    // the taskbar (where she lives there), or on the desktop (Windows'; desk.rs),
+    // island.js placeWidget keeping each. Its switch stays what turns it off.
+    const places = [['isle', T('menu.isle')], ...(s.display === 'taskbar' ? [['bar', T('menu.bar')]] : []), ...(window.pet?.mac ? [] : [['desk', T('menu.desk')]])]
+    const onBarHome = !!window.Island?.whereOf && places.length > 1
+    const whereSeg = item => (onBarHome ? seg(`where:${item.plugin ? `p:${item.plugin}` : `w:${item.id}`}`, places, window.Island.whereOf(item)) : '')
     const rows = widgetRows()
       .map((r, i) => {
         const up = (i > 0 ? `<button class="pbtn sm" data-wup="${esc(r.key)}" title="${esc(T('w.up'))}">↑</button>` : '') + (r.plugin ? whereSeg({ plugin: r.plugin.id }) : whereSeg(r.widget.plugin ? { plugin: r.widget.plugin } : { id: r.widget.id }))
@@ -2787,8 +2788,8 @@
         const [id, name] = key.slice(3).split('.')
         return setPlugin(id, { [name]: raw })
       }
-      // A widget (w:) or a plugin she runs (p:) put on the taskbar, or back
-      // in the capsule (island.js placeWidget keeps the layout).
+      // A widget (w:) or a plugin she runs (p:) put on the taskbar or the
+      // desktop, or back in the capsule (island.js placeWidget keeps the layouts).
       if (key.startsWith('where:')) {
         const [kind, ...rest] = key.slice(6).split(':')
         const item = kind === 'p' ? { plugin: rest.join(':') } : { id: rest.join(':') }

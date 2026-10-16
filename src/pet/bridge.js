@@ -197,6 +197,14 @@
     onLook: on('taskbar:look'),
     // The taskbar's layout to be edited by dragging (its menu).
     onTaskbarEdit: on('taskbar:edit'),
+    // A desktop widget's page asks the island's (desk.rs desk_ask): a
+    // widget's settings ({ what: 'settings', args: { widget } }), widgets
+    // put elsewhere ({ what: 'place', args: { items, where, stack } }).
+    onDeskAsk: on('desk:ask'),
+    // The desktop's widgets (desk.rs): entries put there or changed, ids gone.
+    desk: {
+      keep: (entries, gone) => invoke('desk_keep', { entries: entries || [], gone: gone || [] }),
+    },
     // Windows' Start menu opened or closed ({ open }), for the Start button.
     onStart: on('taskbar:start'),
     settings: {
