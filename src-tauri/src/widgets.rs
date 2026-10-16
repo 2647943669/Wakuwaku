@@ -5,8 +5,9 @@
 //   POST /widget { id, label, value?, detail?, icon?, color?, ttl?, nudge? }
 //     id     a-z 0-9 _ -, up to 40; the same id again replaces it
 //     label  up to 40 characters; value up to 24
-//     detail up to 24, shown after the value in the open island only (the
-//            weather's range for the day): the compact one stays short
+//     detail what its larger sizes show (detail_of): { sizes, series, rows,
+//            extra }; a string is its extra, up to 24, shown after the value
+//            in the open island (the weather's range for the day), as before
 //     icon   one of ICONS, else a dot
 //     color  #rgb or #rrggbb, for the value
 //     ttl    how long (s) it stays without a new one: 300 by default, 10 to 86400
@@ -49,8 +50,8 @@ pub struct Widget {
     pub id: String,
     label: Value,
     value: Value,
-    // A script's few words more, for the open island alone.
-    detail: String,
+    // What its larger sizes show (detail_of), or null.
+    detail: Value,
     icon: String,
     color: String,
     // When it goes, if no new one comes (ms); never, for the built-in ones.
@@ -77,6 +78,127 @@ pub fn is_id(id: &str) -> bool {
 fn is_color(c: &str) -> bool {
     let hex = c.strip_prefix('#').unwrap_or("");
     matches!(hex.len(), 3 | 6) && hex.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+// --- A widget's detail: what its larger sizes show ----------------------------------
+// A widget is small (its icon and value) at least; its detail says which
+// sizes it has and gives them more to show (the page draws them,
+// wcards.js):
+//   sizes   some of "s", "m", "l", in that order
+//   series  { points: [n…], unit, hi?, lo? }: a curve or bars, the last
+//           POINTS points kept
+//   rows    a list, ROWS at most, each an object of its words: who or what
+//           (from, code, name, when, price, change, value, unit, kind, icon:
+//           NAME characters each), what about (subject, text: SUBJECT), when
+//           (at, ms) and a small curve of its own (points)
+//   extra   a few words more (EXTRA): under the value, after it in a line
+// So a script cannot swell the island: anything else is dropped, longer
+// words cut with "…". A string, as scripts sent before (the weather's range
+// for the day), is the extra.
+const POINTS: usize = 120;
+const ROWS: usize = 12;
+const NAME: usize = 16;
+const SUBJECT: usize = 60;
+const EXTRA: usize = 24;
+const ROW_NAMES: [&str; 10] = ["from", "code", "name", "when", "price", "change", "value", "unit", "kind", "icon"];
+const ROW_SUBJECTS: [&str; 2] = ["subject", "text"];
+
+// Words cut to max characters, the last of them "…" when cut.
+fn cut(s: &str, max: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+// Words, or a number as words (a price sent as one).
+fn words_of(v: &Value, max: usize) -> Option<String> {
+    let s = match v {
+        Value::String(s) => cut(s, max),
+        Value::Number(n) => cut(&n.to_string(), max),
+        _ => return None,
+    };
+    (!s.is_empty()).then_some(s)
+}
+
+// Numbers alone, finite, the last POINTS of them.
+fn points_of(v: &Value) -> Option<Value> {
+    let all: Vec<f64> = v.as_array()?.iter().filter_map(Value::as_f64).filter(|n| n.is_finite()).collect();
+    (!all.is_empty()).then(|| json!(all[all.len().saturating_sub(POINTS)..]))
+}
+
+fn finite(v: Option<&Value>) -> Option<f64> {
+    v.and_then(Value::as_f64).filter(|n| n.is_finite())
+}
+
+// A detail as sent, checked and cut: an object of what is good in it, or
+// null for none.
+pub fn detail_of(v: Option<&Value>) -> Value {
+    let Some(v) = v else { return Value::Null };
+    if v.is_string() {
+        return words_of(v, EXTRA).map_or(Value::Null, |extra| json!({ "extra": extra }));
+    }
+    let Some(o) = v.as_object() else { return Value::Null };
+    let mut out = serde_json::Map::new();
+    if let Some(sizes) = o.get("sizes").and_then(Value::as_array) {
+        let list: Vec<&str> = ["s", "m", "l"].into_iter().filter(|z| sizes.iter().any(|s| s.as_str() == Some(z))).collect();
+        if !list.is_empty() {
+            out.insert("sizes".into(), json!(list));
+        }
+    }
+    if let Some(s) = o.get("series").and_then(Value::as_object) {
+        if let Some(points) = s.get("points").and_then(points_of) {
+            let mut series = serde_json::Map::new();
+            series.insert("points".into(), points);
+            if let Some(unit) = s.get("unit").and_then(|u| words_of(u, NAME)) {
+                series.insert("unit".into(), json!(unit));
+            }
+            for k in ["hi", "lo"] {
+                if let Some(n) = finite(s.get(k)) {
+                    series.insert(k.into(), json!(n));
+                }
+            }
+            out.insert("series".into(), Value::Object(series));
+        }
+    }
+    if let Some(rows) = o.get("rows").and_then(Value::as_array) {
+        let rows: Vec<Value> = rows
+            .iter()
+            .filter_map(Value::as_object)
+            .map(|r| {
+                let mut row = serde_json::Map::new();
+                for (key, v) in r {
+                    let kept = match key.as_str() {
+                        k if ROW_NAMES.contains(&k) => words_of(v, NAME).map(Value::from),
+                        k if ROW_SUBJECTS.contains(&k) => words_of(v, SUBJECT).map(Value::from),
+                        "at" => finite(Some(v)).filter(|n| *n >= 0.0).map(|n| json!(n.round() as u64)),
+                        "points" => points_of(v),
+                        _ => None,
+                    };
+                    if let Some(kept) = kept {
+                        row.insert(key.clone(), kept);
+                    }
+                }
+                Value::Object(row)
+            })
+            .filter(|r| r.as_object().is_some_and(|r| !r.is_empty()))
+            .take(ROWS)
+            .collect();
+        if !rows.is_empty() {
+            out.insert("rows".into(), Value::Array(rows));
+        }
+    }
+    if let Some(extra) = o.get("extra").and_then(|e| words_of(e, EXTRA)) {
+        out.insert("extra".into(), json!(extra));
+    }
+    if out.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(out)
+    }
 }
 
 // What a script sent, checked.
@@ -110,7 +232,7 @@ impl Widgets {
             id: id.into(),
             label: json!(label),
             value: json!(clip(s("value"), 24)),
-            detail: clip(s("detail"), 24),
+            detail: detail_of(v.get("detail")),
             icon: if ICONS.contains(&s("icon")) { s("icon").into() } else { "dot".into() },
             color: if is_color(s("color")) { s("color").into() } else { String::new() },
             until: Some(now + ttl * 1000),
@@ -138,26 +260,35 @@ impl Widgets {
 
     // A built-in widget's words, now. True when they changed.
     pub fn set_built_in(&mut self, id: &str, value: Value, now: u64) -> bool {
+        let detail = self.list.iter().find(|w| w.id == id).map_or(Value::Null, |w| w.detail.clone());
+        self.set_built_in_with(id, value, detail, now)
+    }
+
+    // The same, with what its larger sizes show (its own, not a script's:
+    // as it is).
+    pub fn set_built_in_with(&mut self, id: &str, value: Value, detail: Value, now: u64) -> bool {
         if let Some(w) = self.list.iter_mut().find(|w| w.id == id) {
-            if w.value == value {
+            if w.value == value && w.detail == detail {
                 return false;
             }
             w.value = value;
+            w.detail = detail;
             w.at = now;
             return true;
         }
         let at = self.list.iter().take_while(|w| is_built_in(&w.id)).count();
-        self.list.insert(at, Widget { value, at: now, ..built_in(id) });
+        self.list.insert(at, Widget { value, detail, at: now, ..built_in(id) });
         true
     }
 
     // One of hers that is not built in (a mail account's): its words now,
-    // kept until she takes it away. True when they changed.
+    // and its detail (its newest letters), kept until she takes it away.
+    // True when they changed.
     #[allow(clippy::too_many_arguments)]
-    pub fn put_owned(&mut self, id: &str, icon: &str, color: &str, label: Value, value: Value, private: bool, now: u64) -> bool {
-        let widget = Widget { id: id.into(), label, value, detail: String::new(), icon: icon.into(), color: color.into(), until: None, at: now, private };
+    pub fn put_owned(&mut self, id: &str, icon: &str, color: &str, label: Value, value: Value, detail: Value, private: bool, now: u64) -> bool {
+        let widget = Widget { id: id.into(), label, value, detail, icon: icon.into(), color: color.into(), until: None, at: now, private };
         match self.list.iter_mut().find(|w| w.id == id) {
-            Some(old) if old.label == widget.label && old.value == widget.value && old.color == widget.color => false,
+            Some(old) if old.label == widget.label && old.value == widget.value && old.color == widget.color && old.detail == widget.detail => false,
             Some(old) => {
                 *old = widget;
                 true
@@ -244,7 +375,7 @@ fn is_built_in(id: &str) -> bool {
 // A built-in widget with nothing to say yet.
 fn built_in(id: &str) -> Widget {
     let (icon, color) = BUILT_IN.iter().find(|b| b.0 == id).map_or(("dot", ""), |b| (b.1, b.2));
-    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: String::new(), icon: icon.into(), color: color.into(), until: None, at: 0, private: false }
+    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: Value::Null, icon: icon.into(), color: color.into(), until: None, at: 0, private: false }
 }
 
 // --- Today: what the day has seen ---------------------------------------------------
@@ -257,6 +388,8 @@ pub struct Today {
     pub agy_turns: u64,
     pub worked_ms: u64,
     pub approvals: u64,
+    // The turns begun in each hour of the day, local time (the widget's bars).
+    pub hours: [u64; 24],
 }
 
 impl Today {
@@ -266,12 +399,29 @@ impl Today {
             return Today { date: date.into(), ..Today::default() };
         }
         let n = |k: &str| saved[k].as_u64().unwrap_or(0);
-        Today { date: date.into(), turns: n("turns"), agy_turns: n("agyTurns"), worked_ms: n("workedMs"), approvals: n("approvals") }
+        let mut hours = [0; 24];
+        for (h, v) in hours.iter_mut().zip(saved["hours"].as_array().into_iter().flatten()) {
+            *h = v.as_u64().unwrap_or(0);
+        }
+        Today { date: date.into(), turns: n("turns"), agy_turns: n("agyTurns"), worked_ms: n("workedMs"), approvals: n("approvals"), hours }
     }
 
     pub fn save(&self, dir: &Path) {
-        let body = json!({ "date": self.date, "turns": self.turns, "agyTurns": self.agy_turns, "workedMs": self.worked_ms, "approvals": self.approvals });
+        let body = json!({ "date": self.date, "turns": self.turns, "agyTurns": self.agy_turns, "workedMs": self.worked_ms, "approvals": self.approvals, "hours": self.hours });
         let _ = std::fs::write(dir.join("today.json"), body.to_string());
+    }
+
+    // Turns begun now: counted, and in this hour of the day.
+    pub fn begun(&mut self, turns: u64) {
+        self.turns += turns;
+        self.hours[local_hour()] += turns;
+    }
+
+    // What its larger sizes show: the turns hour by hour (bars, the page
+    // lights the hour it is). Its tokens are the tokens widget's, which the
+    // page puts with it.
+    pub fn detail(&self) -> Value {
+        json!({ "sizes": ["s", "m", "l"], "series": { "points": self.hours, "unit": "turns" } })
     }
 
     // A new day starts from nothing. True when it did.
@@ -306,6 +456,11 @@ pub fn local_date() -> String {
 // Local midnight, in ms since 1970.
 pub fn local_midnight() -> u64 {
     crate::now_ms().saturating_sub(local_now().3)
+}
+
+// The hour of the day, local time, 0 to 23.
+pub fn local_hour() -> usize {
+    ((local_now().3 / 3_600_000) as usize).min(23)
 }
 
 // The local year, month, day, and ms since midnight.
@@ -619,12 +774,27 @@ mod sys {
     }
 
     pub fn memory_load() -> Option<u32> {
+        memory().map(|m| m.0)
+    }
+
+    // The memory's load (%), its total and what is available (bytes).
+    pub fn memory() -> Option<(u32, u64, u64)> {
         // SAFETY: a struct of the size the call asks for.
         unsafe {
             let mut s: MemoryStatus = std::mem::zeroed();
             s.length = std::mem::size_of::<MemoryStatus>() as u32;
-            (GlobalMemoryStatusEx(&mut s) != 0).then_some(s.load)
+            (GlobalMemoryStatusEx(&mut s) != 0).then_some((s.load, s.total_phys, s.avail_phys))
         }
+    }
+
+    // How long Windows has been up (ms).
+    pub fn up_ms() -> u64 {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetTickCount64() -> u64;
+        }
+        // SAFETY: no arguments.
+        unsafe { GetTickCount64() }
     }
 
     // Windows' build (26100 for 24H2), or 0 when it cannot be read.
@@ -667,6 +837,12 @@ mod sys {
     }
     pub fn memory_load() -> Option<u32> {
         None
+    }
+    pub fn memory() -> Option<(u32, u64, u64)> {
+        None
+    }
+    pub fn up_ms() -> u64 {
+        0
     }
     pub fn battery() -> Option<(u8, bool, Option<u32>)> {
         None
@@ -797,6 +973,10 @@ pub struct Watching {
     pub lhm: crate::lhm::Conf,
     pub quiet: bool,
     pub listing: bool,
+    // The pointer on her home (its card may be looked at): the hardware its
+    // card shows read too (the cards' GPU, drives and CPU speed), not only
+    // what is picked; never while nobody is.
+    pub looking: bool,
 }
 
 impl Watching {
@@ -818,8 +998,133 @@ impl Watching {
             lhm: crate::lhm::Conf { on: crate::hw::Source::asks_lhm(v, source), ..crate::lhm::Conf::from(v) },
             quiet: false,
             listing: false,
+            looking: false,
         }
     }
+}
+
+// The last minute of a reading, for a curve.
+#[derive(Default)]
+struct Minute(std::collections::VecDeque<(std::time::Instant, f64)>);
+
+impl Minute {
+    const SPAN: std::time::Duration = std::time::Duration::from_secs(60);
+
+    fn push(&mut self, v: f64) {
+        let now = std::time::Instant::now();
+        while self.0.front().is_some_and(|(at, _)| now.duration_since(*at) > Minute::SPAN) {
+            self.0.pop_front();
+        }
+        self.0.push_back((now, v));
+    }
+
+    fn points(&self) -> Vec<f64> {
+        self.0.iter().map(|(_, v)| (v * 10.0).round() / 10.0).collect()
+    }
+
+    fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+// What the monitor widget's larger sizes show, as read this turn: the CPU's
+// use (and over the last minute), speed and cores; the memory's load, in
+// use and total; the busiest card (its use, name, temperature) and drive
+// (its time busy, model), while they are read (Watching::looking); the
+// network's pace down and up (down over the last minute); how long Windows
+// has been up.
+#[derive(Default)]
+pub struct Seen {
+    pub cpu: Option<u64>,
+    pub cpu_minute: Vec<f64>,
+    pub mhz: Option<f64>,
+    pub cores: Option<(u64, u64)>,
+    pub memory: Option<(u32, u64, u64)>,
+    pub gpu: Option<(f64, String, Option<f64>)>,
+    pub disk: Option<(f64, String)>,
+    pub net: Option<(f64, f64)>,
+    pub down_minute: Vec<f64>,
+    pub up_ms: u64,
+}
+
+// Its detail (detail_of's shape): the CPU's minute as the series (0 to
+// 100); a row for each of what was read, by its kind (cpu, memory, gpu,
+// disk, net, uptime), its value in words as the island has them; one not
+// read is left out, and its card says it has no data.
+pub fn monitor_detail(s: &Seen) -> Value {
+    let gb = |b: u64| b as f64 / 1_073_741_824.0;
+    let mut rows = Vec::new();
+    if let Some(cpu) = s.cpu {
+        let mut row = json!({ "kind": "cpu", "value": format!("{cpu}%") });
+        if let Some(mhz) = s.mhz {
+            row["text"] = json!(format!("{:.1} GHz", mhz / 1000.0));
+        }
+        if let Some((cores, threads)) = s.cores {
+            (row["name"], row["unit"]) = (json!(cores.to_string()), json!(threads.to_string()));
+        }
+        rows.push(row);
+    }
+    if let Some((load, total, avail)) = s.memory {
+        rows.push(json!({ "kind": "memory", "value": format!("{load}%"), "text": format!("{:.1} / {:.0} GB", gb(total.saturating_sub(avail)), gb(total)) }));
+    }
+    if let Some((load, name, temp)) = &s.gpu {
+        // Its model without its maker's names (RTX 4080 Laptop GPU).
+        let model = ["NVIDIA ", "GeForce ", "AMD ", "Intel(R) "].iter().fold(name.trim(), |n, p| n.strip_prefix(p).unwrap_or(n));
+        let mut row = json!({ "kind": "gpu", "value": format!("{:.0}%", load), "name": cut(model, NAME * 2) });
+        if let Some(t) = temp {
+            row["text"] = json!(format!("{t:.0}°"));
+        }
+        rows.push(row);
+    }
+    if let Some((busy, model)) = &s.disk {
+        rows.push(json!({ "kind": "disk", "value": format!("{:.0}%", busy), "name": cut(model, NAME * 2) }));
+    }
+    if let Some((down, up)) = s.net {
+        rows.push(json!({ "kind": "net", "value": rate(down), "text": rate(up), "points": s.down_minute }));
+    }
+    if s.up_ms > 0 {
+        rows.push(json!({ "kind": "uptime", "value": (s.up_ms / 60_000 * 60).to_string() }));
+    }
+    let mut detail = json!({ "sizes": ["s", "m", "l"], "rows": rows });
+    if !s.cpu_minute.is_empty() {
+        detail["series"] = json!({ "points": s.cpu_minute, "unit": "%", "hi": 100, "lo": 0 });
+    }
+    detail
+}
+
+// Of the built-in source's last turn, what the monitor widget's card shows:
+// the CPU's speed and cores, the card with a temperature (a discrete one)
+// else the busiest, the busiest drive; and the ids to read for them next
+// turn while it may be looked at (each card's use and temperature, each
+// drive's time busy, the CPU's speed).
+fn card_hardware(round: &crate::hw::Round) -> (Option<f64>, Option<(u64, u64)>, Option<(f64, String, Option<f64>)>, Option<(f64, String)>, Vec<String>) {
+    use crate::hw::Class;
+    let value = |id: &str| round.readings.iter().find(|r| r.id == id).and_then(|r| r.value);
+    let mhz = value("/cpu/0/clock/0");
+    let cores = round.hardware.iter().find(|h| h.class == Class::Cpu).and_then(|h| Some((h.about["vars"]["cores"].as_u64()?, h.about["vars"]["threads"].as_u64()?)));
+    let mut also = vec!["/cpu/0/clock/0".to_string()];
+    let mut gpus = Vec::new();
+    let mut disks = Vec::new();
+    for h in &round.hardware {
+        match h.class {
+            Class::Gpu => {
+                also.extend([format!("{}/load/0", h.id), format!("{}/temperature/0", h.id)]);
+                if let Some(load) = value(&format!("{}/load/0", h.id)) {
+                    gpus.push((load, h.name.clone(), value(&format!("{}/temperature/0", h.id))));
+                }
+            }
+            Class::Disk => {
+                also.push(format!("{}/load/0", h.id));
+                if let Some(busy) = value(&format!("{}/load/0", h.id)) {
+                    disks.push((busy, h.name.clone()));
+                }
+            }
+            _ => {}
+        }
+    }
+    let gpu = gpus.iter().find(|g| g.2.is_some()).or_else(|| gpus.iter().max_by(|a, b| a.0.total_cmp(&b.0))).cloned();
+    let disk = disks.into_iter().max_by(|a, b| a.0.total_cmp(&b.0));
+    (mhz, cores, gpu, disk, also)
 }
 
 // The machine as the monitor reads it: CPU use and the network's pace
@@ -844,6 +1149,13 @@ pub struct Monitor {
     hw: crate::hw::Hw,
     // The hardware's source in effect at the last reading.
     source: crate::hw::Source,
+    // The widget's larger sizes (monitor_detail): the last minute of CPU use
+    // and of the pace down, the hardware its card asks to read while it may
+    // be looked at, and its detail as last read.
+    cpu_minute: Minute,
+    down_minute: Minute,
+    also: Vec<String>,
+    detail: Value,
 }
 
 impl Monitor {
@@ -860,7 +1172,16 @@ impl Monitor {
             lhm: crate::lhm::Lhm::new(),
             hw: crate::hw::Hw::new(),
             source: crate::hw::Source::Builtin,
+            cpu_minute: Minute::default(),
+            down_minute: Minute::default(),
+            also: Vec::new(),
+            detail: Value::Null,
         }
+    }
+
+    // What the widget's larger sizes show, as last read (monitor_detail).
+    pub fn detail(&self) -> Value {
+        self.detail.clone()
     }
 
     // Turned off: the hardware's counters and handles let go of (opened
@@ -868,6 +1189,9 @@ impl Monitor {
     pub fn rest(&mut self) {
         self.hw.stop();
         self.lhm.turn(&crate::lhm::Conf { on: false, ..crate::lhm::Conf::from(&Value::Null) }, false);
+        self.cpu_minute.clear();
+        self.down_minute.clear();
+        self.detail = Value::Null;
     }
 
     // The hardware's source in effect at the last reading.
@@ -924,9 +1248,10 @@ impl Monitor {
             part("cpu", format!("{cpu}%"));
             basics.cpu = Some(cpu as f64);
         }
-        if let Some(memory) = w.memory.then(sys::memory_load).flatten() {
-            part("memory", format!("{memory}%"));
-            basics.memory = Some(f64::from(memory));
+        let memory = w.memory.then(sys::memory).flatten();
+        if let Some((load, _, _)) = memory {
+            part("memory", format!("{load}%"));
+            basics.memory = Some(f64::from(load));
         }
         let read = if w.net { self.adapters.get_or_insert_with(sys::Net::new).read() } else { None };
         // The adapters counted changed: no pace across that (the last kept).
@@ -965,12 +1290,30 @@ impl Monitor {
         if self.source == crate::hw::Source::Lhm {
             parts.extend(self.lhm.parts(&w.lhm));
         }
+        let mut seen = Seen { cpu: self.cpu, memory, net: self.net, up_ms: sys::up_ms(), ..Seen::default() };
         if self.source == crate::hw::Source::Builtin {
-            self.hw.turn(&w.hw, w.listing, &basics, [w.cpu, w.memory, w.net, w.battery]);
+            // The card's hardware too while it may be looked at (found at the
+            // turn before: every card and drive is listed, read or not).
+            let toggles = [w.cpu, w.memory, w.net, w.battery];
+            if w.looking {
+                self.hw.turn_also(&w.hw, w.listing, &self.also, &basics, toggles);
+            } else {
+                self.hw.turn(&w.hw, w.listing, &basics, toggles);
+            }
             parts.extend(self.hw.parts(&w.hw));
+            (seen.mhz, seen.cores, seen.gpu, seen.disk, self.also) = card_hardware(self.hw.round());
         } else {
             self.hw.stop();
         }
+        // The widget's curves, a point a reading.
+        if let Some(cpu) = self.cpu {
+            self.cpu_minute.push(cpu as f64);
+        }
+        if let Some((down, _)) = self.net {
+            self.down_minute.push(down);
+        }
+        (seen.cpu_minute, seen.down_minute) = (self.cpu_minute.points(), self.down_minute.points());
+        self.detail = monitor_detail(&seen);
         (!parts.is_empty()).then(|| json!({ "parts": parts }))
     }
 }
@@ -1067,15 +1410,17 @@ mod tests {
         let mut w = Widgets::default();
         let put = w.put(&json!({ "id": "weather", "label": "上海 · 多云", "value": "22°", "icon": "weather", "color": "#ffb340" }), 1_000).unwrap();
         assert_eq!((put.id.as_str(), put.nudge), ("weather", None));
-        assert_eq!(scripted(w.view(1_000, &[], &[], &|_| None))[0]["detail"], "", "no detail sent");
+        assert_eq!(scripted(w.view(1_000, &[], &[], &|_| None))[0]["detail"], Value::Null, "no detail sent");
         w.put(&json!({ "id": "weather", "label": "上海 · 晴", "value": "24°", "detail": " 14°~22° ", "icon": "nope", "color": "red" }), 2_000).unwrap();
         let view = scripted(w.view(2_000, &[], &[], &|_| None));
         assert_eq!(view.as_array().unwrap().len(), 1);
         assert_eq!((view[0]["label"].as_str(), view[0]["icon"].as_str(), view[0]["color"].as_str()), (Some("上海 · 晴"), Some("dot"), Some("")));
-        assert_eq!(view[0]["detail"], "14°~22°");
+        // A string, as scripts sent it before: the extra.
+        assert_eq!(view[0]["detail"], json!({ "extra": "14°~22°" }));
         assert_eq!(view[0]["leftMs"], 300_000);
         w.put(&json!({ "id": "weather", "label": "x", "detail": "一二三四五六七八九十一二三四五六七八九十一二三四五六" }), 2_500).unwrap();
-        assert_eq!(scripted(w.view(2_500, &[], &[], &|_| None))[0]["detail"].as_str().unwrap().chars().count(), 24);
+        let extra = scripted(w.view(2_500, &[], &[], &|_| None))[0]["detail"]["extra"].as_str().unwrap().to_string();
+        assert_eq!((extra.chars().count(), extra.ends_with('…')), (24, true));
         w.put(&json!({ "id": "weather", "remove": true }), 3_000).unwrap();
         assert!(scripted(w.view(3_000, &[], &[], &|_| None)).as_array().unwrap().is_empty());
     }
@@ -1123,8 +1468,8 @@ mod tests {
         assert_eq!((view[0]["id"].clone(), view[0]["plugin"].clone()), (json!("a"), json!("mine")));
         assert!(w.remove_scripted(|id| id == "a") && !w.remove_scripted(|id| id == "sys"));
         // A mail account's: hers, kept, not a script's to take over.
-        assert!(w.put_owned("inbox-1", "mail", "", json!("王总：周五的方案"), json!("3"), true, 0));
-        assert!(!w.put_owned("inbox-1", "mail", "", json!("王总：周五的方案"), json!("3"), true, 9));
+        assert!(w.put_owned("inbox-1", "mail", "", json!("王总：周五的方案"), json!("3"), Value::Null, true, 0));
+        assert!(!w.put_owned("inbox-1", "mail", "", json!("王总：周五的方案"), json!("3"), Value::Null, true, 9));
         assert!(w.put(&json!({ "id": "inbox-1", "label": "mine" }), 0).is_err());
         assert_eq!(w.view(0, &[], &[], &none)[3]["from"], "mail");
         assert!(!w.expire(u64::MAX) && w.remove("inbox-1"));
@@ -1301,7 +1646,7 @@ mod tests {
 
     #[test]
     fn today_under_a_minute_in_seconds_and_antigravity_s_approvals_never_counted() {
-        let words = |turns, agy_turns, worked_ms, approvals| Today { date: String::new(), turns, agy_turns, worked_ms, approvals }.words();
+        let words = |turns, agy_turns, worked_ms, approvals| Today { date: String::new(), turns, agy_turns, worked_ms, approvals, hours: [0; 24] }.words();
         let seconds = |n: &str| json!({ "key": "widget.todaySeconds", "vars": { "n": n } });
         assert_eq!(words(3, 0, 45_600, 1)["vars"]["time"], seconds("45"));
         assert_eq!(words(1, 0, 400, 0)["vars"]["time"], seconds("1"));
@@ -1312,9 +1657,160 @@ mod tests {
         assert_eq!(words(0, 0, 0, 0)["key"], "widget.todayValue");
         let dir = std::env::temp_dir().join(format!("wakuwaku-today-agy-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let t = Today { date: "2026-10-14".into(), turns: 4, agy_turns: 3, worked_ms: 1, approvals: 0 };
+        let t = Today { date: "2026-10-14".into(), turns: 4, agy_turns: 3, worked_ms: 1, approvals: 0, hours: [0; 24] };
         t.save(&dir);
         assert_eq!(Today::load(&dir, "2026-10-14"), t);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // A detail as the spec has it: the sizes in their order, a series, rows,
+    // a few words more; anything else dropped, long words cut with "…", so a
+    // script cannot swell the island.
+    #[test]
+    fn a_detail_is_checked_and_cut() {
+        assert_eq!(detail_of(None), Value::Null);
+        assert_eq!(detail_of(Some(&json!("  "))), Value::Null);
+        assert_eq!(detail_of(Some(&json!(42))), Value::Null);
+        assert_eq!(detail_of(Some(&json!({}))), Value::Null);
+        assert_eq!(detail_of(Some(&json!(" 阴 · Dresden "))), json!({ "extra": "阴 · Dresden" }));
+        let d = detail_of(Some(&json!({
+            "sizes": ["l", "x", "s", "s"],
+            "series": { "points": (0..150).map(f64::from).collect::<Vec<_>>(), "unit": "一二三四五六七八九十一二三四五六七", "hi": 100, "lo": "low" },
+            "rows": [
+                { "from": "Werner Haselmayr-Schneider", "subject": "x".repeat(70), "at": 1_791_890_400_250u64, "secret": "no" },
+                { "code": "AAPL", "price": 230.4, "change": "+0.8%", "points": [1, "two", 3] },
+                { "nothing": true },
+                "not a row",
+            ],
+            "extra": "最高 16° 最低 8°",
+            "colour": "#fff",
+        })));
+        assert_eq!(d["sizes"], json!(["s", "l"]));
+        let points = d["series"]["points"].as_array().unwrap();
+        // The last POINTS kept.
+        assert_eq!((points.len(), points[0].as_f64(), points[119].as_f64()), (120, Some(30.0), Some(149.0)));
+        assert_eq!((d["series"]["unit"].as_str().unwrap().chars().count(), d["series"]["hi"].as_f64(), d["series"].get("lo")), (16, Some(100.0), None));
+        let rows = d["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 2, "{d}");
+        assert_eq!(rows[0]["from"], "Werner Haselmay…");
+        assert_eq!((rows[0]["subject"].as_str().unwrap().chars().count(), rows[0]["at"].as_u64(), rows[0].get("secret")), (60, Some(1_791_890_400_250), None));
+        // A number for words is taken as words; the points numbers alone.
+        assert_eq!((rows[1]["price"].as_str(), rows[1]["points"].clone()), (Some("230.4"), json!([1.0, 3.0])));
+        assert_eq!(d["extra"], "最高 16° 最低 8°");
+        assert!(d.get("colour").is_none());
+        // Twelve rows at most.
+        let many: Vec<_> = (0..20).map(|i| json!({ "name": format!("r{i}") })).collect();
+        assert_eq!(detail_of(Some(&json!({ "rows": many })))["rows"].as_array().unwrap().len(), 12);
+        // A series with no number in it is none.
+        assert_eq!(detail_of(Some(&json!({ "series": { "points": ["a", null] } }))), Value::Null);
+        // Sent with a widget, kept with it; another without, gone.
+        let mut w = Widgets::default();
+        w.put(&json!({ "id": "weather", "label": "Dresden · 阴", "value": "11°", "detail": { "sizes": ["s", "m", "l"], "extra": "8°~16°" } }), 0).unwrap();
+        assert_eq!(scripted(w.view(0, &[], &[], &|_| None))[0]["detail"], json!({ "sizes": ["s", "m", "l"], "extra": "8°~16°" }));
+        w.put(&json!({ "id": "weather", "label": "Dresden · 阴", "value": "11°" }), 1).unwrap();
+        assert_eq!(scripted(w.view(1, &[], &[], &|_| None))[0]["detail"], Value::Null);
+    }
+
+    // A built-in widget's detail changes it as its words do; one set without
+    // a detail keeps the one it had. A mail account's, the same.
+    #[test]
+    fn a_built_in_detail_is_kept_with_its_words() {
+        let mut w = Widgets::default();
+        assert!(w.set_built_in_with("today", json!("1"), json!({ "sizes": ["s"] }), 0));
+        assert!(!w.set_built_in_with("today", json!("1"), json!({ "sizes": ["s"] }), 1));
+        assert!(w.set_built_in_with("today", json!("1"), json!({ "sizes": ["s", "m"] }), 2));
+        assert!(w.set_built_in("today", json!("2"), 3));
+        let today = w.view(3, &[], &[], &|_| None).as_array().unwrap().iter().find(|x| x["id"] == "today").cloned().unwrap();
+        assert_eq!(today["detail"], json!({ "sizes": ["s", "m"] }));
+        let rows = json!({ "rows": [{ "from": "Anna", "subject": "周五见" }] });
+        assert!(w.put_owned("inbox-1", "mail", "", json!("Anna：周五见"), json!("1"), rows.clone(), true, 0));
+        assert!(!w.put_owned("inbox-1", "mail", "", json!("Anna：周五见"), json!("1"), rows, true, 1));
+        assert!(w.put_owned("inbox-1", "mail", "", json!("Anna：周五见"), json!("1"), json!({ "rows": [] }), true, 2));
+    }
+
+    // Today's turns by the hour: counted in the hour begun, kept with the
+    // day, gone with it; its detail the bars.
+    #[test]
+    fn today_counts_its_turns_by_the_hour() {
+        let dir = std::env::temp_dir().join(format!("wakuwaku-today-hours-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut t = Today::load(&dir, "2026-10-16");
+        t.begun(2);
+        t.begun(1);
+        let hour = local_hour();
+        assert_eq!((t.turns, t.hours[hour], t.hours.iter().sum::<u64>()), (3, 3, 3));
+        t.save(&dir);
+        assert_eq!(Today::load(&dir, "2026-10-16").hours, t.hours);
+        assert_eq!(Today::load(&dir, "2026-10-17").hours, [0; 24]);
+        let d = t.detail();
+        assert_eq!((d["sizes"].clone(), d["series"]["points"].as_array().unwrap().len()), (json!(["s", "m", "l"]), 24));
+        assert_eq!(d["series"]["points"][hour], 3);
+        assert!(t.roll("2026-10-17") && t.hours == [0; 24]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // The monitor widget's detail: a row for each thing read, by its kind,
+    // none for what was not (its card says it has no data); the CPU's minute
+    // as the series.
+    #[test]
+    fn the_monitors_detail_has_what_was_read() {
+        let gb = 1_073_741_824u64;
+        let seen = Seen {
+            cpu: Some(17),
+            cpu_minute: vec![12.0, 17.0],
+            mhz: Some(3_456.0),
+            cores: Some((16, 32)),
+            memory: Some((44, 32 * gb, 18 * gb)),
+            gpu: Some((23.4, "NVIDIA GeForce RTX 4080 Laptop GPU".into(), Some(52.4))),
+            disk: Some((61.0, "Samsung SSD 990 PRO 2TB".into())),
+            net: Some((7_400.0, 337_000.0)),
+            down_minute: vec![7_400.0],
+            up_ms: 273_600_123,
+        };
+        let d = monitor_detail(&seen);
+        let row = |kind: &str| d["rows"].as_array().unwrap().iter().find(|r| r["kind"] == kind).cloned().unwrap_or(Value::Null);
+        assert_eq!(row("cpu"), json!({ "kind": "cpu", "value": "17%", "text": "3.5 GHz", "name": "16", "unit": "32" }));
+        assert_eq!(row("memory"), json!({ "kind": "memory", "value": "44%", "text": "14.0 / 32 GB" }));
+        assert_eq!(row("gpu"), json!({ "kind": "gpu", "value": "23%", "name": "RTX 4080 Laptop GPU", "text": "52°" }));
+        assert_eq!(row("disk")["value"], "61%");
+        assert_eq!(row("net"), json!({ "kind": "net", "value": "7.4K", "text": "337K", "points": [7400.0] }));
+        // Up for 3 days and 4 hours, to the minute.
+        assert_eq!(row("uptime")["value"], "273600");
+        assert_eq!(d["series"], json!({ "points": [12.0, 17.0], "unit": "%", "hi": 100, "lo": 0 }));
+        // Nothing but the CPU read: no rows for the rest, no series yet.
+        let alone = monitor_detail(&Seen { cpu: Some(5), ..Seen::default() });
+        assert_eq!(alone, json!({ "sizes": ["s", "m", "l"], "rows": [{ "kind": "cpu", "value": "5%" }] }));
+    }
+
+    // Of the built-in source's turn, the card's hardware: the card with a
+    // temperature (a discrete one) before a busier one without, the busiest
+    // drive; and what to read for them, every card and drive.
+    #[test]
+    fn the_monitors_card_takes_the_discrete_card_and_the_busiest_drive() {
+        use crate::hw::{Class, Hardware, Reading, Round};
+        use crate::lhm::Kind;
+        let hw = |id: &str, class, name: &str| Hardware { id: id.into(), class, name: name.into(), about: Value::Null, health: None };
+        let reading = |id: &str, hardware_id: &str, kind, value| Reading { id: id.into(), hardware_id: hardware_id.into(), label: "hw.load", kind, value, of: None, warn: None, toggle: None, info: false };
+        let mut cpu = hw("/cpu/0", Class::Cpu, "AMD Ryzen 9 9955HX");
+        cpu.about = json!({ "key": "hw.cores", "vars": { "cores": 16, "threads": 32 } });
+        let round = Round {
+            hardware: vec![cpu, hw("/gpu-amd/0", Class::Gpu, "AMD Radeon(TM) 610M"), hw("/gpu-nvidia/0", Class::Gpu, "RTX 4080"), hw("/disk/0", Class::Disk, "WD"), hw("/disk/1", Class::Disk, "Samsung")],
+            readings: vec![
+                reading("/cpu/0/clock/0", "/cpu/0", Kind::Clock, Some(3_656.0)),
+                reading("/gpu-amd/0/load/0", "/gpu-amd/0", Kind::Load, Some(40.0)),
+                reading("/gpu-nvidia/0/load/0", "/gpu-nvidia/0", Kind::Load, Some(15.0)),
+                reading("/gpu-nvidia/0/temperature/0", "/gpu-nvidia/0", Kind::Temperature, Some(40.4)),
+                reading("/disk/0/load/0", "/disk/0", Kind::Load, Some(3.0)),
+                reading("/disk/1/load/0", "/disk/1", Kind::Load, Some(61.0)),
+            ],
+        };
+        let (mhz, cores, gpu, disk, also) = card_hardware(&round);
+        assert_eq!((mhz, cores), (Some(3_656.0), Some((16, 32))));
+        assert_eq!(gpu, Some((15.0, "RTX 4080".to_string(), Some(40.4))));
+        assert_eq!(disk, Some((61.0, "Samsung".to_string())));
+        assert_eq!(also, ["/cpu/0/clock/0", "/gpu-amd/0/load/0", "/gpu-amd/0/temperature/0", "/gpu-nvidia/0/load/0", "/gpu-nvidia/0/temperature/0", "/disk/0/load/0", "/disk/1/load/0"]);
+        // Nothing read yet: none of them, the CPU's speed still asked for.
+        let (_, _, gpu, disk, also) = card_hardware(&Round::default());
+        assert_eq!((gpu, disk, also), (None, None, vec!["/cpu/0/clock/0".to_string()]));
     }
 }

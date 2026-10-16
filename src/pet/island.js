@@ -569,19 +569,61 @@
   const TURN_MS = 320
   const isPinned = () => !!monitor && config.monitor?.pin !== false
 
-  // A widget's line in the open island: the one shown is lit; its detail
-  // (the weather's range for the day) after its value, here alone.
+  // A widget's line in the open island (the spec's §6, wcards.js rowHTML),
+  // the one shown lit: small, its glyph, name and value in one line;
+  // medium, its name over a second line (the weather's range, the monitor's
+  // memory and network), a small curve where it has a series. One with a
+  // large size has a ›: a press unfolds its card in place under it (one at
+  // a time; again, folded), the › turned; one without opens its settings,
+  // as before. A right press: its menu (openMenu). Each row's size is the
+  // person's (widgetSize, from the menu); unset, medium where it has more
+  // to say than its value, small else.
+  const isleCtx = () => ({ lang, light: inkLight, detailed: isDetailed(), width: cardWidth(), hour: new Date().getHours(), now: Date.now(), all: allWidgets })
+  // The card as wide as the open island's lines (the spec: about 270):
+  // the island at its widest, less her room and its padding, the card's.
+  const cardWidth = () => (isHome() ? OPEN_MAX_W - 124 - 22 : OPEN_BARE_MAX_W - 18 - 22) + 16 - 24
+  function rowSize(w) {
+    const set = config.widgetSize?.[w.id]
+    if (set === 'S' || set === 'M') return set === 'M' && !Widgets.sizesOf(w).includes('m') ? 'S' : set
+    const d = Widgets.detailOf(w)
+    const more = d.extra || d.series || ['monitor', 'today', 'tokens', 'weather'].includes(WCards.kindOf(w))
+    return more && Widgets.sizesOf(w).includes('m') ? 'M' : 'S'
+  }
+  function setRowSize(id, size) {
+    window.pet.settings.set({ widgetSize: { ...(config.widgetSize || {}), [id]: size } })
+  }
+  // The widget whose card is unfolded, and since when (its unfolding carries
+  // on, not begun again, as the island is drawn anew every second).
+  let cardFor = null
+  let cardSince = 0
+  const CARD_MS = 340
+  function showCard(id) {
+    cardFor = id
+    cardSince = Date.now()
+    update()
+  }
+
   function widgetRow(widget, isShown) {
-    const { label, value, detail } = Widgets.words(lang, widget, isDetailed())
-    const row = el('span', isShown ? 'wrow on' : 'wrow')
+    const ctx = isleCtx()
+    const card = WCards.hasCard(widget)
+    const open = card && cardFor === widget.id
+    const size = rowSize(widget)
+    const row = el('span', `wrow wr-${size}${isShown ? ' on' : ''}${open ? ' open' : ''}${card ? ' carded' : ''}`)
     row.dataset.widget = widget.id
-    row.insertAdjacentHTML('afterbegin', Widgets.icon(widget.icon))
-    row.firstChild.style.color = ink(widget.color) || hue().idle
-    const valueText = el('span', 'wv', value)
-    valueText.style.color = ink(widget.color) || hue().idle
-    if (Widgets.partsOf(widget)) valueText.innerHTML = Widgets.partsHTML(widget)
-    row.append(el('span', 'wl', label), valueText, ...(detail ? [el('span', 'wd', detail)] : []))
-    return row
+    row.innerHTML = WCards.rowHTML(widget, size, ctx, { open, card })
+    fillHer(row, 14)
+    if (!open) return row
+    const unfolded = el('span', 'icard')
+    unfolded.dataset.card = widget.id
+    unfolded.style.setProperty('--c', WCards.colorOf(widget, ctx))
+    unfolded.innerHTML = WCards.cardHTML(widget, ctx, allWidgets)
+    fillHer(unfolded, 22)
+    const into = Date.now() - cardSince
+    if (into < CARD_MS) unfolded.style.animationDelay = `-${into}ms`
+    else unfolded.classList.add('still')
+    const pair = document.createDocumentFragment()
+    pair.append(row, unfolded)
+    return pair
   }
 
   // Whose it is (the session's name) with the clock, where it is, how the
@@ -681,6 +723,10 @@
       lines.append(off)
     }
     expanded.replaceChildren(...(isHome() ? [] : [stillHer(48)]), lines)
+    // A card unfolded: the island at its widest, the card as wide as its
+    // lines; a widget's menu open in it: as tall as the menu needs.
+    expanded.classList.toggle('has-card', !!expanded.querySelector('.icard'))
+    expanded.style.minHeight = menuRoom ? `${menuRoom}px` : ''
   }
 
   // On to the next widget (or back), and its turn starts over.
@@ -1476,14 +1522,20 @@
   const entryNodes = new Map()
   function entryNode(e) {
     let node = entryNodes.get(e.id)
+    if (node && node._type !== e.type) {
+      entryNodes.delete(e.id)
+      node = null
+    }
     if (!node) {
-      node = el('span', `tw tw-${e.type}`)
+      node = el('span', `tw tw-${e.type}${Widgets.isGroup(e) ? ' tw-group' : ''}`)
       node.dataset.part = e.id
       node.dataset.entry = e.id
+      node._type = e.type
       entryNodes.set(e.id, node)
     }
     node._entry = e
-    if (Widgets.isSource(e)) node.dataset.size = e.size === 'S' || isSide() ? 'S' : 'M'
+    // Several in one place are medium (a side bar's: small).
+    if (Widgets.isSource(e) || Widgets.isGroup(e)) node.dataset.size = isSide() || (e.size === 'S' && !Widgets.isGroup(e)) ? 'S' : 'M'
     return node
   }
 
@@ -1507,44 +1559,246 @@
     takeWidgets(allWidgets)
   }
 
-  // Each widget put there, as big as it is set: S its icon and value; M its
-  // value over its name, as the clock has the date under the time. One with
-  // nothing to say (not yet, or gone) greyed, with its name. A plugin with
-  // several (stocks, CI runs) shows them in turn.
+  // Each widget put there, as big as it is set and it has (widgets.js
+  // sizesOf: a countdown is small alone): S its glyph and value; M its value
+  // over its name, as the clock has the date under the time (wcards.js
+  // faceHTML: the glyph white or black as the tray's icons, only ups and
+  // downs in colour). One with nothing to say greyed, with its name; just
+  // put there with its plugin starting, a shimmer for a few seconds; its
+  // plugin stopped, an amber glyph and why. A plugin with several (stocks,
+  // CI runs) shows them in turn. Several in one place: a carousel (in turn,
+  // drawGroup) or a stack (the first, its others opened over it).
   const ENTRY_TURN_MS = 5000
+  // What the widgets on the strip are drawn with (wcards.js ctx).
+  const barCtx = () => ({ lang, light: isLight(), detailed: isDetailed(), width: STACK_CARD_W, hour: new Date().getHours(), now: Date.now() })
+  // Placed this long ago at most, a widget with nothing yet is loading.
+  const LOADING_MS = 20000
+  const placedAt = new Map()
+  // Why one shows nothing: its plugin wants its settings, stopped, is
+  // starting (just put there), or nothing yet.
+  function emptyState(m) {
+    const p = m.type === 'plugin' ? pluginsSaid.list.find(x => x.id === m.of) : null
+    if (p?.missing) return 'needs'
+    if (p?.state === 'stopped') return 'error'
+    const at = placedAt.get(Widgets.memberKey(m))
+    if ((p?.state === 'running' || (m.of === 'monitor' && monitorWanted())) && at && Date.now() - at < LOADING_MS) return 'loading'
+    return 'none'
+  }
+  const monitorWanted = () => allWidgets.some(w => w.id === 'monitor')
+  // Its size as drawn: M where it has a medium size, else S.
+  const sizeFor = (size, w) => (size === 'M' && (!w || Widgets.sizesOf(w).includes('m')) ? 'M' : 'S')
+
   function drawEntries() {
     const turn = Math.floor(Date.now() / ENTRY_TURN_MS)
     const detailed = isDetailed()
+    const ctx = barCtx()
     for (const node of entryNodes.values()) {
       const e = node._entry
       const name = Widgets.nameOf(lang, e, allWidgets, detailed)
       node.dataset.label = name
+      if (Widgets.isGroup(e)) {
+        drawGroup(node, e, ctx)
+        continue
+      }
       if (!Widgets.isSource(e)) continue
       const from = Widgets.sourcesOf(e, allWidgets)
       const w = from.length ? from[turn % from.length] : null
-      const said = w ? Widgets.words(lang, w, detailed) : null
-      const colour = (w && stripInk(w.color)) || stripHue().idle
       // A plugin with nothing to say: maybe it wants its settings first.
       if (!w && e.type === 'plugin') askPlugins()
-      const needs = !w && needsSettings(e)
-      const drawn = JSON.stringify([node.dataset.size, name, said, w?.icon || e.icon, colour, needs])
+      const state = w ? '' : emptyState(e)
+      const size = sizeFor(node.dataset.size, w)
+      const drawn = JSON.stringify([size, name, w && [w.label, w.value, w.detail, w.color, w.private], state, ctx.light, detailed, lang])
       if (node._drawn === drawn) continue
       node._drawn = drawn
-      const icon = el('span', 'twi')
-      icon.innerHTML = Widgets.icon(w?.icon || e.icon || 'dot')
-      icon.style.color = colour
-      const none = t(lang, needs ? 'taskbar.w.needs' : 'taskbar.w.none')
       node.classList.toggle('empty', !w)
-      node.title = w ? [said.label, said.value].filter(Boolean).join(' · ') : `${name} · ${none}`
-      if (node.dataset.size === 'S') node.replaceChildren(icon, el('b', 'twv', said?.value || '—'))
-      else {
-        const text = el('span', 'twt')
-        text.append(el('b', 'twv', said?.value || none), el('i', '', name))
-        node.replaceChildren(icon, text)
-      }
+      node.classList.toggle('S', size === 'S')
+      const said = w ? Widgets.words(lang, w, detailed) : null
+      node.title = w ? [said.label, said.value].filter(Boolean).join(' · ') : `${name} · ${t(lang, state === 'needs' ? 'taskbar.w.needs' : 'taskbar.w.none')}`
+      node.innerHTML = w ? WCards.faceHTML(w, size, ctx) : WCards.emptyFaceHTML(e, name, size, state, ctx)
+      fillHer(node, 16)
     }
     if (wgFor) drawWidgetPop()
+    if (stackFor) drawStackPop()
+    tickCarousels()
   }
+
+  // Her face where a widget's glyph is hers (wcards.js .wher: Claude 今天),
+  // still: one frame of her at rest, never played (a portrait that plays
+  // keeps a timer going, playPortraits).
+  function fillHer(root, px) {
+    for (const slot of root.querySelectorAll('.wher:empty')) slot.append(herBadge(px))
+  }
+  function herBadge(px) {
+    if (!spriteUrl) return face('idle', px)
+    const scale = px * PER_PX
+    const node = el('span', 'still-her badge')
+    node.style.cssText = `width:${px}px;height:${px}px`
+    const sheet = el('span', 'sheet')
+    sheet.style.cssText = `transform:translate(${-(CELL_W * scale - px) / 2}px, -2px) scale(${scale})`
+    sheetImage(sheet, spriteUrl)
+    const clip = CLIPS[MOOD_CLIP.idle]
+    if (clip) showFrame(sheet, clip.row, 0)
+    node.append(sheet)
+    return node
+  }
+
+  // --- Several in one place (the spec's §5) -------------------------------------------
+  // A carousel: one place as wide as its widest member's medium size, its
+  // members' widgets in turn, the next sliding up every 6 seconds (half a
+  // second, the spec's curve); a column of dots at its right, the one shown
+  // long. Not under the pointer (held), not while nobody is about (quiet),
+  // never by itself with motion reduced (the wheel turns it then, by a
+  // fade); news (a letter come) cuts in for a turn (widgets.js
+  // carouselTurn). One timer for them all, only while one may turn.
+  // A stack: the first shown (medium), two thin edges over it for the
+  // others; a press opens them all above it (drawStackPop).
+  const SLIDE_H = 40
+  const carousels = new Map()
+  let carouselTimer = 0
+  const stillMotionNow = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  function drawGroup(node, e, ctx) {
+    const slides = Widgets.slidesOf(e, allWidgets)
+    const size = node.dataset.size === 'S' ? 'S' : 'M'
+    const face = s => (s.w ? WCards.faceHTML(s.w, sizeFor(size, s.w), ctx) : WCards.emptyFaceHTML(s.member, memberName(s.member), size, emptyState(s.member), ctx))
+    const drawn = JSON.stringify([e.type, size, slides.map(s => (s.w ? [s.w.id, s.w.label, s.w.value, s.w.detail, s.w.color, s.w.private] : [Widgets.memberKey(s.member), emptyState(s.member)])), ctx.light, ctx.detailed, lang])
+    // A plugin's member with nothing (its settings first?).
+    if (slides.some(s => !s.w && s.member.type === 'plugin')) askPlugins()
+    if (e.type === 'stack') {
+      node.classList.toggle('open', stackFor === e.id)
+      if (node._drawn === drawn) return
+      node._drawn = drawn
+      const top = slides[0]
+      node.classList.toggle('empty', !top?.w)
+      node.title = t(lang, 'taskbar.w.stackTip', { n: slides.length })
+      node.innerHTML = top ? face(top) : ''
+      fillHer(node, 16)
+      return
+    }
+    // A carousel: its slides, then them again (it always turns upwards:
+    // from the last to the first it goes on into the second run, then is put
+    // back where the first run has it), and the dots.
+    const state = carousels.get(e.id) || Widgets.carouselStart(Date.now())
+    carousels.set(e.id, state)
+    if (node._drawn !== drawn) {
+      node._drawn = drawn
+      // News: a mailbox in it whose unread grew since the last look.
+      const was = node._words || new Map()
+      const news = slides.findIndex(s => s.w && Widgets.newsIn(was.get(s.w.id), s.w))
+      node._words = new Map(slides.filter(s => s.w).map(s => [s.w.id, s.w]))
+      node._slides = slides
+      const html = slides.map(s => `<span class="tws">${face(s)}</span>`).join('')
+      node.innerHTML = `<span class="reel">${html}${slides.length > 1 ? html : ''}</span>${slides.length > 1 ? `<span class="dots">${slides.map(() => '<i></i>').join('')}</span>` : ''}`
+      node.title = t(lang, 'taskbar.w.carouselTip', { n: slides.length })
+      fillHer(node, 16)
+      state.at = Math.min(state.at, Math.max(0, slides.length - 1))
+      showSlide(node, state.at, false)
+      if (news >= 0 && was.size) turnCarousel(e.id, news)
+    }
+  }
+
+  // The slide shown: the reel moved (sliding, or at once), the dot lit.
+  function showSlide(node, at, slide, by = 0) {
+    const reel = node.querySelector('.reel')
+    const n = node._slides?.length || 0
+    if (!reel || !n) return
+    for (const [i, dot] of [...node.querySelectorAll('.dots i')].entries()) dot.classList.toggle('on', i === at)
+    const from = node._at ?? at
+    node._at = at
+    if (!slide || stillMotionNow()) {
+      reel.style.transition = 'none'
+      reel.style.transform = `translateY(${-at * SLIDE_H}px)`
+      void reel.offsetHeight
+      reel.style.transition = ''
+      // By hand with motion reduced: a fade, not a slide (the spec's §9).
+      if (slide) reel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' })
+      return
+    }
+    // Upwards always: past the last into the second run, then back.
+    const target = at > from || by > 0 ? (at > from ? at : at + n) : at
+    reel.style.transform = `translateY(${-target * SLIDE_H}px)`
+    if (target >= n) {
+      clearTimeout(node._settle)
+      node._settle = setTimeout(() => showSlide(node, at, false), CAROUSEL_SLIDE_MS + 40)
+    }
+  }
+  const CAROUSEL_SLIDE_MS = 500
+
+  // One turned now: by news (to it), or by hand (by), else its next.
+  function turnCarousel(id, news = -1, by = 0) {
+    const node = entryNodes.get(id)
+    const state = carousels.get(id)
+    const n = node?._slides?.length || 0
+    if (!node || !state || n < 2) return
+    const now = Date.now()
+    const next = by ? Widgets.carouselStep(state, n, by, now) : Widgets.carouselTurn(news >= 0 ? state : { ...state, since: 0 }, n, now, news)
+    carousels.set(id, next)
+    if (next.at !== state.at) showSlide(node, next.at, true, by || 1)
+    tickCarousels()
+  }
+
+  // The timer: to the next carousel due, while any may turn by itself.
+  function tickCarousels() {
+    clearTimeout(carouselTimer)
+    carouselTimer = 0
+    if (!isOn() || home() !== 'taskbar' || quiet || stillMotionNow() || editLayout || document.hidden) return
+    const now = Date.now()
+    let soonest = Infinity
+    for (const [id, state] of carousels) {
+      const node = entryNodes.get(id)
+      if (!node?.isConnected || (node._slides?.length || 0) < 2) {
+        if (!node?.isConnected) carousels.delete(id)
+        continue
+      }
+      if (node._held) continue
+      const due = Widgets.carouselDue(state, now)
+      if (due <= 0) {
+        const next = Widgets.carouselTurn(state, node._slides.length, now)
+        carousels.set(id, next)
+        if (next.at !== state.at) showSlide(node, next.at, true, 1)
+        soonest = Math.min(soonest, Widgets.CAROUSEL_MS)
+      } else soonest = Math.min(soonest, due)
+    }
+    if (soonest < Infinity) carouselTimer = setTimeout(tickCarousels, soonest + 20)
+  }
+
+  // Held under the pointer; let go, its turn starts over.
+  barRest.addEventListener(
+    'mouseenter',
+    e => {
+      const node = e.target.closest?.('.tw-carousel')
+      if (node && e.target === node) node._held = true
+    },
+    true,
+  )
+  barRest.addEventListener(
+    'mouseleave',
+    e => {
+      const node = e.target.closest?.('.tw-carousel')
+      if (!node || e.target !== node) return
+      node._held = false
+      const state = carousels.get(node.dataset.entry)
+      if (state) carousels.set(node.dataset.entry, { ...state, since: Date.now() })
+      tickCarousels()
+    },
+    true,
+  )
+  // The wheel turns it by hand.
+  barRest.addEventListener(
+    'wheel',
+    e => {
+      const node = e.target.closest('.tw-carousel')
+      if (!node || editLayout) return
+      e.preventDefault()
+      turnCarousel(node.dataset.entry, -1, e.deltaY > 0 ? 1 : -1)
+    },
+    { passive: false },
+  )
+  matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => tickCarousels())
+  document.addEventListener('visibilitychange', () => tickCarousels())
+
+  // A member's name, as put there (a plugin's, a widget's label as it was).
+  const memberName = m => Widgets.nameOf(lang, { ...m, id: 'w0' }, allWidgets, isDetailed())
 
   // The plugins she runs as settings_get says, for which want their
   // settings filled in first (missing: a parameter they need): asked for
@@ -1643,7 +1897,7 @@
     if (!taskbarBuilt) {
       // As wide as the strip: her island lies over its slot in it (placeSlot).
       barRest.style.left = '0px'
-      barRest.replaceChildren(glide, zones.left, zones.center, growNode, zones.right, deskEdge, pop, wgPop, imePop)
+      barRest.replaceChildren(glide, zones.left, zones.center, growNode, zones.right, deskEdge, pop, wgPop, stackPop, imePop)
       taskbarBuilt = true
       trayDrawn = ''
       windowsDrawn = ''
@@ -1737,7 +1991,7 @@
   // place, jumps rather than slides a long way, and gives a little under a
   // press. Not over what opens above the buttons, nor while a tray icon or
   // a program's button is being dragged.
-  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tclock'
+  const GLIDE_ON = '.start, .win, .tout .ticon, .tchev, .tpriv, .kbd .ime, .tquick, .face.mon, .tw-widget, .tw-plugin, .tw-group, .tclock'
   const GLIDE_FAR = 360
   const glide = el('span', 'hdrop')
   let glideOn = null
@@ -1787,7 +2041,7 @@
     }, 90)
   }
 
-  const isGlideOn = node => node?.matches?.(GLIDE_ON) && !node.closest('.wpop, .wgpop, .tfly')
+  const isGlideOn = node => node?.matches?.(GLIDE_ON) && !node.closest('.wpop, .wgpop, .tfly, .wstk, .wmenu')
   barRest.addEventListener(
     'mouseenter',
     e => {
@@ -1935,12 +2189,16 @@
   // press anywhere else closes them, as Windows' do: told by the host
   // (taskbar.rs press hook), for ours never take the focus whose loss would.
   let watching = false
-  // The widget on the taskbar whose card is open (openWidgetPop); the input
-  // methods' list open (openImeList).
+  // The widget on the taskbar whose card is open (openWidgetPop: its entry,
+  // and in a group the widget picked); the stack opened (openStackPop); a
+  // widget's menu on the strip (openMenu); the input methods' list open
+  // (openImeList).
   let wgFor = null
+  let wgPick = null
+  let stackFor = null
   let imeOpen = false
   function watchPresses() {
-    const want = !!popFor || trayOpen || !!wgFor || imeOpen
+    const want = !!popFor || trayOpen || !!wgFor || !!stackFor || menuFor?.where === 'bar' || imeOpen
     if (want === watching) return
     watching = want
     window.pet.taskbar.watch(want)
@@ -1950,15 +2208,19 @@
     const over = document.elementFromPoint(at.x, at.y)
     if (popFor && !(over && (pop.contains(over) || windowsBox.contains(over)))) closePop()
     if (trayOpen && !(over && trayBox.contains(over))) openTray(false)
-    if (wgFor && !(over && (wgPop.contains(over) || entryNodes.get(wgFor)?.contains(over)))) closeWidgetPop()
+    if (wgFor && !(over && (wgPop.contains(over) || entryNodes.get(wgFor)?.contains(over) || stackPop.contains(over)))) closeWidgetPop()
+    if (stackFor && !(over && (stackPop.contains(over) || entryNodes.get(stackFor)?.contains(over) || wgPop.contains(over) || wmenu.contains(over)))) closeStackPop()
+    if (menuFor?.where === 'bar' && !(over && wmenu.contains(over))) closeMenu()
     if (imeOpen && !(over && (imePop.contains(over) || imeMark.contains(over)))) closeImeList()
   })
 
   // --- A widget on the taskbar, opened ------------------------------------------------
-  // A press on one (or a right press) opens its card above it, as the
-  // clock's opens Windows' calendar: what it says (each of a plugin's
-  // widgets), where it comes from, and its settings, its mail, or taking it
-  // off the taskbar. A press anywhere else closes it (watchPresses).
+  // A press on one opens its card above it, as the clock's opens Windows'
+  // calendar: what it says (its large size, wcards.js cardHTML, when it has
+  // one; each of a plugin's widgets else), where it comes from, and its
+  // settings, its mail, or taking it off the taskbar. A carousel's: the one
+  // shown; a stack's line pressed: that one's. A press anywhere else closes
+  // it (watchPresses). A right press: its menu (openMenu).
   const wgPop = el('div', 'wgpop')
   wgPop.hidden = true
   barRest.append(wgPop)
@@ -1966,17 +2228,23 @@
   const imePop = el('div', 'wpop menu imepop')
   imePop.hidden = true
   barRest.append(imePop)
+  // A card's width there, and the stack's (the spec: 300).
+  const STACK_W = 300
+  const STACK_CARD_W = 276
 
-  function openWidgetPop(id) {
+  function openWidgetPop(id, pick = null) {
     if (popFor) closePop()
     if (imeOpen) closeImeList()
+    if (menuFor) closeMenu()
     wgFor = id
+    wgPick = pick
     drawWidgetPop()
     watchPresses()
   }
 
   function closeWidgetPop() {
     wgFor = null
+    wgPick = null
     wgPop.hidden = true
     watchPresses()
   }
@@ -1986,23 +2254,38 @@
     const e = node?._entry
     if (!e || !node.isConnected || editLayout || home() !== 'taskbar') return closeWidgetPop()
     const detailed = isDetailed()
-    const from = Widgets.sourcesOf(e, allWidgets)
+    const ctx = barCtx()
+    // A group's: the one picked, or the one its carousel shows.
+    const group = Widgets.isGroup(e)
+    const slides = group ? Widgets.slidesOf(e, allWidgets) : []
+    const shown = group ? (wgPick ? slides.find(s => s.w?.id === wgPick) : slides[node._at || 0]) : null
+    const from = group ? (shown?.w ? [shown.w] : []) : Widgets.sourcesOf(e, allWidgets)
     const first = from[0]
     const head = el('div', 'wghead')
-    head.innerHTML = Widgets.icon(first?.icon || e.icon || 'dot')
-    head.firstChild.style.color = (first && stripInk(first.color)) || stripHue().idle
-    const kind = e.type === 'plugin' ? 'plugin' : first?.from || 'widget'
-    head.append(el('b', '', Widgets.nameOf(lang, e, allWidgets, detailed)), el('span', 'wgfrom', t(lang, `taskbar.w.from.${kind}`)))
-    const rows = from.map(w => {
-      const said = Widgets.words(lang, w, detailed)
-      const row = el('div', 'wgrow')
-      const value = el('b', '', said.value)
-      if (Widgets.partsOf(w)) value.innerHTML = Widgets.partsHTML(w)
-      // A plugin's several: each by its own label.
-      row.append(...(from.length > 1 && said.label ? [el('span', '', said.label)] : []), value)
-      return row
-    })
-    if (!rows.length) rows.push(el('div', 'wgnone', t(lang, needsSettings(e) ? 'taskbar.lib.needs' : 'taskbar.w.none')))
+    head.innerHTML = first ? WCards.glyphHTML(first, 'wghg') : WCards.memberGlyph(group ? shown?.member || e.items[0] : e)
+    head.firstElementChild.style.color = first ? WCards.colorOf(first, ctx) : ''
+    const kind = e.type === 'plugin' || first?.plugin ? 'plugin' : first?.from || 'widget'
+    const title = first ? WCards.titleOf(first, ctx) : group ? memberName(shown?.member || e.items[0]) : Widgets.nameOf(lang, e, allWidgets, detailed)
+    head.append(el('b', '', title), el('span', 'wgfrom', t(lang, `taskbar.w.from.${kind}`)))
+    fillHer(head, 18)
+    let rows
+    if (from.length === 1 && WCards.hasCard(first)) {
+      const card = el('div', 'wgcard')
+      card.innerHTML = WCards.cardHTML(first, ctx, allWidgets)
+      fillHer(card, 22)
+      rows = [card]
+    } else {
+      rows = from.map(w => {
+        const said = Widgets.words(lang, w, detailed)
+        const row = el('div', 'wgrow')
+        const value = el('b', '', said.value)
+        if (Widgets.partsOf(w)) value.innerHTML = Widgets.partsHTML(w)
+        // A plugin's several: each by its own label.
+        row.append(...(from.length > 1 && said.label ? [el('span', '', said.label)] : []), value)
+        return row
+      })
+    }
+    if (!rows.length) rows.push(el('div', 'wgnone', t(lang, !group && needsSettings(e) ? 'taskbar.lib.needs' : 'taskbar.w.none')))
     const acts = el('div', 'wgacts')
     const button = (what, label) => {
       const b = el('button', 'wgbtn', label)
@@ -2013,36 +2296,65 @@
     if (kind === 'mail') acts.append(button('mail', t(lang, 'taskbar.w.mail')))
     if (kind === 'plugin' || kind === 'builtIn') acts.append(button('settings', t(lang, 'taskbar.w.settings')))
     acts.append(button('remove', t(lang, 'taskbar.w.remove')))
-    wgPop.replaceChildren(head, ...rows, acts)
+    // Drawn anew only when it changed (the monitor's every 2 s): a button
+    // replaced under the pointer would not be pressed.
+    const drawn = JSON.stringify([wgFor, wgPick, from.map(w => [w.id, w.label, w.value, w.detail, w.private]), detailed, lang, ctx.light])
+    if (drawn !== wgPop._drawn || wgPop.hidden) {
+      wgPop._drawn = drawn
+      wgPop.replaceChildren(head, ...rows, acts)
+    }
+    wgPop.classList.toggle('carded', rows[0]?.classList.contains('wgcard'))
     wgPop.hidden = false
-    const at = besideOrOver(node, wgPop, isSide() ? 8 : 4)
+    // Over the stack it was picked from, else over it.
+    const over = stackFor === wgFor && !stackPop.hidden ? stackPop : node
+    const at = besideOrOver(over, wgPop, isSide() ? 8 : 4)
     wgPop.style.left = at.left === undefined ? '' : `${at.left}px`
     wgPop.style.top = at.top === undefined ? '' : `${at.top}px`
+    wgPop.classList.toggle('above-stack', over === stackPop)
+  }
+
+  // The layout changed by hand (a menu, a stack's line dragged): kept, or
+  // into the one being edited.
+  function keepLayout(layout) {
+    if (editLayout) editLayout = layout
+    else {
+      config.taskbarLayout = layout
+      window.pet.settings.set({ taskbarLayout: layout })
+    }
+    arranged = ''
+    update()
+    if (libOpen) drawLibrary()
   }
 
   // Off the taskbar, and kept so.
   function removeEntry(id) {
     const layout = tbLayout()
     for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => Widgets.keyOf(p) !== id)
-    if (editLayout) editLayout = layout
-    else {
-      config.taskbarLayout = layout
-      window.pet.settings.set({ taskbarLayout: layout })
-    }
     if (wgFor === id) closeWidgetPop()
-    arranged = ''
-    update()
-    if (libOpen) drawLibrary()
+    if (stackFor === id) closeStackPop()
+    keepLayout(layout)
+  }
+
+  // One of a group's off the taskbar: the rest stay (one left, alone).
+  function removeMember(id, index) {
+    closeWidgetPop()
+    keepLayout(Widgets.dropMember(tbLayout(), id, index, newId))
   }
 
   wgPop.addEventListener('click', e => {
     const what = e.target.closest('[data-wg]')?.dataset.wg
     const entry = wgFor && entryNodes.get(wgFor)?._entry
     if (!what || !entry) return
-    if (what === 'remove') return removeEntry(entry.id)
+    const group = Widgets.isGroup(entry)
+    const w = group ? allWidgets.find(x => x.id === (wgPick || entryNodes.get(wgFor)._slides?.[entryNodes.get(wgFor)._at || 0]?.w?.id)) : null
+    if (what === 'remove') {
+      if (!group) return removeEntry(entry.id)
+      const index = w ? entry.items.findIndex(m => Widgets.sourcesOf(m, allWidgets).includes(w)) : -1
+      return index >= 0 ? removeMember(entry.id, index) : removeEntry(entry.id)
+    }
     closeWidgetPop()
     if (what === 'mail') return window.pet.openSettings('mail')
-    openWidgetSettings(entry.type === 'plugin' ? { plugin: entry.of } : { id: entry.of })
+    openWidgetSettings(w || (entry.type === 'plugin' ? { plugin: entry.of } : { id: entry.of }))
   })
 
   // A widget's place in the settings: the mail page for an inbox's unread,
@@ -2058,6 +2370,419 @@
     e.preventDefault()
     e.stopPropagation()
   })
+
+  // --- A stack, opened (the spec's §5) ------------------------------------------------
+  // A glass card rising from it (300 wide, 8 px over the strip, round it,
+  // kept on the screen): a line each, its glyph in a block of its colour,
+  // its name, a sentence, its number; rising in 0.32 s, the lines 40 ms
+  // apart. Its place keeps its lit ground while it is open. A line dragged
+  // up or down goes there; dragged out of it, out of the stack (just after
+  // it); pressed, its card. A press on its place again, or anywhere else,
+  // closes it.
+  const stackPop = el('div', 'wstk')
+  stackPop.hidden = true
+  barRest.append(stackPop)
+  let stackOpenedAt = 0
+  // Dragged this far out of it, a line leaves the stack.
+  const STACK_OUT_PX = 28
+
+  function openStackPop(id) {
+    if (popFor) closePop()
+    if (imeOpen) closeImeList()
+    if (wgFor) closeWidgetPop()
+    if (menuFor) closeMenu()
+    stackFor = id
+    stackOpenedAt = Date.now()
+    stackPop._drawn = ''
+    drawStackPop()
+    watchPresses()
+    for (const node of entryNodes.values()) node.classList.toggle('open', node.dataset.entry === id && node._entry?.type === 'stack')
+  }
+
+  function closeStackPop() {
+    stackFor = null
+    stackDrag = null
+    stackPop.hidden = true
+    for (const node of entryNodes.values()) node.classList.remove('open')
+    if (wgFor && wgPick) closeWidgetPop()
+    watchPresses()
+  }
+
+  function drawStackPop() {
+    const node = stackFor && entryNodes.get(stackFor)
+    const e = node?._entry
+    if (!e || e.type !== 'stack' || !node.isConnected || editLayout || home() !== 'taskbar') return closeStackPop()
+    if (stackDrag?.moved) return
+    const ctx = barCtx()
+    const slides = Widgets.slidesOf(e, allWidgets)
+    const drawn = JSON.stringify([stackFor, slides.map(s => (s.w ? [s.w.id, s.w.label, s.w.value, s.w.detail, s.w.private] : Widgets.memberKey(s.member))), ctx.detailed, ctx.light, lang])
+    if (drawn !== stackPop._drawn || stackPop.hidden) {
+      stackPop._drawn = drawn
+      const rows = slides.map(s => {
+        const index = e.items.indexOf(s.member)
+        const body = s.w
+          ? WCards.stackRowHTML(s.w, WCards.titleOf(s.w, ctx), ctx)
+          : `<span class="sgl">${WCards.memberGlyph(s.member)}</span><b class="sname">${WCards.esc(memberName(s.member))}</b><span class="sval"></span><span class="ssay">${WCards.esc(t(lang, 'taskbar.w.none'))}</span>`
+        return `<div class="srow${s.w ? '' : ' empty'}" data-member="${index}" data-widget="${s.w ? WCards.esc(s.w.id) : ''}">${body}</div>`
+      })
+      stackPop.innerHTML = `<div class="shead"><b>${WCards.esc(t(lang, 'taskbar.stack.title'))}</b><span>${WCards.esc(t(lang, 'taskbar.stack.count', { n: slides.length }))}</span></div>${rows.join('')}`
+      fillHer(stackPop, 16)
+    }
+    stackPop.hidden = false
+    // Rising as it opens, carried on (not begun again) when drawn anew.
+    const into = Date.now() - stackOpenedAt
+    stackPop.classList.toggle('rising', into < 700)
+    if (into < 700) {
+      stackPop.style.animationDelay = `-${into}ms`
+      for (const [i, row] of [...stackPop.querySelectorAll('.srow')].entries()) row.style.animationDelay = `${i * 40 - into}ms`
+    }
+    const at = besideOrOver(node, stackPop, 8)
+    stackPop.style.left = at.left === undefined ? '' : `${at.left}px`
+    stackPop.style.top = at.top === undefined ? '' : `${at.top}px`
+  }
+
+  // A line held: { row, member, x, y, moved, out }.
+  let stackDrag = null
+  stackPop.addEventListener('pointerdown', e => {
+    const row = e.target.closest('.srow')
+    if (!row || e.button !== 0) return
+    stackDrag = { row, member: Number(row.dataset.member), widget: row.dataset.widget, x: e.clientX, y: e.clientY, moved: false, out: false }
+    try {
+      stackPop.setPointerCapture(e.pointerId)
+    } catch {}
+  })
+  stackPop.addEventListener('pointermove', e => {
+    const d = stackDrag
+    if (!d) return
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) return
+    d.moved = true
+    d.row.classList.add('dragging')
+    d.row.style.transform = `translate(${e.clientX - d.x}px, ${e.clientY - d.y}px)`
+    const r = stackPop.getBoundingClientRect()
+    d.out = e.clientX < r.left - STACK_OUT_PX || e.clientX > r.right + STACK_OUT_PX || e.clientY < r.top - STACK_OUT_PX || e.clientY > r.bottom + STACK_OUT_PX
+    d.row.classList.toggle('out', d.out)
+    d.row.dataset.say = d.out ? t(lang, 'taskbar.stack.out') : ''
+  })
+  stackPop.addEventListener('pointerup', e => {
+    const d = stackDrag
+    stackDrag = null
+    if (!d) return
+    const id = stackFor
+    if (!d.moved) return d.widget ? openWidgetPop(id, d.widget) : undefined
+    d.row.classList.remove('dragging', 'out')
+    d.row.style.transform = ''
+    if (d.out) return keepLayout(Widgets.takeOut(tbLayout(), id, d.member, newId))
+    // Before the line it is let go over (after it past its middle).
+    const rows = [...stackPop.querySelectorAll('.srow')].filter(r => r !== d.row)
+    const below = rows.find(r => {
+      const b = r.getBoundingClientRect()
+      return e.clientY < b.top + b.height / 2
+    })
+    const members = [...new Set(rows.map(r => Number(r.dataset.member)))]
+    const to = below ? members.indexOf(Number(below.dataset.member)) : members.length
+    const order = [...members.slice(0, to), d.member, ...members.slice(to)]
+    const at = order.indexOf(d.member)
+    if (at !== d.member) {
+      stackPop._drawn = ''
+      keepLayout(Widgets.reorder(tbLayout(), id, d.member, at))
+    } else drawStackPop()
+  })
+  stackPop.addEventListener('pointercancel', () => {
+    if (stackDrag) {
+      stackDrag.row.classList.remove('dragging', 'out')
+      stackDrag.row.style.transform = ''
+    }
+    stackDrag = null
+  })
+  stackPop.addEventListener('contextmenu', e => {
+    e.preventDefault()
+    e.stopPropagation()
+    const row = e.target.closest('.srow')
+    if (row && stackFor) openMenu({ where: 'bar', entry: stackFor, member: Number(row.dataset.member), widget: row.dataset.widget || null }, row)
+  })
+
+  // --- A widget's menu (the spec's §10) -------------------------------------------------
+  // A right press on a widget, on the strip or in the open island: its size
+  // (small, medium, large; one it has not greyed, why under the pointer),
+  // where it goes (the taskbar, the island; the desktop to come), with the
+  // one beside it in one place (a stack, a carousel) or apart again, its
+  // settings, off. menuFor: { where: 'bar' | 'isle', entry, member, widget }.
+  const wmenu = el('div', 'wmenu')
+  wmenu.hidden = true
+  let menuFor = null
+
+  // What a menu is for: its widget (the one picked, else the one shown),
+  // the entry on the strip it is part of, and which of a group's it is.
+  // On a group's place itself: the group (member -1), the widget it shows
+  // and that one's member (shown) to take out.
+  function menuTarget(m) {
+    const node = m.entry ? entryNodes.get(m.entry) : null
+    const entry = node?._entry || null
+    const group = !!entry && Widgets.isGroup(entry)
+    let w = m.widget ? allWidgets.find(x => x.id === m.widget) || null : null
+    if (!w && entry) w = group ? node._slides?.[node._at || 0]?.w || null : Widgets.sourcesOf(entry, allWidgets)[0] || null
+    const memberOf = x => (x ? entry.items.findIndex(mm => Widgets.sourcesOf(mm, allWidgets).includes(x)) : -1)
+    const member = group ? (m.member ?? (m.widget ? memberOf(w) : -1)) : -1
+    const slide = group && member < 0 ? node._slides?.[node._at || 0] : null
+    const shown = slide ? entry.items.findIndex(x => Widgets.memberKey(x) === Widgets.memberKey(slide.member)) : -1
+    return { node, entry, w, member, shown }
+  }
+
+  // The widget or group next to one in its run (after it, else before it).
+  function neighbourOf(id) {
+    const layout = tbLayout()
+    const at = Widgets.findEntry(layout, id)
+    if (!at) return null
+    const run = layout[at.run]
+    const fits = p => p && typeof p !== 'string' && (Widgets.isSource(p) || Widgets.isGroup(p))
+    return [run[at.at + 1], run[at.at - 1]].find(fits) || null
+  }
+
+  // Why a size is not there, by kind (the spec's §4).
+  function noSize(w, size) {
+    const kind = WCards.kindOf(w)
+    if (size === 'L' && kind === 'pomodoro') return t(lang, 'menu.why.pomodoro')
+    if (kind === 'countdown') return t(lang, size === 'M' ? 'menu.why.countdownM' : 'menu.why.countdownL')
+    return t(lang, size === 'M' ? 'menu.noMedium' : 'menu.noLarge')
+  }
+
+  function menuHTML(m) {
+    const { node, entry, w: shownW, member, shown } = menuTarget(m)
+    const esc = WCards.esc
+    const group = !!entry && Widgets.isGroup(entry)
+    // A group's own menu speaks for the group, not the one it shows.
+    const w = group && member < 0 ? null : shownW
+    const bar = m.where === 'bar'
+    const ctx = bar ? barCtx() : isleCtx()
+    const opt = (act, v, label, on, why = '') => `<button type="button" class="wmo${on ? ' on' : ''}${why ? ' off' : ''}" data-act="${act}" data-v="${v}"${why ? ` aria-disabled="true" title="${esc(why)}" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
+    const item = (act, label, why = '', v = '') => `<button type="button" class="wmi${why ? ' off' : ''}" data-act="${act}" data-v="${esc(v)}"${why ? ` aria-disabled="true" title="${esc(why)}" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
+    const line = (label, html) => `<div class="wmr"><span class="wml">${esc(label)}</span><span class="wms">${html}</span></div>`
+    const name = w ? WCards.titleOf(w, ctx) : group && member < 0 ? Widgets.nameOf(lang, entry, allWidgets, isDetailed()) : entry ? memberName(group ? entry.items[member] : entry) : ''
+    const glyph = w ? WCards.glyphHTML(w, 'wmg') : entry ? WCards.memberGlyph(group ? entry.items[Math.max(0, member)] : entry) : ''
+    const parts = [`<div class="wmh" style="--c:${w ? WCards.colorOf(w, ctx) : 'currentColor'}">${glyph}<b>${esc(name)}</b></div>`]
+    const sizes = w ? Widgets.sizesOf(w) : ['s', 'm']
+    // Its size: on the strip S or M (never L: its card opens by a press);
+    // in the island its row S or M, and L its card unfolded.
+    if (!(group && member < 0)) {
+      if (bar && !group) {
+        const now = node?.dataset.size === 'S' || node?.classList.contains('S') ? 'S' : 'M'
+        parts.push(line(t(lang, 'menu.size'), opt('size', 'S', t(lang, 'menu.s'), now === 'S') + opt('size', 'M', t(lang, 'menu.m'), now === 'M', sizes.includes('m') || !w ? '' : noSize(w, 'M')) + opt('size', 'L', t(lang, 'menu.l'), false, t(lang, 'menu.noLargeBar'))))
+      } else if (!bar && w) {
+        const now = rowSize(w)
+        const open = cardFor === w.id
+        parts.push(line(t(lang, 'menu.size'), opt('size', 'S', t(lang, 'menu.s'), now === 'S' && !open) + opt('size', 'M', t(lang, 'menu.m'), now === 'M' && !open, sizes.includes('m') ? '' : noSize(w, 'M')) + opt('size', 'L', t(lang, 'menu.l'), open, WCards.hasCard(w) ? '' : noSize(w, 'L'))))
+      }
+    }
+    // Where it goes: the taskbar (only where she lives there), the island; the desktop to come.
+    if (w || entry) {
+      const onBar = !!entry
+      const notBar = home() === 'taskbar' ? '' : t(lang, 'menu.notTaskbar')
+      parts.push(line(t(lang, 'menu.where'), opt('where', 'bar', t(lang, 'menu.bar'), onBar, onBar ? '' : notBar) + opt('where', 'isle', t(lang, 'menu.isle'), !onBar && !!w) + opt('where', 'desk', t(lang, 'menu.desk'), false, t(lang, 'menu.later'))))
+    }
+    parts.push('<div class="wmsep"></div>')
+    // With others in one place, or apart again.
+    if (bar && entry) {
+      if (group && member < 0) {
+        parts.push(line(t(lang, 'menu.group'), opt('regroup', 'carousel', t(lang, 'menu.carousel'), entry.type === 'carousel') + opt('regroup', 'stack', t(lang, 'menu.stack'), entry.type === 'stack')))
+        // The one it shows, out of it.
+        if (shown >= 0) parts.push(item('takeOut', t(lang, 'menu.takeOut', { name: shownW ? WCards.titleOf(shownW, ctx) : memberName(entry.items[shown]) }), '', String(shown)))
+        parts.push(item('ungroup', t(lang, 'menu.ungroup')))
+      } else if (group) {
+        parts.push(item('takeOut', t(lang, entry.type === 'stack' ? 'menu.outOfStack' : 'menu.outOfCarousel'), '', String(member)))
+      } else {
+        // The one beside it: a group it may join (its kind kept), or both
+        // made one of either kind; a single one by its name (天气).
+        const next = neighbourOf(entry.id)
+        if (!next) {
+          const why = t(lang, 'menu.noNeighbour')
+          parts.push(item('group', t(lang, 'menu.stackWithNone'), why, 'stack'), item('group', t(lang, 'menu.carouselWithNone'), why, 'carousel'))
+        } else if (Widgets.isGroup(next)) {
+          const n = next.items.length
+          const other = next.type === 'stack' ? 'carousel' : 'stack'
+          const full = n >= 8 ? t(lang, 'menu.groupFull') : ''
+          parts.push(item('join', t(lang, `menu.join.${next.type}`, { n }), full), item('group', t(lang, `menu.${other}WithGroup.${next.type}`), '', other))
+        } else {
+          const w = Widgets.sourcesOf(next, allWidgets)[0]
+          const name = w ? WCards.titleOf(w, ctx) : memberName(next)
+          parts.push(item('group', t(lang, 'menu.carouselWith', { name }), '', 'carousel'), item('group', t(lang, 'menu.stackWith', { name }), '', 'stack'))
+        }
+      }
+    }
+    parts.push(item('board', t(lang, 'menu.board'), t(lang, 'menu.later')))
+    if (w) parts.push(item('settings', t(lang, 'menu.settings')))
+    parts.push(item('remove', t(lang, bar && entry ? 'menu.remove' : 'menu.off')))
+    parts.push('<div class="wmwhy" hidden></div>')
+    return parts.join('')
+  }
+
+  function openMenu(m, near, at = null) {
+    if (popFor) closePop()
+    if (imeOpen) closeImeList()
+    if (wgFor && m.where === 'bar') closeWidgetPop()
+    menuFor = m
+    wmenu.innerHTML = menuHTML(m)
+    fillHer(wmenu, 16)
+    wmenu.hidden = false
+    wmenu.classList.toggle('isle', m.where === 'isle')
+    if (m.where === 'bar') {
+      if (wmenu.parentElement !== barRest) barRest.append(wmenu)
+      const over = stackFor && !stackPop.hidden && stackPop.contains(near) ? stackPop : near
+      const pos = besideOrOver(over, wmenu, 8)
+      wmenu.style.left = pos.left === undefined ? '' : `${pos.left}px`
+      wmenu.style.top = pos.top === undefined ? '' : `${pos.top}px`
+      wmenu.style.bottom = ''
+      wmenu.classList.toggle('above-stack', over === stackPop)
+    } else {
+      // In the open island, at the pointer, kept inside it; the island as
+      // tall as it needs to hold it (sizeOf follows #island-expanded).
+      if (wmenu.parentElement !== island) island.append(wmenu)
+      const box = island.getBoundingClientRect()
+      const x = Math.max(8, Math.min((at?.x ?? box.left + 20) - box.left, box.width - wmenu.offsetWidth - 8))
+      const y = Math.max(8, (at?.y ?? box.top + 20) - box.top)
+      wmenu.style.left = `${Math.round(x)}px`
+      wmenu.style.top = `${Math.round(y)}px`
+      wmenu.style.bottom = ''
+      menuRoom = Math.ceil(y + wmenu.offsetHeight + 10)
+      update()
+    }
+    watchPresses()
+  }
+
+  function closeMenu() {
+    if (!menuFor) return
+    const wasIsle = menuFor.where === 'isle'
+    menuFor = null
+    wmenu.hidden = true
+    wmenu.querySelector('.wmwhy')?.setAttribute('hidden', '')
+    watchPresses()
+    if (wasIsle) {
+      menuRoom = 0
+      update()
+    }
+  }
+  // The open island's height for its menu (0: none open).
+  let menuRoom = 0
+
+  // A greyed one under the pointer: why, at the menu's foot.
+  wmenu.addEventListener('mouseover', e => {
+    const why = wmenu.querySelector('.wmwhy')
+    const off = e.target.closest('[data-why]')
+    if (!why) return
+    why.hidden = !off
+    if (off) why.textContent = off.dataset.why
+  })
+  wmenu.addEventListener('contextmenu', e => {
+    e.preventDefault()
+    e.stopPropagation()
+  })
+  wmenu.addEventListener('click', e => {
+    e.stopPropagation()
+    const b = e.target.closest('[data-act]')
+    if (!b || b.classList.contains('off') || !menuFor) return
+    const m = menuFor
+    const { entry, w, member } = menuTarget(m)
+    const v = b.dataset.v
+    closeMenu()
+    switch (b.dataset.act) {
+      case 'size':
+        if (m.where === 'bar' && entry) return keepLayout(withEntry(entry.id, p => ({ ...p, size: v })))
+        if (!w) return
+        if (v === 'L') return showCard(cardFor === w.id ? null : w.id)
+        if (cardFor === w.id) showCard(null)
+        return setRowSize(w.id, v)
+      case 'where':
+        if (v === 'bar' && w && !entry) return putOnBar(w)
+        if (v === 'isle' && entry) return backToIsland(w, entry, member)
+        return
+      case 'group': {
+        const next = entry && neighbourOf(entry.id)
+        return next && keepLayout(Widgets.groupWith(tbLayout(), next.id, entry.id, v, newId))
+      }
+      // Into the group beside it, as its last; its kind kept.
+      case 'join': {
+        const next = entry && neighbourOf(entry.id)
+        return next && Widgets.isGroup(next) && keepLayout(Widgets.groupWith(tbLayout(), entry.id, next.id, next.type, newId))
+      }
+      case 'regroup':
+        return entry && keepLayout(Widgets.regroup(tbLayout(), entry.id, v))
+      case 'ungroup':
+        if (stackFor === entry?.id) closeStackPop()
+        return entry && keepLayout(Widgets.ungroup(tbLayout(), entry.id, newId))
+      case 'takeOut':
+        return entry && keepLayout(Widgets.takeOut(tbLayout(), entry.id, Number(v), newId))
+      case 'settings':
+        return w && openWidgetSettings(w)
+      case 'remove':
+        if (m.where === 'bar' && entry) return Widgets.isGroup(entry) && member >= 0 ? removeMember(entry.id, member) : removeEntry(entry.id)
+        // Off in the island (its switch on the plugins page).
+        if (w) return window.pet.settings.set({ widgetsOff: [...new Set([...(config.widgetsOff || []), w.id])] })
+    }
+  })
+
+  // The layout with one entry changed.
+  function withEntry(id, change) {
+    const layout = tbLayout()
+    const at = Widgets.findEntry(layout, id)
+    if (at) layout[at.run][at.at] = change(at.entry)
+    return layout
+  }
+
+  // Put on the taskbar: at the right run's start (as the library's press
+  // puts one), medium; a plugin's widget as its plugin (all of them, in turn).
+  function putOnBar(w) {
+    const source = w.plugin ? { type: 'plugin', of: w.plugin } : { type: 'widget', of: w.id }
+    if (Widgets.shownOn(tbLayout(), allWidgets).has(w.id)) return
+    const named = w.private || w.plugin ? {} : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') }
+    const entry = { id: newId(), ...source, size: Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...(w.icon in Widgets.ICONS ? { icon: w.icon } : {}), ...named }
+    const layout = tbLayout()
+    layout.right.unshift(entry)
+    placedAt.set(Widgets.memberKey(source), Date.now())
+    keepLayout(layout)
+  }
+
+  // For the plugins page (settings.js, its "where" column): where a widget
+  // ({ id }) or a plugin she runs ({ plugin }) is, the taskbar or the
+  // island, and put there. On the taskbar alone or in a group; put there, at
+  // the right run's start; back in the island, out of wherever it was.
+  const keyFor = item => (item.plugin ? `plugin:${item.plugin}` : `widget:${item.id}`)
+  function whereOf(item) {
+    const keys = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string').flatMap(Widgets.membersOf).map(Widgets.memberKey)))
+    return keys.has(keyFor(item)) ? 'bar' : 'isle'
+  }
+  function placeWidget(item, where) {
+    const key = keyFor(item)
+    if (where === 'bar') {
+      if (whereOf(item) === 'bar') return
+      const w = item.plugin ? null : allWidgets.find(x => x.id === item.id)
+      const source = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
+      const named = w && !w.private ? { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') } : {}
+      const icon = (w?.icon || item.icon) in Widgets.ICONS ? { icon: w?.icon || item.icon } : {}
+      const layout = tbLayout()
+      layout.right.unshift({ id: newId(), ...source, size: !w || Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...icon, ...named })
+      placedAt.set(key, Date.now())
+      return keepLayout(layout)
+    }
+    if (where !== 'isle') return
+    let layout = tbLayout()
+    for (const k of Object.keys(layout))
+      for (const p of [...layout[k]]) {
+        if (typeof p === 'string') continue
+        if (Widgets.isGroup(p)) {
+          const at = p.items.findIndex(m => Widgets.memberKey(m) === key)
+          if (at >= 0) layout = Widgets.dropMember(layout, p.id, at, newId)
+        } else if (Widgets.isSource(p) && Widgets.memberKey(p) === key) layout[k] = layout[k].filter(x => x !== p)
+      }
+    keepLayout(layout)
+    if (item.id && (config.widgetsOff || []).includes(item.id)) window.pet.settings.set({ widgetsOff: config.widgetsOff.filter(x => x !== item.id) })
+  }
+
+  // Back in the island: off the strip (out of its group), and on there.
+  function backToIsland(w, entry, member) {
+    if (Widgets.isGroup(entry) && member >= 0) removeMember(entry.id, member)
+    else removeEntry(entry.id)
+    const id = w?.id || (entry.type === 'widget' ? entry.of : null)
+    if (id && (config.widgetsOff || []).includes(id)) window.pet.settings.set({ widgetsOff: config.widgetsOff.filter(x => x !== id) })
+  }
 
   function drawPop() {
     const app = popFor && appOf(popFor.app)
@@ -3334,9 +4059,12 @@
     const what = e.target.closest('[data-bar]')?.dataset.bar
     if (what && what !== 'settings') window.pet.taskbar.open(what)
     if (what === 'ime' && imeOpen) closeImeList()
-    // A widget put there: its card, or closed again.
-    const widget = e.target.closest('.tw-widget, .tw-plugin')
+    // A widget put there: its card, or closed again; a carousel's, the one
+    // it shows; a stack: its others opened over it, or closed again.
+    const widget = e.target.closest('.tw-widget, .tw-plugin, .tw-carousel')
     if (widget) wgFor === widget.dataset.entry ? closeWidgetPop() : openWidgetPop(widget.dataset.entry)
+    const stack = e.target.closest('.tw-stack')
+    if (stack) stackFor === stack.dataset.entry ? closeStackPop() : openStackPop(stack.dataset.entry)
   })
   // A right press: a tray icon's program has it; on the input method, the
   // input methods to pick from; on a widget put there, its card; on the
@@ -3345,9 +4073,10 @@
   barRest.addEventListener('contextmenu', e => {
     e.preventDefault()
     if (trayKey(e)) return
-    if (wgPop.contains(e.target)) return
-    const widget = e.target.closest('.tw-widget, .tw-plugin')
-    if (widget) return openWidgetPop(widget.dataset.entry)
+    if (wgPop.contains(e.target) || wmenu.contains(e.target)) return
+    // A widget put there (one, or several in one place): its menu.
+    const widget = e.target.closest('.tw-widget, .tw-plugin, .tw-group')
+    if (widget) return openMenu({ where: 'bar', entry: widget.dataset.entry }, widget)
     if (e.target.closest('[data-bar="ime"]')) return imeOpen ? closeImeList() : openImeList()
     const mark = quickBox.contains(e.target) ? quickMarkAt(e.clientX, e.clientY) : null
     window.pet.menu(mark === volMark ? 'volume' : mark === netMark ? 'network' : clockBox.contains(e.target) ? 'clock' : null)
@@ -3418,6 +4147,8 @@
     if (isSetting()) window.Settings?.close?.('edit')
     if (wgFor) closeWidgetPop()
     if (popFor) closePop()
+    if (stackFor) closeStackPop()
+    if (menuFor) closeMenu()
     editLayout = JSON.parse(JSON.stringify(tbLayout()))
     // Each part's name: shown on one with nothing in it now, and dragged by.
     for (const [part, node] of Object.entries(PART_NODES)) node.dataset.label = t(lang, `taskbar.part.${part}`)
@@ -3496,13 +4227,14 @@
     })
   }
 
-  // Its cards: the built-in widgets (not the monitor, a part of its own),
+  // Its cards: the built-in widgets (the monitor too: its readings, as a
+  // widget with a card, besides its part's cells),
   // the plugins she runs, each mail account's, those of anyone else's
   // scripts there now, and the spacers.
   function cardsOf(all) {
     const cards = []
     const named = w => (w.private ? {} : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') })
-    for (const w of all.filter(w => w.builtIn && w.id !== 'monitor')) cards.push({ kind: 'builtIn', entry: { type: 'widget', of: w.id, icon: w.icon }, w })
+    for (const w of all.filter(w => w.builtIn)) cards.push({ kind: 'builtIn', entry: { type: 'widget', of: w.id, icon: w.icon }, w })
     for (const p of libSnap?.plugins || []) cards.push({ kind: 'plugin', entry: { type: 'plugin', of: p.id, icon: p.icon }, w: all.find(w => w.plugin === p.id), plugin: p })
     for (const w of all.filter(w => w.from === 'mail')) cards.push({ kind: 'mail', entry: { type: 'widget', of: w.id, icon: w.icon, ...named(w) }, w })
     for (const w of all.filter(w => w.from === 'script' && !w.plugin)) cards.push({ kind: 'script', entry: { type: 'widget', of: w.id, icon: w.icon, ...named(w) }, w })
@@ -3513,7 +4245,7 @@
   function drawLibrary() {
     const all = libSnap?.widgets || allWidgets
     const detailed = isDetailed()
-    const placed = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string' && Widgets.isSource(p)).map(p => `${p.type}:${p.of}`)))
+    const placed = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string').flatMap(Widgets.membersOf).map(Widgets.memberKey)))
     libCards = cardsOf(all)
     const kinds = ['all', ...new Set(libCards.map(c => c.kind))]
     if (!kinds.includes(libKind)) libKind = 'all'
@@ -3584,14 +4316,25 @@
       chosen = null
       return tools.remove()
     }
-    const button = (what, label, on) => {
-      const b = el('button', on ? 'tbt on' : 'tbt', label)
+    const button = (what, label, on, why = '') => {
+      const b = el('button', on ? 'tbt on' : why ? 'tbt off' : 'tbt', label)
       b.type = 'button'
       b.dataset.tool = what
+      if (why) {
+        b.title = why
+        b.setAttribute('aria-disabled', 'true')
+      }
       return b
     }
     const items = [el('span', 'tbtname', node.dataset.label || '')]
-    if (Widgets.isSource(e)) items.push(button('S', t(lang, 'taskbar.w.size.S'), node.dataset.size === 'S'), button('M', t(lang, 'taskbar.w.size.M'), node.dataset.size === 'M'), el('span', 'tbtsep'))
+    // Its size, as it has them (a countdown small alone); never large on the
+    // strip. Several in one place: a carousel or a stack, or apart again.
+    if (Widgets.isSource(e)) {
+      const w = Widgets.sourcesOf(e, allWidgets)[0]
+      const noM = w && !Widgets.sizesOf(w).includes('m') ? noSize(w, 'M') : ''
+      items.push(button('S', t(lang, 'taskbar.w.size.S'), node.dataset.size === 'S'), button('M', t(lang, 'taskbar.w.size.M'), node.dataset.size === 'M' && !noM, noM), button('L', t(lang, 'menu.l'), false, t(lang, 'menu.noLargeBar')), el('span', 'tbtsep'))
+    }
+    if (Widgets.isGroup(e)) items.push(button('carousel', t(lang, 'menu.carousel'), e.type === 'carousel'), button('stack', t(lang, 'menu.stack'), e.type === 'stack'), button('ungroup', t(lang, 'menu.ungroup')), el('span', 'tbtsep'))
     items.push(button('remove', t(lang, 'taskbar.w.remove')))
     tools.replaceChildren(...items)
     if (!tools.isConnected) document.body.append(tools)
@@ -3602,16 +4345,23 @@
   }
 
   tools.addEventListener('click', e => {
-    const what = e.target.closest('[data-tool]')?.dataset.tool
+    const tool = e.target.closest('[data-tool]')
+    const what = tool?.dataset.tool
     const id = chosen
-    if (!what || !id) return
+    if (!what || !id || tool.classList.contains('off')) return
     if (what === 'remove') {
       choose(null)
       return removeEntry(id)
     }
-    const layout = tbLayout()
-    for (const run of Object.values(layout)) for (const p of run) if (p.id === id) p.size = what
-    editLayout = layout
+    if (what === 'ungroup') {
+      choose(null)
+      editLayout = Widgets.ungroup(tbLayout(), id, newId)
+    } else if (what === 'carousel' || what === 'stack') editLayout = Widgets.regroup(tbLayout(), id, what)
+    else {
+      const layout = tbLayout()
+      for (const run of Object.values(layout)) for (const p of run) if (p.id === id) p.size = what
+      editLayout = layout
+    }
     arranged = ''
     update()
   })
@@ -3658,8 +4408,22 @@
     if (!drag) return
     drag.ghost?.remove()
     drag.node.classList.remove('tb-dragging')
+    for (const n of entryNodes.values()) n.classList.remove('tb-into')
     editMark.remove()
     drag = null
+  }
+
+  // A widget (or several in one place, or a library card's) over the middle
+  // half of another widget or group: let go there, the two in one place (a
+  // stack; a group there keeps its kind). Null elsewhere.
+  function intoAt(x, y) {
+    const item = drag.entry || drag.fresh
+    if (!item || !(Widgets.isSource(item) || Widgets.isGroup(item))) return null
+    const over = document.elementFromPoint(x, y)?.closest?.('.tw-widget, .tw-plugin, .tw-group')
+    if (!over || over === drag.node || !barRest.contains(over)) return null
+    const r = over.getBoundingClientRect()
+    const a = along(x, y)
+    return a > lo(r) + len(r) * 0.25 && a < lo(r) + len(r) * 0.75 ? over : null
   }
 
   // Over the library (or let go there).
@@ -3722,7 +4486,9 @@
       drag.off = off
       drag.ghost.classList.toggle('off', off)
       drag.ghost.textContent = off && drag.entry ? t(lang, 'taskbar.w.drop', { name: drag.label }) : drag.label
-      editMark.hidden = off
+      drag.into = off ? null : intoAt(e.clientX, e.clientY)
+      for (const n of entryNodes.values()) n.classList.toggle('tb-into', n === drag.into)
+      editMark.hidden = off || !!drag.into
       drag.at = off ? null : partDropAt(along(e.clientX, e.clientY))
       if (drag.at) {
         editMark.style.left = isSide() ? '' : `${Math.round(drag.at.line) - 1}px`
@@ -3740,11 +4506,29 @@
       if (!d.moved) {
         // A press: a card goes to the right run's start; a widget on the
         // strip is chosen (again: no longer); elsewhere, none is.
-        if (d.fresh) return movePart(d.fresh.id, 'right', 0, d.fresh)
+        if (d.fresh) {
+          if (Widgets.isSource(d.fresh)) placedAt.set(Widgets.memberKey(d.fresh), Date.now())
+          return movePart(d.fresh.id, 'right', 0, d.fresh)
+        }
         return choose(d.entry && chosen !== d.entry.id ? d.entry.id : null)
       }
       if (d.off) return d.entry ? removeEntry(d.entry.id) : undefined
+      if (d.into) {
+        // A library card: put in first, then with the one it was let go over.
+        const into = d.into.dataset.entry
+        let layout = tbLayout()
+        if (d.fresh) {
+          layout.right.unshift(d.fresh)
+          placedAt.set(Widgets.memberKey(d.fresh), Date.now())
+        }
+        editLayout = Widgets.groupWith(layout, d.fresh ? d.fresh.id : d.key, into, 'stack', newId)
+        arranged = ''
+        update()
+        if (libOpen) drawLibrary()
+        return
+      }
       if (d.at) movePart(d.fresh ? d.fresh.id : d.key, d.at.zone, d.at.index, d.fresh)
+      if (d.at && d.fresh && Widgets.isSource(d.fresh)) placedAt.set(Widgets.memberKey(d.fresh), Date.now())
     },
     true,
   )
@@ -3758,6 +4542,15 @@
     if (view === 'ask' && !isAsking()) nudge = null
     const was = view
     view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() || peek ? 'expanded' : 'compact'
+    // Closed: a card unfolded in it folded again, its widget's menu gone.
+    if (view !== 'expanded' && was === 'expanded') {
+      cardFor = null
+      if (menuFor?.where === 'isle') {
+        menuFor = null
+        wmenu.hidden = true
+        menuRoom = 0
+      }
+    }
     // In the notch and closed it is out of the way: the pointer passes to
     // what is under it (the notch's own app), and a hover opens nothing.
     body.classList.toggle('aside', !!screenTop?.notch && view === 'compact')
@@ -4279,6 +5072,10 @@
     playPortraits()
     // The blur behind the island too: none while nobody is about.
     if (isOn()) placePlate(false)
+    // The carousels on the strip hold still while nobody is about, and go
+    // on (their turns anew) once someone is.
+    if (!quiet) for (const [id, state] of carousels) carousels.set(id, { ...state, since: Date.now() })
+    tickCarousels()
   })
 
   // A hello, or something to fix: the island opens to say it, and she waves.
@@ -4289,6 +5086,11 @@
   // A widget asks to open the island (main checked that nothing wants you).
   window.pet.onNudge(n => {
     if (!isOn()) return
+    // News for a carousel on the strip that has it: it cuts in.
+    for (const [id] of carousels) {
+      const slide = entryNodes.get(id)?._slides?.findIndex(s => s.w?.id === n.id) ?? -1
+      if (slide >= 0) turnCarousel(id, slide)
+    }
     const at = widgets.findIndex(w => w.id === n.id)
     if (at >= 0) widgetAt = at
     // Not a widget's (a new version): its own icon.
@@ -4340,6 +5142,13 @@
       // A click in the settings (✕, the head) may just have closed them: not a click to open.
       if (isSetting() || window.Settings?.layer?.contains(e.target) || Date.now() - pulledAt < 500) return
       if (view === 'ask' || panel.contains(e.target) || her.contains(e.target)) return
+      // A widget's menu open in it: a press elsewhere closes it, and is all.
+      if (menuFor?.where === 'isle') {
+        if (!wmenu.contains(e.target)) closeMenu()
+        return
+      }
+      // In a card unfolded: nothing more (it is read there).
+      if (view === 'expanded' && e.target.closest('.icard')) return
       // The press, if the clocks redrew the session between it and the release.
       const id = view === 'expanded' && (e.target.closest('[data-jump]')?.dataset.jump || (Date.now() - pressed.at < 1000 && pressed.id))
       pressed = { id: '', at: 0 }
@@ -4360,10 +5169,18 @@
       const row = view === 'expanded' && e.target.closest('[data-widget]')
       if (row) {
         const at = widgets.findIndex(w => w.id === row.dataset.widget)
+        const w = at >= 0 ? widgets[at] : allWidgets.find(x => x.id === row.dataset.widget)
+        // One with a large size: its card unfolded in place, or folded again
+        // (one at a time); the island stays open for it.
+        if (w && WCards.hasCard(w)) {
+          if (isNudging()) endNudge()
+          isHover = true
+          return showCard(cardFor === w.id ? null : w.id)
+        }
         if (at >= 0) turnWidget(at - (widgetAt % widgets.length))
         // Open by itself no more: the settings open over it.
         endNudge()
-        return openWidgetSettings(at >= 0 ? widgets[at] : { id: row.dataset.widget })
+        return openWidgetSettings(w || { id: row.dataset.widget })
       }
       window.pet.openSettings()
     })
@@ -4384,6 +5201,11 @@
     target.addEventListener('contextmenu', e => {
       if (e.target.matches('input, textarea')) return
       e.preventDefault()
+      if (wmenu.contains(e.target)) return
+      // On a widget's row (or its card) in the open island: its menu.
+      const row = view === 'expanded' && !isSetting() && (e.target.closest('[data-widget]') || e.target.closest('[data-card]'))
+      const id = row && (row.dataset.widget || row.dataset.card)
+      if (id && allWidgets.some(w => w.id === id)) return openMenu({ where: 'isle', widget: id }, row, { x: e.clientX, y: e.clientY })
       window.pet.menu()
     })
   }
@@ -4413,5 +5235,5 @@
 
   // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
   window.pet.onTaskbarEdit(() => editTaskbar())
-  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget }
 })()

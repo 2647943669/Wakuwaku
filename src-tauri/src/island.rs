@@ -1049,17 +1049,28 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
 }
 
 pub fn hover(sh: &Shared, is_over: bool) {
-    let ignore = {
+    let (ignore, came) = {
         let mut isl = sh.island.lock().unwrap();
         let held = isl.holding;
-        isl.ct.set_over(is_over, held, false)
+        let was = isl.ct.over;
+        (isl.ct.set_over(is_over, held, false), is_over && !was)
     };
     set_ignore(sh, ignore);
+    // The pointer come to her home: the monitor reads what its widget's card
+    // shows now, not at its next turn (widgets.rs Watching::looking).
+    if came {
+        crate::wake_monitor();
+    }
     // The home opens up to say what happened while hovered, so it counts
     // as seen once the pointer leaves.
     if !is_over && sh.pet.lock().unwrap().seen(crate::now_ms(), sh.hold()) {
         sh.redraw();
     }
+}
+
+// The pointer on her home (the island, the strip, what opens from them).
+pub fn is_over(sh: &Shared) -> bool {
+    sh.island.lock().unwrap().ct.over
 }
 
 // Her seat on the taskbar as the page has laid her island out (logical px

@@ -23,6 +23,9 @@ pub enum Kind {
     Text,
     Number,
     Flag,
+    // One of a few, each a switch of the script's (passed as -<it>); none
+    // chosen, the one for her language: zh for Chinese, other for any other.
+    Choice { options: &'static [&'static str], zh: &'static str, other: &'static str },
 }
 
 pub struct Param {
@@ -55,7 +58,10 @@ pub static SCRIPTS: [Script; 7] = [
     Script {
         id: "stock",
         icon: "stock",
-        params: &[p("Symbol", Kind::Text, false), p("Name", Kind::Text, false)],
+        // Its up and down colours (the one place every widget of it follows,
+        // wcards.js trendOf): red up as Chinese markets show them, or green
+        // up; none chosen, by her language.
+        params: &[p("Symbol", Kind::Text, false), p("Name", Kind::Text, false), p("Colors", Kind::Choice { options: &["RedUp", "GreenUp"], zh: "RedUp", other: "GreenUp" }, false)],
         body: include_bytes!("../../examples/widgets/stock.ps1"),
         turn: Some(Duration::from_secs(300)),
     },
@@ -100,6 +106,7 @@ pub fn is_ok(v: &Value) -> bool {
                 Kind::Flag => v.is_boolean(),
                 Kind::Text => v.as_str().is_some_and(|t| t.chars().count() <= 300 && !t.chars().any(char::is_control)),
                 Kind::Number => v.as_str().is_some_and(|t| t.trim().is_empty() || t.trim().parse::<f64>().is_ok_and(|n| n > 0.0 && n <= 100_000.0)),
+                Kind::Choice { options, .. } => v.as_str().is_some_and(|o| options.contains(&o)),
             },
             _ => false,
         })
@@ -141,11 +148,19 @@ pub(crate) fn quote(s: &str) -> String {
     out
 }
 
-// The script and its parameters, as PowerShell runs them.
-fn invocation(s: &Script, conf: &Value, folder: &Path, port: u16) -> String {
+// One of a few as chosen, else the one for her language ("zh", "en").
+fn choice(kind: Kind, value: &Value, lang: &str) -> Option<&'static str> {
+    let Kind::Choice { options, zh, other } = kind else { return None };
+    Some(options.iter().copied().find(|o| value.as_str() == Some(*o)).unwrap_or(if lang == "zh" { zh } else { other }))
+}
+
+// The script and its parameters, as PowerShell runs them; a choice none
+// made, as her language has it.
+fn invocation(s: &Script, conf: &Value, folder: &Path, port: u16, lang: &str) -> String {
     let mut line = format!("& {}", quote(&folder.join(format!("{}.ps1", s.id)).to_string_lossy()));
     for p in s.params {
         match p.kind {
+            Kind::Choice { .. } => line += &format!(" -{}", choice(p.kind, &conf[p.name], lang).unwrap_or_default()),
             Kind::Flag if conf[p.name] == true => line += &format!(" -{}", p.name),
             Kind::Text | Kind::Number if !text(conf, p.name).is_empty() => line += &format!(" -{} {}", p.name, quote(text(conf, p.name))),
             _ => {}
@@ -156,10 +171,10 @@ fn invocation(s: &Script, conf: &Value, folder: &Path, port: u16) -> String {
 
 // Hidden: what it prints in UTF-8 and without colours (PowerShell 7), so
 // the last line can be shown.
-fn arguments(s: &Script, conf: &Value, folder: &Path, port: u16) -> Vec<String> {
+fn arguments(s: &Script, conf: &Value, folder: &Path, port: u16, lang: &str) -> Vec<String> {
     let line = format!(
         "try {{ [Console]::OutputEncoding = [Text.Encoding]::UTF8; $PSStyle.OutputRendering = 'PlainText' }} catch {{}}; {}",
-        invocation(s, conf, folder, port)
+        invocation(s, conf, folder, port, lang)
     );
     ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &line].map(String::from).to_vec()
 }
@@ -382,7 +397,7 @@ pub fn sync(sh: &Shared) -> bool {
             let c = &conf[s.id];
             let is_on = c["on"] == true;
             let want = is_on && missing(s, c).is_none();
-            let mut args = arguments(s, c, &folder, sh.port);
+            let mut args = arguments(s, c, &folder, sh.port, sh.lang());
             if s.turn.is_some() {
                 if let Some(line) = args.last_mut() {
                     line.push_str(" -Once");
@@ -484,6 +499,7 @@ pub fn stop_all(sh: &Shared) {
 //          seconds until it is tried again)
 pub fn view(sh: &Shared) -> Value {
     let conf = sh.setting("plugins");
+    let lang = sh.lang();
     let now = Instant::now();
     let r = sh.scripts.lock().unwrap();
     let said = r.said.lock().unwrap();
@@ -510,8 +526,14 @@ pub fn view(sh: &Shared) -> Value {
                             Kind::Text => "text",
                             Kind::Number => "number",
                             Kind::Flag => "flag",
+                            Kind::Choice { .. } => "choice",
                         };
-                        json!({ "name": p.name, "kind": kind, "required": p.required, "value": c[p.name] })
+                        // A choice: its options, and the one in effect (none
+                        // made: her language's).
+                        match p.kind {
+                            Kind::Choice { options, .. } => json!({ "name": p.name, "kind": kind, "required": p.required, "options": options, "value": choice(p.kind, &c[p.name], lang), "chosen": c[p.name].is_string() }),
+                            _ => json!({ "name": p.name, "kind": kind, "required": p.required, "value": c[p.name] }),
+                        }
                     })
                     .collect();
                 let no_shell = r.trouble.get(s.id).is_some_and(|t| t.no_shell);
@@ -650,12 +672,46 @@ mod tests {
     #[test]
     fn a_script_runs_with_what_it_was_given_quoted() {
         let ci = script("ci").unwrap();
-        let line = invocation(ci, &json!({ "Repo": "o'neil/x’y", "Prs": true }), Path::new("C:\\d"), 47213);
+        let line = invocation(ci, &json!({ "Repo": "o'neil/x’y", "Prs": true }), Path::new("C:\\d"), 47213, "en");
         assert_eq!(line, "& 'C:\\d\\ci.ps1' -Repo 'o''neil/x’’y' -Prs -Port 47213");
         let weather = script("weather").unwrap();
-        assert_eq!(invocation(weather, &json!({ "City": "  " }), Path::new("C:\\d"), 1), "& 'C:\\d\\weather.ps1' -Port 1");
+        assert_eq!(invocation(weather, &json!({ "City": "  " }), Path::new("C:\\d"), 1, "zh"), "& 'C:\\d\\weather.ps1' -Port 1");
         assert_eq!(missing(ci, &json!({ "Repo": " " })), Some("Repo"));
         assert_eq!(missing(weather, &json!({})), None);
+    }
+
+    // The stock plugin's up and down colours (the one place every widget of
+    // it follows): none chosen, by her language, red up in Chinese as
+    // Chinese markets show them and as it always did, green up otherwise;
+    // chosen, as chosen, whatever her language. Only its two.
+    #[cfg(windows)]
+    #[test]
+    fn a_stocks_colours_follow_her_language_until_chosen() {
+        let stock = script("stock").unwrap();
+        let line = |conf: Value, lang: &str| invocation(stock, &conf, Path::new("C:\\d"), 1, lang);
+        assert_eq!(line(json!({ "Symbol": "AAPL" }), "zh"), "& 'C:\\d\\stock.ps1' -Symbol 'AAPL' -RedUp -Port 1");
+        assert_eq!(line(json!({ "Symbol": "AAPL" }), "en"), "& 'C:\\d\\stock.ps1' -Symbol 'AAPL' -GreenUp -Port 1");
+        assert_eq!(line(json!({ "Colors": "GreenUp" }), "zh"), "& 'C:\\d\\stock.ps1' -GreenUp -Port 1");
+        assert_eq!(line(json!({ "Colors": "RedUp" }), "en"), "& 'C:\\d\\stock.ps1' -RedUp -Port 1");
+        // Not one of its two: as none chosen.
+        assert_eq!(line(json!({ "Colors": 7 }), "en"), "& 'C:\\d\\stock.ps1' -GreenUp -Port 1");
+        assert!(is_ok(&json!({ "stock": { "on": true, "Colors": "RedUp" } })));
+        assert!(is_ok(&json!({ "stock": { "Colors": "GreenUp" } })));
+        assert!(!is_ok(&json!({ "stock": { "Colors": "Blue" } })));
+        assert!(!is_ok(&json!({ "stock": { "Colors": true } })));
+        // The script's own default, run by hand, stays red up.
+        let text = String::from_utf8_lossy(stock.body);
+        assert!(text.contains("color = $(if ($isUp -xor $green) { '#ff5c6c' } else { '#34d27b' })") && text.contains("$green = $GreenUp -and -not $RedUp"), "{text}");
+    }
+
+    #[test]
+    fn a_choice_none_made_is_her_languages() {
+        let kind = Kind::Choice { options: &["RedUp", "GreenUp"], zh: "RedUp", other: "GreenUp" };
+        assert_eq!(choice(kind, &Value::Null, "zh"), Some("RedUp"));
+        assert_eq!(choice(kind, &Value::Null, "en"), Some("GreenUp"));
+        assert_eq!(choice(kind, &json!("GreenUp"), "zh"), Some("GreenUp"));
+        assert_eq!(choice(kind, &json!("Pink"), "zh"), Some("RedUp"));
+        assert_eq!(choice(Kind::Flag, &json!(true), "zh"), None);
     }
 
     #[test]

@@ -3069,32 +3069,47 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
    name (the clock's time over its date); one with nothing to say greyed.
    The spacers: one taking the room left in its run (its run takes the
    room there is, .stretch), a little fixed room, a thin line. */
+/* The spec's §5: small, a 16px glyph, white (black on the light strip) and
+   one colour as the tray's icons, and the value, 40 high, 9 at its sides;
+   medium, the value (12px) over its name (11.5px, grey), as the clock. Only
+   ups and downs in colour (wcards.js faceHTML). */
 #bar-rest .tw-widget,
-#bar-rest .tw-plugin {
+#bar-rest .tw-plugin,
+#bar-rest .tw-group {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   height: 40px;
-  padding: 0 8px;
+  padding: 0 9px;
   border-radius: 6px;
-  line-height: 1.25;
+  line-height: 1.3;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: default;
 }
 
-#bar-rest .tw .twi {
+#bar-rest .tw .twg,
+#bar-rest .tw .wgl {
+  flex: none;
+  width: 16px;
+  color: #f5f5f7;
+  font: normal 16px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  text-align: center;
+}
+
+#bar-rest .tw .wsvg {
   display: flex;
 }
 
-#bar-rest .tw .twi .wicon {
+#bar-rest .tw .wsvg .wicon {
   width: 16px;
   height: 16px;
 }
 
-#bar-rest .tw .twi .wicon.wglyph {
-  font-size: 16px;
+#bar-rest .tw .wher {
+  display: flex;
 }
 
 #bar-rest .tw .twt {
@@ -3107,28 +3122,35 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   max-width: 132px;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 12px;
   font-weight: 500;
   color: #f5f5f7;
 }
 
-#bar-rest .tw[data-size='S'] {
+#bar-rest .tw[data-size='S'],
+#bar-rest .tw.S {
   gap: 6px;
 }
 
-#bar-rest .tw[data-size='S'] .twv {
-  max-width: 80px;
+#bar-rest .tw[data-size='S'] .twv,
+#bar-rest .tw.S .twv {
+  max-width: 96px;
 }
 
 #bar-rest .tw .twt i {
   max-width: 132px;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 11.5px;
   font-style: normal;
   color: #a1a1a6;
 }
 
-#bar-rest .tw.empty .twi {
-  opacity: 0.55;
+/* Nothing to say: greyed, its name. */
+#bar-rest .tw.empty .twg,
+#bar-rest .tw.empty .wsvg,
+#bar-rest .tw .tws:has(.wshim) .twg {
+  opacity: 0.45;
 }
 
 #bar-rest .tw.empty .twv {
@@ -3137,7 +3159,8 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
 }
 
 #bar-rest .tw-widget:hover,
-#bar-rest .tw-plugin:hover {
+#bar-rest .tw-plugin:hover,
+#bar-rest .tw-group:hover {
   background: rgba(255, 255, 255, 0.11);
 }
 
@@ -3169,7 +3192,9 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   background: rgba(255, 255, 255, 0.22);
 }
 
-.tb-light #bar-rest .tw .twv {
+.tb-light #bar-rest .tw .twv,
+.tb-light #bar-rest .tw .twg,
+.tb-light #bar-rest .tw .wgl {
   color: #1b1b1b;
 }
 
@@ -3179,7 +3204,8 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
 }
 
 .tb-light #bar-rest .tw-widget:hover,
-.tb-light #bar-rest .tw-plugin:hover {
+.tb-light #bar-rest .tw-plugin:hover,
+.tb-light #bar-rest .tw-group:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
@@ -3196,7 +3222,8 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   color: #2b2b2b;
 }
 
-.tb-clear:not(.tb-filled) #bar-rest .tw .twi {
+.tb-clear:not(.tb-filled) #bar-rest .tw .twg,
+.tb-clear:not(.tb-filled) #bar-rest .tw .wsvg {
   filter: var(--halo);
 }
 
@@ -3215,6 +3242,19 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   background: rgba(94, 155, 255, 0.32);
 }
 
+/* A widget dragged over another's middle: let go, the two in one place. */
+.tb-editing #bar-rest .tw.tb-into {
+  box-shadow:
+    inset 0 0 0 2px #5e9bff,
+    0 0 0 3px rgba(94, 155, 255, 0.35);
+  background: rgba(94, 155, 255, 0.24);
+}
+
+.tbt.off {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* --- A widget's card (island.js drawWidgetPop) --------------------------------------
    Above it, as the windows' list is above a program's button. */
 #bar-rest .wgpop {
@@ -3226,15 +3266,39 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   min-width: 220px;
   max-width: 320px;
   padding: 12px;
-  border-radius: 10px;
-  background: #1c1c1e;
-  color: #e5e5ea;
+  border-radius: 16px;
+  background: var(--wg-glass);
+  backdrop-filter: var(--wg-blur);
+  color: var(--wg-fg);
   font-size: 12px;
   line-height: 1.35;
   white-space: normal;
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.08);
+    inset 0 1px 0 var(--wg-hi),
+    0 0 0 1px var(--wg-line),
+    var(--wg-shadow);
+}
+
+/* Its large size in it (wcards.js cardHTML): as wide as a stack opened. */
+#bar-rest .wgpop.carded {
+  width: 300px;
+  box-sizing: border-box;
+}
+
+#bar-rest .wgpop.above-stack {
+  z-index: 4;
+}
+
+#bar-rest .wgpop .wgcard {
+  display: grid;
+  gap: 8px;
+}
+
+#bar-rest .wghead .wgl {
+  flex: none;
+  width: 18px;
+  font: normal 16px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  text-align: center;
 }
 
 #bar-rest .wgpop[hidden] {
@@ -3302,11 +3366,7 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
 }
 
 .tb-light #bar-rest .wgpop {
-  background: #f9f9f9;
-  color: #1b1b1b;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.18),
-    0 0 0 1px rgba(0, 0, 0, 0.08);
+  color: var(--wg-fg);
 }
 
 .tb-light #bar-rest .wgfrom,
@@ -3596,7 +3656,7 @@ html.handoff-wait body.home-taskbar #island-row {
   bottom: auto;
 }
 
-.tb-top #bar-rest :is(.tfly, .wpop, .wgpop),
+.tb-top #bar-rest :is(.tfly, .wpop, .wgpop, .wstk, .wmenu),
 .tb-top .tbtools {
   top: 54px;
   bottom: auto;
@@ -4139,15 +4199,15 @@ html.handoff-wait body.home-taskbar #island-row {
    menu, a widget's card, a widget's tools; the tray's folded icons from its
    ^ up (down from it in the bar's upper half). Moving from one button to
    the next it slides along the bar; it comes in from the bar's side. */
-.tb-side #bar-rest :is(.wpop, .wgpop) {
+.tb-side #bar-rest :is(.wpop, .wgpop, .wstk, .wmenu) {
   bottom: auto;
 }
 
-.tb-left #bar-rest :is(.wpop, .wgpop) {
+.tb-left #bar-rest :is(.wpop, .wgpop, .wstk, .wmenu) {
   left: 54px;
 }
 
-.tb-right #bar-rest :is(.wpop, .wgpop) {
+.tb-right #bar-rest :is(.wpop, .wgpop, .wstk, .wmenu) {
   left: auto;
   right: 54px;
 }
@@ -4377,4 +4437,941 @@ body.hinting #island[data-view='compact'] .hint-dot {
 .over-full #mica,
 .over-full #bar-rest {
   visibility: hidden;
+}
+
+/* --- Widgets by size (the widget design of 2026-10-16; wcards.js) ---------------------
+   One language for them: glass (a dark or light tint, its hairline, a
+   highlight along its top, a soft shadow), one colour each on its glyph,
+   progress and glow, numbers in the text's colour. Over other programs'
+   windows the page's own blur reaches nothing (the plate under her island,
+   backplate.rs, is hers alone): the glass is held at 92-94% there, where the
+   spec has 56-62% over the desktop's picture, as her island's ground is
+   (island-acrylic-plate). */
+:root {
+  --wg-glass: rgba(28, 29, 34, 0.92);
+  --wg-blur: blur(30px) saturate(1.6);
+  --wg-line: rgba(255, 255, 255, 0.11);
+  --wg-hi: rgba(255, 255, 255, 0.08);
+  --wg-shadow: 0 16px 40px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.2);
+  --wg-fg: #f5f5f7;
+  --wg-2: rgba(235, 235, 245, 0.64);
+  --wg-3: rgba(235, 235, 245, 0.34);
+  --wg-track: rgba(255, 255, 255, 0.12);
+  --wg-tile: rgba(255, 255, 255, 0.06);
+  --wg-tile-line: rgba(255, 255, 255, 0.06);
+  --wg-card: rgba(255, 255, 255, 0.05);
+  --wg-on: rgba(255, 255, 255, 0.14);
+  --wg-amber: #ffb340;
+  --wg-num: 'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+  --wg-icon: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+}
+
+.tb-light #bar-rest,
+.isl-light #island {
+  --wg-glass: rgba(250, 250, 252, 0.94);
+  --wg-line: rgba(0, 0, 0, 0.07);
+  --wg-hi: rgba(255, 255, 255, 0.7);
+  --wg-shadow: 0 16px 40px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+  --wg-fg: #1b1b1f;
+  --wg-2: rgba(30, 30, 36, 0.62);
+  --wg-3: rgba(30, 30, 36, 0.34);
+  --wg-track: rgba(0, 0, 0, 0.09);
+  --wg-tile: rgba(255, 255, 255, 0.55);
+  --wg-tile-line: rgba(0, 0, 0, 0.05);
+  --wg-card: rgba(0, 0, 0, 0.035);
+  --wg-on: rgba(255, 255, 255, 0.9);
+  --wg-amber: #b25e00;
+}
+
+/* Her face for Claude 今天 (a still frame, never played). */
+.still-her.badge {
+  vertical-align: middle;
+}
+
+.tb-light #bar-rest .still-her.badge {
+  background-color: #e8e8e8;
+}
+
+/* An amber glyph: its plugin stopped (the spec's §8). */
+#bar-rest .tw .werr,
+.werr {
+  color: var(--wg-amber) !important;
+}
+
+/* Loading: a shimmer where the value goes, a few times only (an endless one
+   on the 2560-wide strip would paint at the screen's rate all day). */
+.wshim {
+  display: inline-block;
+  width: 38px;
+  height: 9px;
+  border-radius: 4.5px;
+  vertical-align: middle;
+  background: linear-gradient(90deg, var(--wg-track) 20%, color-mix(in srgb, currentColor 30%, transparent) 50%, var(--wg-track) 80%) 0 0 / 220% 100%;
+  animation: wshim 1.3s ease-in-out 4;
+}
+
+@keyframes wshim {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Private words (a letter's sender and subject): blurred while the
+   specifics may not show, clear under the pointer (the spec's §8). */
+.wpriv.hid {
+  filter: blur(4px);
+  transition: filter 0.15s ease;
+}
+
+:is(.wrow, .cmail, .srow, .cline):hover .wpriv.hid,
+.icard .crow:hover .wpriv.hid {
+  filter: none;
+}
+
+/* --- A carousel on the taskbar (the spec's §5) ----------------------------------------
+   As wide as its widest medium: its slides one over another in a reel moved
+   up a slide every 6 s (0.5 s, the spec's curve), a column of dots at its
+   right, the one shown 8px long. */
+#bar-rest .tw-carousel {
+  align-items: flex-start;
+  overflow: hidden;
+  padding: 0 13px 0 0;
+}
+
+#bar-rest .tw-carousel .reel {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.5s cubic-bezier(0.3, 1.2, 0.45, 1);
+}
+
+#bar-rest .tw-carousel .tws {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding-left: 9px;
+}
+
+#bar-rest .tw-carousel .dots {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  display: grid;
+  gap: 3px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+#bar-rest .tw-carousel .dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 1.5px;
+  background: currentColor;
+  opacity: 0.3;
+  transition:
+    opacity 0.3s ease,
+    height 0.3s ease;
+}
+
+#bar-rest .tw-carousel .dots i.on {
+  height: 8px;
+  opacity: 1;
+}
+
+/* --- A stack on the taskbar ------------------------------------------------------------
+   The first, with the edges of the others over it: one 3px under its top,
+   62% wide, 40%; one at its top, 44% wide, 20%. Open, its place stays lit. */
+#bar-rest .tw-stack {
+  cursor: pointer;
+}
+
+#bar-rest .tw-stack::before,
+#bar-rest .tw-stack::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#bar-rest .tw-stack::before {
+  top: 3px;
+  width: 62%;
+  opacity: 0.4;
+}
+
+#bar-rest .tw-stack::after {
+  top: 0;
+  width: 44%;
+  opacity: 0.2;
+}
+
+#bar-rest .tw-stack.open {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.tb-light #bar-rest .tw-stack.open {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* --- A stack, opened (island.js drawStackPop) -----------------------------------------
+   300 wide, 8 px over the strip, round 16, 10 in; its head, then a line
+   each on a tile (round 11): its glyph in a 30px block of its colour (15%),
+   its name, a sentence, its number (18px) and what it counts. Rising in
+   0.32 s, the lines 40 ms apart; with motion reduced, faded in. */
+#bar-rest .wstk {
+  position: absolute;
+  bottom: 56px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  width: 300px;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--wg-glass);
+  backdrop-filter: var(--wg-blur);
+  color: var(--wg-fg);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 var(--wg-hi),
+    0 0 0 1px var(--wg-line),
+    var(--wg-shadow);
+  transform-origin: 50% 100%;
+}
+
+#bar-rest .wstk[hidden] {
+  display: none;
+}
+
+#bar-rest .wstk.rising {
+  animation: wstk-rise 0.32s cubic-bezier(0.3, 1.2, 0.45, 1) both;
+}
+
+#bar-rest .wstk.rising .srow {
+  animation: wstk-rise 0.36s cubic-bezier(0.3, 1.2, 0.45, 1) backwards;
+}
+
+@keyframes wstk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+@keyframes wfade {
+  from {
+    opacity: 0;
+  }
+}
+
+#bar-rest .wstk .shead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 6px 4px;
+  color: var(--wg-2);
+  font-weight: 600;
+}
+
+#bar-rest .wstk .shead span {
+  color: var(--wg-3);
+  font-weight: 500;
+}
+
+#bar-rest .wstk .srow {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: var(--wg-tile);
+  box-shadow: inset 0 0 0 1px var(--wg-tile-line);
+  cursor: grab;
+  touch-action: none;
+}
+
+#bar-rest .wstk .srow.dragging {
+  z-index: 2;
+  cursor: grabbing;
+  box-shadow:
+    inset 0 0 0 1px var(--wg-line),
+    0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+#bar-rest .wstk .srow.out {
+  opacity: 0.75;
+  outline: 1.5px dashed var(--wg-2);
+  outline-offset: -1.5px;
+}
+
+#bar-rest .wstk .srow.out::after {
+  content: attr(data-say);
+  position: absolute;
+  right: 10px;
+  bottom: -18px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 11px;
+}
+
+#bar-rest .wstk .sgl {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--c, var(--wg-2));
+  background: color-mix(in srgb, var(--c, var(--wg-2)) 15%, transparent);
+}
+
+#bar-rest .wstk .sgl .wgl {
+  font: normal 15px/1 var(--wg-icon);
+}
+
+#bar-rest .wstk .sgl .wsvg {
+  display: flex;
+}
+
+#bar-rest .wstk .sgl .wsvg .wicon {
+  width: 15px;
+  height: 15px;
+}
+
+#bar-rest .wstk .sname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+#bar-rest .wstk .sval {
+  grid-row: span 2;
+  text-align: right;
+  font: 400 18px/1.1 var(--wg-num);
+  font-variant-numeric: tabular-nums;
+}
+
+#bar-rest .wstk .sval small {
+  display: block;
+  color: var(--wg-2);
+  font: 600 11px/1.3 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+}
+
+#bar-rest .wstk .ssay {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--wg-2);
+  font-size: 11.5px;
+}
+
+#bar-rest .wstk .srow.empty {
+  opacity: 0.6;
+}
+
+/* --- A widget's menu (island.js openMenu) -----------------------------------------------
+   On the strip over the widget, in the open island at the pointer: its size,
+   where it goes, together or apart; one not there greyed, why at its foot. */
+.wmenu {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  gap: 1px;
+  min-width: 232px;
+  max-width: 300px;
+  box-sizing: border-box;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--wg-glass);
+  backdrop-filter: var(--wg-blur);
+  color: var(--wg-fg);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-align: left;
+  cursor: default;
+  box-shadow:
+    inset 0 1px 0 var(--wg-hi),
+    0 0 0 1px var(--wg-line),
+    var(--wg-shadow);
+  animation: wfade 0.12s ease-out;
+}
+
+.wmenu[hidden] {
+  display: none;
+}
+
+#bar-rest .wmenu {
+  bottom: 54px;
+}
+
+#bar-rest .wmenu.above-stack {
+  z-index: 5;
+}
+
+.wmenu .wmh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 7px;
+  font-weight: 600;
+}
+
+.wmenu .wmh b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wmenu .wmh .wgl {
+  color: var(--c);
+  font: normal 14px/1 var(--wg-icon);
+}
+
+.wmenu .wmh .wsvg {
+  display: flex;
+  color: var(--c);
+}
+
+.wmenu .wmh .wsvg .wicon {
+  width: 14px;
+  height: 14px;
+}
+
+.wmenu .wmr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 4px 3px 8px;
+}
+
+.wmenu .wml {
+  flex: 1;
+  color: var(--wg-2);
+}
+
+.wmenu .wms {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--wg-track);
+}
+
+.wmenu button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wmenu .wmo {
+  min-width: 34px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.wmenu .wmo.on {
+  background: var(--wg-on);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.wmenu .wmo:not(.on):not(.off):hover {
+  background: color-mix(in srgb, var(--wg-on) 50%, transparent);
+}
+
+.wmenu .wmi {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.wmenu .wmi:not(.off):hover {
+  background: var(--wg-track);
+}
+
+.wmenu .off {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.wmenu .wmsep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--wg-line);
+}
+
+.wmenu .wmwhy {
+  padding: 5px 8px 3px;
+  color: var(--wg-2);
+  font-size: 11.5px;
+  white-space: normal;
+}
+
+.wmenu .wmwhy[hidden] {
+  display: none;
+}
+
+/* --- Rows in the open island (the spec's §6; wcards.js rowHTML) ---------------------------
+   Small: a 13px glyph in its colour, its name, its value (its colour,
+   semibold); medium: its name over a second line (11px), a small curve
+   (56x16) when it has one; one with a large size has an 8px ›. */
+#island-expanded .wrow .wrg {
+  flex: none;
+  width: 16px;
+  text-align: center;
+}
+
+#island-expanded .wrow .wgl.wrg {
+  font: normal 13px/1 var(--wg-icon);
+}
+
+#island-expanded .wrow .wsvg {
+  display: flex;
+  justify-content: center;
+}
+
+#island-expanded .wrow .wsvg .wicon {
+  width: 14px;
+  height: 14px;
+}
+
+#island-expanded .wrow .wher {
+  display: flex;
+  justify-content: center;
+}
+
+#island-expanded .wrow.wr-M {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+#island-expanded .wrow .wtwo {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  line-height: 1.35;
+}
+
+#island-expanded .wrow .wtwo .wl,
+#island-expanded .wrow .wsec {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#island-expanded .wrow .wsec {
+  color: #8e8e93;
+  font-size: 11px;
+}
+
+.isl-light #island-expanded .wrow .wsec {
+  color: #6e6e73;
+}
+
+#island-expanded .wrow .wcurve {
+  flex: none;
+  display: flex;
+  margin-left: auto;
+}
+
+#island-expanded .wrow .wchev {
+  flex: none;
+  width: 8px;
+  margin-left: -2px;
+  font: normal 8px/1 var(--wg-icon);
+  opacity: 0.6;
+  transition: transform 0.25s ease;
+}
+
+#island-expanded .wrow .wchev.none {
+  visibility: hidden;
+}
+
+#island-expanded .wrow.open .wchev {
+  transform: rotate(90deg);
+}
+
+#island-expanded .wrow.open {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e5e5ea;
+}
+
+.isl-light #island-expanded .wrow.open {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1b1b1b;
+}
+
+/* A card unfolded: the island at its widest. */
+.has-her #island-expanded.has-card {
+  min-width: 420px;
+}
+
+#island-expanded.has-card {
+  min-width: 360px;
+}
+
+/* --- A card: the large size in the open island (the spec's §4, §6) ------------------------
+   Round 14, 10/12 in, a faint ground of its own, unfolding in 0.34 s; as
+   wide as the island's lines. The same in a widget's card on the strip. */
+#island-expanded .icard {
+  display: grid;
+  gap: 8px;
+  margin: 2px -8px 4px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: var(--wg-card);
+  color: var(--wg-fg);
+  white-space: normal;
+  animation: icard-unfold 0.34s cubic-bezier(0.3, 1.2, 0.45, 1) both;
+  transform-origin: 50% 0;
+}
+
+#island-expanded .icard.still {
+  animation: none;
+}
+
+@keyframes icard-unfold {
+  from {
+    opacity: 0;
+    transform: scaleY(0.85);
+  }
+}
+
+#island-expanded .icard,
+#bar-rest .wgcard {
+  --wc-2: var(--wg-2);
+  --wc-3: var(--wg-3);
+  min-width: 0;
+  font-size: 12px;
+}
+
+:is(.icard, .wgcard) .crow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+:is(.icard, .wgcard) .crow.nums {
+  align-items: flex-end;
+  gap: 14px;
+}
+
+:is(.icard, .wgcard) .cbig {
+  flex: none;
+  font: 300 30px/1 var(--wg-num);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.icard, .wgcard) .cbig.sm {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+:is(.icard, .wgcard) .cbig small {
+  margin-left: 1px;
+  color: var(--wc-2);
+  font-size: 0.5em;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+:is(.icard, .wgcard) .cwords {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+:is(.icard, .wgcard) .cwords b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+:is(.icard, .wgcard) .cwords > span:not(.cbig),
+:is(.icard, .wgcard) .cter,
+:is(.icard, .wgcard) .ccap {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wc-2);
+  font-size: 11px;
+}
+
+:is(.icard, .wgcard) .cright {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--wc-2);
+  font-size: 11px;
+}
+
+:is(.icard, .wgcard) .cter {
+  margin-left: auto;
+}
+
+:is(.icard, .wgcard) .ccurve {
+  display: flex;
+  min-height: 16px;
+}
+
+:is(.icard, .wgcard) .ccurve svg {
+  display: block;
+  overflow: visible;
+}
+
+:is(.icard, .wgcard) .chours {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  color: var(--wc-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+:is(.icard, .wgcard) .chours i {
+  display: block;
+  font: normal 13px/1.6 var(--wg-icon);
+  font-style: normal;
+}
+
+:is(.icard, .wgcard) .chours b {
+  display: block;
+  color: var(--wg-fg);
+  font: 500 13px var(--wg-num);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.icard, .wgcard) .cfoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--wc-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+:is(.icard, .wgcard) .cfoot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:is(.icard, .wgcard) .clines {
+  display: grid;
+  gap: 7px;
+}
+
+:is(.icard, .wgcard) .cline {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 3px 8px;
+}
+
+:is(.icard, .wgcard) .cline .cn {
+  color: var(--wc-2);
+}
+
+:is(.icard, .wgcard) .cline .cd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wc-3);
+  font-size: 11px;
+}
+
+:is(.icard, .wgcard) .cline .cv {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+:is(.icard, .wgcard) .cline .wmeter {
+  grid-column: 1 / -1;
+}
+
+:is(.icard, .wgcard) .cline.st {
+  align-items: center;
+}
+
+:is(.icard, .wgcard) .cline.off {
+  grid-template-columns: auto 1fr;
+  opacity: 0.55;
+}
+
+:is(.icard, .wgcard) .wnone {
+  color: var(--wc-3);
+  font-size: 11px;
+}
+
+:is(.icard, .wgcard) .wmeter {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--wg-track);
+}
+
+:is(.icard, .wgcard) .wmeter i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+/* An up or a down: 18 high, round 9, its colour at 16%. */
+:is(.icard, .wgcard) .cchip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.icard, .wgcard) .ctabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--wg-track);
+  font-size: 11px;
+}
+
+:is(.icard, .wgcard) .ctabs span {
+  padding: 1px 7px;
+  border-radius: 7px;
+  color: var(--wc-2);
+}
+
+:is(.icard, .wgcard) .ctabs span.on {
+  background: var(--wg-on);
+  color: var(--wg-fg);
+  font-weight: 600;
+}
+
+:is(.icard, .wgcard) .ctabs span.off {
+  opacity: 0.45;
+}
+
+:is(.icard, .wgcard) .cnum {
+  display: grid;
+  gap: 2px;
+}
+
+:is(.icard, .wgcard) .cnum b {
+  font: 400 17px/1 var(--wg-num);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.icard, .wgcard) .cnum:first-child b {
+  font: 300 26px/1 var(--wg-num);
+  letter-spacing: -0.02em;
+}
+
+:is(.icard, .wgcard) .cnum span {
+  color: var(--wc-2);
+  font-size: 11px;
+}
+
+:is(.icard, .wgcard) .cmails {
+  display: grid;
+  gap: 8px;
+}
+
+:is(.icard, .wgcard) .cmail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 8px;
+  min-width: 0;
+}
+
+:is(.icard, .wgcard) .cmail b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+:is(.icard, .wgcard) .cmail em {
+  color: var(--wc-3);
+  font-size: 11px;
+  font-style: normal;
+}
+
+:is(.icard, .wgcard) .cmail span {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wc-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #bar-rest .tw-carousel .reel {
+    transition: none;
+  }
+
+  #bar-rest .wstk.rising,
+  #bar-rest .wstk.rising .srow,
+  #island-expanded .icard {
+    animation-name: wfade;
+  }
+
+  .wshim {
+    animation: none;
+  }
+}
+
+/* Along a side: several in one place as narrow as the rest (40), its slides
+   glyph over value, the dots at its edge; a stack's edges at its top. */
+.tb-side #bar-rest .tw-stack {
+  flex-direction: column;
+  justify-content: center;
+  width: 40px;
+  height: auto;
+  min-height: 40px;
+  padding: 6px 0 4px;
+  gap: 2px;
+  box-sizing: border-box;
+  font-size: 10px;
+}
+
+.tb-side #bar-rest .tw-carousel {
+  width: 40px;
+  padding: 0;
+  font-size: 10px;
+}
+
+.tb-side #bar-rest .tw-carousel .tws {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 40px;
+  padding: 0;
+}
+
+.tb-side #bar-rest .tw-carousel .dots {
+  right: 1px;
 }

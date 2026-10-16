@@ -237,3 +237,174 @@ test("a widget's name there: a plugin's, a built-in one's, a spacer's, a label a
   // Gone: as it was put there.
   assert.equal(Widgets.nameOf('en', { type: 'widget', of: 'gone', name: 'CI' }, all), 'CI')
 })
+
+// --- Sizes and details (widgets.rs detail_of; the widget design's §1) ------------------
+
+test("a widget's detail: a string is its extra, an object as it came; its sizes as it says, else by what it is", () => {
+  assert.deepEqual(Widgets.detailOf({ detail: '14°~22°' }), { extra: '14°~22°' })
+  assert.deepEqual(Widgets.detailOf({ detail: '' }), {})
+  assert.deepEqual(Widgets.detailOf({ detail: null }), {})
+  assert.deepEqual(Widgets.detailOf({}), {})
+  assert.deepEqual(Widgets.detailOf({ detail: ['s'] }), {})
+  const weather = { id: 'weather', detail: { sizes: ['s', 'm', 'l'], extra: '8°~16°', series: { points: [8, 11] } } }
+  assert.equal(Widgets.detailOf(weather).series.points.length, 2)
+  assert.equal(Widgets.words('zh', { label: 'Dresden · 阴', value: '11°', ...weather }).detail, '8°~16°')
+  assert.deepEqual(Widgets.sizesOf(weather), ['s', 'm', 'l'])
+  // In order, whatever order it came in.
+  assert.deepEqual(Widgets.sizesOf({ detail: { sizes: ['l', 's'] } }), ['s', 'l'])
+  // A countdown: small alone (its medium greyed on the taskbar too).
+  assert.deepEqual(Widgets.sizesOf({ id: 'countdown', detail: { sizes: ['s'] } }), ['s'])
+  // Said nothing: a script's small and medium (its value over its label);
+  // the built-in ones' own.
+  assert.deepEqual(Widgets.sizesOf({ id: 'ci-main', label: 'main', value: '✓' }), ['s', 'm'])
+  assert.deepEqual(Widgets.sizesOf({ id: 'monitor' }), ['s', 'm', 'l'])
+  assert.deepEqual(Widgets.sizesOf({ id: 'today' }), ['s', 'm', 'l'])
+  assert.deepEqual(Widgets.sizesOf({ id: 'tokens' }), ['s', 'm'])
+})
+
+// --- Several in one place (the design's §5) ----------------------------------------------
+
+const today = { type: 'widget', of: 'today', icon: 'today' }
+const stock = { type: 'plugin', of: 'stock' }
+const mail = { type: 'widget', of: 'inbox-a1', name: 'me@example.com', icon: 'mail' }
+
+test('several in one place are checked as settings.rs checks them', () => {
+  assert.ok(Widgets.isEntry({ id: 'wc1', type: 'carousel', items: [today, stock] }))
+  assert.ok(Widgets.isEntry({ id: 'wc1', type: 'stack', items: [today, stock, mail] }))
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', items: [today] }), 'one alone')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', items: Array.from({ length: 9 }, (_, i) => ({ type: 'widget', of: `w${i}` })) }), 'nine')
+  assert.ok(Widgets.isEntry({ id: 'wc1', type: 'stack', items: Array.from({ length: 8 }, (_, i) => ({ type: 'widget', of: `w${i}` })) }), 'eight')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', items: [today, { ...today }] }), 'the same twice')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', items: [today, { type: 'sep' }] }), 'a spacer in it')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', items: [today, { type: 'widget', of: 'tokens', size: 'M' }] }), 'a size of its own')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', items: [today, { id: 'wd', type: 'widget', of: 'tokens' }] }), 'an id of its own')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack' }), 'no items')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'carousel', size: 'M', items: [today, stock] }), 'a size')
+  assert.ok(!Widgets.isEntry({ id: 'wc1', type: 'stack', of: 'today', items: [today, stock] }), 'an of')
+  assert.ok(!Widgets.isEntry({ id: 'wa1', type: 'widget', of: 'today', items: [today, stock] }), 'items on one alone')
+  // Kept as a copy, its members too.
+  const group = { id: 'wc1', type: 'stack', items: [today, stock] }
+  const got = Widgets.layoutOf({ right: [group, 'clock'] }, PARTS, WIN11)
+  got.right[0].items[0].of = 'tokens'
+  assert.equal(group.items[0].of, 'today')
+})
+
+test('two put in one place, made the other kind, taken apart, one taken out, one moved', () => {
+  let n = 0
+  const newId = () => `wn${++n}`
+  const a = { id: 'wa', type: 'widget', of: 'today', size: 'M', icon: 'today' }
+  const b = { id: 'wb', type: 'plugin', of: 'stock', size: 'S' }
+  const c = { id: 'wcc', type: 'widget', of: 'inbox-a1', name: 'me@example.com' }
+  const layout = { left: ['her', c], center: ['start', 'apps'], right: [a, 'tray', b, 'clock'] }
+  // b dropped on a: a stack where a was, a first; b gone from its place.
+  const one = Widgets.groupWith(layout, 'wb', 'wa', 'stack', newId)
+  assert.deepEqual(one.right, [{ id: 'wn1', type: 'stack', items: [{ type: 'widget', of: 'today', icon: 'today' }, { type: 'plugin', of: 'stock' }] }, 'tray', 'clock'])
+  assert.deepEqual(layout.right, [a, 'tray', b, 'clock'], 'the one given left as it was')
+  assert.ok(Widgets.isEntry(one.right[0]))
+  // c into the stack: appended, its kind kept.
+  const two = Widgets.groupWith(one, 'wcc', 'wn1', 'carousel', newId)
+  assert.equal(two.right[0].type, 'stack')
+  assert.deepEqual(two.right[0].items.map(m => m.of), ['today', 'stock', 'inbox-a1'])
+  assert.deepEqual(two.left, ['her'])
+  // Itself, or a spacer: nothing done.
+  assert.equal(Widgets.groupWith(two, 'wn1', 'wn1', 'stack', newId), two)
+  assert.equal(Widgets.groupWith({ right: [a, { id: 'wf', type: 'flex' }] }, 'wf', 'wa', 'stack', newId).right.length, 2)
+  // The same one is not put in twice.
+  const twice = Widgets.groupWith({ right: [{ id: 'wg', type: 'stack', items: [today, stock] }, { id: 'wt', type: 'widget', of: 'today' }] }, 'wt', 'wg', 'stack', newId)
+  assert.deepEqual(twice.right[0].items.map(m => m.of), ['today', 'stock'])
+  // The other kind.
+  assert.equal(Widgets.regroup(two, 'wn1', 'carousel').right[0].type, 'carousel')
+  assert.equal(Widgets.regroup(two, 'wn1', 'nope'), two)
+  // Moved: the first last.
+  assert.deepEqual(Widgets.reorder(two, 'wn1', 0, 2).right[0].items.map(m => m.of), ['stock', 'inbox-a1', 'today'])
+  assert.equal(Widgets.reorder(two, 'wn1', 0, 9), two)
+  // One taken out: just after it, alone and medium.
+  const out = Widgets.takeOut(two, 'wn1', 1, newId)
+  assert.deepEqual(out.right.slice(0, 2).map(p => p.type), ['stack', 'plugin'])
+  assert.deepEqual(out.right[1], { id: out.right[1].id, type: 'plugin', of: 'stock', size: 'M' })
+  // Two in it, one taken out: both alone, in their order.
+  const pair = Widgets.takeOut(one, 'wn1', 0, newId)
+  assert.deepEqual(pair.right.slice(0, 2).map(p => p.of), ['stock', 'today'])
+  assert.ok(pair.right.slice(0, 2).every(p => Widgets.isEntry(p)))
+  // One gone: the rest stay; one left, alone.
+  assert.deepEqual(Widgets.dropMember(two, 'wn1', 0, newId).right[0].items.map(m => m.of), ['stock', 'inbox-a1'])
+  assert.deepEqual(Widgets.dropMember(one, 'wn1', 0, () => 'wz').right[0], { id: 'wz', type: 'plugin', of: 'stock', size: 'M' })
+  // Apart: each alone where it was, in its order, the names and icons kept.
+  const apart = Widgets.ungroup(two, 'wn1', newId)
+  assert.deepEqual(
+    apart.right.slice(0, 3).map(p => [p.type, p.of, p.size, p.name || p.icon || '']),
+    [
+      ['widget', 'today', 'M', 'today'],
+      ['plugin', 'stock', 'M', ''],
+      ['widget', 'inbox-a1', 'M', 'me@example.com'],
+    ],
+  )
+  assert.ok(apart.right.every(p => typeof p === 'string' || Widgets.isEntry(p)))
+})
+
+test("what several in one place show: each member's widgets as slides; one with nothing a slide still", () => {
+  const all = [
+    { id: 'today', builtIn: true, label: { key: 'widget.today' }, value: '3' },
+    { id: 'stock-aapl', plugin: 'stock', label: 'AAPL', value: '231' },
+    { id: 'stock-msft', plugin: 'stock', label: 'MSFT', value: '420' },
+  ]
+  const group = { id: 'wc', type: 'carousel', items: [stock, today, mail] }
+  assert.deepEqual(Widgets.sourcesOf(group, all).map(w => w.id), ['stock-aapl', 'stock-msft', 'today'])
+  assert.deepEqual(
+    Widgets.slidesOf(group, all).map(s => [s.member.of, s.w?.id || null]),
+    [
+      ['stock', 'stock-aapl'],
+      ['stock', 'stock-msft'],
+      ['today', 'today'],
+      ['inbox-a1', null],
+    ],
+  )
+  assert.deepEqual([...Widgets.shownOn({ right: [group] }, all)].sort(), ['stock-aapl', 'stock-msft', 'today'])
+  // Its name: its kind and how many.
+  assert.equal(Widgets.nameOf('zh', group, all), '轮播 · 3 个')
+  assert.equal(Widgets.nameOf('en', { ...group, type: 'stack' }, all), 'Stack · 3')
+  assert.deepEqual(Widgets.membersOf({ id: 'wa', type: 'widget', of: 'today', size: 'S', icon: 'today' }), [{ type: 'widget', of: 'today', icon: 'today' }])
+  assert.deepEqual(Widgets.membersOf({ id: 'wf', type: 'flex' }), [])
+})
+
+// --- A carousel's turns (the design's §5, §9) ---------------------------------------------
+
+test('a carousel turns every 6 s, a slide with news cuts in for a turn, the wheel turns it by hand', () => {
+  const T = Widgets.CAROUSEL_MS
+  assert.equal(T, 6000)
+  let s = Widgets.carouselStart(1000)
+  assert.deepEqual(s, { at: 0, since: 1000, back: -1 })
+  // Not yet; then the next; round again past the last.
+  assert.equal(Widgets.carouselTurn(s, 3, 1000 + T - 1).at, 0)
+  assert.equal(Widgets.carouselDue(s, 1000 + T - 1), 1)
+  s = Widgets.carouselTurn(s, 3, 1000 + T)
+  assert.deepEqual(s, { at: 1, since: 1000 + T, back: -1 })
+  assert.equal(Widgets.carouselDue(s, 1000 + T), T)
+  s = Widgets.carouselTurn(Widgets.carouselTurn(s, 3, 1000 + 2 * T), 3, 1000 + 3 * T)
+  assert.equal(s.at, 0)
+  // News on the third while the first shows: at once, for a whole turn,
+  // then back to the one that would have come next (the second).
+  s = Widgets.carouselTurn(s, 3, 1000 + 3 * T + 500, 2)
+  assert.deepEqual(s, { at: 2, since: 1000 + 3 * T + 500, back: 1 })
+  assert.equal(Widgets.carouselTurn(s, 3, 1000 + 4 * T).at, 2)
+  s = Widgets.carouselTurn(s, 3, 1000 + 4 * T + 500)
+  assert.deepEqual(s, { at: 1, since: 1000 + 4 * T + 500, back: -1 })
+  // News on the one shown: nothing to cut in.
+  assert.equal(Widgets.carouselTurn(s, 3, 1000 + 4 * T + 600, 1).since, s.since)
+  // By hand: either way, round; its turn anew; any news forgotten.
+  assert.deepEqual(Widgets.carouselStep({ at: 0, since: 0, back: 2 }, 3, -1, 50), { at: 2, since: 50, back: -1 })
+  assert.deepEqual(Widgets.carouselStep({ at: 2, since: 0, back: -1 }, 3, 1, 50), { at: 0, since: 50, back: -1 })
+  // One slide (or a member gone): it stays.
+  assert.equal(Widgets.carouselTurn({ at: 2, since: 0, back: -1 }, 1, 99999).at, 0)
+  assert.equal(Widgets.carouselTurn({ at: 4, since: 0, back: -1 }, 3, 1).at, 2)
+})
+
+test('news on a slide: a mailbox whose unread grew; a reading or a clock changing is none', () => {
+  const box = n => ({ id: 'inbox-a', from: 'mail', value: { key: 'mail.unread', vars: { n: String(n) } } })
+  assert.equal(Widgets.newsIn(box(2), box(3)), true)
+  assert.equal(Widgets.newsIn(box(3), box(3)), false)
+  assert.equal(Widgets.newsIn(box(3), box(1)), false)
+  assert.equal(Widgets.newsIn(undefined, box(3)), false)
+  assert.equal(Widgets.newsIn({ id: 'pomodoro', value: '18:42' }, { id: 'pomodoro', value: '18:32' }), false)
+  assert.equal(Widgets.newsIn({ id: 'monitor', value: { parts: [] } }, { id: 'monitor', value: { parts: [{ icon: 'cpu', text: '9%' }] } }), false)
+})

@@ -379,9 +379,17 @@ impl Hw {
     // settings are open, so everything is read; `toggles`: the monitor's own
     // switches (cpu, mem, net, battery).
     pub fn turn(&mut self, conf: &Conf, listing: bool, basics: &Basics, toggles: [bool; 4]) {
+        self.turn_also(conf, listing, &[], basics, toggles);
+    }
+
+    // The same, with readings wanted besides those picked (`also`: the
+    // monitor widget's card, while it may be looked at, widgets.rs), read
+    // but neither on the island nor ticked in the settings.
+    pub fn turn_also(&mut self, conf: &Conf, listing: bool, also: &[String], basics: &Basics, toggles: [bool; 4]) {
         let reader = self.reader.get_or_insert_with(imp::Reader::new);
         let picked = conf.picks.clone().unwrap_or_else(|| reader.defaults());
-        let mut round = reader.read(&Want { all: listing, ids: &picked }, basics);
+        let wanted: Vec<String> = picked.iter().chain(also).cloned().collect();
+        let mut round = reader.read(&Want { all: listing, ids: &wanted }, basics);
         let joined = joined_now();
         for r in joined {
             if let Some(at) = round.readings.iter().rposition(|x| x.hardware_id == r.hardware_id) {
@@ -423,6 +431,11 @@ impl Hw {
     // What the reader saw of the hardware, for the dump.
     pub fn seen(&self) -> Value {
         self.reader.as_ref().map_or(Value::Null, imp::Reader::seen)
+    }
+
+    // The last turn's hardware and readings (the monitor widget's card).
+    pub fn round(&self) -> &Round {
+        &self.round
     }
 }
 

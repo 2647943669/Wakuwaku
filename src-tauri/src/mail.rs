@@ -429,21 +429,33 @@ pub fn stop_all(sh: &Shared) {
 
 // The account's widget: the newest unread letter (private: who and what
 // about) and how many; "can't get mail" when it keeps failing. A new
-// letter opens the island.
-fn show(sh: &Shared, account: &Account, unread: Option<usize>, letter: Option<&(String, String)>, is_new: bool) {
+// letter opens the island. Its larger sizes: the newest unread letters
+// (who, what about, when sent: widgets.rs detail_of), newest first.
+fn show(sh: &Shared, account: &Account, unread: Option<usize>, letters: &[(String, String, Option<i64>)], is_new: bool) {
     let zh = sh.lang() == "zh";
-    let label = match letter {
-        Some((from, subject)) if !subject.is_empty() => format!("{}{}{}", if from.is_empty() { &account.address } else { from }, if zh { "：" } else { ": " }, subject),
-        Some((from, _)) if !from.is_empty() => from.clone(),
+    let label = match letters.first() {
+        Some((from, subject, _)) if !subject.is_empty() => format!("{}{}{}", if from.is_empty() { &account.address } else { from }, if zh { "：" } else { ": " }, subject),
+        Some((from, _, _)) if !from.is_empty() => from.clone(),
         _ => account.address.clone(),
     };
+    let rows: Vec<Value> = letters
+        .iter()
+        .map(|(from, subject, at)| {
+            let mut row = json!({ "from": if from.is_empty() { &account.address } else { from }, "subject": subject });
+            if let Some(at) = at.filter(|t| *t > 0) {
+                row["at"] = json!(at);
+            }
+            row
+        })
+        .collect();
+    let detail = crate::widgets::detail_of(Some(&json!({ "sizes": ["s", "m", "l"], "rows": rows })));
     let (value, color) = match unread {
         Some(0) => (json!({ "key": "mail.none" }), "#8e8e93"),
         Some(n) => (json!({ "key": "mail.unread", "vars": { "n": n.to_string() } }), "#5e9bff"),
         None => (json!({ "key": "mail.cannot" }), "#ff5c6c"),
     };
     let id = widget_id(&account.id);
-    if sh.widgets.lock().unwrap().put_owned(&id, "mail", color, json!(label.chars().take(60).collect::<String>()), value, true, now_ms()) {
+    if sh.widgets.lock().unwrap().put_owned(&id, "mail", color, json!(label.chars().take(60).collect::<String>()), value, detail, true, now_ms()) {
         sh.redraw();
     }
     if is_new {
