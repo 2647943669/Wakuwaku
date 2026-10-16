@@ -85,9 +85,12 @@
       return `${head(w, name, ctx)}<div class="grow"></div><div class="row" style="gap:12px"><div class="ringbox" style="width:58px;height:58px">${ring(c.pct / 100, 58, 5, color, track(ctx))}${inner}</div><div class="lines" style="gap:4px">${lines.join('')}</div></div>`
     }
     if (size === 'm') {
+      // One not read (no graphics card in a VM): greyed with "no data", as
+      // the large one says it (the design session, §8).
       const col = (label, r) => {
         const s = share(r?.value)
-        return `<div class="col${r ? '' : ' off'}"><div class="row"><span class="ter n">${esc(label)}</span><span class="num mid">${r ? `${esc(s.n)}<small>${esc(s.unit)}</small>` : '—'}</span></div>${meter(s.pct, color)}</div>`
+        if (!r) return `<div class="col off"><div class="row"><span class="ter n">${esc(label)}</span>${nodata(ctx)}</div>${meter(0, color)}</div>`
+        return `<div class="col"><div class="row"><span class="ter n">${esc(label)}</span><span class="num mid">${esc(s.n)}<small>${esc(s.unit)}</small></span></div>${meter(s.pct, color)}</div>`
       }
       const points = Array.isArray(net?.points) ? net.points : []
       const netLine = net ? `<span class="sub num">↓ ${esc(net.value)} · ↑ ${esc(net.text || '')}</span>` : `<span class="sub">${nodata(ctx)}</span>`

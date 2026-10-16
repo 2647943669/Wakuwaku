@@ -208,3 +208,12 @@ test('names: its own label, else its plugin and a number, never an id or a bare 
     assert.ok(!/zzz|nope|w\.ex|部件/.test(name), name)
   }
 })
+
+test('the monitor medium without a graphics card: greyed "no data", as the large one says it', () => {
+  const noGpu = { ...monitor, detail: { ...monitor.detail, rows: monitor.detail.rows.filter(r => r.kind !== 'gpu') } }
+  const m = WDesk.faceHTML(noGpu, 'm', ctx(dark))
+  assert.match(text(m), /GPU 暂无数据/)
+  assert.match(m, /<div class="col off">/)
+  assert.doesNotMatch(text(m), /—/)
+  assert.match(text(WDesk.faceHTML(noGpu, 'l', ctx(dark))), /GPU 暂无数据/)
+})

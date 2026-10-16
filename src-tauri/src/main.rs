@@ -1799,12 +1799,17 @@ fn main() {
                             ticker.push_asks();
                         }
                     }
+                    // The desktop's widgets' counts, each minute (desk.rs minute).
+                    if n % 120 == 0 {
+                        desk::minute(&ticker);
+                    }
                     if n % 4 == 0 {
                         let screens = screen::read(&ticker.app);
-                        // Displays come or go, or change: the desktop's widgets' windows with them.
-                        let moved = format!("{:?}", ticker.screens.lock().unwrap().areas) != format!("{:?}", screens.areas);
+                        // Displays come or go, or change: the desktop's widgets' windows
+                        // with them (only while there are any).
+                        let moved = desk::any() && ticker.screens.lock().unwrap().areas != screens.areas;
                         *ticker.screens.lock().unwrap() = screens;
-                        if moved && desk::any() {
+                        if moved {
                             desk::sync(&ticker);
                         }
                         pet::keep_on_screen(&ticker);

@@ -27,7 +27,7 @@
 // The layout is the settings' deskLayout (settings.rs is_desk_layout); a page
 // keeps what it changed (desk_keep, merged with the rest), and her island's
 // page puts widgets on and off the desktop (island.js placeWidget).
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde_json::{json, Value};
@@ -59,6 +59,8 @@ struct Desk {
     // desktop was not seen (push_widgets).
     entries: Vec<Value>,
     stale: bool,
+    // Its work area (physical): the display less its taskbar's strip.
+    work: Mon,
 }
 
 static DESKS: Mutex<Vec<Desk>> = Mutex::new(Vec::new());
@@ -110,7 +112,7 @@ pub fn sync(sh: &Arc<Shared>) {
         for (a, key, _) in &want {
             if !desks.iter().any(|d| d.key == *key) {
                 let label = format!("desk-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, entries: Vec::new(), stale: false });
+                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, entries: Vec::new(), stale: false, work: (a.x, a.y, a.w, a.h) });
                 made.push((label, *a));
             }
         }
@@ -121,6 +123,18 @@ pub fn sync(sh: &Arc<Shared>) {
             let _ = win.destroy();
         }
         sh.log(&format!("desk: {label} gone"));
+    }
+    {
+        let mut desks = DESKS.lock().unwrap();
+        for d in desks.iter_mut() {
+            if let Some((a, _, _)) = want.iter().find(|(a, _, _)| a.mon == d.mon) {
+                d.work = (a.x, a.y, a.w, a.h);
+            }
+        }
+        // None left: nothing of the desktop's runs (no thread, no hook, no timer).
+        if desks.is_empty() && !gone.is_empty() {
+            imp::stop();
+        }
     }
     for (label, area) in made {
         create(sh, label, area);
@@ -175,7 +189,7 @@ pub fn refresh(sh: &Shared) {
             }
         };
         if changed {
-            let _ = sh.app.emit_to(label.as_str(), "desk:state", state);
+            emit(sh, &label, "desk:state", state);
         }
     }
 }
@@ -203,16 +217,23 @@ pub fn push_widgets(sh: &Shared) {
     if desks.is_empty() {
         return;
     }
+    count(&PUSHES);
     let mut widgets = None;
+    let mut waits = false;
     for (label, mon) in desks {
         let seen = seen_now(sh, mon);
         if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == label) {
+            waits |= !seen && !d.stale;
             d.stale = !seen;
         }
         if seen {
+            count(&SENT);
             let w = widgets.get_or_insert_with(|| json!({ "widgets": sh.widgets_said() }));
-            let _ = sh.app.emit_to(label.as_str(), "desk:widgets", w.clone());
+            emit(sh, &label, "desk:widgets", w.clone());
         }
+    }
+    if waits {
+        imp::arm_stale();
     }
 }
 
@@ -233,7 +254,7 @@ pub fn catch_up(sh: &Shared) {
 fn close_menus(sh: &Shared) {
     let open: Vec<String> = DESKS.lock().unwrap().iter().filter(|d| d.menu).map(|d| d.label.clone()).collect();
     for label in open {
-        let _ = sh.app.emit_to(label.as_str(), "desk:outside", Value::Null);
+        emit(sh, &label, "desk:outside", Value::Null);
     }
 }
 
@@ -294,6 +315,7 @@ fn seen_now(sh: &Shared, mon: Mon) -> bool {
             }
         }
     }
+    count(&LOOKS);
     let own = sh.own.lock().unwrap().clone();
     let shown = imp::desktop_shown(&own);
     let full = crate::fullscreen::covering(&own).flatten();
@@ -378,33 +400,66 @@ pub fn in_shape(x: f64, y: f64, s: &[f64; 5], margin: f64) -> bool {
     (x - cx).powi(2) + (y - cy).powi(2) <= r * r
 }
 
+// How soon the pointer's look is wanted (ms); None: not at all, the check
+// stopped (the design session, 2026-10-16): nobody about, no widget on the
+// display the pointer is on, or that desktop covered (a window maximized or
+// full screen over it). On a display with widgets every 250 ms; within 40 px
+// of one, or in the taskbar's strip (the display less its work area), every
+// 100 ms, so that a quick move onto one is caught (the VM, 2026-10-16: from
+// the taskbar 1 in 4 at 250 ms, 6 in 6 at 100 ms).
+pub fn pace(on_widgets: bool, seen: bool, quiet: bool, near: bool, in_strip: bool) -> Option<u64> {
+    if quiet || !on_widgets || !seen {
+        return None;
+    }
+    Some(if near || in_strip { 100 } else { 250 })
+}
+
+// Whether the pointer is looked at at all: someone about, and a desktop
+// window there.
+fn looks_wanted(quiet: bool, desks: usize) -> bool {
+    !quiet && desks > 0
+}
+
+// What a stopped check gives the pointer's loop: never sooner than her own looks.
+const IDLE_MS: u64 = 60_000;
+
+fn contains(r: Mon, (x, y): (i32, i32)) -> bool {
+    x >= r.0 && x < r.0 + r.2 && y >= r.1 && y < r.1 + r.3
+}
+
 // One look at the pointer (physical px): each window takes the mouse while
-// it is on one of its widgets (or held), lets it through elsewhere. How
-// long until the next look (ms): soon while near one.
+// it is on one of its widgets (or held, or a menu open there), lets it
+// through elsewhere. How long until the next look (ms; IDLE_MS: none wanted).
 pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
+    // Nobody about: the pointer rests; each window keeps what it does.
+    if !looks_wanted(sh.is_quiet(), 1) {
+        return IDLE_MS;
+    }
+    // The display under the pointer, if it has widgets: whether its desktop is seen.
+    let under = {
+        let desks = DESKS.lock().unwrap();
+        if !looks_wanted(false, desks.len()) {
+            return IDLE_MS;
+        }
+        desks.iter().find(|d| d.ready && !d.shapes.is_empty() && contains(d.mon, cursor)).map(|d| d.mon)
+    };
+    count(&POLLS);
+    let seen = under.is_some_and(|mon| seen_now(sh, mon));
     let down = crate::pet::any_down().unwrap_or(false);
     let mut changes: Vec<(String, isize, Option<bool>, bool, (f64, f64))> = Vec::new();
-    let mut near = false;
-    let on_widgets;
+    let (mut near, mut in_strip) = (false, false);
     {
         let mut desks = DESKS.lock().unwrap();
-        if desks.is_empty() {
-            return 250;
-        }
-        // The pointer over the desktop itself (not a window over it), on a
-        // display with widgets: looked at often, so that one moved quickly
-        // onto a widget and pressed is caught (the design session's 8: what
-        // passes through lands on the bare desktop, the widgets clear of
-        // the icons, and does nothing there but take an icon's selection).
-        let mine: Vec<isize> = desks.iter().map(|d| d.hwnd).collect();
-        on_widgets = desks.iter().any(|d| !d.shapes.is_empty() && cursor.0 >= d.mon.0 && cursor.0 < d.mon.0 + d.mon.2 && cursor.1 >= d.mon.1 && cursor.1 < d.mon.1 + d.mon.3);
-        let on_desktop = on_widgets && imp::over_desktop(cursor, &mine);
-        near |= on_desktop;
         for d in desks.iter_mut().filter(|d| d.ready) {
+            let on_display = contains(d.mon, cursor);
             let (x, y) = ((cursor.0 - d.mon.0) as f64 / d.sf, (cursor.1 - d.mon.1) as f64 / d.sf);
-            let on_display = cursor.0 >= d.mon.0 && cursor.0 < d.mon.0 + d.mon.2 && cursor.1 >= d.mon.1 && cursor.1 < d.mon.1 + d.mon.3;
-            let inside = on_display && d.shapes.iter().any(|s| in_shape(x, y, s, 0.0));
-            near |= on_display && d.shapes.iter().any(|s| in_shape(x, y, s, NEAR_PX));
+            // Under a window over its desktop, nothing of it is under the pointer.
+            let visible = on_display && seen;
+            let inside = visible && d.shapes.iter().any(|s| in_shape(x, y, s, 0.0));
+            if visible {
+                near |= d.shapes.iter().any(|s| in_shape(x, y, s, NEAR_PX));
+                in_strip |= !contains(d.work, cursor);
+            }
             // A menu open: the whole display's desktop, for a press off it
             // to close it (the page), as Windows' own menus take that press.
             let catch = d.held || inside || (d.menu && on_display);
@@ -423,22 +478,85 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             let _ = sh.app.run_on_main_thread(move || imp::set_through(hwnd, !catch));
             // Where the pointer is as the window takes it (the page hears
             // no move till the next: its hover shown at once), or gone.
-            let _ = sh.app.emit_to(label.as_str(), "desk:pointer", if catch { json!({ "x": at.0, "y": at.1 }) } else { Value::Null });
+            emit(sh, &label, "desk:pointer", if catch { json!({ "x": at.0, "y": at.1 }) } else { Value::Null });
         }
         if outside {
-            let _ = sh.app.emit_to(label.as_str(), "desk:outside", Value::Null);
+            emit(sh, &label, "desk:outside", Value::Null);
         }
     }
-    // On a display with widgets (over a window there): every 100 ms, so
-    // that a quick move from the taskbar or a window onto one is caught
-    // (the VM, 2026-10-16: 1 in 4 at 250 ms); elsewhere as her own look.
-    if near {
-        40
-    } else if on_widgets {
-        100
-    } else {
-        250
+    pace(under.is_some(), seen, false, near, in_strip).unwrap_or(IDLE_MS)
+}
+
+// --- What it does, counted --------------------------------------------------------------------
+// Each minute while there are desktop windows and the debug log is on
+// (main.rs ticker): the pointer's looks, the words pushed and sent, the
+// events to the pages, what the pages asked, the windows put back in their
+// place, the looks at whether a desktop is covered, the desk thread's
+// messages; and, with WAKUWAKU_DESK_TRACE=1, every message the main thread
+// took, by kind (what wakes it).
+static POLLS: AtomicU64 = AtomicU64::new(0);
+static PUSHES: AtomicU64 = AtomicU64::new(0);
+static SENT: AtomicU64 = AtomicU64::new(0);
+static EMITS: AtomicU64 = AtomicU64::new(0);
+static COMMANDS: AtomicU64 = AtomicU64::new(0);
+static PLACED: AtomicU64 = AtomicU64::new(0);
+static LOOKS: AtomicU64 = AtomicU64::new(0);
+static THREAD_MSGS: AtomicU64 = AtomicU64::new(0);
+static TRACE: Mutex<Option<Vec<(u32, bool, bool, u64)>>> = Mutex::new(None);
+
+fn count(c: &AtomicU64) {
+    c.fetch_add(1, Ordering::Relaxed);
+}
+
+fn emit(sh: &Shared, label: &str, event: &str, payload: Value) {
+    count(&EMITS);
+    let _ = sh.app.emit_to(label, event, payload);
+}
+
+// The main thread's messages counted (WAKUWAKU_DESK_TRACE=1), once.
+fn trace_main(sh: &Arc<Shared>) {
+    if std::env::var_os("WAKUWAKU_DESK_TRACE").is_none() {
+        return;
     }
+    {
+        let mut trace = TRACE.lock().unwrap();
+        if trace.is_some() {
+            return;
+        }
+        *trace = Some(Vec::new());
+    }
+    let _ = sh.app.run_on_main_thread(imp::trace_this_thread);
+    sh.log("desk: the main thread's messages counted (WAKUWAKU_DESK_TRACE)");
+}
+
+// One message the main thread took: by its kind, to a window or to the
+// thread itself (another thread's wake: tao's proxy), posted or sent.
+fn traced(hwnd: isize, msg: u32, sent: bool) {
+    let Ok(mut trace) = TRACE.try_lock() else { return };
+    let Some(list) = trace.as_mut() else { return };
+    let thread = hwnd == 0;
+    match list.iter_mut().find(|(m, t, s, _)| *m == msg && *t == thread && *s == sent) {
+        Some(e) => e.3 += 1,
+        None => list.push((msg, thread, sent, 1)),
+    }
+}
+
+pub fn minute(sh: &Shared) {
+    let take = |c: &AtomicU64| c.swap(0, Ordering::Relaxed);
+    let counts = [take(&POLLS), take(&PUSHES), take(&SENT), take(&EMITS), take(&COMMANDS), take(&PLACED), take(&LOOKS), take(&THREAD_MSGS)];
+    let traced = TRACE.lock().unwrap().as_mut().map(std::mem::take);
+    if !any() || !sh.is_logging {
+        return;
+    }
+    let [polls, pushes, sent, emits, commands, placed, looks, thread] = counts;
+    let mut line = format!("desk: a minute: {polls} looks at the pointer, {pushes} pushes ({sent} sent), {emits} events, {commands} asked, {placed} put back, {looks} covered-looks, {thread} desk-thread messages");
+    if let Some(mut list) = traced {
+        list.sort_by(|a, b| b.3.cmp(&a.3));
+        let total: u64 = list.iter().map(|e| e.3).sum();
+        let top: Vec<String> = list.iter().take(8).map(|(m, t, s, n)| format!("{m:#06x}{}{}x{n}", if *t { " thread" } else { "" }, if *s { " sent" } else { "" })).collect();
+        line.push_str(&format!("; main thread {total} messages: {}", top.join(", ")));
+    }
+    sh.log(&line);
 }
 
 // --- What the pages ask -------------------------------------------------------------------------
@@ -449,6 +567,7 @@ fn shared_of(app: &tauri::AppHandle) -> Arc<Shared> {
 // Its listeners up: told what to show, and its display's picture.
 #[tauri::command]
 pub async fn desk_ready(app: tauri::AppHandle, window: WebviewWindow) {
+    count(&COMMANDS);
     let sh = shared_of(&app);
     if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == window.label()) {
         d.ready = true;
@@ -463,6 +582,7 @@ pub async fn desk_ready(app: tauri::AppHandle, window: WebviewWindow) {
 // Where its widgets are now, and whether a menu is open.
 #[tauri::command]
 pub fn desk_shapes(window: WebviewWindow, shapes: Vec<[f64; 5]>) {
+    count(&COMMANDS);
     let menu = shapes.iter().any(|s| s[4] == 12.0);
     if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == window.label()) {
         d.shapes = shapes.into_iter().take(64).collect();
@@ -473,6 +593,7 @@ pub fn desk_shapes(window: WebviewWindow, shapes: Vec<[f64; 5]>) {
 // A press held (a drag): the window keeps the mouse till it is let go.
 #[tauri::command]
 pub fn desk_hold(window: WebviewWindow, on: bool) {
+    count(&COMMANDS);
     let (was, hwnd) = {
         let mut desks = DESKS.lock().unwrap();
         let Some(d) = desks.iter_mut().find(|d| d.label == window.label()) else { return };
@@ -494,6 +615,7 @@ pub fn desk_hold(window: WebviewWindow, on: bool) {
 // one without a display goes to the one the pointer is on.
 #[tauri::command]
 pub async fn desk_keep(app: tauri::AppHandle, entries: Vec<Value>, gone: Vec<String>) -> bool {
+    count(&COMMANDS);
     let sh = shared_of(&app);
     let old = sh.setting("deskLayout");
     let old = old.as_array().cloned().unwrap_or_default();
@@ -537,6 +659,7 @@ pub fn merge(old: &[Value], given: Vec<Value>, gone: &[String]) -> Value {
 // The desktop's icons on this window's display, as rects in its px.
 #[tauri::command]
 pub async fn desk_icons(app: tauri::AppHandle, window: WebviewWindow) -> Vec<[f64; 4]> {
+    count(&COMMANDS);
     let Some((mon, sf)) = DESKS.lock().unwrap().iter().find(|d| d.label == window.label()).map(|d| (d.mon, d.sf)) else { return Vec::new() };
     let _ = app;
     tauri::async_runtime::spawn_blocking(move || imp::icons(mon, sf)).await.unwrap_or_default()
@@ -546,6 +669,7 @@ pub async fn desk_icons(app: tauri::AppHandle, window: WebviewWindow) -> Vec<[f6
 // area and the point in that display's window's px.
 #[tauri::command]
 pub async fn desk_where(app: tauri::AppHandle, window: WebviewWindow, x: f64, y: f64) -> Value {
+    count(&COMMANDS);
     let sh = shared_of(&app);
     let Some((mon, sf)) = DESKS.lock().unwrap().iter().find(|d| d.label == window.label()).map(|d| (d.mon, d.sf)) else { return Value::Null };
     let (px, py) = (mon.0 + (x * sf).round() as i32, mon.1 + (y * sf).round() as i32);
@@ -563,6 +687,7 @@ pub async fn desk_where(app: tauri::AppHandle, window: WebviewWindow, x: f64, y:
 // { items, where, stack }).
 #[tauri::command]
 pub async fn desk_ask(app: tauri::AppHandle, what: String, args: Value) {
+    count(&COMMANDS);
     if matches!(what.as_str(), "settings" | "place") {
         let _ = app.emit_to("island", "desk:ask", json!({ "what": what, "args": args }));
     }
@@ -602,7 +727,7 @@ pub fn read_papers(sh: &Shared) {
         };
         if changed {
             sh.log(&format!("desk: {label} wallpaper {:?}, {}, {}", paper.file, paper.position, paper.color));
-            let _ = sh.app.emit_to(label.as_str(), "desk:paper", now);
+            emit(sh, &label, "desk:paper", now);
         }
     }
 }
@@ -726,14 +851,18 @@ mod imp {
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
         fn GetClassNameW(hwnd: Hwnd, name: *mut u16, max: i32) -> i32;
         fn KillTimer(hwnd: Hwnd, id: usize) -> i32;
-        fn WindowFromPoint(pt: Point) -> Hwnd;
-        fn GetAncestor(hwnd: Hwnd, flags: u32) -> Hwnd;
+        fn SetWindowsHookExW(id: i32, proc_: HookProc, module: isize, thread: u32) -> isize;
+        fn CallNextHookEx(hook: isize, code: i32, wparam: usize, lparam: isize) -> isize;
+        fn UnhookWinEvent(hook: isize) -> i32;
+        fn PostQuitMessage(code: i32);
+        fn DestroyWindow(hwnd: Hwnd) -> i32;
         fn IsIconic(hwnd: Hwnd) -> i32;
     }
 
     #[link(name = "kernel32")]
     extern "system" {
         fn GetModuleHandleW(name: *const u16) -> isize;
+        fn GetCurrentThreadId() -> u32;
     }
 
     const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 1;
@@ -803,26 +932,6 @@ mod imp {
                     return w;
                 }
             }
-        }
-    }
-
-    // The pointer over the desktop itself: the top window under it is
-    // the one with the icons (or one of hers, while it takes the mouse).
-    pub fn over_desktop(at: (i32, i32), mine: &[isize]) -> bool {
-        const GA_ROOT: u32 = 2;
-        // SAFETY: plain lookups; a buffer of our own.
-        unsafe {
-            let h = WindowFromPoint(Point { x: at.0, y: at.1 });
-            if h.is_null() {
-                return false;
-            }
-            let top = GetAncestor(h, GA_ROOT);
-            if mine.contains(&(top as isize)) {
-                return true;
-            }
-            let mut name = [0u16; 32];
-            let k = GetClassNameW(top, name.as_mut_ptr(), 32).max(0) as usize;
-            matches!(String::from_utf16_lossy(&name[..k]).as_str(), "Progman" | "WorkerW")
         }
     }
 
@@ -953,6 +1062,7 @@ mod imp {
         let mine: Vec<isize> = DESKS.lock().unwrap().iter().map(|d| d.hwnd).filter(|&h| h != 0).collect();
         for &h in &mine {
             if let Some(what) = keep_low(h as Hwnd, &mine) {
+                super::count(&super::PLACED);
                 if let Some(sh) = super::SHARED.get() {
                     sh.log(&format!("desk: {what}"));
                 }
@@ -986,15 +1096,45 @@ mod imp {
         }
     }
 
-    const EVERY: usize = 1;
+    // Its timers, all on its hidden window: the two looks after the window in
+    // front changes; a desktop waiting to be told its widgets' words (armed
+    // only while one waits); the picture of a slideshow or of Spotlight
+    // (armed only while the desktop has one: a plain picture says when it
+    // changes, WM_SETTINGCHANGE).
+    const PAPER: usize = 1;
     const AGAIN_SOON: usize = 2;
     const AGAIN_LATER: usize = 3;
+    const STALE: usize = 4;
+    const WM_APP_STALE: u32 = 0x8000 + 0x62;
+    const WM_APP_STOP: u32 = 0x8000 + 0x63;
+
+    // A picture that changes by itself: a slideshow (2) or Spotlight (3)
+    // (Settings' choice, as wallpaper.rs reads it).
+    fn picture_turns() -> bool {
+        let key = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER).open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers");
+        matches!(key.ok().and_then(|k| k.get_value::<u32, _>("BackgroundType").ok()), Some(2 | 3))
+    }
+
+    // The picture's timer as the desktop's picture is: a minute while it
+    // turns by itself, none otherwise.
+    fn arm_paper(hwnd: Hwnd) {
+        // SAFETY: our own window's timer, on its thread.
+        unsafe {
+            if picture_turns() {
+                SetTimer(hwnd, PAPER, 60_000, std::ptr::null());
+            } else {
+                KillTimer(hwnd, PAPER);
+            }
+        }
+    }
 
     extern "system" fn wndproc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize {
+        super::count(&super::THREAD_MSGS);
         match msg {
             // The picture, Windows' colours: looked at again, off this
             // thread (Explorer answers the picture's questions).
             WM_SETTINGCHANGE | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                arm_paper(hwnd);
                 std::thread::spawn(super::look_again);
                 0
             }
@@ -1010,10 +1150,6 @@ mod imp {
                 }
                 0
             }
-            // Every ten seconds: a desktop waiting to be told, seen again
-            // (a window restored without another coming to the front);
-            // every half minute the pictures (a slideshow's next picture
-            // says nothing), nobody about, every other minute.
             WM_TIMER if wparam == AGAIN_SOON || wparam == AGAIN_LATER => {
                 // SAFETY: our own window's one-shot timer.
                 unsafe { KillTimer(hwnd, wparam) };
@@ -1023,22 +1159,39 @@ mod imp {
                 }
                 0
             }
-            WM_TIMER => {
-                static TURN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-                let quiet = super::SHARED.get().is_some_and(|sh| sh.is_quiet());
-                let n = TURN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if super::any_stale() {
-                    if let Some(sh) = super::SHARED.get() {
-                        super::catch_up(sh);
-                    }
+            // A desktop waiting to be told (a window restored without
+            // another coming to the front): looked at every ten seconds
+            // while one waits, then the timer goes.
+            WM_TIMER if wparam == STALE => {
+                if let Some(sh) = super::SHARED.get() {
+                    super::catch_up(sh);
                 }
-                if n % 3 == 0 && (!quiet || n % 12 == 0) {
+                if !super::any_stale() {
+                    // SAFETY: our own window's timer.
+                    unsafe { KillTimer(hwnd, STALE) };
+                }
+                0
+            }
+            // A slideshow's or Spotlight's next picture says nothing: looked
+            // at each minute while someone is about.
+            WM_TIMER if wparam == PAPER => {
+                if !super::SHARED.get().is_some_and(|sh| sh.is_quiet()) {
                     std::thread::spawn(super::look_again);
                 }
                 0
             }
+            WM_APP_STALE => {
+                // SAFETY: our own window's timer.
+                unsafe { SetTimer(hwnd, STALE, 10_000, std::ptr::null()) };
+                0
+            }
             WM_APP_LOW => {
                 keep_all_low();
+                0
+            }
+            WM_APP_STOP => {
+                // SAFETY: this thread's own loop ended.
+                unsafe { PostQuitMessage(0) };
                 0
             }
             // SAFETY: the default for the rest.
@@ -1047,14 +1200,15 @@ mod imp {
     }
 
     static WINDOW: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
-    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-    // Its thread, once: a hidden window that hears Windows' broadcasts, the
-    // hooks on the window in front, the half minute's timer. Asked again:
-    // hers put where they belong, on that thread.
+    // Its thread, while there is a desktop window: a hidden window that hears
+    // Windows' broadcasts, the hooks on the window in front, its timers (none
+    // running while nothing waits). Asked again: hers put where they belong,
+    // on that thread. Gone with the last desktop window (stop).
     pub fn start(sh: &Arc<Shared>) {
         let _ = super::SHARED.set(sh.clone());
-        if STARTED.set(()).is_err() {
+        if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
             let hwnd = WINDOW.load(std::sync::atomic::Ordering::SeqCst);
             if hwnd != 0 {
                 // SAFETY: our own window; the message carries nothing.
@@ -1062,6 +1216,7 @@ mod imp {
             }
             return;
         }
+        super::trace_main(sh);
         crate::spawn_named("desk", || {
             crate::power::thread_eco();
             // SAFETY: our own class, window and hooks, on this thread, which runs their loop.
@@ -1072,18 +1227,89 @@ mod imp {
                 RegisterClassExW(&wc);
                 let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, class.as_ptr(), std::ptr::null(), WS_POPUP, 0, 0, 0, 0, std::ptr::null_mut(), 0, instance, std::ptr::null_mut());
                 WINDOW.store(hwnd as isize, std::sync::atomic::Ordering::SeqCst);
-                SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-                SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-                SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZESTART, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-                SetTimer(hwnd, EVERY, 10_000, std::ptr::null());
+                let hooks = [
+                    SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS),
+                    SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS),
+                    SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZESTART, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS),
+                ];
+                arm_paper(hwnd);
+                if super::any_stale() {
+                    SetTimer(hwnd, STALE, 10_000, std::ptr::null());
+                }
                 keep_all_low();
                 let mut msg: Msg = std::mem::zeroed();
                 while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                 }
+                for h in hooks {
+                    UnhookWinEvent(h);
+                }
+                WINDOW.store(0, std::sync::atomic::Ordering::SeqCst);
+                DestroyWindow(hwnd);
+            }
+            STARTED.store(false, std::sync::atomic::Ordering::SeqCst);
+            if let Some(sh) = super::SHARED.get() {
+                sh.log("desk: its thread gone with the last desktop window");
             }
         });
+    }
+
+    // The last desktop window gone: its thread, hooks and timers with it.
+    pub fn stop() {
+        let hwnd = WINDOW.load(std::sync::atomic::Ordering::SeqCst);
+        if hwnd != 0 {
+            // SAFETY: our own window; the message carries nothing.
+            unsafe { PostMessageW(hwnd as Hwnd, WM_APP_STOP, 0, 0) };
+        }
+    }
+
+    // A desktop now waits to be told: its ten seconds' look armed.
+    pub fn arm_stale() {
+        let hwnd = WINDOW.load(std::sync::atomic::Ordering::SeqCst);
+        if hwnd != 0 {
+            // SAFETY: our own window; the message carries nothing.
+            unsafe { PostMessageW(hwnd as Hwnd, WM_APP_STALE, 0, 0) };
+        }
+    }
+
+    // Debug only (WAKUWAKU_DESK_TRACE=1): every message the main thread
+    // takes, counted by kind (desk.rs minute): what wakes it.
+    type HookProc = extern "system" fn(i32, usize, isize) -> isize;
+    #[repr(C)]
+    struct CwpStruct {
+        lparam: isize,
+        wparam: usize,
+        message: u32,
+        hwnd: Hwnd,
+    }
+    extern "system" fn on_get(code: i32, wparam: usize, lparam: isize) -> isize {
+        if code >= 0 && lparam != 0 {
+            // SAFETY: the system's MSG for this hook, alive for the call.
+            let m = unsafe { &*(lparam as *const Msg) };
+            super::traced(m.hwnd as isize, m.message, false);
+        }
+        // SAFETY: the next hook, as the system asks.
+        unsafe { CallNextHookEx(0, code, wparam, lparam) }
+    }
+    extern "system" fn on_send(code: i32, wparam: usize, lparam: isize) -> isize {
+        if code >= 0 && lparam != 0 {
+            // SAFETY: the system's CWPSTRUCT for this hook, alive for the call.
+            let m = unsafe { &*(lparam as *const CwpStruct) };
+            super::traced(m.hwnd as isize, m.message, true);
+        }
+        // SAFETY: the next hook, as the system asks.
+        unsafe { CallNextHookEx(0, code, wparam, lparam) }
+    }
+    pub fn trace_this_thread() {
+        const WH_GETMESSAGE: i32 = 3;
+        const WH_CALLWNDPROC: i32 = 4;
+        // SAFETY: hooks on this thread alone, our own procedures.
+        unsafe {
+            let me = GetCurrentThreadId();
+            SetWindowsHookExW(WH_GETMESSAGE, on_get, 0, me);
+            SetWindowsHookExW(WH_CALLWNDPROC, on_send, 0, me);
+        }
     }
 
     // The desktop's icons on a display: each its grid's cell where it is
@@ -1116,9 +1342,9 @@ mod imp {
     pub fn desktop_shown(_own: &[isize]) -> bool {
         true
     }
-    pub fn over_desktop(_at: (i32, i32), _mine: &[isize]) -> bool {
-        false
-    }
+    pub fn stop() {}
+    pub fn arm_stale() {}
+    pub fn trace_this_thread() {}
     pub fn icons(_mon: super::Mon, _sf: f64) -> Vec<[f64; 4]> {
         Vec::new()
     }
@@ -1127,6 +1353,32 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pointers_look_stops_where_nothing_can_be_caught() {
+        // Nobody about, no widget on the pointer's display, that desktop covered: none.
+        assert_eq!(pace(true, true, true, true, true), None);
+        assert_eq!(pace(false, true, false, true, true), None);
+        assert_eq!(pace(true, false, false, true, true), None);
+        // On a display with widgets: 250 ms; near one or in the taskbar's strip: 100 ms.
+        assert_eq!(pace(true, true, false, false, false), Some(250));
+        assert_eq!(pace(true, true, false, true, false), Some(100));
+        assert_eq!(pace(true, true, false, false, true), Some(100));
+        assert!(IDLE_MS > 1000);
+        assert!(contains((0, 0, 10, 10), (9, 0)) && !contains((0, 0, 10, 10), (10, 0)) && !contains((-1920, 0, 1920, 1080), (0, 5)));
+    }
+
+    // No desktop widget: no window, nothing waiting, no timer to arm; the
+    // pointer's look and the widgets' push turn back at once.
+    #[test]
+    fn with_no_desktop_widget_nothing_runs() {
+        assert!(DESKS.lock().unwrap().is_empty());
+        assert!(!any());
+        assert!(!any_stale());
+        assert!(!looks_wanted(false, 0));
+        assert!(!looks_wanted(true, 2));
+        assert!(looks_wanted(false, 1));
+    }
 
     #[test]
     fn a_point_in_a_rounded_rect() {
