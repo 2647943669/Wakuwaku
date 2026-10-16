@@ -169,15 +169,16 @@ function tell(ctx, name, fields = {}) {
 }
 
 // Her not up as a session starts: her exe starts her, unless the person
-// quit her (main.rs ensure_running), on her port and with her data folder.
-function startHer() {
+// quit her (main.rs ensure_running), on her port and with her data folder;
+// told it is omp's, and how the session started, for her log (starts.rs).
+function startHer(source) {
   const exe = filled(EXE)
   if (S.started || !exe) return
   S.started = true
   try {
     const env = { ...process.env, WAKUWAKU_PORT: String(PORT) }
     if (filled(DATA)) env.WAKUWAKU_USER_DATA = filled(DATA)
-    const child = spawn(exe, [ENSURE_FLAG], { detached: true, stdio: 'ignore', windowsHide: true, env })
+    const child = spawn(exe, [ENSURE_FLAG, 'omp', source], { detached: true, stdio: 'ignore', windowsHide: true, env })
     child.on('error', () => {})
     child.unref()
     // Up in a second or two: tried again soon.
@@ -190,7 +191,7 @@ function begin(ctx, source) {
   if (S.session && S.session !== here.session_id) post({ hook_event_name: 'SessionEnd', session_id: S.session, cwd: here.cwd, reason: 'other' })
   S.session = here.session_id
   post({ ...here, hook_event_name: 'SessionStart', source }).then(() => {
-    if (!S.up) startHer()
+    if (!S.up) startHer(source)
   })
 }
 

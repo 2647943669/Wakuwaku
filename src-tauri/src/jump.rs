@@ -201,6 +201,33 @@ mod imp {
             .collect()
     }
 
+    // The names of the processes above this one, the nearest first, `max` at
+    // most, for her log (what started her, or a hook of hers: starts.rs):
+    // none past one gone, or one whose number was reused (it started after
+    // its child), or one not ours to ask when it started.
+    pub fn parent_names(max: usize) -> Vec<String> {
+        let all = processes();
+        let mut out = Vec::new();
+        let (mut cur, mut child_at) = (std::process::id(), started(std::process::id()));
+        while out.len() < max {
+            let Some(&(parent, _)) = all.get(&cur) else { break };
+            if parent == 0 || parent == cur {
+                break;
+            }
+            let Some((_, name)) = all.get(&parent) else { break };
+            let at = started(parent);
+            if at.zip(child_at).is_some_and(|(at, child)| at > child) {
+                break;
+            }
+            out.push(name.clone());
+            if at.is_none() {
+                break;
+            }
+            (cur, child_at) = (parent, at);
+        }
+        out
+    }
+
     // The outermost process above one, by the processes' list (their numbers
     // and parents): the app a hook runs under, past the shell and the hook
     // runners that are gone a moment later (DeepSeek Harness's: server.rs
@@ -605,6 +632,9 @@ mod imp {
     pub fn hook_chain() -> Chain {
         Vec::new()
     }
+    pub fn parent_names(_max: usize) -> Vec<String> {
+        Vec::new()
+    }
     pub fn outermost_of(pid: u32, _app: &str) -> u32 {
         pid
     }
@@ -640,7 +670,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, front_chain, hook_chain, is_listening, outermost_of, still_running, still_there, windows_for};
+pub use imp::{chain_of, client_of, front_chain, hook_chain, is_listening, outermost_of, parent_names, still_running, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {

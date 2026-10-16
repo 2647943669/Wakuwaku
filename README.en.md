@@ -157,7 +157,7 @@ How it differs from Claude Code:
 - She follows a session starting, working and each tool it uses, finishing (the start of its reply), failing and exiting; a subagent's are left out, only the main session shows.
 - omp runs in yolo by default and asks for no tool approvals; set to `always-ask` or `write`, when omp wants a tool approved she shows "Approve it in the terminal: …", and the approval is given in omp (omp has no way for an extension to answer it).
 - omp's plan reviews (plan mode) can be approved or turned down on her panel, whichever of it and the terminal's review answers first.
-- The extension runs inside omp's own process: each event is sent and let go, and omp never waits on her; with her not running, omp works as ever. When she isn't running and you didn't quit her from her menu, a new omp session starts her. Clicking the session goes to the terminal window omp runs in.
+- The extension runs inside omp's own process: each event is sent and let go, and omp never waits on her; with her not running, omp works as ever. When she isn't running and you didn't quit her (her menu's Quit, or `POST /quit`), a new omp session starts her. Clicking the session goes to the terminal window omp runs in.
 
 ### 7. Connect ZCode (optional)
 
@@ -165,13 +165,13 @@ Z.ai's [ZCode](https://zcode.z.ai/) is supported: the desktop app (tried with 3.
 
 Nearly as with Claude Code: starting, working, each step's tool, finishing (with its last words), edits, and Today counts it. When ZCode needs your approval, the island asks **Allow** / **Deny** (ZCode suggests no rules, so no "always"); ZCode shows its own dialog at the same time, and **whichever you answer first counts**: answered on the island, ZCode's dialog closes; answered in ZCode, the panel goes once that step is done (after a deny, once the turn ends). Handle in ZCode hands it back and brings its window to the front. With her not running, ZCode just shows its own dialog.
 
-ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.exe --wakuwaku-zcode-hook <event>` once (started directly with its arguments, no shell, so a space in the path is fine), which hands it to her. ZCode waits for it at each step, about 0.1 s; the approval one may wait up to 10 minutes (the panel's own wait is shorter, and hands it back to ZCode when it runs out). A new task starts her when she isn't running (unless you quit her from her menu).
+ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.exe --wakuwaku-zcode-hook <event>` once (started directly with its arguments, no shell, so a space in the path is fine), which hands it to her. ZCode waits for it at each step, about 0.1 s; the approval one may wait up to 10 minutes (the panel's own wait is shorter, and hands it back to ZCode when it runs out). A new task starts her when she isn't running (unless you quit her: her menu's Quit, or `POST /quit`).
 
 ### 8. Connect DeepSeek Harness (optional)
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) is supported: the desktop app (tried with 0.2.0-rc.2) and the `dsh` CLI. DSH has no hooks file of its own, everything is a plugin; it ships a bridge plugin that runs a Claude Code hooks.json (`@deepseek-ai/dsh-hooks-claude-code`). Click Connect in DeepSeek Harness's row of the Agents page: she hooks that bridge in through `~/.dsh/cordis.patch.yml` (a layer every profile applies, the desktop app's own too; backed up first, and removing takes out only our lines, which sit between `# wakuwaku begin` and `# wakuwaku end`), with the hook list it runs in her data folder (`dsh-hooks.json`). Then **restart DeepSeek Harness**, which reads these only as it starts.
 
-What works: sessions starting, working and finishing (an edit makes it "edited"), with DSH's own session name, its last words, the files changed and the to-do list on the island, "waiting for you" while it asks you a question; Today counts its turns and time; a click on its session goes to DSH's window. The last words aren't in the bridge's events: as a turn ends she reads them from the end of that session's log (`~/.dsh/sessions/…/session.v4.jsonl.zstd`, Zstandard-compressed JSONL), and shows none when they can't be read. What doesn't:
+What works: sessions starting, working and finishing (an edit makes it "edited"), with DSH's own session name, its last words, the files changed and the to-do list on the island, "waiting for you" while it asks you a question; Today counts its turns and time; a click on its session goes to DSH's window. The last words aren't in the bridge's events: as a turn ends she reads them from the end of that session's log (`~/.dsh/sessions/…/session.v4.jsonl.zstd`, Zstandard-compressed JSONL), and shows none when they can't be read. A subagent DSH starts (its subagent tool, or a plugin's, like dsh-mnemon's idle review) gets no line of its own, and its task never names a session: the files it changes count toward the turn of the session that started it, while that one is at work; with that one at rest, nothing shows. What doesn't:
 
 - **Approvals stay in DSH's own window**: the bridge has no `PermissionRequest`, so she can't tell it is waiting for your approval (the island shows it working then).
 - Not every step's tool: DSH runs hooks through PowerShell in its sandbox, about 1 s each, so only a turn's start and end, edits, the to-do list and questions have one, to keep other tool calls from waiting a second each.
@@ -221,7 +221,7 @@ The repository's [`wallpapers/`](wallpapers/) folder has five desktop wallpapers
 
 | You want | Do |
 | --- | --- |
-| Off for now | Right-click → Quit. Claude Code and Codex sessions no longer bring her back: open her yourself, or wait for the next start at login (only after a crash does a session start her again) |
+| Off for now | Right-click → Quit (from a script, `POST http://127.0.0.1:47213/quit`, which counts as your quitting her too). Claude Code, Codex, Antigravity, ZCode and omp sessions no longer bring her back (nor a new session, `resume`, `/clear` or a compaction): open her yourself, or wait for the next start at login (only after a crash does a session start her again). A script that quits her but wants a later session to wake her uses `POST /quit?wake=1` |
 | Some quiet | Right-click → Do not disturb: she hides, no notifications, prompts go to the terminal |
 | No automatic start, only when I open her | Connect with the plugin (it never starts her) and turn off Start at login; open her yourself |
 

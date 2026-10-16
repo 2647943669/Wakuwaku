@@ -15,8 +15,11 @@
 //                      up, and waits for her to go (updates.rs hand_over)
 //   POST /debug/eval   { page, code }: run code in her page or the island's (WAKUWAKU_DEBUG=1 only)
 //   POST /debug/walk   { dx, ms }: take a walk now (WAKUWAKU_DEBUG=1 only)
-//   POST /quit         quit, as the menu does (a new build replacing her; killing her
-//                      would leave the top bar's strip taken)
+//   POST /quit         quit, as the menu does: by choice, so no session's hook starts her
+//                      until she is started otherwise (data.rs Quit, #57); for a new build
+//                      replacing her, which starts her (and clears that), or a script (killing
+//                      her would leave the taskbar's strip taken)
+//                      ?wake=1: quit so that a session's hook may start her again
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 
@@ -48,6 +51,17 @@ fn agent_of(url: &str) -> Option<&'static str> {
         "agent=dsh" => Some("dsh"),
         _ => None,
     })
+}
+
+// How POST /quit quits: by choice, unless asked with ?wake=1 (or true) to
+// let a session's hook start her again (data.rs Quit); and its words.
+fn quit_of(url: &str) -> (crate::data::Quit, &'static str) {
+    let query = url.split_once('?').map_or("", |(_, q)| q);
+    if query.split('&').any(|p| matches!(p, "wake=1" | "wake=true")) {
+        (crate::data::Quit::Wakeable, "POST /quit?wake=1")
+    } else {
+        (crate::data::Quit::ByChoice, "POST /quit")
+    }
 }
 
 // Whether an agent's events bring the processes their session runs in:
@@ -188,10 +202,11 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 _ => events::to_message(&event),
             };
             if let Some(mut msg) = msg {
-                // Where the session runs, for going to its window (jump.rs).
-                let chain = chain_for(sh, &req, &event, agent);
+                // Where the session runs, for going to its window (jump.rs);
+                // none for one going (a DSH subagent's too: events_dsh.rs whose).
+                let chain = if msg["event"] == "session-end" { None } else { chain_for(sh, &req, &event, agent) };
                 if agent == Some("dsh") {
-                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0)) {
+                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &crate::connection::dsh_home()) {
                         sh.log(&line);
                     }
                 }
@@ -292,11 +307,13 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 None => reply(req, 504, json!({ "error": "no answer" })),
             }
         }
-        // Quit as the menu does (the bar's strip given back on the way): for
-        // replacing her with a new build, which must not just kill her.
+        // Quit as the menu does (the bar's strip given back on the way), by
+        // choice unless ?wake=1: for replacing her with a new build, which
+        // must not just kill her, and for scripts.
         ("POST", "/quit") | ("POST", "/debug/quit") => {
-            reply(req, 200, json!({ "ok": true }));
-            sh.quit();
+            let (how, why) = quit_of(req.url());
+            reply(req, 200, json!({ "ok": true, "byChoice": how == crate::data::Quit::ByChoice }));
+            sh.quit(how, why);
         }
         ("POST", "/debug/walk") if is_debug => {
             let Some(body) = read_json(&mut req) else { return reply(req, 400, json!({ "error": "bad json" })) };
@@ -348,6 +365,22 @@ mod tests {
         // omp's come from inside omp.exe: she finds its process, as Claude Code's.
         assert!(brings_chain(Some("codex")) && brings_chain(Some("agy")) && brings_chain(Some("zcode")));
         assert!(!brings_chain(Some("omp")) && !brings_chain(Some("opencode")) && !brings_chain(Some("dsh")) && !brings_chain(None));
+    }
+
+    // POST /quit is a quit by choice (the hooks then start her no more)
+    // unless it asks to be woken: ?wake=1.
+    #[test]
+    fn quit_by_choice_unless_asked_to_wake() {
+        use crate::data::Quit;
+        assert_eq!(quit_of("/quit"), (Quit::ByChoice, "POST /quit"));
+        assert_eq!(quit_of("/quit?"), (Quit::ByChoice, "POST /quit"));
+        assert_eq!(quit_of("/debug/quit"), (Quit::ByChoice, "POST /quit"));
+        assert_eq!(quit_of("/quit?wake=1"), (Quit::Wakeable, "POST /quit?wake=1"));
+        assert_eq!(quit_of("/quit?wake=true"), (Quit::Wakeable, "POST /quit?wake=1"));
+        assert_eq!(quit_of("/quit?from=test&wake=1"), (Quit::Wakeable, "POST /quit?wake=1"));
+        for url in ["/quit?wake=0", "/quit?wake=", "/quit?wake", "/quit?awake=1", "/quit?wake=10", "/quit?x=wake=1"] {
+            assert_eq!(quit_of(url).0, Quit::ByChoice, "{url}");
+        }
     }
 
     // A connection whose socket cannot be split in two (WSADuplicateSocket's
