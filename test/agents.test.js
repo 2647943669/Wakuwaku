@@ -58,6 +58,7 @@ test('each agent in the table is whole, and its words are there in both language
     keys.add(`ag.via.${a.via}`)
     for (const k of Object.values(a.words || {})) keys.add(k)
     if (a.step) keys.add(a.step)
+    if (a.stepNote) keys.add(a.stepNote)
     assert.ok(a.good.every(s => a.in.includes(s)), `${a.id}: good is part of in`)
   }
   for (const cap of Agents.CAPS) keys.add(`ag.cap.${cap}`)
@@ -135,6 +136,15 @@ test('how each stands, and its one button', () => {
   assert.equal(state({ codex: { hooks: 'ok', seen: true } }, 'codex'), 'on')
   assert.equal(action({ codex: { hooks: 'ok', seen: true } }, 'codex'), null)
   assert.deepEqual(Agents.TABLE.filter(a => a.step).map(a => a.id), ['codex'])
+  // Its standing note: while the trust shows in amber above it, only its
+  // second half (the trust not said twice); once trusted, all of it.
+  assert.equal(Agents.noteOf('codex', 'step'), 'ag.note.codexWake')
+  for (const state of ['on', 'set', 'repair', 'none']) assert.equal(Agents.noteOf('codex', state), 'ag.note.codex', state)
+  assert.equal(Agents.noteOf('dsh', 'set'), 'ag.note.dsh')
+  for (const lang of ['zh', 'en']) {
+    assert.ok(STRINGS[lang]['ag.note.codex'].endsWith(STRINGS[lang]['ag.note.codexWake']), lang)
+    assert.ok(STRINGS[lang]['ag.note.codexWake'].length < STRINGS[lang]['ag.note.codex'].length / 2, lang)
+  }
   // Ours there but to repair (moved, older, part missing, turned off): Repair.
   for (const [id, status] of [['codex', 'stale'], ['codex', 'upgradable'], ['codex', 'partial'], ['agy', 'stale'], ['agy', 'off'], ['omp', 'partial'], ['zcode', 'off'], ['zcode', 'partial'], ['dsh', 'stale']]) {
     assert.equal(state({ [id]: { hooks: status } }, id), 'repair', `${id} ${status}`)

@@ -1948,7 +1948,7 @@
   // for its first turn (a new omp session, DSH restarted).
   function agentNotes(id, state) {
     const next = state === 'set' && id === 'omp' ? T('s.ompNew') : state === 'set' && id === 'dsh' ? T('s.dshRestart') : ''
-    return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(`ag.note.${id}`))}</div>`
+    return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(Agents.noteOf(id, state)))}</div>`
   }
 
   // A field of the details: its name, what it is.

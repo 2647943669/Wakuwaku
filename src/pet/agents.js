@@ -89,6 +89,9 @@
       good: ['ok'],
       words: { upgradable: 's.codexUpgradable', unreadable: 's.codexUnreadable' },
       step: 'ag.do.trust',
+      // Its standing note while the step's own words show above it: the
+      // rest of it, not the trust twice.
+      stepNote: 'ag.note.codexWake',
       caps: {
         status: ['yes', 'ag.cap.status.codex'],
         approve: ['yes', 'ag.cap.approve.codex'],
@@ -316,7 +319,11 @@
   // How many sessions of one are in sight now (state.rs: agent, none for Claude Code's).
   const sessionsOf = (snap, id) => (snap.sessions || []).filter(s => (s.agent || 'claude') === id).length
 
-  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
+  // The standing note at the foot of one's details (ag.note.<id>); while
+  // its step shows in amber at their top, the part that does not say it again.
+  const noteOf = (id, state) => (state === 'step' && byId(id)?.stepNote) || `ag.note.${id}`
+
+  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, noteOf, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api
