@@ -680,13 +680,26 @@ pub fn merge(old: &[Value], given: Vec<Value>, gone: &[String]) -> Value {
     Value::Array(out)
 }
 
-// The desktop's icons on this window's display, as rects in its px.
+// The desktop's icons on this window's display, as rects in its px, as
+// Explorer's list draws each (imp::icons); None (null) when the desktop
+// could not be read (Explorer starting again, busy): the page asks again.
 #[tauri::command]
-pub async fn desk_icons(app: tauri::AppHandle, window: WebviewWindow) -> Vec<[f64; 4]> {
+pub async fn desk_icons(app: tauri::AppHandle, window: WebviewWindow) -> Option<Vec<[f64; 4]>> {
     count(&COMMANDS);
-    let Some((mon, sf)) = DESKS.lock().unwrap().iter().find(|d| d.label == window.label()).map(|d| (d.mon, d.sf)) else { return Vec::new() };
+    let (mon, sf) = DESKS.lock().unwrap().iter().find(|d| d.label == window.label()).map(|d| (d.mon, d.sf))?;
     let _ = app;
-    tauri::async_runtime::spawn_blocking(move || imp::icons(mon, sf)).await.unwrap_or_default()
+    tauri::async_runtime::spawn_blocking(move || imp::icons(mon, sf)).await.ok().flatten()
+}
+
+// The icons' rects (x, y, w, h: the screen's px) that lie on a display, in
+// its window's px (deskgrid.js takes them as blocks to keep clear of).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn blocks_on(rects: &[(i32, i32, i32, i32)], mon: Mon, sf: f64) -> Vec<[f64; 4]> {
+    rects
+        .iter()
+        .filter(|&&(x, y, w, h)| x + w > mon.0 && x < mon.0 + mon.2 && y + h > mon.1 && y < mon.1 + mon.3)
+        .map(|&(x, y, w, h)| [(x - mon.0) as f64 / sf, (y - mon.1) as f64 / sf, w as f64 / sf, h as f64 / sf])
+        .collect()
 }
 
 // Where a point of this window's (its px) lies: which display, its work
@@ -1367,15 +1380,19 @@ mod imp {
 
     // The desktop's icons on a display: each its grid's cell where it is
     // (icons.rs), in the display's window's px.
-    pub fn icons(mon: super::Mon, sf: f64) -> Vec<[f64; 4]> {
+    pub fn icons(mon: super::Mon, sf: f64) -> Option<Vec<[f64; 4]>> {
         crate::icons::with_com(|| {
-            let Some(d) = crate::icons::desktop() else { return Vec::new() };
-            let s = d.spacing();
-            d.items()
-                .iter()
-                .filter(|i| i.at.x + s.x > mon.0 && i.at.x < mon.0 + mon.2 && i.at.y + s.y > mon.1 && i.at.y < mon.1 + mon.3)
-                .map(|i| [(i.at.x - mon.0) as f64 / sf, (i.at.y - mon.1) as f64 / sf, s.x as f64 / sf, s.y as f64 / sf])
-                .collect()
+            let d = crate::icons::desktop()?;
+            // As its list draws each (its picture and its label, both lines):
+            // else where the view puts it, a place of the grid's spacing.
+            let drawn: Vec<(i32, i32, i32, i32)> = d.bounds().iter().map(|r| (r.left, r.top, r.right - r.left, r.bottom - r.top)).collect();
+            let rects = if drawn.is_empty() {
+                let s = d.spacing();
+                d.items().iter().map(|i| (i.at.x, i.at.y, s.x, s.y)).collect()
+            } else {
+                drawn
+            };
+            Some(super::blocks_on(&rects, mon, sf))
         })
     }
 }
@@ -1398,8 +1415,8 @@ mod imp {
     pub fn stop() {}
     pub fn arm_stale() {}
     pub fn trace_this_thread() {}
-    pub fn icons(_mon: super::Mon, _sf: f64) -> Vec<[f64; 4]> {
-        Vec::new()
+    pub fn icons(_mon: super::Mon, _sf: f64) -> Option<Vec<[f64; 4]>> {
+        Some(Vec::new())
     }
 }
 
@@ -1431,6 +1448,25 @@ mod tests {
         assert!(!looks_wanted(false, 0));
         assert!(!looks_wanted(true, 2));
         assert!(looks_wanted(false, 1));
+    }
+
+    // The icons on a display, in its window's px: as the test VM's list drew
+    // them (its left display at 175 %, at -1920; the main one at 125 %).
+    #[test]
+    fn icons_on_a_display_as_drawn() {
+        let left: Mon = (-1920, 0, 1920, 1080);
+        let drawn = [(-360, 530, 130, 147), (1209, 5, 92, 107), (-30, 100, 60, 60)];
+        let got = blocks_on(&drawn, left, 1.75);
+        // The one with two lines whole (the place the view gave: -337, 527, 93 x 125, short of its label by 25 px).
+        assert_eq!(got.len(), 2);
+        let [x, y, w, h] = got[0];
+        assert!((x - 1560.0 / 1.75).abs() < 1e-9 && (y - 530.0 / 1.75).abs() < 1e-9 && (w - 130.0 / 1.75).abs() < 1e-9 && (h - 84.0).abs() < 1e-9, "{got:?}");
+        // One across the displays' edge: on both, each its part in its own px.
+        assert_eq!(got[1][0], 1890.0 / 1.75);
+        let main: Mon = (0, 0, 2560, 1440);
+        let on_main = blocks_on(&drawn, main, 1.25);
+        assert_eq!(on_main.len(), 2);
+        assert_eq!(on_main[0], [1209.0 / 1.25, 4.0, 92.0 / 1.25, 107.0 / 1.25]);
     }
 
     // What a board shows: its tiles at their own sizes; nothing while folded.
