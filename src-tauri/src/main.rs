@@ -954,6 +954,13 @@ async fn island_holding(app: AppHandle, is_holding: bool) {
     island::set_holding(&shared(&app), is_holding);
 }
 
+// The taskbar's layout being edited (island.js editTaskbar), and where its
+// bar, library and tools are in the page: the window keeps the mouse there.
+#[tauri::command]
+async fn island_editing(app: AppHandle, on: bool, rects: Vec<[f64; 4]>) {
+    island::set_editing(&shared(&app), on, rects);
+}
+
 // The handover with Windows' taskbar: the page's answers (covered, bare, done).
 #[tauri::command]
 fn taskbar_handoff(what: String) {
@@ -1462,6 +1469,7 @@ fn main() {
             pet_walk,
             pet_walk_stop,
             island_holding,
+            island_editing,
             island_seat,
             island_stow,
             island_plate,

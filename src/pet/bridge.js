@@ -75,6 +75,10 @@
     releaseHer: offset => send('island_release', { offset: offset || {} }),
     dropHer: () => send('island_drop'),
     holding: isHolding => send('island_holding', { isHolding: isHolding === true }),
+    // The taskbar's layout being edited, or not, and where its bar, library
+    // and tools are ([[x, y, w, h]], page px): the window keeps the mouse
+    // there whatever enter and leave say (island.rs set_editing, #53).
+    editing: (on, rects) => send('island_editing', { on: on === true, rects: Array.isArray(rects) ? rects : [] }),
     // Her seat on the taskbar, where the page has laid her island out (logical px from its left).
     seat: x => send('island_seat', { x: Number(x) || 0 }),
     // A blur of what is behind her island, under it (backplate.rs): where

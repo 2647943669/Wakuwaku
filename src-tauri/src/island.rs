@@ -105,6 +105,12 @@ pub struct Island {
     strip_told: Option<((i32, i32, i32, i32), Edge, (i32, i32), (i32, i32))>,
     // At the top of the screen, up out of the way of a window under it.
     stow: Stow,
+    // The taskbar's layout being edited (island.js editTaskbar): her menu
+    // offers to stop, and the window takes the mouse over its bar, its
+    // library and its tools (solid, page px: x, y, w, h; pointer.rs look)
+    // whatever the page says of the pointer (zhoupengjie/Wakuwaku#53).
+    pub editing: bool,
+    solid: Vec<[f64; 4]>,
 }
 
 // Her island at the top of the screen, up out of the way of the window
@@ -1020,7 +1026,9 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             (isl.ct.force(Mode::Pass), None, 500, None, false)
         } else {
             let (pos, size, sf, held) = (isl.pos, isl.size, isl.sf(), isl.holding);
-            let seen = isl.ct.look(cursor, pos, size, sf, held, passive && !held);
+            let solid = std::mem::take(&mut isl.solid);
+            let seen = isl.ct.look(cursor, pos, size, sf, held, passive && !held, &solid);
+            isl.solid = solid;
             if isl.ct.calmed() {
                 sh.log(&format!("island: mouse mode bouncing, calmed: cursor {cursor:?}, window {pos:?} {size:?}, scale {sf}"));
             }
@@ -1092,6 +1100,21 @@ pub fn set_room(sh: &Shared, measured: &Value) {
 }
 
 // The button is held on her in her home (a pull, or carrying her out).
+// The taskbar's layout being edited, or not any more, and where its parts
+// over the strip are (page px). Logged as it starts and ends only: the
+// rects come again as they change (the library opened, the tools).
+pub fn set_editing(sh: &Shared, on: bool, rects: Vec<[f64; 4]>) {
+    let rects: Vec<[f64; 4]> = if on { rects.into_iter().filter(|r| r.iter().all(|v| v.is_finite()) && r[2] > 0.0 && r[3] > 0.0).take(8).collect() } else { Vec::new() };
+    let was = {
+        let mut isl = sh.island.lock().unwrap();
+        isl.solid = rects;
+        std::mem::replace(&mut isl.editing, on)
+    };
+    if was != on {
+        sh.log(&format!("island: taskbar layout {}", if on { "being edited: the window takes the mouse over its bar" } else { "edited no more" }));
+    }
+}
+
 pub fn set_holding(sh: &Shared, is_holding: bool) {
     sh.log(&format!("island: holding {is_holding}"));
     let ignore = {
@@ -1355,6 +1378,9 @@ pub fn where_(sh: &Shared) -> Value {
         "room": isl.room.map(|(w, h)| json!([w, h])),
         "shown": isl.shown,
         "over": isl.ct.over,
+        "caught": isl.ct.caught(),
+        "editing": isl.editing,
+        "solid": isl.solid.len(),
         "holding": isl.holding,
         "reaching": isl.reaching,
         "temp": isl.temp,
