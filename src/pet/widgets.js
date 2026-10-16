@@ -58,15 +58,18 @@
 
   // One without an icon of its own (a script that sent none: widgets.rs
   // makes it 'dot'): wherever its icon would be, the first character of its
-  // name on a 16 px rounded square of its colour, or grey, the letter white
-  // (the design session, 2026-10-16: a dot said nothing, and was lost on
-  // the dark). One helper for every place (style.css, desk.css .wmark).
+  // name, weight 600, on a 16 px rounded square (the design session,
+  // 2026-10-16: a dot said nothing, and was lost on the dark), tinted as the
+  // stack cards' icon tiles are: its colour at 18% under it (14% on a light
+  // ground), the letter in its colour (one step deeper on a light ground,
+  // --mark-deep: deepen); with none, a grey tint and the secondary grey
+  // (.wmark.none). One helper for every place (style.css, desk.css .wmark).
   const hasIcon = name => typeof name === 'string' && name !== 'dot' && name in ICONS
-  const MARK_GREY = '#8e8e93'
   function markHTML(name, color, cls = '') {
     const ch = Array.from(String(name ?? '').trim())[0] || '·'
-    const ground = typeof color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color.trim()) ? color.trim() : MARK_GREY
-    return `<span class="wmark${cls ? ` ${cls}` : ''}" style="--mark:${ground}" aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`
+    const own = typeof color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color.trim()) ? color.trim() : ''
+    const look = own ? ` style="--mark:${own};--mark-deep:${deepen(own)}"` : ''
+    return `<span class="wmark${own ? '' : ' none'}${cls ? ` ${cls}` : ''}"${look} aria-hidden="true">${esc(ch.toLocaleUpperCase())}</span>`
   }
   // A widget's name for its mark: its label as it reads (an object of
   // words rendered when a language is given), else its id.

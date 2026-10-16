@@ -5534,8 +5534,11 @@ body.has-news #island[data-view='compact'] .news-dot {
 }
 
 /* One without an icon of its own (widgets.js markHTML): the first character
-   of its name on a 16 px rounded square of its colour, or grey; the letter
-   white, wherever its icon would be (the design session, 2026-10-16). */
+   of its name, weight 600, on a 16 px rounded square tinted as the stack
+   cards' icon tiles are: its colour at 18% under it, the letter in its
+   colour; on a light ground 14% and the letter one step deeper; with no
+   colour, a grey tint and the secondary grey (the design session,
+   2026-10-16). Held against each place's own glyph rules. */
 .wmark {
   display: inline-grid;
   place-items: center;
@@ -5543,11 +5546,28 @@ body.has-news #island[data-view='compact'] .news-dot {
   width: 16px !important;
   height: 16px !important;
   border-radius: 4px;
-  background: var(--mark, #8e8e93) !important;
-  color: #fff !important;
+  background: color-mix(in srgb, var(--mark) 18%, transparent) !important;
+  color: var(--mark) !important;
   font: 600 10.5px/1 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif !important;
   font-style: normal;
   letter-spacing: 0;
   vertical-align: middle;
   overflow: hidden;
+}
+
+.wmark.none {
+  background: rgba(127, 127, 127, 0.18) !important;
+  color: rgba(235, 235, 245, 0.64) !important;
+}
+
+.tb-light .wmark,
+.isl-light .wmark {
+  background: color-mix(in srgb, var(--mark) 14%, transparent) !important;
+  color: var(--mark-deep, var(--mark)) !important;
+}
+
+.tb-light .wmark.none,
+.isl-light .wmark.none {
+  background: rgba(127, 127, 127, 0.18) !important;
+  color: rgba(30, 30, 36, 0.62) !important;
 }

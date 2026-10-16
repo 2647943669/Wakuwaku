@@ -224,14 +224,17 @@ test("the monitor's part may be taken off, and stays off; a monitor put there as
 })
 
 test("one without an icon: its name's first character on its colour, or grey, wherever its icon would be", () => {
-  assert.equal(Widgets.markHTML('部署', '#36cfc9'), '<span class="wmark" style="--mark:#36cfc9" aria-hidden="true">部</span>')
-  assert.equal(Widgets.markHTML('build', null, 'gl'), '<span class="wmark gl" style="--mark:#8e8e93" aria-hidden="true">B</span>')
-  // Not a colour: grey; nothing to go by: a middle dot; markup kept out.
-  assert.match(Widgets.markHTML('x', 'red; background:url(x)'), /--mark:#8e8e93/)
+  // Its colour (a tint under it, the letter in it; one step deeper on a light ground).
+  assert.equal(Widgets.markHTML('部署', '#36cfc9'), `<span class="wmark" style="--mark:#36cfc9;--mark-deep:${Widgets.deepen('#36cfc9')}" aria-hidden="true">部</span>`)
+  assert.notEqual(Widgets.deepen('#36cfc9'), '#36cfc9')
+  // None: grey (.none, no colour of its own).
+  assert.equal(Widgets.markHTML('build', null, 'gl'), '<span class="wmark none gl" aria-hidden="true">B</span>')
+  // Not a colour: as none; nothing to go by: a middle dot; markup kept out.
+  assert.match(Widgets.markHTML('x', 'red; background:url(x)'), /class="wmark none"/)
   assert.match(Widgets.markHTML('', ''), />·</)
   assert.match(Widgets.markHTML('<b>', ''), />&lt;</)
   // A script's widget that sent none ('dot'): its mark; one with an icon: the icon.
-  assert.match(Widgets.iconHTML({ id: 'deploy', icon: 'dot', label: 'deploy', color: '#ff7a45' }), /wmark.*--mark:#ff7a45.*>D</)
+  assert.match(Widgets.iconHTML({ id: 'deploy', icon: 'dot', label: 'deploy', color: '#ff7a45' }), /wmark.*--mark:#ff7a45;--mark-deep:#[0-9a-f]{6}.*>D</)
   assert.match(Widgets.iconHTML({ id: 'mail', icon: 'mail' }), /wicon/)
   // A label of words to render: in her language.
   assert.match(Widgets.iconHTML({ id: 'x', icon: 'dot', label: { key: 'widget.today' } }, 'zh'), /wmark/)
