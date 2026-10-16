@@ -31,24 +31,50 @@ pub fn folder() -> PathBuf {
     exe.parent().map(|p| p.join("wakuwaku-data")).unwrap_or_else(|| "wakuwaku-data".into())
 }
 
-// Run from the source tree it was built in (its target folder), not a
-// downloaded exe: its data stays in the tree, and it updates by a build.
-// Quit by the person (her menu's Quit, from the tray or the taskbar): marked
-// in her data folder, so that a session's hook (Claude Code's SessionStart,
-// Codex's) does not start her again (it did, at once: a resume, /clear and
-// a compaction start a session too) until she is started otherwise: opened
-// by hand, at login, by an update, which every start of hers clears. A
-// crash leaves no mark: the hooks start her again then, as ever. /quit
-// (scripts, a new build put in her place, which starts her itself) leaves
-// none either.
+// Quit by the person's choice (her menu's Quit, from the tray or the
+// taskbar; POST /quit, zhoupengjie/Wakuwaku#57): marked in her data folder,
+// so that no session's hook (Claude Code's SessionStart, Codex's,
+// Antigravity's, ZCode's, omp's: starts.rs starts_her) starts her again (it
+// did, at once: a resume, /clear and a compaction start a session too) until
+// she is started otherwise: opened by hand, at login, by an update, which
+// every start of hers clears. A crash leaves no mark: the hooks start her
+// again then, as ever. POST /quit?wake=1, and the handover of an update or a
+// restart (its new one up already), quit so that a session may start her:
+// any mark taken away.
 const QUIT_MARK: &str = "quit-by-choice";
 
-pub fn mark_quit(dir: &Path) {
-    let _ = fs::write(dir.join(QUIT_MARK), "quit from her menu: a session's hook does not start her until she is opened again\n");
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Quit {
+    ByChoice,
+    Wakeable,
 }
 
-pub fn clear_quit(dir: &Path) {
+// The mark as a quit leaves it (Shared::quit; `first`: no quit under way
+// before it): one by choice marks, even after another began (the person's
+// word stands); the first that may be woken clears, a later one leaves it.
+pub fn note_quit(dir: &Path, how: Quit, first: bool, why: &str) {
+    match how {
+        Quit::ByChoice => mark_quit(dir, why),
+        Quit::Wakeable if first => drop(clear_quit(dir)),
+        Quit::Wakeable => {}
+    }
+}
+
+fn mark_quit(dir: &Path, why: &str) {
+    let _ = fs::write(dir.join(QUIT_MARK), format!("quit by choice ({why}): a session's hook does not start her until she is opened again\n"));
+}
+
+// The mark taken away (she is up: main.rs), and what it said, if there was one.
+pub fn clear_quit(dir: &Path) -> Option<String> {
+    let note = quit_note(dir);
     let _ = fs::remove_file(dir.join(QUIT_MARK));
+    note
+}
+
+// What the mark says (its first line), if she was quit by choice.
+pub fn quit_note(dir: &Path) -> Option<String> {
+    let text = fs::read_to_string(dir.join(QUIT_MARK)).ok()?;
+    Some(text.lines().next().unwrap_or("").trim().to_string())
 }
 
 // Whether a session's hook may start her (none answering on her port).
@@ -56,6 +82,8 @@ pub fn may_start(dir: &Path) -> bool {
     !dir.join(QUIT_MARK).exists()
 }
 
+// Run from the source tree it was built in (its target folder), not a
+// downloaded exe: its data stays in the tree, and it updates by a build.
 pub fn from_source() -> bool {
     std::env::current_exe().unwrap_or_default().starts_with(Path::new(SOURCE_TREE).join("target"))
 }
@@ -461,14 +489,35 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("wakuwaku-quit-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         // Crashed (nothing marked): a session's hook starts her.
-        clear_quit(&dir);
+        assert_eq!(clear_quit(&dir), None);
         assert!(may_start(&dir));
-        // Quit from her menu: it does not.
-        mark_quit(&dir);
+        // Quit from her menu: it does not, and the mark says how she went.
+        note_quit(&dir, Quit::ByChoice, true, "her menu's Quit");
         assert!(!may_start(&dir));
-        // Started otherwise (by hand, at login, an update): it may again.
-        clear_quit(&dir);
+        assert_eq!(quit_note(&dir).as_deref(), Some("quit by choice (her menu's Quit): a session's hook does not start her until she is opened again"));
+        // Started otherwise (by hand, at login, an update): it may again,
+        // and what was cleared is told.
+        assert!(clear_quit(&dir).is_some_and(|n| n.contains("her menu's Quit")));
         assert!(may_start(&dir));
+        assert_eq!(quit_note(&dir), None);
+        // POST /quit (by choice unless ?wake=1): marked as the menu marks.
+        note_quit(&dir, Quit::ByChoice, true, "POST /quit");
+        assert!(!may_start(&dir));
+        clear_quit(&dir);
+        // POST /quit?wake=1, an update's or a restart's handover: not
+        // marked, and a mark left (another copy's) taken away.
+        note_quit(&dir, Quit::Wakeable, true, "POST /quit?wake=1");
+        assert!(may_start(&dir));
+        note_quit(&dir, Quit::ByChoice, true, "POST /quit");
+        note_quit(&dir, Quit::Wakeable, true, "an update's handover");
+        assert!(may_start(&dir));
+        // A quit under way already: the person's choice still marks; one
+        // that may be woken coming after it leaves the mark.
+        note_quit(&dir, Quit::Wakeable, true, "POST /quit?wake=1");
+        note_quit(&dir, Quit::ByChoice, false, "her menu's Quit");
+        assert!(!may_start(&dir));
+        note_quit(&dir, Quit::Wakeable, false, "POST /quit?wake=1");
+        assert!(!may_start(&dir));
         let _ = fs::remove_dir_all(&dir);
     }
 

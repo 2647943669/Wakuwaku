@@ -177,11 +177,8 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
             crate::tasks::launch("devmgmt.msc");
         }
         // Quit by the person: no session's hook starts her again until she
-        // is opened (data.rs mark_quit).
-        "quit" => {
-            crate::data::mark_quit(&sh.dir);
-            sh.quit();
-        }
+        // is opened (data.rs Quit).
+        "quit" => sh.quit(crate::data::Quit::ByChoice, "her menu's Quit"),
         _ => {
             if let Some(what) = id.strip_prefix("win:") {
                 crate::taskbar::taskbar_open(what.to_string());

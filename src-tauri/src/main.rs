@@ -30,7 +30,8 @@
 //   state.rs       per-session moods; events.rs (Claude Code),
 //                  events_codex.rs (Codex), events_agy.rs (Antigravity) and
 //                  events_opencode.rs (OpenCode) hook events into messages
-//   data.rs        her folder, settings and pets
+//   data.rs        her folder, settings and pets; the mark of a quit by choice
+//   starts.rs      what starts her (the hooks, at login, by hand), whether it may, and who did
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -84,6 +85,7 @@ mod sensors;
 mod server;
 mod settings;
 mod shell;
+mod starts;
 mod state;
 mod systray;
 mod taskbar;
@@ -711,15 +713,27 @@ impl Shared {
         }
     }
 
-    // Quit (the menu's Quit, POST /quit), never taking longer than 8 s: a
-    // quit once hung (80 s, Windows' taskbar with it, 2026-10-11). Ended
-    // then, whatever is stuck; the guard gives Windows' taskbar back once
-    // she is gone.
-    pub fn quit(self: &Arc<Self>) {
-        if QUITTING.swap(true, Ordering::SeqCst) {
+    // Quit (the menu's Quit and POST /quit by choice; POST /quit?wake=1, an
+    // update's or a restart's handover so that a session may start her:
+    // data.rs note_quit; `why`, for the mark and the log), never taking
+    // longer than 8 s: a quit once hung (80 s, Windows' taskbar with it,
+    // 2026-10-11). Ended then, whatever is stuck; the guard gives Windows'
+    // taskbar back once she is gone. A second quit while one is under way
+    // does nothing more, but mark one by choice.
+    pub fn quit(self: &Arc<Self>, how: data::Quit, why: &str) {
+        let first = !QUITTING.swap(true, Ordering::SeqCst);
+        data::note_quit(&self.dir, how, first, why);
+        let after = match how {
+            data::Quit::ByChoice => "by choice: no session's hook starts her until she is opened again",
+            data::Quit::Wakeable => "a session may start her again",
+        };
+        if !first {
+            if how == data::Quit::ByChoice {
+                self.log(&format!("quitting already; {why}: {after}"));
+            }
             return;
         }
-        self.log("quitting");
+        self.log(&format!("quitting ({why}), {after}"));
         let watched = self.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(8));
@@ -1137,16 +1151,46 @@ fn read_event() -> Option<Value> {
 }
 
 // Start her, detached so she outlives the hook and the session (she greets on
-// her own), out of its agent's job and inheriting no handle (detach.rs).
-fn start_detached() {
+// her own), out of its agent's job and inheriting no handle (detach.rs);
+// told who starts her (`who`, a hook's words: starts.rs), for her log.
+fn start_detached(who: &str) {
     let Ok(exe) = data::exe() else { return };
-    detach::spawn(&exe, &[]);
+    if !detach::spawn(&exe, &[starts::BY_FLAG, &format!("a session's hook, {who}")]) {
+        hook_log(&format!("{who}: she would not start"));
+    }
+}
+
+// A hook's line in her log, she not up to write it (hers once she is).
+fn hook_log(line: &str) {
+    crash::tail(&data::folder(), &format!("{} [tauri] hook: {line}", now_ms()));
+}
+
+// A hook finding her not up: she is started as its session starts
+// (starts.rs starts_her), unless she was quit by choice, which her log says.
+fn start_or_say(hook: starts::Hook, event: &str, who: impl FnOnce() -> String) {
+    let dir = data::folder();
+    let mut note = None;
+    let start = starts::starts_her(hook, event, || {
+        note = (!data::may_start(&dir)).then(|| data::quit_note(&dir).unwrap_or_default());
+        note.is_some()
+    });
+    if start {
+        start_detached(&who());
+    } else if let Some(note) = note {
+        hook_log(&format!("{}: her not up, and not started: {note}", who()));
+    }
+}
+
+// The names above a hook, for its words (starts.rs hook_who).
+fn hook_parents() -> Vec<String> {
+    jump::parent_names(3)
 }
 
 // If no pet answers on the port, start one (unless the person quit her:
-// data.rs mark_quit); if one does, hand her the event. Then leave, quick and
-// quiet, whatever happens.
-fn ensure_running(port: u16) {
+// data.rs Quit); if one does, hand her the event. Then leave, quick and
+// quiet, whatever happens. `after_flag`: omp's extension says it is omp's,
+// and how its session started.
+fn ensure_running(port: u16, after_flag: &[String]) {
     let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_millis(800))).build().new_agent();
     let up = agent
         .get(&format!("http://127.0.0.1:{port}/health"))
@@ -1159,8 +1203,9 @@ fn ensure_running(port: u16) {
         if let Some(event) = event {
             let _ = agent.post(&format!("http://127.0.0.1:{port}/hook?from=wakuwaku")).send_json(&event);
         }
-    } else if data::may_start(&data::folder()) {
-        start_detached();
+    } else {
+        let claude = std::env::var("CLAUDE_CODE_ENTRYPOINT").ok().or_else(|| (std::env::var("CLAUDECODE").as_deref() == Ok("1")).then(String::new));
+        start_or_say(starts::Hook::Ensure, "", || starts::ensure_who(after_flag, event.as_ref(), claude.as_deref(), &hook_parents()));
     }
 }
 
@@ -1170,7 +1215,7 @@ fn ensure_running(port: u16) {
 // event. Hand her the event, and print her answer to a prompt, the decision
 // Codex reads; nothing else, since Codex takes what a hook prints as words
 // for the model. SessionStart starts her when she is not up (unless the
-// person quit her: data.rs mark_quit). Whatever
+// person quit her: data.rs Quit). Whatever
 // happens, leave with 0, so Codex never shows a failed hook.
 // An event handed to her port with no answer waited for (none is needed):
 // the request written whole and the connection closed at once. False when
@@ -1200,7 +1245,7 @@ fn post_and_go(port: u16, agent: &str, event: &Value) -> bool {
 // its window from the pet, jump.rs). A prompt waits for her answer, which is
 // printed for Codex; any other event is handed on and let go (post_and_go).
 // Its session starting with her not up starts her, unless the person quit
-// her (data.rs mark_quit).
+// her (data.rs Quit).
 fn codex_hook(port: u16) {
     let Some(mut event) = read_event() else { return };
     if let Some(fields) = event.as_object_mut() {
@@ -1208,8 +1253,9 @@ fn codex_hook(port: u16) {
     }
     let name = event["hook_event_name"].as_str().unwrap_or("").to_string();
     if name != "PermissionRequest" {
-        if !post_and_go(port, "codex", &event) && name == "SessionStart" && data::may_start(&data::folder()) {
-            start_detached();
+        if !post_and_go(port, "codex", &event) {
+            let source = event["source"].as_str().unwrap_or("").to_string();
+            start_or_say(starts::Hook::Codex, &name, || starts::hook_who("Codex", &name, &[&source], &hook_parents()));
         }
         return;
     }
@@ -1240,7 +1286,10 @@ fn agy_hook(port: u16, name: &str) {
     let _ = out.write_all(answer.as_bytes());
     let _ = out.flush();
     let Some(mut event) = read_event() else { return };
+    let who = || starts::hook_who("Antigravity", name, &[], &hook_parents());
     if !data::may_start(&data::folder()) {
+        // Said in her log as its session starts (start_or_say).
+        start_or_say(starts::Hook::Agy, name, who);
         return;
     }
     let turn = name == "SessionStart" || (name == "PreInvocation" && event.get("invocationNum").and_then(Value::as_u64) == Some(0));
@@ -1250,8 +1299,8 @@ fn agy_hook(port: u16, name: &str) {
             fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
         }
     }
-    if !post_and_go(port, "agy", &event) && name == "SessionStart" {
-        start_detached();
+    if !post_and_go(port, "agy", &event) {
+        start_or_say(starts::Hook::Agy, name, who);
     }
 }
 
@@ -1274,8 +1323,9 @@ fn zcode_hook(port: u16, name: &str) {
         }
     }
     if name != "PermissionRequest" {
-        if !post_and_go(port, "zcode", &event) && name == "SessionStart" && data::may_start(&data::folder()) {
-            start_detached();
+        if !post_and_go(port, "zcode", &event) {
+            let source = event["source"].as_str().unwrap_or("").to_string();
+            start_or_say(starts::Hook::Zcode, &name, || starts::hook_who("ZCode", &name, &[&source], &hook_parents()));
         }
         return;
     }
@@ -1374,8 +1424,8 @@ fn main() {
         std::process::exit(lhm_setup::admin(&args[at + 1..]));
     }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
-    if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
-        return ensure_running(port);
+    if let Some(at) = args.iter().position(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
+        return ensure_running(port, &args[at + 1..]);
     }
     if std::env::args().any(|a| a == connection::CODEX_FLAG) {
         return codex_hook(port);
@@ -1405,9 +1455,13 @@ fn main() {
     // from the source tree (cargo run waits on this copy), nor started by an
     // update or a restart: the one before her saw to its own job as it
     // started, and hers is that one's.
+    // What started her goes with it (starts.rs: the one that stays has
+    // this copy above it, not that).
     let after_update = args.iter().any(|a| a == updates::AFTER_UPDATE);
     if !after_update && !args.iter().any(|a| a == detach::FLAG) && !data::from_source() && detach::should_leave() {
-        let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).chain([detach::FLAG]).collect();
+        let by = starts::by_of(&args).is_none().then(|| starts::starter(&args, || jump::parent_names(3)));
+        let by = by.iter().flat_map(|by| [starts::BY_FLAG, by.as_str()]);
+        let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).chain(by).chain([detach::FLAG]).collect();
         if let Ok(exe) = data::exe() {
             if detach::spawn(&exe, &rest) {
                 return;
@@ -1438,10 +1492,11 @@ fn main() {
         }
     };
 
-    // She is up: quit from her menu before, she is wanted again now (by
-    // hand, at login, an update), and the sessions' hooks may start her
-    // from here on.
-    data::clear_quit(&dir);
+    // She is up: quit by choice before, she is wanted again now (by hand,
+    // at login, an update), and the sessions' hooks may start her from here
+    // on. Who started her, said once she is (starts.rs).
+    let cleared = data::clear_quit(&dir);
+    let started_by = starts::starter(&args, || jump::parent_names(3));
 
     // Started as the exe an update left, its new one gone since: her own
     // name back before anything names her exe (updates.rs).
@@ -1614,6 +1669,8 @@ fn main() {
             });
             app.manage(sh.clone());
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
+            let cleared = cleared.as_ref().map(|note| format!("; the mark of her last quit taken away ({note})")).unwrap_or_default();
+            sh.log(&format!("started by: {started_by}{cleared}"));
             sh.log(&format!("displays: {}", sh.screens().describe()));
             // How long after the logon, and start at login kept to where she is now.
             sh.keep_login(true, at_login);

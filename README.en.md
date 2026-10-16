@@ -157,7 +157,7 @@ How it differs from Claude Code:
 - She follows a session starting, working and each tool it uses, finishing (the start of its reply), failing and exiting; a subagent's are left out, only the main session shows.
 - omp runs in yolo by default and asks for no tool approvals; set to `always-ask` or `write`, when omp wants a tool approved she shows "Approve it in the terminal: …", and the approval is given in omp (omp has no way for an extension to answer it).
 - omp's plan reviews (plan mode) can be approved or turned down on her panel, whichever of it and the terminal's review answers first.
-- The extension runs inside omp's own process: each event is sent and let go, and omp never waits on her; with her not running, omp works as ever. When she isn't running and you didn't quit her from her menu, a new omp session starts her. Clicking the session goes to the terminal window omp runs in.
+- The extension runs inside omp's own process: each event is sent and let go, and omp never waits on her; with her not running, omp works as ever. When she isn't running and you didn't quit her (her menu's Quit, or `POST /quit`), a new omp session starts her. Clicking the session goes to the terminal window omp runs in.
 
 ### 7. Connect ZCode (optional)
 
@@ -165,7 +165,7 @@ Z.ai's [ZCode](https://zcode.z.ai/) is supported: the desktop app (tried with 3.
 
 Nearly as with Claude Code: starting, working, each step's tool, finishing (with its last words), edits, and Today counts it. When ZCode needs your approval, the island asks **Allow** / **Deny** (ZCode suggests no rules, so no "always"); ZCode shows its own dialog at the same time, and **whichever you answer first counts**: answered on the island, ZCode's dialog closes; answered in ZCode, the panel goes once that step is done (after a deny, once the turn ends). Handle in ZCode hands it back and brings its window to the front. With her not running, ZCode just shows its own dialog.
 
-ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.exe --wakuwaku-zcode-hook <event>` once (started directly with its arguments, no shell, so a space in the path is fine), which hands it to her. ZCode waits for it at each step, about 0.1 s; the approval one may wait up to 10 minutes (the panel's own wait is shorter, and hands it back to ZCode when it runs out). A new task starts her when she isn't running (unless you quit her from her menu).
+ZCode's hooks can only be commands, none over HTTP: each event runs `wakuwaku.exe --wakuwaku-zcode-hook <event>` once (started directly with its arguments, no shell, so a space in the path is fine), which hands it to her. ZCode waits for it at each step, about 0.1 s; the approval one may wait up to 10 minutes (the panel's own wait is shorter, and hands it back to ZCode when it runs out). A new task starts her when she isn't running (unless you quit her: her menu's Quit, or `POST /quit`).
 
 ### 8. Connect DeepSeek Harness (optional)
 
@@ -221,7 +221,7 @@ The repository's [`wallpapers/`](wallpapers/) folder has five desktop wallpapers
 
 | You want | Do |
 | --- | --- |
-| Off for now | Right-click → Quit. Claude Code and Codex sessions no longer bring her back: open her yourself, or wait for the next start at login (only after a crash does a session start her again) |
+| Off for now | Right-click → Quit (from a script, `POST http://127.0.0.1:47213/quit`, which counts as your quitting her too). Claude Code, Codex, Antigravity, ZCode and omp sessions no longer bring her back (nor a new session, `resume`, `/clear` or a compaction): open her yourself, or wait for the next start at login (only after a crash does a session start her again). A script that quits her but wants a later session to wake her uses `POST /quit?wake=1` |
 | Some quiet | Right-click → Do not disturb: she hides, no notifications, prompts go to the terminal |
 | No automatic start, only when I open her | Connect with the plugin (it never starts her) and turn off Start at login; open her yourself |
 

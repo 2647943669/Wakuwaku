@@ -651,10 +651,11 @@ fn install(sh: &Arc<Shared>, r: &Release) -> Result<(), Value> {
     })?;
     sh.log(&format!("update: v{} in place of v{} ({}), hers kept as {}", r.version, current(), exe.display(), old_path(&exe).display()));
     write_note(sh, &r.version, &exe);
-    match hand_over(sh, &exe, &r.version) {
+    let by = format!("her update from v{} (pid {})", current(), std::process::id());
+    match hand_over(sh, &exe, &r.version, &by) {
         Ok(()) => {
             sh.log(&format!("update: v{} up; she quits for it", r.version));
-            sh.quit();
+            sh.quit(crate::data::Quit::Wakeable, "an update's handover");
             Ok(())
         }
         Err(Failed::Start(e)) => {
@@ -682,13 +683,14 @@ enum Failed {
 // starts: wait_after_update), then SETTLE more with it still running and
 // its exe still there. Should it end first, its exe go, or no word come in
 // WORD_WAIT, it is ended if it still runs: an antivirus ends what it takes
-// for a dropper, and takes its exe away, in its first moments.
-fn hand_over(sh: &Shared, exe: &Path, version: &str) -> Result<(), Failed> {
+// for a dropper, and takes its exe away, in its first moments. `by`: what
+// started it, for its log (starts.rs).
+fn hand_over(sh: &Shared, exe: &Path, version: &str, by: &str) -> Result<(), Failed> {
     *HEARD.lock().unwrap() = None;
     let me = std::process::id().to_string();
     // Refused by Windows for a virus (ERROR_VIRUS_INFECTED, _DELETED: an
     // antivirus scanning it as it starts), or gone already: blocked too.
-    let mut new = crate::detach::start(exe, &[AFTER_UPDATE, &me]).map_err(|e| {
+    let mut new = crate::detach::start(exe, &[AFTER_UPDATE, &me, crate::starts::BY_FLAG, by]).map_err(|e| {
         let why = format!("{} would not start ({e})", exe.display());
         if matches!(e.raw_os_error(), Some(225 | 226)) || !exe.is_file() { Failed::Lost(why) } else { Failed::Start(why) }
     })?;
@@ -860,7 +862,8 @@ fn replace(part: &Path) -> Result<PathBuf, String> {
 // once it is up (hand_over), and stays should it not come up.
 pub fn start_again(sh: &Shared) -> Result<(), String> {
     let exe = crate::data::exe().map_err(|e| e.to_string())?;
-    hand_over(sh, &exe, current()).map_err(|failed| match failed {
+    let by = format!("her restart, WebView2's browser gone (pid {})", std::process::id());
+    hand_over(sh, &exe, current(), &by).map_err(|failed| match failed {
         Failed::Start(why) | Failed::Lost(why) => why,
     })
 }

@@ -181,6 +181,45 @@ test('her not up: nothing thrown or left unhandled, and for a while nothing trie
   assert.equal(unhandled, 0)
 })
 
+// Her not up as a session starts: her exe run once to start her (it does
+// not, should the person have quit her: main.rs ensure_running), on her port
+// and with her data folder, told it is omp's and how the session started,
+// for her log's "started by" (starts.rs ensure_who).
+test('her not up as a session starts: her exe asked to start her, saying it is omp', async () => {
+  const cp = require('node:child_process')
+  const { syncBuiltinESMExports } = require('node:module')
+  const real = cp.spawn
+  const runs = []
+  cp.spawn = (exe, args, options) => {
+    runs.push({ exe, args, options })
+    return { on() {}, unref() {} }
+  }
+  syncBuiltinESMExports()
+  const dropping = http.createServer()
+  dropping.on('connection', socket => socket.destroy())
+  try {
+    await new Promise(done => dropping.listen(0, '127.0.0.1', done))
+    const port = dropping.address().port
+    const on = await load(port, 'C:\\waku\\pet\\wakuwaku.exe', 'C:\\waku\\data')
+    on.session_switch({}, ctx())
+    await settle()
+    assert.equal(runs.length, 1)
+    assert.equal(runs[0].exe, 'C:\\waku\\pet\\wakuwaku.exe')
+    assert.deepEqual(runs[0].args, ['--wakuwaku-ensure-running', 'omp', 'resume'])
+    assert.equal(runs[0].options.env.WAKUWAKU_PORT, String(port))
+    assert.equal(runs[0].options.env.WAKUWAKU_USER_DATA, 'C:\\waku\\data')
+    assert.equal(runs[0].options.detached, true)
+    // Once in an omp: another session starting runs it no more.
+    on.session_start({}, ctx({ id: 's2' }))
+    await settle()
+    assert.equal(runs.length, 1)
+  } finally {
+    cp.spawn = real
+    syncBuiltinESMExports()
+    await new Promise(done => dropping.close(done))
+  }
+})
+
 test('a plan review is answered on her, unless the terminal answered first', async () => {
   let decision = { behavior: 'allow' }
   const port = await her(body => (body.hook_event_name === 'PermissionRequest' ? { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } } : {}))
