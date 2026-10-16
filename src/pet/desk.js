@@ -7,9 +7,9 @@
 // Alone: dragged anywhere (it snaps to the grid, clear of the icons and the
 // others; dropped on icons, the nearest free spot); two buttons on the
 // pointer's (size, more); a double-click opens its settings. Stacked: one
-// dragged onto another of its size and held there half a second; the wheel,
-// a drag up or down, or its dots turn it (0.45 s); a drag out of it takes the
-// one on top out; held still half a second first, the whole stack moves.
+// dragged onto another of its size and held there half a second; a drag
+// moves the whole stack as one alone moves; the wheel (a touchpad's scroll)
+// or a press on its dots turns it (0.45 s); one comes out by its menu.
 // Right-click: its menu, as the taskbar's and the capsule's.
 //
 // The window lets clicks through but where a widget is (desk.rs polls the
@@ -110,7 +110,10 @@
     return JSON.stringify([e.type, e.size, G.membersOf(e), topOf(e), ws, here.light, lang(), here.detailed, here.sprite, loading])
   }
   const topOf = e => (G.isStack(e) ? Math.min(tops.get(e.id) || 0, e.items.length - 1) : 0)
-  const isLoading = (e, m) => !Widgets.sourcesOf(m, all).length && Date.now() - (firstSeen.get(e.id) || 0) < 12000
+  // Just put there, its plugin starting: a glint where its value goes, five
+  // seconds at most (the design session), then greyed with "no data".
+  const LOADING_MS = 5000
+  const isLoading = (e, m) => !Widgets.sourcesOf(m, all).length && Date.now() - (firstSeen.get(e.id) || 0) < LOADING_MS
 
   // A member's face at the entry's size: its widget's (a plugin's first,
   // which shows the others), or, with nothing to say, its name greyed.
@@ -118,7 +121,7 @@
     const ws = Widgets.sourcesOf(m, all)
     const c = ctx()
     if (!ws.length) {
-      const name = m.name || Widgets.nameOf(lang(), { type: m.type, of: m.of, ...(m.name ? { name: m.name } : {}) }, all, c.detailed)
+      const name = emptyName(e, m, c)
       return { html: WDesk.emptyHTML(m, name, isLoading(e, m) ? 'loading' : 'none', c), color: '', w: null }
     }
     return { html: WDesk.faceHTML(ws[0], e.size, c), color: WCards.colorOf(ws[0], c), w: ws[0] }
@@ -127,6 +130,17 @@
   // A card: its own picture of the wallpaper under it (a canvas: desk.rs's
   // picture comes from another origin, which a page may draw but not read),
   // the glass colour and its glow over that, then its words.
+  // A member with nothing to say: the name it was put there with, else its
+  // plugin's (a built-in one's), numbered when several here would read the
+  // same (wdesk.js memberName): never an id, never a bare "widget".
+  function emptyName(e, m, c) {
+    if (m.name) return m.name
+    const empty = shown().flatMap(x => G.membersOf(x)).filter(x => !x.name && !Widgets.sourcesOf(x, all).length)
+    const base = WDesk.memberName(m, c)
+    const same = empty.filter(x => WDesk.memberName(x, c) === base)
+    return same.length > 1 ? WDesk.memberName(m, c, same.findIndex(x => G.keyOf(x) === G.keyOf(m)) + 1) : base
+  }
+
   const TOOLS = `<div class="tools"><button type="button" data-act="size" title="">&#xE740;</button><button type="button" data-act="more" title="">&#xE712;</button></div>`
   const CARD = size => `<div class="wd ${size}"><canvas class="wpaper"></canvas><div class="wtint"></div><div class="wbody"></div></div>`
   // Each member's place under the one on top: 0 on top, then the two
@@ -183,7 +197,7 @@
     // is over, no data then greyed; one timer, not a loop.
     if (G.membersOf(e).some(m => isLoading(e, m))) {
       clearTimeout(n.loadingTimer)
-      n.loadingTimer = setTimeout(draw, Math.max(0, 12050 - (Date.now() - (firstSeen.get(e.id) || 0))))
+      n.loadingTimer = setTimeout(draw, Math.max(0, LOADING_MS + 50 - (Date.now() - (firstSeen.get(e.id) || 0))))
     }
   }
 
@@ -227,7 +241,7 @@
     const forms = cards.map(wd => {
       const layer = wd.parentElement?.classList.contains('layer') ? wd.parentElement : null
       const kind = layer ? ['top', 'b1', 'b2', 'rest', 'gone'].find(k => layer.classList.contains(k)) || 'top' : 'top'
-      return [kind, layer?._pull?.[0] || 0, layer?._pull?.[1] || 0]
+      return kind
     })
     const now = JSON.stringify([n.x, n.y, w, h, forms, paperTurn, devicePixelRatio])
     if (!force && now === n.painted) return
@@ -235,9 +249,9 @@
     cards.forEach((wd, i) => {
       const canvas = wd.querySelector('.wpaper')
       if (!canvas) return
-      const [kind, px, py] = forms[i]
+      const kind = forms[i]
       const [s, dy] = LAYER_FORM[kind]
-      paperFor(canvas, n.x + px, n.y + py, w, h, s, dy)
+      paperFor(canvas, n.x, n.y, w, h, s, dy)
     })
   }
   function place(n, x, y) {
@@ -351,7 +365,9 @@
         if (!G.isStack(n.entry)) return
         ev.preventDefault()
         if (performance.now() - turnedAt < (reduced() ? 250 : 450)) return
-        turn(n, ev.deltaY > 0 ? 1 : -1)
+        const delta = Math.abs(ev.deltaY) >= Math.abs(ev.deltaX) ? ev.deltaY : ev.deltaX
+        if (Math.abs(delta) < 1) return
+        turn(n, delta > 0 ? 1 : -1)
       },
       { passive: false },
     )
@@ -363,72 +379,32 @@
     return Widgets.sourcesOf(m, all)[0] || null
   }
 
+  // A press and a drag (the design session, 2026-10-16: no gestures told
+  // apart by time or distance): a drag moves it, alone or the whole stack;
+  // held over one of its size half a second, it goes onto that one (a new
+  // stack, or into that stack). A stack turns by the wheel (a touchpad's
+  // scroll too) or a press on its dots; one comes out of it by the menu.
   function press(ev, n) {
-    if (ev.button !== 0 || ev.target.closest('.tools')) return
+    if (ev.button !== 0 || ev.target.closest('.tools, .sdots')) return
     closeMenu()
-    // A drag along the dots turns the stack through them.
-    if (ev.target.closest('.sdots')) {
-      drag = { n, mode: 'dots', id: ev.pointerId }
-      n.el.setPointerCapture(ev.pointerId)
-      hold(true)
-      return
-    }
-    drag = { n, mode: 'press', id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - n.x, dy: ev.clientY - n.y, armed: null, over: null, overTimer: 0, lift: 0 }
+    drag = { n, mode: 'press', id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - n.x, dy: ev.clientY - n.y, armed: null, over: null, overTimer: 0 }
     n.el.setPointerCapture(ev.pointerId)
     hold(true)
     // The icons as they are now, for the drop.
     loadIcons()
-    // Held still half a second on a stack: the whole stack picked up.
-    if (G.isStack(n.entry))
-      drag.lift = setTimeout(() => {
-        if (drag?.n === n && drag.mode === 'press') {
-          drag.mode = 'lift'
-          n.el.classList.add('lifted')
-        }
-      }, 500)
   }
 
   function move(ev) {
     const d = drag
     if (!d || ev.pointerId !== d.id) return
     const n = d.n
-    if (d.mode === 'dots') {
-      const dots = [...n.el.querySelectorAll('.sdots button')]
-      const near = dots.reduce((best, b, i) => {
-        const r = b.getBoundingClientRect()
-        const dist = Math.abs(ev.clientY - (r.top + r.height / 2))
-        return dist < best.dist ? { i, dist } : best
-      }, { i: 0, dist: Infinity })
-      if (near.i !== topOf(n.entry) && performance.now() - turnedAt > 160) turnTo(n, near.i)
-      return
-    }
-    const mx = ev.clientX - d.x0
-    const my = ev.clientY - d.y0
-    if (d.mode === 'press' || d.mode === 'lift') {
-      if (Math.hypot(mx, my) < 5) return
-      clearTimeout(d.lift)
-      d.mode = G.isStack(n.entry) && d.mode === 'press' ? 'card' : 'move'
-      if (d.mode === 'move') n.el.classList.add('dragging')
-    }
-    if (d.mode === 'move') {
-      place(n, ev.clientX - d.dx, ev.clientY - d.dy)
-      return seek(ev, n.entry)
-    }
-    // The one on top pulled: up or down within the stack turns it; out of it, it comes out.
-    const top = n.el.querySelector('.layer.top')
-    if (!top) return
-    top.classList.add('pulled')
-    const r = n.rect
-    const inside = ev.clientX > n.x - 24 && ev.clientX < n.x + r.w + 24 && ev.clientY > n.y - 24 && ev.clientY < n.y + r.h + 24
-    if (d.mode === 'card' && !inside) {
-      d.mode = 'out'
+    if (d.mode === 'press') {
+      if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) < 5) return
+      d.mode = 'move'
       n.el.classList.add('dragging')
     }
-    const pull = d.mode === 'card' ? [0, Math.max(-60, Math.min(60, my * 0.6))] : [mx, my]
-    top._pull = pull
-    top.style.transform = `translate(${pull[0]}px, ${pull[1]}px)`
-    paint(n)
-    if (d.mode === 'out') seek(ev, { ...G.memberOf(n.entry.items[topOf(n.entry)]), id: '', size: n.entry.size })
+    place(n, ev.clientX - d.dx, ev.clientY - d.dy)
+    seek(ev, n.entry)
   }
 
   // Over one it may stack onto, held half a second: that one ringed, armed.
@@ -454,72 +430,36 @@
     const d = drag
     if (!d || ev.pointerId !== d.id) return
     drag = null
-    clearTimeout(d.lift)
     clearTimeout(d.overTimer)
     hold(false)
     const n = d.n
-    n.el.classList.remove('dragging', 'lifted')
+    n.el.classList.remove('dragging')
     d.over?.el.classList.remove('target')
-    if (d.mode === 'dots' || d.mode === 'press' || d.mode === 'lift') return
-    const top = n.el.querySelector('.layer.top')
-    if (d.mode === 'card') {
-      unpull(n, top)
-      const my = ev.clientY - d.y0
-      if (my < -24) turn(n, 1)
-      else if (my > 24) turn(n, -1)
-      return
-    }
+    if (d.mode === 'press') return
+    const e = n.entry
     const x = ev.clientX - d.dx
     const y = ev.clientY - d.dy
-    const off = ev.clientX < 0 || ev.clientY < 0 || ev.clientX > innerWidth || ev.clientY > innerHeight
-    if (d.mode === 'move') {
-      const e = n.entry
-      if (d.armed) {
-        // The one dropped on top.
-        tops.set(d.armed, 0)
-        return keepLayout(G.stackOnto(layout, e.id, d.armed, newId))
-      }
-      if (off) return elsewhere(ev, x - ev.clientX, y - ev.clientY, e.size, cell => keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, cell.key, cell.at) : o))), () => place(n, n.rect.x, n.rect.y))
-      const cell = G.dropAt(grid(), x, y, e.size, others(e.id), icons)
-      n.rect = G.rectAt(grid(), cell, e.size)
-      place(n, n.rect.x, n.rect.y)
-      return keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, here.key, cell) : o)))
-    }
-    // Out of a stack: the one on top alone where it was let go of, or onto another.
-    const s = n.entry
-    const index = topOf(s)
-    unpull(n, top)
-    const cellNear = () => G.dropAt(grid(), n.x + (ev.clientX - d.x0), n.y + (ev.clientY - d.y0), s.size, others(s.id), icons)
     if (d.armed) {
-      const out = G.takeOut(layout, s.id, index, newId, here.key, cellNear())
-      const alone = out.find(e => !layout.some(o => o.id === e.id) && G.keyOf(e) === G.keyOf(s.items[index]))
-      tops.set(s.id, 0)
+      // The one dropped on top.
       tops.set(d.armed, 0)
-      return keepLayout(alone ? G.stackOnto(out, alone.id, d.armed, newId) : out)
+      return keepLayout(G.stackOnto(layout, e.id, d.armed, newId))
     }
-    if (off) return elsewhere(ev, n.x - d.x0, n.y - d.y0, s.size, cell => (tops.set(s.id, 0), keepLayout(G.takeOut(layout, s.id, index, newId, cell.key, cell.at))), () => {})
-    tops.set(s.id, 0)
-    keepLayout(G.takeOut(layout, s.id, index, newId, here.key, cellNear()))
+    const off = ev.clientX < 0 || ev.clientY < 0 || ev.clientX > innerWidth || ev.clientY > innerHeight
+    if (off) return elsewhere(ev, x - ev.clientX, y - ev.clientY, e.size, cell => keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, cell.key, cell.at) : o))), () => place(n, n.rect.x, n.rect.y))
+    const cell = G.dropAt(grid(), x, y, e.size, others(e.id), icons)
+    n.rect = G.rectAt(grid(), cell, e.size)
+    place(n, n.rect.x, n.rect.y)
+    keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, here.key, cell) : o)))
   }
   function cancel() {
     const d = drag
     if (!d) return
     drag = null
-    clearTimeout(d.lift)
     clearTimeout(d.overTimer)
     hold(false)
-    d.n.el.classList.remove('dragging', 'lifted')
+    d.n.el.classList.remove('dragging')
     d.over?.el.classList.remove('target')
-    const top = d.n.el.querySelector('.layer.top')
-    if (top) unpull(d.n, top)
     place(d.n, d.n.rect.x, d.n.rect.y)
-  }
-  function unpull(n, top) {
-    if (!top) return
-    top._pull = null
-    top.style.transform = ''
-    top.classList.remove('pulled')
-    paint(n)
   }
   // The others' rects here (not this one).
   const others = id => [...nodes.values()].filter(o => o.entry.id !== id).map(o => o.rect)
@@ -631,7 +571,7 @@
   const nameOfEntry = e => {
     const w = shownWidget(e)
     const m = G.isStack(e) ? e.items[topOf(e)] : G.memberOf(e)
-    return w ? WCards.titleOf(w, ctx()) : m.name || Widgets.nameOf(lang(), m, all, here.detailed !== false)
+    return w ? WCards.titleOf(w, ctx()) : emptyName(e, m, ctx())
   }
 
   function menuHTML(e, kind) {

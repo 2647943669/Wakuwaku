@@ -64,7 +64,7 @@ test('every widget draws in every size it has, dark and light, without a hole', 
     for (const size of ['s', 'm', 'l'])
       for (const c of [dark, light]) {
         const html = WDesk.faceHTML(w, size, ctx(c))
-        assert.ok(html.includes('class="hd"'), `${w.id} ${size}: its head`)
+        assert.ok(html.includes(`class="hd"`) || html.includes(`class="twoline"`), `${w.id} ${size}: its head`)
         assert.ok(!/undefined|NaN|\[object/.test(html), `${w.id} ${size}: ${text(html)}`)
       }
 })
@@ -155,4 +155,56 @@ test('nothing to say: greyed with its name; loading a glint; stopped amber', () 
   assert.match(text(none), /天气 暂无数据/)
   assert.match(WDesk.emptyHTML({ type: 'widget', of: 'x' }, 'X', 'loading', dark), /class="wshim"/)
   assert.match(WDesk.emptyHTML({ type: 'widget', of: 'x' }, 'X', 'error', dark), /werr/)
+})
+
+test("Claude today's hours as fixed slots: twelve at least, 18 px at most, an hour without turns a 2 px line", () => {
+  for (const [size, h] of [['m', 30], ['l', 54]]) {
+    const html = WDesk.faceHTML(today, size, ctx(dark))
+    const rects = html.match(/<rect [^>]*>/g) || []
+    // The first turn at 9, now 14: twelve slots, 3 to 14.
+    assert.equal(rects.length, 12, size)
+    assert.ok(rects.every(r => Number(/width="([\d.]+)"/.exec(r)[1]) <= 18), size)
+    assert.equal(rects.filter(r => /height="2"/.test(r)).length, 6, size)
+    assert.match(html, new RegExp(`height="${h}"`))
+  }
+  assert.match(text(WDesk.faceHTML(today, 'l', ctx(dark))), /3 时 14 时/)
+  // Late in the day: from the first turn's hour on, more than twelve.
+  const late = { ...today, detail: { ...today.detail, series: { points: today.detail.series.points } } }
+  const rects = WDesk.faceHTML(late, 'm', ctx({ ...dark, hour: 22 })).match(/<rect [^>]*>/g)
+  assert.equal(rects.length, 14)
+})
+
+test("today's tokens medium: the two numbers larger in the middle, no empty half", () => {
+  const m = WDesk.faceHTML(tokens, 'm', ctx(dark))
+  assert.match(m, /<div class="grow"><\/div><div class="row nums tokens">/)
+  assert.match(m, /<div class="big">1\.7B<\/div>/)
+  assert.match(m, /<div class="big md">3\.4M<\/div>/)
+})
+
+test('a script with a label and a value only: medium in two lines, the value over its name', () => {
+  const plain = { id: 'hello', label: 'Hello', value: '42', color: '#5e9bff' }
+  const m = WDesk.faceHTML(plain, 'm', ctx(dark))
+  assert.doesNotMatch(m, /class="hd"/)
+  assert.match(m, /<div class="twoline"><div class="big md">42<\/div>.*Hello/)
+})
+
+test('names: its own label, else its plugin and a number, never an id or a bare "widget"', () => {
+  const c = ctx(dark)
+  assert.equal(WDesk.nameOf(script, c), 'CI main')
+  // A weather of a plugin with two cities, without a label: 天气 2.
+  const w1 = { id: 'weather-a', plugin: 'weather', value: '1°' }
+  const w2 = { id: 'weather-b', plugin: 'weather', value: '2°' }
+  assert.equal(WDesk.nameOf(w2, { ...c, all: [w1, w2] }), '天气 2')
+  // Private, the specifics hidden: its plugin's name, not its label.
+  assert.equal(WDesk.nameOf({ ...inbox, label: 'Anna' }, { ...c, detailed: false }), '邮件')
+  // Put there, nothing come yet: its name, a built-in one's, its plugin's, numbered when there are several.
+  assert.equal(WDesk.memberName({ type: 'widget', of: 'x', name: '我的' }, c), '我的')
+  assert.equal(WDesk.memberName({ type: 'widget', of: 'monitor' }, c), '系统监控')
+  assert.equal(WDesk.memberName({ type: 'plugin', of: 'weather' }, c), '天气')
+  assert.equal(WDesk.memberName({ type: 'plugin', of: 'weather' }, c, 2), '天气 2')
+  assert.equal(WDesk.memberName({ type: 'widget', of: 'stock-aapl' }, { ...c, all: [] }), '股票、汇率、币价')
+  for (const m of [{ type: 'widget', of: 'zzz' }, { type: 'plugin', of: 'nope' }]) {
+    const name = WDesk.memberName(m, c)
+    assert.ok(!/zzz|nope|w\.ex|部件/.test(name), name)
+  }
 })

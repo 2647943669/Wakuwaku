@@ -84,8 +84,7 @@ body {
   z-index: 20;
 }
 
-.dw.dragging .wd,
-.dw.lifted .layer.top .wd {
+.dw.dragging .wd {
   box-shadow:
     inset 0 1px 0 var(--w-hi),
     0 0 0 1px var(--w-line),
@@ -430,6 +429,23 @@ body {
   gap: 16px !important;
 }
 
+/* Today's tokens medium, without hours: the two numbers larger, in the middle. */
+.row.nums.tokens {
+  gap: 28px !important;
+}
+
+/* A script's medium with a label and a value only: value over name, left, in the middle. */
+.twoline {
+  min-width: 0;
+}
+
+.twoline .gl,
+.twoline .wgl {
+  color: var(--c);
+  font: normal 13px/1 var(--font-icon);
+  flex: none;
+}
+
 .slines {
   margin-top: 10px;
   gap: 8px;
@@ -718,12 +734,6 @@ body {
 
 .dw.stack .layer:not(.top) .wtint {
   background: var(--w-glass);
-}
-
-/* Pulled by a drag before it turns or comes out. */
-.dw.stack .layer.pulled {
-  transition: none;
-  z-index: 5;
 }
 
 .sdots {

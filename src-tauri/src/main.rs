@@ -1719,7 +1719,13 @@ fn main() {
                         // Quiet (nobody looking), every ten seconds at least.
                         let every = if quiet { watching.every.max(10) } else { watching.every };
                         next = std::time::Instant::now() + Duration::from_secs(every);
-                        let words = if on {
+                        // On the desktop alone, and no display shows it (a window
+                        // maximized or full screen over it): not read, kept as it
+                        // was, looked at again at its pace (desk.rs seen).
+                        let unseen = on && !monitored.is_widget_on("monitor") && !(monitored.home() == "taskbar" && settings::is_on_taskbar(&monitored.setting("taskbarLayout"), "monitor")) && !desk::seen(&monitored, "monitor");
+                        let words = if unseen {
+                            None
+                        } else if on {
                             monitor.read(&watching)
                         } else {
                             monitor.rest();
@@ -1729,6 +1735,7 @@ fn main() {
                             let mut widgets = monitored.widgets.lock().unwrap();
                             match words {
                                 Some(value) => widgets.set_built_in_with("monitor", value, monitor.detail(), now_ms()),
+                                None if unseen => false,
                                 None => widgets.remove_built_in("monitor"),
                             }
                         };

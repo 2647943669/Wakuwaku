@@ -215,6 +215,34 @@
   }
 
   const track = ctx => (ctx.light ? 'rgba(0,0,0,.09)' : 'rgba(255,255,255,.12)')
+
+  // Today's hours as slots (the design session, 2026-10-16): from the hour
+  // of the first turn to the hour it is, twelve at least (earlier ones
+  // before it, or, early in the day, the hours to come); each bar as wide as
+  // its slot allows but 18 px at most, at the slot's left; an hour without
+  // a turn a 2 px line in the track's colour, the hour it is in its colour.
+  // Gives the slots' first hour and last, for the labels under them.
+  function hourSlots(points, lit) {
+    const hours = Array.isArray(points) ? points : []
+    const first = hours.findIndex(n => n > 0)
+    const start = first < 0 ? lit : Math.min(first, lit)
+    const from = Math.max(0, Math.min(start, lit - 11))
+    const n = Math.max(12, lit - from + 1)
+    return { from, to: from + n - 1, data: Array.from({ length: n }, (_, i) => (from + i <= lit ? Number(hours[from + i]) || 0 : 0)) }
+  }
+  function hourBars(points, lit, w, h, color, trackColor) {
+    const { from, to, data } = hourSlots(points, lit)
+    const slot = w / data.length
+    const bw = Math.min(18, Math.max(2, slot - 3))
+    const max = Math.max(1, ...data)
+    const rects = data.map((v, i) => {
+      const x = num(i * slot)
+      if (!v) return `<rect x="${x}" y="${num(h - 2)}" width="${num(bw)}" height="2" rx="1" fill="${trackColor}"/>`
+      const bh = Math.max(3, (v / max) * h)
+      return `<rect x="${x}" y="${num(h - bh)}" width="${num(bw)}" height="${num(bh)}" rx="1.5" fill="${from + i === lit ? color : trackColor}"/>`
+    })
+    return { svg: `<svg class="wbars" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${rects.join('')}</svg>`, from, to }
+  }
   const seriesOf = w => Widgets.detailOf(w).series || null
 
   // --- On the taskbar: small and medium (the spec's §5) -------------------------------
@@ -394,15 +422,9 @@
     const tv = varsOf(tokens)
     const cell = (n, label) => `<span class="cnum"><b>${esc(n)}</b><span>${esc(label)}</span></span>`
     const top = `<div class="crow nums">${cell(v.turns ?? '—', t(ctx, 'card.turnsUnit'))}${cell(render(ctx.lang, v.time) || '—', t(ctx, 'card.worked'))}${cell(v.approvals ?? '—', t(ctx, 'card.approvals'))}${cell(tv.total || '—', 'token')}</div>`
-    const hours = d.series?.points || []
     const lit = Number.isFinite(ctx.hour) ? ctx.hour : new Date().getHours()
-    const first = hours.findIndex(n => n > 0)
-    // From the first hour with a turn (16 at most), or the last twelve.
-    const from = first < 0 ? Math.max(0, lit - 11) : Math.max(Math.min(first, lit), lit - 15)
-    const shown = hours.slice(from, lit + 1)
-    const chart = shown.length
-      ? `<div class="ccap">${esc(t(ctx, 'card.byHour'))}</div><div class="ccurve">${bars(shown, ctx.width, 40, color, track(ctx), shown.length - 1)}</div><div class="cfoot"><span>${esc(t(ctx, 'card.hour', { h: from }))}</span><span>${esc(t(ctx, 'card.hour', { h: lit }))}</span></div>`
-      : ''
+    const b = hourBars(d.series?.points, lit, ctx.width, 40, color, track(ctx))
+    const chart = d.series ? `<div class="ccap">${esc(t(ctx, 'card.byHour'))}</div><div class="ccurve">${b.svg}</div><div class="cfoot"><span>${esc(t(ctx, 'card.hour', { h: b.from }))}</span><span>${esc(t(ctx, 'card.hour', { h: b.to }))}</span></div>` : ''
     const grey = `<div class="cline off"><span class="cn">${esc(t(ctx, 'card.tokenCurve'))}</span>${nodata(ctx)}</div><div class="cline off"><span class="cn">${esc(t(ctx, 'card.busiest'))}</span>${nodata(ctx)}</div>`
     return top + chart + `<div class="clines">${grey}</div>`
   }
@@ -475,7 +497,7 @@
     return `${d.getMonth() + 1}/${d.getDate()}`
   }
 
-  const api = { KINDS, kindOf, colorOf, trendOf, glyphOf, glyphHTML, memberGlyph, titleOf, briefOf, spark, ring, bars, faceHTML, emptyFaceHTML, rowHTML, stackRowHTML, hasCard, cardHTML, upFor, whenOf, esc }
+  const api = { KINDS, kindOf, colorOf, trendOf, glyphOf, glyphHTML, memberGlyph, titleOf, briefOf, spark, ring, bars, hourSlots, hourBars, faceHTML, emptyFaceHTML, rowHTML, stackRowHTML, hasCard, cardHTML, upFor, whenOf, esc }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

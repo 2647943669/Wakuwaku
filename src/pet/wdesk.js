@@ -12,7 +12,7 @@
   const Widgets = root.Widgets || require('./widgets')
   const WCards = root.WCards || require('./wcards')
   const { render } = I18n
-  const { esc, spark, ring, bars, kindOf, colorOf, briefOf, titleOf, trendOf } = WCards
+  const { esc, spark, ring, kindOf, colorOf, briefOf, titleOf, trendOf } = WCards
   const t = (ctx, key, vars) => I18n.t(ctx.lang, key, vars)
 
   const UP = ['#34d27b', '#0f7b3f']
@@ -173,27 +173,31 @@
     const name = titleOf(w, ctx)
     if (size === 's') return `${head(w, name, ctx)}<div class="grow"></div>${big(v.turns ?? '—')}<div class="sub" style="margin-top:4px">${esc([t(ctx, 'card.turnsUnit'), time].join(' · '))}</div><div class="ter">${esc([t(ctx, 'card.approved', { n: v.approvals ?? '—' }), tokens.total ? `${tokens.total} token` : ''].filter(Boolean).join(' · '))}</div>`
     const cell = (value, label, cls = '') => `<div><div class="${cls || 'num mid'}">${esc(value)}</div><div class="ter" style="margin-top:2px">${esc(label)}</div></div>`
-    const hours = detailOf(w).series?.points || []
     const lit = Number.isFinite(ctx.hour) ? ctx.hour : new Date(ctx.now || Date.now()).getHours()
-    const first = hours.findIndex(x => x > 0)
-    const from = first < 0 ? Math.max(0, lit - 11) : Math.max(Math.min(first, lit), lit - 15)
-    const shown = hours.slice(from, lit + 1)
+    const series = detailOf(w).series
     const color = colorOf(w, ctx)
     const right = esc(t(ctx, 'desk.today'))
+    // The hours as fixed slots (wcards.js hourBars): twelve at least, 18 px at most each.
     if (size === 'm') {
-      const chart = shown.length ? bars(shown, 292, 30, color, track(ctx), shown.length - 1) : nodata(ctx)
+      const chart = series ? WCards.hourBars(series.points, lit, 292, 30, color, track(ctx)).svg : nodata(ctx)
       return `${head(w, name, ctx, right)}<div class="row nums">${cell(v.turns ?? '—', t(ctx, 'card.turnsUnit'), 'big md')}${cell(time, t(ctx, 'card.worked'))}${cell(tokens.total || '—', 'token')}</div><div class="grow"></div>${chart}`
     }
-    const chart = shown.length
-      ? `<div style="margin-top:6px">${bars(shown, 292, 54, color, track(ctx), shown.length - 1)}</div><div class="row ter" style="margin-top:4px"><span class="n">${esc(t(ctx, 'card.hour', { h: from }))}</span><span>${esc(t(ctx, 'card.hour', { h: lit }))}</span></div>`
-      : `<div>${nodata(ctx)}</div>`
+    const b = series ? WCards.hourBars(series.points, lit, 292, 54, color, track(ctx)) : null
+    const chart = b ? `<div style="margin-top:6px">${b.svg}</div><div class="row ter" style="margin-top:4px"><span class="n">${esc(t(ctx, 'card.hour', { h: b.from }))}</span><span>${esc(t(ctx, 'card.hour', { h: b.to }))}</span></div>` : `<div>${nodata(ctx)}</div>`
     return `${head(w, name, ctx, right)}<div class="row nums">${cell(v.turns ?? '—', t(ctx, 'card.turnsUnit'), 'big md')}${cell(time, t(ctx, 'card.worked'))}${cell(v.approvals ?? '—', t(ctx, 'card.approvals'))}</div><div class="ter" style="margin-top:14px">${esc(t(ctx, 'card.byHour'))}</div>${chart}<div class="ter" style="margin-top:12px">${esc(t(ctx, 'card.tokenCurve'))}</div><div class="off">${nodata(ctx)}</div><div class="grow"></div><div class="row off"><span class="sub n">${esc(t(ctx, 'card.busiest'))}</span>${nodata(ctx)}</div>`
   }
+  // Today's tokens: small, the total over "token"; medium, the total and
+  // the output larger, in the middle of it, or over their curve when the
+  // hours come (the design session: not an empty half).
   function tokens(w, size, ctx) {
     const v = varsOf(w)
     const said = Widgets.words(ctx.lang, w, true)
-    if (size === 's') return `${head(w, render(ctx.lang, w.label), ctx)}<div class="grow"></div>${big(v.total || said.value)}<div class="sub" style="margin-top:4px">token</div><div class="ter">${esc(v.output ? t(ctx, 'card.output', { n: v.output }) : '')}</div>`
-    return `${head(w, render(ctx.lang, w.label), ctx, esc(t(ctx, 'desk.today')))}<div class="row nums" style="margin-top:14px"><div><div class="big md">${esc(v.total || said.value)}</div><div class="ter" style="margin-top:4px">token</div></div><div><div class="num mid">${esc(v.output || '—')}</div><div class="ter" style="margin-top:2px">${esc(t(ctx, 'desk.output'))}</div></div></div>`
+    const name = render(ctx.lang, w.label) || t(ctx, 'widget.tokens')
+    if (size === 's') return `${head(w, name, ctx)}<div class="grow"></div>${big(v.total || said.value)}<div class="sub" style="margin-top:4px">token</div><div class="ter">${esc(v.output ? t(ctx, 'card.output', { n: v.output }) : '')}</div>`
+    const series = detailOf(w).series
+    const nums = `<div class="row nums tokens"><div>${big(v.total || said.value, '', series ? 'md' : '')}<div class="ter" style="margin-top:4px">token</div></div><div>${big(v.output || '—', '', series ? 'sm' : 'md')}<div class="ter" style="margin-top:4px">${esc(t(ctx, 'desk.output'))}</div></div></div>`
+    if (!series) return `${head(w, name, ctx, esc(t(ctx, 'desk.today')))}<div class="grow"></div>${nums}<div class="grow"></div>`
+    return `${head(w, name, ctx, esc(t(ctx, 'desk.today')))}${nums}<div class="grow"></div>${spark(series.points, 292, 40, colorOf(w, ctx))}`
   }
 
   // --- Pomodoro (s, m), countdown (s) ---------------------------------------------------------
@@ -220,15 +224,60 @@
   }
 
   // --- Anyone else's (s, m; l when it says so) ---------------------------------------------------
+  // A script that gives only a label and a value (the spec's §1): medium in
+  // two lines, its value over its name, left, in the middle; no empty block.
   function generic(w, size, ctx) {
     const said = Widgets.words(ctx.lang, w, ctx.detailed)
     const d = detailOf(w)
     const color = colorOf(w, ctx)
-    const label = said.label || render(ctx.lang, { key: 'taskbar.w.widget' })
+    const label = nameOf(w, ctx)
     if (size === 's') return `${head(w, label, ctx)}<div class="grow"></div>${big(said.value, '', 'sm')}<div class="ter ell">${esc(d.extra || '')}</div>`
-    const curve = d.series ? `<div class="curve">${spark(d.series.points, 292, size === 'l' ? 96 : 40, color, { lo: d.series.lo, hi: d.series.hi })}</div>` : ''
     const rows = size === 'l' ? rowsOf(w).slice(0, 6).map(r => `<div class="row"><span class="n sub">${priv(w, r.name || r.from || r.code || r.when || '', ctx)}</span><span class="ter">${priv(w, r.subject || r.text || '', ctx)}</span><span class="num">${esc(r.value || r.price || '')}</span></div>`) : []
+    if (!d.series && !rows.length) return `<div class="grow"></div><div class="twoline">${big(said.value, '', 'md')}<div class="row" style="margin-top:6px">${WCards.glyphHTML(w, 'gl')}<span class="sub n">${esc(label)}</span></div>${d.extra ? `<div class="ter ell">${esc(d.extra)}</div>` : ''}</div><div class="grow"></div>`
+    const curve = d.series ? `<div class="curve">${spark(d.series.points, 292, size === 'l' ? 96 : 40, color, { lo: d.series.lo, hi: d.series.hi })}</div>` : ''
     return `${head(w, label, ctx)}<div class="row top">${big(said.value, '', 'md')}<span class="sub beside">${esc(d.extra || '')}</span></div>${curve}<div class="grow"></div>${rows.length ? `<div class="lines">${rows.join('')}</div>` : ''}`
+  }
+
+  // --- Names: never an id, never a bare "widget" (the design session) --------------------------
+  // A plugin's own name ("天气"), none for one she does not know.
+  function pluginName(plugin, ctx) {
+    const key = `w.ex.${plugin}`
+    const said = plugin ? t(ctx, key) : ''
+    return said && said !== key ? said : ''
+  }
+  // The plugin a widget comes from: its own say, else its id's first part
+  // as plugins name theirs ("stock-aapl").
+  const pluginOf = id => (/^([a-z]+)-/.exec(String(id || '')) || [])[1] || ''
+  const BUILT_IN = { monitor: 'card.monitor', today: 'card.today', tokens: 'widget.tokens', weather: 'card.weather', pomodoro: 'card.pomodoro', countdown: 'card.countdown' }
+  // A widget's name: its own label; with none (or private, the specifics
+  // hidden), its plugin's name and its number among that plugin's ("天气
+  // 2"); else "小工具" and its number.
+  function nameOf(w, ctx) {
+    const label = Widgets.words(ctx.lang, w, ctx.detailed).label
+    if (label) return label
+    return baseName({ type: w.plugin ? 'plugin' : 'widget', of: w.plugin || w.id }, ctx, w.id)
+  }
+  // A member put there (no words come yet): the name it was put there with,
+  // a built-in one's, else its plugin's; n its number among the same name's
+  // on the display (desk.js), when more than one.
+  function memberName(m, ctx, n = 0) {
+    if (m.name) return m.name
+    const base = baseName(m, ctx, m.of)
+    return n > 1 ? `${base} ${n}` : base
+  }
+  function baseName(m, ctx, id) {
+    if (m.type === 'widget' && BUILT_IN[m.of]) {
+      const said = t(ctx, BUILT_IN[m.of])
+      if (said !== BUILT_IN[m.of]) return said
+    }
+    const plugin = m.type === 'plugin' ? m.of : pluginOf(id)
+    const named = pluginName(plugin, ctx) || (/^inbox-/.test(String(id)) ? t(ctx, 'card.mail') : '')
+    if (named) {
+      const mates = (ctx.all || []).filter(x => (plugin && (x.plugin === plugin || pluginOf(x.id) === plugin)) || (!plugin && x.from === 'mail'))
+      const at = mates.findIndex(x => x.id === id)
+      return mates.length > 1 && at >= 0 ? `${named} ${at + 1}` : named
+    }
+    return t(ctx, 'desk.widget')
   }
 
   const BY_KIND = { weather, monitor, stock, mail, today, tokens, pomodoro, countdown }
@@ -247,7 +296,7 @@
     return `<div class="hd">${glyph}<span class="hn">${esc(name)}</span></div><div class="grow"></div><div class="empty">${what}</div><div class="grow"></div>`
   }
 
-  const api = { faceHTML, emptyHTML, share }
+  const api = { faceHTML, emptyHTML, share, nameOf, memberName }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

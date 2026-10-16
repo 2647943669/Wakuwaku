@@ -55,6 +55,10 @@ struct Desk {
     // The window takes the mouse.
     catching: bool,
     was_down: bool,
+    // The entries it shows (refresh), and words not sent it while its
+    // desktop was not seen (push_widgets).
+    entries: Vec<Value>,
+    stale: bool,
 }
 
 static DESKS: Mutex<Vec<Desk>> = Mutex::new(Vec::new());
@@ -75,16 +79,16 @@ fn wanted(sh: &Shared) -> Vec<(Area, String, bool)> {
     let screens = sh.screens();
     let keyed: Vec<(Area, String, bool)> = screens.areas.iter().map(|a| (*a, key_of(sh, a.mon), screens.primary.is_some_and(|p| p.mon == a.mon))).collect();
     let keys: Vec<&str> = keyed.iter().map(|(_, k, _)| k.as_str()).collect();
-    keyed
-        .iter()
-        .filter(|(_, key, primary)| {
-            entries.iter().any(|e| match e["d"].as_str() {
-                Some(d) => d == key || (*primary && !keys.contains(&d)),
-                None => *primary,
-            })
-        })
-        .cloned()
-        .collect()
+    keyed.iter().filter(|(_, key, primary)| entries.iter().any(|e| shown_on(e, key, *primary, &keys))).cloned().collect()
+}
+
+// An entry on a display: its own, and on the main display one whose display
+// is not there (deskgrid.js shownHere).
+fn shown_on(e: &Value, key: &str, primary: bool, keys: &[&str]) -> bool {
+    match e["d"].as_str() {
+        Some(d) => d == key || (primary && !keys.contains(&d)),
+        None => primary,
+    }
 }
 
 // Made or taken away as the layout and the displays say; each one told
@@ -106,7 +110,7 @@ pub fn sync(sh: &Arc<Shared>) {
         for (a, key, _) in &want {
             if !desks.iter().any(|d| d.key == *key) {
                 let label = format!("desk-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false });
+                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, entries: Vec::new(), stale: false });
                 made.push((label, *a));
             }
         }
@@ -153,14 +157,21 @@ pub fn refresh(sh: &Shared) {
             "sprite": sprite,
             "layout": if layout.is_array() { layout.clone() } else { json!([]) },
         });
+        let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+        let primary = screens.primary.is_some_and(|p| p.mon == mon);
+        let here: Vec<Value> = layout.as_array().into_iter().flatten().filter(|e| shown_on(e, &key, primary, &key_refs)).cloned().collect();
         let changed = {
             let mut desks = DESKS.lock().unwrap();
             match desks.iter_mut().find(|d| d.label == label) {
-                Some(d) if d.sent != state => {
-                    d.sent = state.clone();
-                    true
+                Some(d) => {
+                    d.entries = here;
+                    let changed = d.sent != state;
+                    if changed {
+                        d.sent = state.clone();
+                    }
+                    changed
                 }
-                _ => false,
+                None => false,
             }
         };
         if changed {
@@ -183,32 +194,106 @@ fn look_light() -> bool {
     *light.get_or_insert_with(|| crate::wallpaper::look().0)
 }
 
-// The widgets' words, to the pages (with the island's, main.rs redraw_widgets).
+// The widgets' words, to the pages (with the island's, main.rs redraw_widgets):
+// not to one whose display's desktop nobody sees (a window maximized or full
+// screen over it: the design session, 2026-10-16), which is told them once
+// it is seen again (catch_up).
 pub fn push_widgets(sh: &Shared) {
-    let labels: Vec<String> = DESKS.lock().unwrap().iter().filter(|d| d.ready).map(|d| d.label.clone()).collect();
-    if labels.is_empty() {
+    let desks: Vec<(String, Mon)> = DESKS.lock().unwrap().iter().filter(|d| d.ready).map(|d| (d.label.clone(), d.mon)).collect();
+    if desks.is_empty() {
         return;
     }
-    let widgets = json!({ "widgets": sh.widgets_said() });
-    for label in labels {
-        let _ = sh.app.emit_to(label.as_str(), "desk:widgets", widgets.clone());
+    let mut widgets = None;
+    for (label, mon) in desks {
+        let seen = seen_now(sh, mon);
+        if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == label) {
+            d.stale = !seen;
+        }
+        if seen {
+            let w = widgets.get_or_insert_with(|| json!({ "widgets": sh.widgets_said() }));
+            let _ = sh.app.emit_to(label.as_str(), "desk:widgets", w.clone());
+        }
     }
+}
+
+// Those not told while unseen, told now if they are seen again; the
+// monitor woken to read for them at once. Looked at as the window in front
+// changes, one is minimized or restored, and every ten seconds while one
+// waits.
+pub fn catch_up(sh: &Shared) {
+    *SEEN.lock().unwrap() = None;
+    let stale: Vec<Mon> = DESKS.lock().unwrap().iter().filter(|d| d.ready && d.stale).map(|d| d.mon).collect();
+    if stale.iter().any(|&mon| seen_now(sh, mon)) {
+        push_widgets(sh);
+        crate::wake_monitor();
+    }
+}
+
+fn any_stale() -> bool {
+    DESKS.lock().unwrap().iter().any(|d| d.stale)
 }
 
 pub fn any() -> bool {
     !DESKS.lock().unwrap().is_empty()
 }
 
-// The monitor on the desktop medium or large: its card's readings (the
-// graphics card, the drives) are shown there, read while anyone is about.
+// Whether an entry shows a widget: put there by itself, or its plugin's;
+// alone or in a stack.
+fn entry_shows(e: &Value, id: &str, owner: Option<&str>) -> bool {
+    let shows = |m: &Value| match (m["type"].as_str(), m["of"].as_str()) {
+        (Some("widget"), Some(of)) => of == id,
+        (Some("plugin"), Some(of)) => Some(of) == owner,
+        _ => false,
+    };
+    shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows))
+}
+
+// Whether a display's desktop shows a widget where somebody can see it.
+// big: medium or large only (the monitor's card's readings, its graphics
+// card and drives, are shown there: read only then).
+fn seen_with(sh: &Shared, id: &str, big: bool) -> bool {
+    let owner = crate::scripts::owner_of(id);
+    let desks: Vec<(Mon, bool)> = DESKS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|d| d.ready)
+        .map(|d| (d.mon, d.entries.iter().any(|e| (!big || matches!(e["size"].as_str(), Some("m" | "l"))) && entry_shows(e, id, owner))))
+        .collect();
+    desks.into_iter().any(|(mon, has)| has && seen_now(sh, mon))
+}
+
+pub fn seen(sh: &Shared, id: &str) -> bool {
+    seen_with(sh, id, false)
+}
+
+// The monitor on the desktop medium or large, where it is seen: its card's
+// readings (the graphics card, the drives) read, at the monitor's pace;
+// not while a window covers that desktop, nor while nobody is about.
 pub fn shows_more(sh: &Shared, id: &str) -> bool {
-    sh.setting("deskLayout").as_array().is_some_and(|entries| {
-        entries.iter().any(|e| {
-            let big = matches!(e["size"].as_str(), Some("m" | "l"));
-            let shows = |m: &Value| m["type"] == "widget" && m["of"] == id;
-            big && (shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))
-        })
-    })
+    seen_with(sh, id, true)
+}
+
+// Each display's desktop seen or not: nothing maximized or full screen over
+// it, or the desktop brought over the windows (Win+D). Looked at once a
+// second at most (a window list: some 400 windows, a fraction of a ms).
+static SEEN: Mutex<Option<(std::time::Instant, Vec<(Mon, bool)>)>> = Mutex::new(None);
+fn seen_now(sh: &Shared, mon: Mon) -> bool {
+    if let Some((at, list)) = SEEN.lock().unwrap().as_ref() {
+        if at.elapsed() < std::time::Duration::from_secs(1) {
+            if let Some((_, s)) = list.iter().find(|(m, _)| *m == mon) {
+                return *s;
+            }
+        }
+    }
+    let own = sh.own.lock().unwrap().clone();
+    let shown = imp::desktop_shown(&own);
+    let full = crate::fullscreen::covering(&own).flatten();
+    let mons: Vec<Mon> = DESKS.lock().unwrap().iter().map(|d| d.mon).collect();
+    let list: Vec<(Mon, bool)> = mons.into_iter().map(|m| (m, shown || !(full == Some(m) || crate::tasks::maximized_on(m)))).collect();
+    let s = list.iter().find(|(m, _)| *m == mon).map_or(true, |(_, s)| *s);
+    *SEEN.lock().unwrap() = Some((std::time::Instant::now(), list));
+    s
 }
 
 fn create(sh: &Arc<Shared>, label: String, area: Area) {
@@ -611,6 +696,8 @@ mod imp {
         fn DispatchMessageW(msg: *const Msg) -> isize;
         fn SetTimer(hwnd: Hwnd, id: usize, ms: u32, f: *const c_void) -> usize;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
+        fn GetClassNameW(hwnd: Hwnd, name: *mut u16, max: i32) -> i32;
+        fn IsIconic(hwnd: Hwnd) -> i32;
     }
 
     #[link(name = "kernel32")]
@@ -635,6 +722,7 @@ mod imp {
     const SWP_NOOWNERZORDER: u32 = 0x200;
     const SWP_ASYNCWINDOWPOS: u32 = 0x4000;
     const EVENT_SYSTEM_FOREGROUND: u32 = 0x3;
+    const EVENT_SYSTEM_MINIMIZESTART: u32 = 0x16;
     const EVENT_SYSTEM_MINIMIZEEND: u32 = 0x17;
     const WINEVENT_OUTOFCONTEXT: u32 = 0;
     const WINEVENT_SKIPOWNPROCESS: u32 = 2;
@@ -771,6 +859,33 @@ mod imp {
         }
     }
 
+    // The desktop brought over the windows (Win+D): a window of someone else's
+    // in sight under the one with the icons.
+    pub fn desktop_shown(own: &[isize]) -> bool {
+        let host = host();
+        if host.is_null() {
+            return false;
+        }
+        // SAFETY: plain reads along the z-order; a buffer of our own.
+        unsafe {
+            let mut h = GetWindow(host, GW_HWNDNEXT);
+            let mut n = 0;
+            while !h.is_null() && n < 8192 {
+                if IsWindowVisible(h) != 0 && IsIconic(h) == 0 && !own.contains(&(h as isize)) {
+                    let mut name = [0u16; 32];
+                    let k = GetClassNameW(h, name.as_mut_ptr(), 32).max(0) as usize;
+                    let class = String::from_utf16_lossy(&name[..k]);
+                    if class != "WorkerW" && class != "Progman" {
+                        return true;
+                    }
+                }
+                h = GetWindow(h, GW_HWNDNEXT);
+                n += 1;
+            }
+            false
+        }
+    }
+
     // Every one of hers where it belongs.
     pub fn keep_all_low() {
         let mine: Vec<isize> = DESKS.lock().unwrap().iter().map(|d| d.hwnd).filter(|&h| h != 0).collect();
@@ -787,6 +902,10 @@ mod imp {
     // from the taskbar: hers where they belong.
     extern "system" fn on_event(_hook: isize, _event: u32, _hwnd: Hwnd, _object: i32, _child: i32, _thread: u32, _time: u32) {
         keep_all_low();
+        // A desktop seen again: its words caught up.
+        if let Some(sh) = super::SHARED.get() {
+            super::catch_up(sh);
+        }
     }
 
     extern "system" fn wndproc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize {
@@ -809,13 +928,20 @@ mod imp {
                 }
                 0
             }
-            // Every half minute (a slideshow's next picture says nothing);
-            // nobody about, every other minute.
+            // Every ten seconds: a desktop waiting to be told, seen again
+            // (a window restored without another coming to the front);
+            // every half minute the pictures (a slideshow's next picture
+            // says nothing), nobody about, every other minute.
             WM_TIMER => {
                 static TURN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
                 let quiet = super::SHARED.get().is_some_and(|sh| sh.is_quiet());
                 let n = TURN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if !quiet || n % 4 == 0 {
+                if super::any_stale() {
+                    if let Some(sh) = super::SHARED.get() {
+                        super::catch_up(sh);
+                    }
+                }
+                if n % 3 == 0 && (!quiet || n % 12 == 0) {
                     std::thread::spawn(super::look_again);
                 }
                 0
@@ -857,7 +983,8 @@ mod imp {
                 WINDOW.store(hwnd as isize, std::sync::atomic::Ordering::SeqCst);
                 SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
                 SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-                SetTimer(hwnd, 1, 30_000, std::ptr::null());
+                SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZESTART, 0, on_event, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                SetTimer(hwnd, 1, 10_000, std::ptr::null());
                 keep_all_low();
                 let mut msg: Msg = std::mem::zeroed();
                 while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
@@ -895,6 +1022,9 @@ mod imp {
     pub fn start(_sh: &Arc<Shared>) {}
     pub fn keep_all_low() {}
     pub fn set_through(_hwnd: isize, _through: bool) {}
+    pub fn desktop_shown(_own: &[isize]) -> bool {
+        true
+    }
     pub fn icons(_mon: super::Mon, _sf: f64) -> Vec<[f64; 4]> {
         Vec::new()
     }
