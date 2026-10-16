@@ -7,6 +7,9 @@
 // back; the same for what else comes to the taskbar's window (app bars,
 // SHAppBarMessage, come this way too). Programs that added their icons before
 // are asked to add them again, with the message Explorer sends when it starts.
+// Given back (or she was killed holding it), every window is told so again
+// once ours is gone and Explorer's shows (handed_back): whatever took ours
+// for the taskbar on hearing it finds Explorer's (zhoupengjie/Wakuwaku#54).
 //
 // A press on an icon is told to its program as Explorer tells it, by the
 // version of the protocol it asked for (NIM_SETVERSION). Windows only.
@@ -136,7 +139,7 @@ fn holds(answer: usize) -> Holds {
 #[cfg(windows)]
 mod imp {
     use std::ffi::c_void;
-    use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicIsize, AtomicU32, AtomicU64, Ordering};
     use std::sync::Mutex;
 
     use super::{file_name, guid_bytes, holds, icon_name, path_in, Holds, Press, Shown};
@@ -235,6 +238,7 @@ mod imp {
         fn AllowSetForegroundWindow(pid: u32) -> i32;
         fn SetForegroundWindow(hwnd: Hwnd) -> i32;
         fn GetForegroundWindow() -> Hwnd;
+        fn InSendMessageEx(reserved: *mut c_void) -> u32;
     }
 
     #[link(name = "kernel32")]
@@ -265,6 +269,18 @@ mod imp {
     }
 
     const WM_COMMAND: u32 = 0x0111;
+    const WM_SYSCOMMAND: u32 = 0x0112;
+    const WM_HOTKEY: u32 = 0x0312;
+    const WM_CLOSE: u32 = 0x0010;
+    const WM_MOVE: u32 = 0x0003;
+    const WM_SIZE: u32 = 0x0005;
+    const WM_GETMINMAXINFO: u32 = 0x0024;
+    const WM_WINDOWPOSCHANGING: u32 = 0x0046;
+    const WM_WINDOWPOSCHANGED: u32 = 0x0047;
+    const WM_NCCALCSIZE: u32 = 0x0083;
+    const ISMEX_SEND: u32 = 0x1;
+    const ISMEX_NOTIFY: u32 = 0x2;
+    const ISMEX_CALLBACK: u32 = 0x4;
     const WM_COPYDATA: u32 = 0x004A;
     const WM_USER: u32 = 0x0400;
     const WM_CONTEXTMENU: u32 = 0x007B;
@@ -330,8 +346,6 @@ mod imp {
     static NOTIFY: AtomicIsize = AtomicIsize::new(0);
     static NOTIFY_MSG: AtomicU32 = AtomicU32::new(0);
     static NEXT_KEY: AtomicU64 = AtomicU64::new(1);
-    // Something could not be handed on to Explorer: on stopping, every program is asked again.
-    static LOST: AtomicBool = AtomicBool::new(false);
     static ICONS: Mutex<Vec<Icon>> = Mutex::new(Vec::new());
     // Icons Explorer's tray holds that never came to ours (scan_held).
     static HELD: Mutex<Vec<HeldIcon>> = Mutex::new(Vec::new());
@@ -650,17 +664,12 @@ mod imp {
             // An icon added again: Explorer has it already (an icon ours has,
             // or one coming in answer to ask_again), and an add it refuses can
             // make it show the taskbar, and come first. An icon new to both
-            // in that moment: on stopping, every program is asked again.
+            // in that moment, or one Explorer's did not take, comes to it
+            // when every program is told again (handed_back).
             let adding = tray.filter(|d| d.message == NIM_ADD);
             let known = adding.is_some_and(|d| ICONS.lock().unwrap().iter().any(|i| same(i, &d.nid)));
             let answering = adding.is_some() && ASKED.lock().unwrap().is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(3));
-            if answering && !known {
-                LOST.store(true, Ordering::SeqCst);
-            }
             let answer = if known || answering { Some(1) } else { hand_on(msg, wparam, lparam) };
-            if answer.is_none() {
-                LOST.store(true, Ordering::SeqCst);
-            }
             match tray {
                 Some(data) => {
                     count(match data.message {
@@ -687,6 +696,17 @@ mod imp {
         if msg == WM_COMMAND || msg >= WM_USER {
             count(&format!("message {msg:#x}"));
             return hand_on(msg, wparam, lparam).unwrap_or(0) as isize;
+        }
+        // Kept, not handed on: counted for the log when another thread sent
+        // it, or when it is a command to the taskbar's window (the system
+        // menu's, a hot key's, a close), posted or sent: whether Windows'
+        // way to Start ever passes here (zhoupengjie/Wakuwaku#54). Not
+        // ours being placed (place, keep_first, from her other threads).
+        // SAFETY: a plain query about the message being handled.
+        let sent = unsafe { InSendMessageEx(std::ptr::null_mut()) } & (ISMEX_SEND | ISMEX_NOTIFY | ISMEX_CALLBACK) != 0;
+        let placed = matches!(msg, WM_MOVE | WM_SIZE | WM_GETMINMAXINFO | WM_WINDOWPOSCHANGING | WM_WINDOWPOSCHANGED | WM_NCCALCSIZE);
+        if (sent && !placed) || matches!(msg, WM_SYSCOMMAND | WM_HOTKEY | WM_CLOSE) {
+            count(&if msg == WM_SYSCOMMAND { format!("kept {msg:#x} {:#x}", wparam & 0xFFF0) } else { format!("kept {msg:#x}") });
         }
         // SAFETY: the default for the rest.
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -748,16 +768,23 @@ mod imp {
         1
     }
 
-    // Every program asked to add its icons again (they come to ours, ahead):
-    // every window but the taskbar's, which, told too, shows itself, and
-    // comes first while programs answer (2026-10-10: 3 times in 4).
-    pub fn ask_again() {
-        *ASKED.lock().unwrap() = Some(std::time::Instant::now());
+    // Every window told TaskbarCreated, as Explorer tells them when its
+    // taskbar comes up; not Explorer's taskbars, which, told too, show
+    // themselves, and come first while programs answer (2026-10-10: 3
+    // times in 4). Windows of Store apps are not among those EnumWindows
+    // walks (Start's, Search's on 26300: none of theirs is told).
+    fn tell_all() {
         // SAFETY: a name of our own; the callback sends only.
         unsafe {
             let msg = RegisterWindowMessageW(wide("TaskbarCreated").as_ptr());
             EnumWindows(ask_one, msg as isize);
         }
+    }
+
+    // Every program asked to add its icons again (they come to ours, ahead).
+    pub fn ask_again() {
+        *ASKED.lock().unwrap() = Some(std::time::Instant::now());
+        tell_all();
     }
 
     pub fn place(rect: (i32, i32, i32, i32)) {
@@ -768,8 +795,8 @@ mod imp {
         }
     }
 
-    // Ours gone; Explorer's has had everything, unless something could not
-    // be handed on: then every program is asked again.
+    // Ours gone (on the thread that made it). Explorer's has had nearly
+    // everything; the rest comes once it shows again (handed_back).
     pub fn stop() {
         let ours = OURS.swap(0, Ordering::SeqCst);
         if ours != 0 {
@@ -784,9 +811,23 @@ mod imp {
             }
         }
         HELD.lock().unwrap().clear();
-        if LOST.load(Ordering::SeqCst) {
-            ask_again();
+    }
+
+    // The taskbar Explorer's again, shown, ours gone (the host giving it
+    // back; the guard, or her next start, after she was killed holding
+    // it): every window told, as Explorer tells them when its taskbar comes
+    // up. Whatever took ours for the taskbar on hearing it from us finds
+    // Explorer's; a killed one never told them, nor handed Explorer's what
+    // came while programs answered (zhoupengjie/Wakuwaku#54). Programs add
+    // their icons again, which Explorer's has mostly: it says no to those.
+    // False, nobody told, while ours is still there (its thread did not
+    // stop): they would find it again.
+    pub fn handed_back() -> bool {
+        if OURS.load(Ordering::SeqCst) != 0 {
+            return false;
         }
+        tell_all();
+        true
     }
 
     // Icons whose program is gone without saying so.
@@ -1231,6 +1272,9 @@ mod imp {
         false
     }
     pub fn stop() {}
+    pub fn handed_back() -> bool {
+        false
+    }
     pub fn place(_rect: (i32, i32, i32, i32)) {}
     pub fn first() -> bool {
         false
@@ -1260,7 +1304,7 @@ mod imp {
 }
 
 #[allow(unused_imports)]
-pub use imp::{ask_again, describe, first, keep_first, notes, place, scan_held, seen, set_rects, shown, start, stop, sweep, tell};
+pub use imp::{ask_again, describe, first, handed_back, keep_first, notes, place, scan_held, seen, set_rects, shown, start, stop, sweep, tell};
 
 #[cfg(test)]
 mod tests {

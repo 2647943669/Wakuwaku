@@ -13,6 +13,9 @@
 //   - a guard: her own exe again, waiting for her process to end (spawn_guard,
 //     guard), as a killed process cannot give it back itself
 //   - her next start, if both were gone (recover)
+// Whoever gives it back then tells every window that Explorer's is the
+// taskbar again (systray.rs handed_back), as Explorer does when its taskbar
+// comes up: hers, which was the first Shell_TrayWnd, is gone.
 // Explorer shows it again now and then (a restart, the Start menu): the host
 // puts it away again (rehide) when it sees it (visible(), and the message
 // taskbar_created() names, sent when Explorer starts). Windows only.
@@ -53,6 +56,9 @@ mod imp {
         fn GetWindowRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
         fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> *mut c_void;
         fn GetMonitorInfoW(monitor: *mut c_void, info: *mut MonitorInfo) -> i32;
+        fn GetShellWindow() -> Hwnd;
+        fn FindWindowW(class: *const u16, title: *const u16) -> Hwnd;
+        fn IsWindow(hwnd: Hwnd) -> i32;
     }
 
     #[repr(C)]
@@ -83,6 +89,8 @@ mod imp {
         fn GetProcessTimes(process: Handle, created: *mut FileTime, exited: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
         fn GetExitCodeProcess(process: Handle, code: *mut u32) -> i32;
         fn QueryFullProcessImageNameW(process: Handle, flags: u32, name: *mut u16, size: *mut u32) -> i32;
+        fn GetModuleHandleW(name: *const u16) -> isize;
+        fn GetProcAddress(module: isize, name: *const u8) -> *const ();
     }
 
     const SW_HIDE: i32 = 0;
@@ -113,20 +121,60 @@ mod imp {
         1
     }
 
-    fn is_explorer(pid: u32) -> bool {
+    // A process's file name (explorer.exe), or "pid N" when it cannot be opened.
+    fn exe_name(pid: u32) -> String {
         // SAFETY: a handle we close; the name goes into our own buffer.
-        unsafe {
+        let name = unsafe {
             let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if process == 0 {
-                return false;
+                None
+            } else {
+                let mut name = [0u16; 512];
+                let mut size = 512u32;
+                let ok = QueryFullProcessImageNameW(process, 0, name.as_mut_ptr(), &mut size) != 0;
+                CloseHandle(process);
+                ok.then(|| String::from_utf16_lossy(&name[..size as usize]))
             }
-            let mut name = [0u16; 512];
-            let mut size = 512u32;
-            let ok = QueryFullProcessImageNameW(process, 0, name.as_mut_ptr(), &mut size) != 0;
-            CloseHandle(process);
-            let path = String::from_utf16_lossy(&name[..size as usize]);
-            ok && path.rsplit('\\').next().is_some_and(|n| n.eq_ignore_ascii_case("explorer.exe"))
+        };
+        name.and_then(|path| path.rsplit('\\').next().map(str::to_string)).unwrap_or_else(|| format!("pid {pid}"))
+    }
+
+    fn is_explorer(pid: u32) -> bool {
+        exe_name(pid).eq_ignore_ascii_case("explorer.exe")
+    }
+
+    // A window as the lone-Win check names it; None for none, or one gone.
+    fn seen(hwnd: Hwnd) -> Option<super::Seen> {
+        // SAFETY: a plain check of a window that may be gone.
+        if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 {
+            return None;
         }
+        let mut pid = 0;
+        // SAFETY: our own out-parameter.
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        Some(super::Seen { class: class_of(hwnd), exe: exe_name(pid) })
+    }
+
+    // The desktop's task manager window (user32's GetTaskmanWindow, exported
+    // by name but in no header); null when there is none, or no such export.
+    fn taskman() -> Hwnd {
+        // SAFETY: user32 is loaded in a process with windows; the export
+        // takes nothing and returns a window handle.
+        unsafe {
+            let f = GetProcAddress(GetModuleHandleW(wide("user32.dll").as_ptr()), c"GetTaskmanWindow".as_ptr() as *const u8);
+            if f.is_null() {
+                return std::ptr::null_mut();
+            }
+            let f: extern "system" fn() -> Hwnd = std::mem::transmute(f);
+            f()
+        }
+    }
+
+    // What Win pressed alone reaches now (super::LoneWin): read only.
+    pub fn lone_win() -> super::LoneWin {
+        // SAFETY: plain lookups.
+        let (shell, tray) = unsafe { (GetShellWindow(), FindWindowW(wide("Shell_TrayWnd").as_ptr(), std::ptr::null())) };
+        super::LoneWin { taskman: seen(taskman()), shell: seen(shell), tray: seen(tray) }
     }
 
     // The main display's taskbar, Explorer's, or 0 while Explorer is not up.
@@ -366,7 +414,13 @@ mod imp {
         ended();
         let meanwhile = std::thread::spawn(move || after(code, started));
         for _ in 0..30 {
-            if !file.exists() || restore(file) {
+            if !file.exists() {
+                break;
+            }
+            // She ended holding it (killed): given back, and every window
+            // told, which her own quitting does (zhoupengjie/Wakuwaku#54).
+            if restore(file) {
+                crate::systray::handed_back();
                 break;
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
@@ -416,14 +470,103 @@ mod imp {
         false
     }
     pub fn guard(_pid: u32, _file: &Path, _ended: impl FnOnce(), _after: impl FnOnce(Option<u32>, Option<u64>) + Send + 'static) {}
+    pub fn lone_win() -> super::LoneWin {
+        super::LoneWin { taskman: None, shell: None, tray: None }
+    }
 }
 
-pub use imp::{explorer_tray, guard, hide, keep_room, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
+pub use imp::{explorer_tray, guard, hide, keep_room, lone_win, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
+
+// The shell's windows Win pressed alone may go by, none of them hers
+// (zhoupengjie/Wakuwaku#54, where it opened no Start after she was quit,
+// until Explorer was started again; not seen again in the test VM). Nothing
+// documents its way; Open-Shell catches it at Progman, the desktop's shell
+// window. The first Shell_TrayWnd is what a program reaches as the taskbar:
+// hers while she holds it, Explorer's again once she gives it back. The
+// task manager window (Explorer's task band, MSTaskSwWClass) is told as
+// well, though it is not the way on 26300: cleared in the VM, Win alone
+// still opened Start (2026-10-16); WM_SYSCOMMAND SC_TASKLIST posted to any
+// of the three opens it. Read at each take and give back, and at a start
+// after one was left put away, for the log: whether the shell window and
+// the first tray window are Explorer's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Seen {
+    pub class: String,
+    // Its program's file name.
+    pub exe: String,
+}
+
+impl Seen {
+    fn explorers(&self) -> bool {
+        self.exe.eq_ignore_ascii_case("explorer.exe")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoneWin {
+    pub taskman: Option<Seen>,
+    pub shell: Option<Seen>,
+    pub tray: Option<Seen>,
+}
+
+impl LoneWin {
+    // The shell window and the first tray window Explorer's (the task
+    // manager window only told).
+    pub fn ok(&self) -> bool {
+        [&self.shell, &self.tray].iter().all(|w| w.as_ref().is_some_and(Seen::explorers))
+    }
+
+    // For the log: "the shell's windows Explorer's: …", or not all.
+    pub fn said(&self) -> String {
+        let one = |what: &str, w: &Option<Seen>| w.as_ref().map_or_else(|| format!("no {what}"), |s| format!("{what} {} of {}", s.class, s.exe));
+        let parts = [one("shell window", &self.shell), one("first tray window", &self.tray), one("taskman window", &self.taskman)];
+        format!("{}: {}", if self.ok() { "the shell's windows Explorer's" } else { "the shell's windows not all Explorer's (Win alone may not open Start)" }, parts.join(", "))
+    }
+}
 
 // The guard's arguments, when this process is one: its pid and file.
 pub fn guard_args(args: &[String]) -> Option<(u32, &Path)> {
     match args {
         [_, flag, pid, file, ..] if flag == GUARD_ARG => Some((pid.parse().ok()?, Path::new(file))),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn win(class: &str, exe: &str) -> Option<Seen> {
+        Some(Seen { class: class.into(), exe: exe.into() })
+    }
+
+    #[test]
+    fn the_shells_windows_are_explorers_or_not() {
+        // As on 26300 with Explorer's taskbar its own.
+        let fine = LoneWin { taskman: win("MSTaskSwWClass", "explorer.exe"), shell: win("Progman", "Explorer.EXE"), tray: win("Shell_TrayWnd", "explorer.exe") };
+        assert!(fine.ok());
+        assert_eq!(fine.said(), "the shell's windows Explorer's: shell window Progman of Explorer.EXE, first tray window Shell_TrayWnd of explorer.exe, taskman window MSTaskSwWClass of explorer.exe");
+        // No task manager window: Win alone still opened Start in the VM; told only.
+        let none = LoneWin { taskman: None, ..fine.clone() };
+        assert!(none.ok());
+        assert!(none.said().ends_with(", no taskman window"), "{}", none.said());
+        // Hers still first after she gave it back (her window not gone).
+        let hers = LoneWin { tray: win("Shell_TrayWnd", "wakuwaku.exe"), ..fine.clone() };
+        assert!(!hers.ok());
+        assert!(hers.said().starts_with("the shell's windows not all Explorer's (Win alone may not open Start): "), "{}", hers.said());
+        assert!(hers.said().contains("first tray window Shell_TrayWnd of wakuwaku.exe"), "{}", hers.said());
+        // Explorer not running: none of them.
+        assert!(!LoneWin { taskman: None, shell: None, tray: None }.ok());
+    }
+
+    #[test]
+    fn this_desktop_answers_the_lone_win_check() {
+        // Whatever this machine has; only that it can be asked (on Windows
+        // a desktop with Explorer has a shell window). Seen with --nocapture.
+        let now = lone_win();
+        println!("{}", now.said());
+        if cfg!(windows) && now.shell.is_some() {
+            assert!(now.shell.as_ref().is_some_and(|s| !s.class.is_empty()));
+        }
     }
 }

@@ -578,6 +578,8 @@ mod imp {
         }
         *SH.lock().unwrap() = Some(crate::shared(&sh.app));
         let file = sh.dir.join("taskbar.json");
+        // The shell's windows before hers is up, to compare with after (shell.rs LoneWin).
+        sh.log(&format!("taskbar: {}", shell::lone_win().said()));
         // Each step timed, for a start that took long (one took 600 ms
         // where most take 10, 2026-10-13: which step waited on Explorer?).
         let began = Instant::now();
@@ -733,6 +735,7 @@ mod imp {
             stop_within("the input switcher's thread", thread);
         }
         let host = HOST.lock().unwrap().take();
+        let had_host = host.is_some();
         if let Some(host) = host {
             // SAFETY: the thread's own window; a posted message, no pointers.
             unsafe { PostMessageW(host.hwnd as Hwnd, WM_STOP, 0, 0) };
@@ -741,6 +744,12 @@ mod imp {
         let file = sh.dir.join("taskbar.json");
         if file.exists() {
             sh.log(&format!("taskbar: Windows' given back: {}", shell::restore(&file)));
+        }
+        // Explorer's the taskbar again, shown: every window told so
+        // (systray.rs handed_back), then whose the shell's windows are now.
+        if had_host {
+            let told = systray::handed_back();
+            sh.log(&format!("taskbar: {}; {}", if told { "every window told Explorer's is the taskbar again" } else { "the tray's window still there: no window told" }, shell::lone_win().said()));
         }
         // The desktop's icons as they were (icons.rs), the work area whole
         // again, not waited for: it takes some seconds, the desktop putting
@@ -2914,7 +2923,10 @@ mod tests {
 // gone too) is given back.
 pub fn recover(sh: &Shared) {
     if crate::shell::recover(&sh.dir.join("taskbar.json")) {
-        sh.log("taskbar: Windows' taskbar was left put away: given back");
+        // Every window told, as the run killed holding it never did
+        // (systray.rs handed_back), and whose the shell's windows are now.
+        crate::systray::handed_back();
+        sh.log(&format!("taskbar: Windows' taskbar was left put away: given back, every window told; {}", crate::shell::lone_win().said()));
     }
     // The desktop's icons left moved by such a run (icons.rs): as they were,
     // before this one takes the strip (and keeps their places anew); not
