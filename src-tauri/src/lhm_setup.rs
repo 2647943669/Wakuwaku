@@ -3,19 +3,22 @@
 // someone who does not have it, or has it with its web server off. Nothing
 // here runs but on the person's click in the settings (settings_lhm), and
 // LibreHardwareMonitor (LHM) stays a program of its own, with its own
-// licence (MPL-2.0), in a folder of hers that they can delete.
+// licence (MPL-2.0), in a folder they can remove it from (or she does).
 //
 // Not found anywhere: 下载 LibreHardwareMonitor. Its latest release on GitHub
 // (the API's releases/latest), the asset that needs nothing installed (choose:
 // its .NET Framework 4.7.2 build, "LibreHardwareMonitor.zip" since 0.9.5,
 // "-net472.zip" before, which Windows 10 and 11 run as they are; the .NET 10
 // build only if a release had no other and the .NET desktop runtime it needs
-// is here), downloaded only with the SHA-256 GitHub gives for it and checked
-// against it (none given: not downloaded), unpacked (zip::extract: stored
-// and deflated entries, every name checked, no path out of the folder) into
-// <her data>\tools\LibreHardwareMonitor, its config written before its first
-// start (config::turned_on), and started as administrator: its manifest asks
-// for it (requireAdministrator), Windows asks the person once.
+// is here), downloaded into her data folder only with the SHA-256 GitHub
+// gives for it and checked against it (none given: not downloaded); then one
+// step of her exe as administrator (admin, below: the one question Windows
+// asks) checks it again, unpacks it (zip::extract: stored and deflated
+// entries, every name checked, no path out of the folder) into
+// %ProgramFiles%\LibreHardwareMonitor, a folder only administrators can
+// change (DACL_SDDL), writes its config before its first start
+// (config::turned_on), makes its task if asked, and starts it as
+// administrator (its manifest asks for it: requireAdministrator).
 //
 // Its config is LibreHardwareMonitor.config beside its exe (PersistentSettings.cs:
 // <configuration><appSettings><add key value/>; the exe's .config, which
@@ -40,18 +43,21 @@
 // administrator, makes the Task Scheduler's task "LibreHardwareMonitor"
 // (root folder; at logon, the highest rights, the interactive user, no time
 // limit, on battery too; its exe, unquoted, and its folder) and ticks the
-// menu while that task runs its exe. Offered beside the download (lhmStartup,
-// on unless turned off): the same task (task_xml, for this user's logon),
-// made by schtasks.exe as administrator (the one question Windows asks), then
-// run by her (logon::run: the task's author may, with no question), which
-// starts LHM; at every logon after, the task does, and LHM's own menu can
-// turn it off. Without it every start of LHM is a question of Windows'.
+// menu while that task runs its exe. Offered beside the download for hers
+// (lhmStartup, on unless turned off): the same task (task_xml, for this
+// user's logon), made in the step as administrator, which then runs it
+// (logon::run); at every logon after, the task starts LHM with no question,
+// and LHM's own menu can turn it off. Without it every start of LHM is a
+// question of Windows'. Hers alone: a task with the highest rights must
+// start an exe only administrators can change.
 //
-// Found (running, its task's exe, hers, the Run value LHM writes without
-// administrator, winget's or Scoop's folder) but not answering: stopped, a
-// button turns its web server on in its config (the person's own config
+// Found (running, its task's exe, Program Files' folder for it, the Run
+// value LHM writes without administrator, winget's or Scoop's folder) but
+// not answering: stopped, a button turns its web server on in its config
+// (hers by the step as administrator; someone's own as she may, their config
 // backed up first: <config>.wakuwaku.bak) and starts it; running, the steps
-// in LHM's own menu, or a button for the port its config says.
+// in LHM's own menu, or a button for the port its config says. Someone's own
+// stays theirs: she says where it is.
 //
 // For tests: WAKUWAKU_LHM_RELEASE_URL, the release's JSON from elsewhere
 // (its downloads then taken from anywhere); WAKUWAKU_TEST_ELEVATE=<folder>,
@@ -77,8 +83,21 @@ const RELEASE_TEST: &str = "WAKUWAKU_LHM_RELEASE_URL";
 const ELEVATE_TEST: &str = "WAKUWAKU_TEST_ELEVATE";
 // LHM's task (StartupManager.cs: nameof(LibreHardwareMonitor)).
 pub const TASK: &str = "LibreHardwareMonitor";
-// Hers, in her data folder's tools.
+// Hers, in Program Files (install_dir): a folder only administrators can
+// change, as the one its task starts with the highest rights must be.
 const FOLDER: &str = "LibreHardwareMonitor";
+// In that folder, saying she put it there (admin): what she may replace,
+// change and remove; one without it is someone's own.
+const MARKER: &str = "wakuwaku-installed.json";
+// Her exe with this, run as administrator, does that one step (admin): the
+// one way she writes there.
+pub const ADMIN_FLAG: &str = "--wakuwaku-lhm";
+// That folder's DACL, protected from Program Files' own: SYSTEM and the
+// Administrators all, Users read and run (FILE_GENERIC_READ |
+// FILE_GENERIC_EXECUTE), each to its files and folders; its owner the
+// Administrators (OWNER_SDDL with it, as administrator only).
+pub const DACL_SDDL: &str = "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)";
+const OWNER_SDDL: &str = "O:BA";
 // Its exe as released, and as built from its source since (the project renamed).
 const EXES: [&str; 2] = ["LibreHardwareMonitor.exe", "LibreHardwareMonitor.Windows.Forms.exe"];
 const MAX_ZIP: u64 = 64 << 20;
@@ -658,19 +677,17 @@ pub fn step(status: &str, busy: bool, seen: &Seen, port: u16) -> &'static str {
     }
 }
 
-// The installs looked for, in order: the first found is the one.
-fn pick(running: Option<PathBuf>, task: Option<PathBuf>, hers: Option<PathBuf>, others: Vec<(&'static str, PathBuf)>, tools: &Path) -> Option<(PathBuf, &'static str)> {
+// The installs looked for, in order: the first found is the one (Program
+// Files' own folder for LHM, hers or someone's, after a running one and
+// its task's).
+fn pick(running: Option<PathBuf>, task: Option<PathBuf>, program_files: Option<PathBuf>, others: Vec<(&'static str, PathBuf)>) -> Option<(PathBuf, &'static str)> {
     running
         .map(|p| (p, "running"))
         .into_iter()
         .chain(task.filter(|p| p.is_file()).map(|p| (p, "task")))
-        .chain(hers.map(|p| (p, "hers")))
+        .chain(program_files.map(|p| (p, "programFiles")))
         .chain(others.into_iter().map(|(from, p)| (p, from)))
         .next()
-        .map(|(p, from)| {
-            let from = if p.starts_with(tools) && from != "running" && from != "task" { "hers" } else { from };
-            (p, from)
-        })
 }
 
 // --- Its state, for the settings -------------------------------------------------------
@@ -702,12 +719,9 @@ fn with<T>(f: impl FnOnce(&mut State) -> T) -> T {
     f(s.get_or_insert_with(State::default))
 }
 
+// Where the download waits for the step as administrator (in her data folder).
 pub fn tools(sh: &Shared) -> PathBuf {
     sh.dir.join("tools")
-}
-
-fn folder(sh: &Shared) -> PathBuf {
-    tools(sh).join(FOLDER)
 }
 
 fn port(sh: &Shared) -> u16 {
@@ -752,8 +766,8 @@ pub fn view(sh: &Shared, status: &str, shown: bool) -> Value {
     });
     json!({
         "step": step,
-        "dir": folder(sh).to_string_lossy(),
-        "dirShown": crate::connection::shown_path(&folder(sh)),
+        // Where hers goes: Program Files' (only administrators change it).
+        "dir": install_dir().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default(),
         "install": install,
         "running": seen.running,
         "startup": seen.starts_at_logon(),
@@ -790,16 +804,18 @@ fn look_soon(sh: &Arc<Shared>) {
 }
 
 // What is on this computer of LHM's now.
-fn look(sh: &Shared) -> Seen {
-    let tools = tools(sh);
+fn look(_sh: &Shared) -> Seen {
+    let dir = install_dir();
     let running = imp::running();
     let task = crate::logon::xml(TASK).ok().flatten().map(|x| PathBuf::from(crate::logon::seen(&x).program)).filter(|p| !p.as_os_str().is_empty());
-    let hers = EXES.iter().map(|e| tools.join(FOLDER).join(e)).find(|p| p.is_file());
-    let found = pick(running.clone().flatten(), task.clone(), hers, imp::elsewhere(), &tools);
+    let program_files = dir.as_ref().and_then(|d| EXES.iter().map(|e| d.join(e)).find(|p| p.is_file()));
+    let found = pick(running.clone().flatten(), task.clone(), program_files, imp::elsewhere());
     let install = found.map(|(exe, from)| {
         let text = std::fs::read_to_string(exe.with_extension("config")).ok();
         let web = text.as_deref().and_then(config::read).map(|pairs| config::web_server(&pairs)).unwrap_or_default();
-        Install { hers: exe.starts_with(&tools), config: text.is_some(), exe, from, web }
+        // Hers: in her folder, with her marker.
+        let hers = dir.as_deref().is_some_and(|d| exe.parent().is_some_and(|p| same_path(p, d)) && hers_in(d).is_some());
+        Install { hers, config: text.is_some(), exe, from, web }
     });
     Seen { install, running: running.is_some(), task, pawnio: imp::pawnio() }
 }
@@ -814,8 +830,8 @@ fn set_stage(sh: &Shared, stage: &'static str) {
     sh.push_settings();
 }
 
-// A job of the settings' (get, start, startup, noStartup, usePort), on its
-// own thread; one at a time.
+// A job of the settings' (get, start, startup, noStartup, remove), on its
+// own thread, one at a time; or at once: usePort, folder, look, dismiss.
 pub fn act(sh: &Arc<Shared>, what: &str) {
     match what {
         "look" => return look_soon(sh),
@@ -842,20 +858,21 @@ pub fn act(sh: &Arc<Shared>, what: &str) {
             }
             return;
         }
-        "get" | "start" | "startup" | "noStartup" => {}
+        "get" | "start" | "startup" | "noStartup" | "remove" => {}
         _ => return,
     }
     let what = match what {
         "get" => "get",
         "start" => "start",
         "startup" => "startup",
-        _ => "noStartup",
+        "noStartup" => "noStartup",
+        _ => "remove",
     };
     let began = with(|s| {
         if s.job.is_some() {
             return false;
         }
-        s.job = Some(Job { stage: if what == "get" { "release" } else { "config" }, got: 0, total: 0, version: String::new(), asset: String::new() });
+        s.job = Some(Job { stage: if what == "get" { "release" } else { "look" }, got: 0, total: 0, version: String::new(), asset: String::new() });
         s.error = None;
         true
     });
@@ -870,7 +887,8 @@ pub fn act(sh: &Arc<Shared>, what: &str) {
             "get" => get(&sh),
             "start" => start_found(&sh),
             "startup" => startup_on(&sh),
-            _ => startup_off(&sh),
+            "noStartup" => startup_off(&sh),
+            _ => remove(&sh),
         };
         if let Err(e) = &done {
             sh.log(&format!("lhm: {what} failed: {e}"));
@@ -1007,7 +1025,9 @@ pub fn verified(asset: &Asset, got: Option<&str>, testing: bool) -> Result<(), V
     }
 }
 
-// Download, check, unpack, config, start; then its answer waited for.
+// Download and check; then the one step as administrator (admin: checked
+// again there, put in Program Files, its config, its task, started); then
+// its answer waited for.
 fn get(sh: &Arc<Shared>) -> Result<(), Value> {
     let release = latest().map_err(|e| error("release", e))?;
     let version = version_of(&release).unwrap_or_default();
@@ -1028,58 +1048,41 @@ fn get(sh: &Arc<Shared>) -> Result<(), Value> {
         error("download", e)
     })?;
     set_stage(sh, "verify");
-    if let Err(e) = verified(&asset, Some(&got), testing()) {
+    let checked = verified(&asset, Some(&got), testing()).and_then(|_| {
+        // Whole, with its exe, before anyone is asked anything.
+        let bytes = std::fs::read(&part).map_err(|e| error("zip", e.to_string()))?;
+        let entries = zip::entries(&bytes).map_err(|e| error("extract", e))?;
+        if !entries.iter().any(|e| EXES.iter().any(|x| e.name.rsplit(['/', '\\']).next() == Some(*x))) {
+            return Err(error("extract", "no LibreHardwareMonitor.exe in it"));
+        }
+        Ok(())
+    });
+    if let Err(e) = checked {
         let _ = std::fs::remove_file(&part);
         return Err(e);
     }
     sh.log(&format!("lhm: {} downloaded, its SHA-256 as GitHub gives it ({got})", asset.name));
-    set_stage(sh, "extract");
-    let exe = unpack(sh, &part).map_err(|e| error("extract", e));
+    let user = crate::logon::user_sid().ok_or_else(|| error("task", "no SID"))?;
+    let startup = sh.setting("monitor")["lhmStartup"] != false;
+    let asked = ask_admin(sh, &AdminAsk::Install { zip: part.clone(), sha256: got, port: port(sh), user, startup }, "install");
     let _ = std::fs::remove_file(&part);
-    let exe = exe?;
-    set_stage(sh, "config");
-    write_config(&exe, port(sh), true)?;
-    start(sh, &exe, sh.setting("monitor")["lhmStartup"] != false)?;
+    asked?;
     wait_answer(sh)
 }
 
-// The zip into a folder of its own beside hers, then put in its place (a
-// config left there from before kept). Its exe.
-fn unpack(sh: &Shared, zip_file: &Path) -> Result<PathBuf, String> {
-    let bytes = std::fs::read(zip_file).map_err(|e| e.to_string())?;
-    let target = folder(sh);
-    let staging = tools(sh).join("LibreHardwareMonitor.part");
-    if staging.exists() {
-        std::fs::remove_dir_all(&staging).map_err(|e| format!("{}: {e}", staging.display()))?;
-    }
-    let files = zip::extract(&bytes, &staging)?;
-    let name = EXES.iter().find(|e| staging.join(e).is_file()).ok_or("no LibreHardwareMonitor.exe in it")?;
-    if target.exists() {
-        // Only what is left of one without its exe (one with it is found,
-        // and nothing downloaded): its config kept.
-        let config = target.join(name).with_extension("config");
-        if config.is_file() {
-            let _ = std::fs::copy(&config, staging.join(name).with_extension("config"));
-        }
-        std::fs::remove_dir_all(&target).map_err(|e| format!("{}: {e}", target.display()))?;
-    }
-    std::fs::rename(&staging, &target).map_err(|e| format!("{} → {}: {e}", staging.display(), target.display()))?;
-    sh.log(&format!("lhm: {files} files in {}", target.display()));
-    Ok(target.join(name))
-}
-
-// Its web server turned on in its config (hers: in the tray too); the
-// person's own config kept first as <config>.wakuwaku.bak.
-fn write_config(exe: &Path, port: u16, hers: bool) -> Result<(), Value> {
+// Someone's own LHM's config, its web server turned on (kept first as
+// <config>.wakuwaku.bak), as she may write it: one in a folder only
+// administrators change is not (an error: the steps then).
+fn write_config(exe: &Path, port: u16) -> Result<(), Value> {
     let file = exe.with_extension("config");
     let existing = std::fs::read_to_string(&file).ok();
-    if !hers && existing.is_some() {
+    if existing.is_some() {
         let backup = PathBuf::from(format!("{}.wakuwaku.bak", file.display()));
         if !backup.exists() {
             std::fs::copy(&file, &backup).map_err(|e| error("config", format!("{}: {e}", backup.display())))?;
         }
     }
-    std::fs::write(&file, config::turned_on(existing.as_deref(), port, hers)).map_err(|e| error("config", format!("{}: {e}", file.display())))
+    std::fs::write(&file, config::turned_on(existing.as_deref(), port, false)).map_err(|e| error("config", format!("{}: {e}", file.display())))
 }
 
 // --- Its start --------------------------------------------------------------------------
@@ -1132,18 +1135,28 @@ fn asked_by_test(test: &Path, n: u32, file: &Path, params: &str, dir: &Path, wai
     Asked::Failed("no answer".into())
 }
 
-// Started as administrator: by its task where that runs it (no question
-// then), else Windows asks. With `startup`, the task made first.
-fn start(sh: &Shared, exe: &Path, startup: bool) -> Result<(), Value> {
-    if startup {
-        set_stage(sh, "elevate");
-        match make_task(sh, exe) {
-            Ok(()) => {}
-            Err(e) if e["code"] == "declined" => return Err(e),
-            // Made or not, LHM can still be started.
-            Err(e) => sh.log(&format!("lhm: its task not made: {e}")),
+// Her exe run as administrator for one step (admin), waited for; its exit
+// code as an error of the settings'.
+fn ask_admin(sh: &Shared, ask: &AdminAsk, stage: &'static str) -> Result<(), Value> {
+    set_stage(sh, stage);
+    let exe = crate::data::exe().map_err(|e| error("start", e.to_string()))?;
+    let args = admin_args(ask).ok_or_else(|| error("args", ""))?;
+    let dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    match elevate(sh, &exe, &args, &dir, Some(300_000)) {
+        Asked::Ran(Some(0)) => {
+            sh.log(&format!("lhm: as administrator: {} done", args.split(' ').next().unwrap_or("")));
+            Ok(())
         }
+        Asked::Ran(Some(code)) => Err(error(AdminFail::of(code).map_or("admin", AdminFail::code), code.to_string())),
+        Asked::Ran(None) => Err(error("admin", "")),
+        Asked::Declined => Err(error("declined", "")),
+        Asked::Failed(e) => Err(error("start", e)),
     }
+}
+
+// Started as administrator: by its task where that runs it (no question
+// then), else Windows asks (its manifest asks for administrator).
+fn start(sh: &Shared, exe: &Path) -> Result<(), Value> {
     set_stage(sh, "start");
     let task = crate::logon::xml(TASK).ok().flatten().map(|x| crate::logon::seen(&x).program);
     if task.is_some_and(|t| same_path(Path::new(&t), exe)) {
@@ -1163,35 +1176,9 @@ fn start(sh: &Shared, exe: &Path, startup: bool) -> Result<(), Value> {
     }
 }
 
-fn schtasks() -> PathBuf {
-    let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    root.join("System32").join("schtasks.exe")
-}
-
-// LHM's task made for this exe, by schtasks.exe as administrator (from its
-// XML in UTF-16, beside hers a moment).
-fn make_task(sh: &Shared, exe: &Path) -> Result<(), Value> {
-    let user = crate::logon::user_sid().ok_or_else(|| error("task", "no SID"))?;
-    let dir = exe.parent().unwrap_or(exe);
-    let xml = task_xml(&user, &exe.to_string_lossy(), &dir.to_string_lossy());
-    std::fs::create_dir_all(tools(sh)).map_err(|e| error("task", e.to_string()))?;
-    let file = tools(sh).join("LibreHardwareMonitor.task.xml");
-    let wide: Vec<u8> = [0xFF, 0xFE].into_iter().chain(xml.encode_utf16().flat_map(u16::to_le_bytes)).collect();
-    std::fs::write(&file, wide).map_err(|e| error("task", format!("{}: {e}", file.display())))?;
-    let asked = elevate(sh, &schtasks(), &format!("/Create /TN {TASK} /XML \"{}\" /F", file.display()), dir, Some(60_000));
-    let _ = std::fs::remove_file(&file);
-    match asked {
-        Asked::Ran(Some(0)) => {
-            sh.log("lhm: its task made");
-            Ok(())
-        }
-        Asked::Ran(code) => Err(error("task", format!("schtasks: {code:?}"))),
-        Asked::Declined => Err(error("declined", "")),
-        Asked::Failed(e) => Err(error("task", e)),
-    }
-}
-
-// Found, stopped: its web server turned on where it is not, and started.
+// Found, stopped: its web server turned on where it is not (hers by the
+// step as administrator, which starts it too; someone's own as she may),
+// and started.
 fn start_found(sh: &Arc<Shared>) -> Result<(), Value> {
     let seen = look(sh);
     let install = seen.install.ok_or_else(|| error("gone", ""))?;
@@ -1199,33 +1186,40 @@ fn start_found(sh: &Arc<Shared>) -> Result<(), Value> {
         return Err(error("running", ""));
     }
     let port = port(sh);
-    if !install.web.serves(port) {
+    if install.web.serves(port) {
+        start(sh, &install.exe)?;
+    } else if install.hers {
+        ask_admin(sh, &AdminAsk::Config { port }, "elevate")?;
+    } else {
         set_stage(sh, "config");
-        write_config(&install.exe, port, install.hers)?;
+        write_config(&install.exe, port)?;
+        start(sh, &install.exe)?;
     }
-    start(sh, &install.exe, false)?;
     wait_answer(sh)
 }
 
-fn startup_on(sh: &Arc<Shared>) -> Result<(), Value> {
-    let install = look(sh).install.ok_or_else(|| error("gone", ""))?;
-    set_stage(sh, "elevate");
-    make_task(sh, &install.exe)
+// Hers alone: its task made or taken away, or the whole of it removed.
+fn hers_only(sh: &Shared) -> Result<(), Value> {
+    match look(sh).install {
+        Some(i) if i.hers => Ok(()),
+        _ => Err(error("gone", "")),
+    }
 }
 
-// Its task taken away: as she can, else by schtasks.exe as administrator.
+fn startup_on(sh: &Arc<Shared>) -> Result<(), Value> {
+    hers_only(sh)?;
+    let user = crate::logon::user_sid().ok_or_else(|| error("task", "no SID"))?;
+    ask_admin(sh, &AdminAsk::Startup { user }, "elevate")
+}
+
 fn startup_off(sh: &Arc<Shared>) -> Result<(), Value> {
-    set_stage(sh, "elevate");
-    match crate::logon::remove(TASK) {
-        Ok(_) => return Ok(()),
-        Err(e) => sh.log(&format!("lhm: its task not removed by her ({e}): as administrator")),
-    }
-    match elevate(sh, &schtasks(), &format!("/Delete /TN {TASK} /F"), &tools(sh), Some(60_000)) {
-        Asked::Ran(Some(0)) => Ok(()),
-        Asked::Ran(code) => Err(error("task", format!("schtasks: {code:?}"))),
-        Asked::Declined => Err(error("declined", "")),
-        Asked::Failed(e) => Err(error("task", e)),
-    }
+    hers_only(sh)?;
+    ask_admin(sh, &AdminAsk::NoStartup, "elevate")
+}
+
+fn remove(sh: &Arc<Shared>) -> Result<(), Value> {
+    hers_only(sh)?;
+    ask_admin(sh, &AdminAsk::Remove, "elevate")
 }
 
 // Its web server's answer (any: a password asked for counts), every second
@@ -1248,6 +1242,328 @@ fn wait_answer(sh: &Arc<Shared>) -> Result<(), Value> {
         std::thread::sleep(Duration::from_secs(1));
     }
     Err(error("noAnswer", port.to_string()))
+}
+
+// --- The step as administrator -------------------------------------------------------
+//
+// LHM's task starts its exe with the highest rights at every logon: an exe
+// any program of the user's could replace (or put a DLL beside) would be
+// theirs to start so, a way round Windows' question. So hers lives in
+// %ProgramFiles%\LibreHardwareMonitor (install_dir), which only
+// administrators change (DACL_SDDL, set as the folder is made and read back
+// before anything goes in), and everything that writes there, or makes its
+// task, is one step of her exe run as administrator (ADMIN_FLAG; the one
+// question Windows asks): install (the zip read once, its SHA-256 checked
+// against the one given, then unpacked from those same bytes, so nothing
+// swapped meanwhile gets in; its config, the marker, its task, its start),
+// config (its web server turned on, then started), startup and noStartup
+// (its task, for hers alone), remove (its task and the folder). The exe it
+// starts is the one in that folder, never one named on its command line;
+// nothing it writes is outside it (its answer is its exit code). An LHM the
+// person put elsewhere stays theirs: she says where it is, and its own
+// Options → Run On Windows Startup is LHM's to offer.
+
+// One step asked of her exe as administrator.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AdminAsk {
+    Install { zip: PathBuf, sha256: String, port: u16, user: String, startup: bool },
+    Config { port: u16 },
+    Startup { user: String },
+    NoStartup,
+    Remove,
+}
+
+// Why a step failed: its exit code.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AdminFail {
+    Args = 10,
+    Zip = 11,
+    Digest = 12,
+    NotOurs = 13,
+    Running = 14,
+    Folder = 15,
+    Extract = 16,
+    Config = 17,
+    Task = 18,
+    Start = 19,
+    Gone = 20,
+}
+
+impl AdminFail {
+    const ALL: [AdminFail; 11] = [AdminFail::Args, AdminFail::Zip, AdminFail::Digest, AdminFail::NotOurs, AdminFail::Running, AdminFail::Folder, AdminFail::Extract, AdminFail::Config, AdminFail::Task, AdminFail::Start, AdminFail::Gone];
+
+    pub fn of(exit: u32) -> Option<AdminFail> {
+        AdminFail::ALL.into_iter().find(|f| *f as u32 == exit)
+    }
+
+    // As the settings' errors are named (lhm.err*).
+    pub fn code(self) -> &'static str {
+        match self {
+            AdminFail::Args => "args",
+            AdminFail::Zip => "zip",
+            AdminFail::Digest => "digest",
+            AdminFail::NotOurs => "notOurs",
+            AdminFail::Running => "running",
+            AdminFail::Folder => "folder",
+            AdminFail::Extract => "extract",
+            AdminFail::Config => "config",
+            AdminFail::Task => "task",
+            AdminFail::Start => "start",
+            AdminFail::Gone => "gone",
+        }
+    }
+}
+
+fn is_sid(s: &str) -> bool {
+    s.starts_with("S-1-") && s.len() <= 184 && s.bytes().all(|b| b.is_ascii_digit() || b == b'-' || b == b'S')
+}
+
+// Its command line after ADMIN_FLAG; None for what cannot be said there (a
+// path with a quote in it).
+pub fn admin_args(ask: &AdminAsk) -> Option<String> {
+    Some(match ask {
+        AdminAsk::Install { zip, sha256, port, user, startup } => {
+            let zip = zip.to_string_lossy();
+            if zip.contains('"') || zip.ends_with('\\') {
+                return None;
+            }
+            format!("{ADMIN_FLAG} install --zip \"{zip}\" --sha256 {sha256} --port {port} --user {user}{}", if *startup { " --startup" } else { "" })
+        }
+        AdminAsk::Config { port } => format!("{ADMIN_FLAG} config --port {port}"),
+        AdminAsk::Startup { user } => format!("{ADMIN_FLAG} startup --user {user}"),
+        AdminAsk::NoStartup => format!("{ADMIN_FLAG} noStartup"),
+        AdminAsk::Remove => format!("{ADMIN_FLAG} remove"),
+    })
+}
+
+// The step, from what follows ADMIN_FLAG on her command line; each value checked.
+pub fn admin_ask(args: &[String]) -> Result<AdminAsk, String> {
+    let (action, rest) = args.split_first().ok_or("no step")?;
+    let value = |name: &str| rest.iter().position(|a| a == name).and_then(|i| rest.get(i + 1)).map(String::as_str);
+    let port = || value("--port").and_then(|p| p.parse::<u16>().ok()).filter(|&p| p > 0).ok_or("--port");
+    let user = || value("--user").filter(|u| is_sid(u)).map(str::to_string).ok_or("--user");
+    Ok(match action.as_str() {
+        "install" => AdminAsk::Install {
+            zip: value("--zip").filter(|z| !z.is_empty()).map(PathBuf::from).ok_or("--zip")?,
+            sha256: value("--sha256").and_then(sha256_hex).ok_or("--sha256")?,
+            port: port()?,
+            user: user()?,
+            startup: rest.iter().any(|a| a == "--startup"),
+        },
+        "config" => AdminAsk::Config { port: port()? },
+        "startup" => AdminAsk::Startup { user: user()? },
+        "noStartup" => AdminAsk::NoStartup,
+        "remove" => AdminAsk::Remove,
+        other => return Err(format!("no step {other:?}")),
+    })
+}
+
+// Where hers goes: <Program Files>\LibreHardwareMonitor (the known folder,
+// as the registry has it, not the environment's word).
+pub fn install_dir() -> Option<PathBuf> {
+    imp::program_files().map(|p| p.join(FOLDER))
+}
+
+// The allowed (A) entries of a security descriptor's DACL in SDDL, each
+// its rights and whom, and whether it is protected (P: nothing inherited
+// from above); None without a DACL. Rights as hex or as SDDL's letters.
+pub fn granted(sddl: &str) -> Option<(bool, Vec<(u32, String)>)> {
+    let d = sddl.find("D:")?;
+    let rest = &sddl[d + 2..];
+    let rest = &rest[..rest.find("S:").unwrap_or(rest.len())];
+    let flags = &rest[..rest.find('(').unwrap_or(rest.len())];
+    let letters = |s: &str| -> Option<u32> {
+        if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+            return u32::from_str_radix(hex, 16).ok();
+        }
+        let mut mask = 0;
+        for pair in s.as_bytes().chunks(2) {
+            mask |= match pair {
+                b"FA" => 0x001F_01FF,
+                b"FR" => 0x0012_0089,
+                b"FW" => 0x0012_0116,
+                b"FX" => 0x0012_00A0,
+                b"GA" => 0x1000_0000,
+                b"GX" => 0x2000_0000,
+                b"GW" => 0x4000_0000,
+                b"GR" => 0x8000_0000,
+                b"SD" => 0x0001_0000,
+                b"RC" => 0x0002_0000,
+                b"WD" => 0x0004_0000,
+                b"WO" => 0x0008_0000,
+                _ => return None,
+            };
+        }
+        Some(mask)
+    };
+    let mut out = Vec::new();
+    for ace in rest.split('(').skip(1) {
+        let parts: Vec<&str> = ace.trim_end_matches(')').split(';').collect();
+        if parts.len() < 6 {
+            return None;
+        }
+        if parts[0] == "A" {
+            out.push((letters(parts[2])?, parts[5].to_string()));
+        }
+    }
+    Some((flags.contains('P'), out))
+}
+
+// Whether a folder's DACL lets only administrators change it: protected,
+// all and only to SYSTEM and the Administrators, and nothing that writes,
+// deletes or changes its rights to anyone else (Users read and run).
+pub fn admin_only(sddl: &str) -> bool {
+    // FILE_WRITE_DATA, APPEND, WRITE_EA, DELETE_CHILD, WRITE_ATTRIBUTES,
+    // DELETE, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE and GENERIC_ALL.
+    const WRITES: u32 = 0x2 | 0x4 | 0x10 | 0x40 | 0x100 | 0x0001_0000 | 0x0004_0000 | 0x0008_0000 | 0x4000_0000 | 0x1000_0000;
+    let Some((protected, aces)) = granted(sddl) else { return false };
+    let admins = ["SY", "BA", "S-1-5-18", "S-1-5-32-544"];
+    protected && aces.iter().any(|(_, who)| admins.contains(&who.as_str())) && aces.iter().all(|(mask, who)| admins.contains(&who.as_str()) || mask & WRITES == 0)
+}
+
+// The marker she leaves in hers.
+fn marker(sha256: &str) -> String {
+    json!({ "installedBy": "Wakuwaku", "wakuwaku": crate::updates::current(), "sha256": sha256, "at": crate::now_ms() }).to_string()
+}
+
+// Hers there: its exe, when the marker says she put it there.
+fn hers_in(dir: &Path) -> Option<PathBuf> {
+    dir.join(MARKER).is_file().then(|| EXES.iter().map(|e| dir.join(e)).find(|p| p.is_file())).flatten()
+}
+
+// The zip checked against its SHA-256 and unpacked into `dir`: the folder
+// made by `make` (as administrator: only administrators may change it),
+// hers before it kept as its config (one that is not hers, with anything in
+// it, left alone: NotOurs); its config turned on at `port`, in the tray,
+// and the marker. Its exe.
+pub fn place(dir: &Path, bytes: &[u8], sha256: &str, port: u16, make: impl Fn(&Path) -> Result<(), AdminFail>) -> Result<PathBuf, AdminFail> {
+    let got: String = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect();
+    if got != sha256 {
+        return Err(AdminFail::Digest);
+    }
+    zip::entries(bytes).map_err(|_| AdminFail::Extract)?;
+    let mut kept = None;
+    if dir.exists() {
+        let empty = std::fs::read_dir(dir).map_err(|_| AdminFail::Folder)?.next().is_none();
+        if !empty && !dir.join(MARKER).is_file() {
+            return Err(AdminFail::NotOurs);
+        }
+        kept = EXES.iter().find_map(|e| std::fs::read_to_string(dir.join(e).with_extension("config")).ok());
+        std::fs::remove_dir_all(dir).map_err(|_| AdminFail::Folder)?;
+    }
+    make(dir)?;
+    zip::extract(bytes, dir).map_err(|_| AdminFail::Extract)?;
+    let exe = EXES.iter().map(|e| dir.join(e)).find(|p| p.is_file()).ok_or(AdminFail::Extract)?;
+    std::fs::write(exe.with_extension("config"), config::turned_on(kept.as_deref(), port, true)).map_err(|_| AdminFail::Config)?;
+    std::fs::write(dir.join(MARKER), marker(sha256)).map_err(|_| AdminFail::Folder)?;
+    Ok(exe)
+}
+
+// Her exe run with ADMIN_FLAG (main.rs, before anything of hers starts): the
+// step, its exit code.
+pub fn admin(args: &[String]) -> i32 {
+    match admin_ask(args) {
+        Ok(ask) => match admin_do(&ask) {
+            Ok(()) => 0,
+            Err(f) => f as i32,
+        },
+        Err(_) => AdminFail::Args as i32,
+    }
+}
+
+// The folder made as administrator with DACL_SDDL, its owner the
+// Administrators, and read back: only administrators may change it.
+fn make_admin_only(dir: &Path) -> Result<(), AdminFail> {
+    imp::make_dir(dir, &format!("{OWNER_SDDL}{DACL_SDDL}")).map_err(|_| AdminFail::Folder)?;
+    match imp::sddl_of(dir) {
+        Some(sddl) if admin_only(&sddl) && sddl.contains("O:BA") => Ok(()),
+        _ => {
+            let _ = std::fs::remove_dir_all(dir);
+            Err(AdminFail::Folder)
+        }
+    }
+}
+
+// LHM's task, as hers: none, or one for hers, or for an exe no longer there.
+fn task_is_hers(exe: &Path) -> Result<bool, AdminFail> {
+    let task = crate::logon::xml(TASK).map_err(|_| AdminFail::Task)?;
+    let Some(program) = task.map(|x| PathBuf::from(crate::logon::seen(&x).program)) else { return Ok(false) };
+    if same_path(&program, exe) {
+        Ok(true)
+    } else if program.is_file() {
+        // Someone's own LHM's: not hers to change.
+        Err(AdminFail::Task)
+    } else {
+        Ok(false)
+    }
+}
+
+fn make_lhm_task(exe: &Path, user: &str) -> Result<(), AdminFail> {
+    task_is_hers(exe)?;
+    let dir = exe.parent().unwrap_or(exe);
+    crate::logon::register(TASK, &task_xml(user, &exe.to_string_lossy(), &dir.to_string_lossy())).map_err(|_| AdminFail::Task)
+}
+
+// Started, as administrator already: by its task where it is hers, else
+// itself (in its folder: it unpacks PawnIO's setup into the current one).
+fn admin_start(exe: &Path) -> Result<(), AdminFail> {
+    if task_is_hers(exe).unwrap_or(false) && crate::logon::run(TASK).is_ok() {
+        return Ok(());
+    }
+    std::process::Command::new(exe).current_dir(exe.parent().unwrap_or(exe)).spawn().map(drop).map_err(|_| AdminFail::Start)
+}
+
+fn running_from(dir: &Path) -> bool {
+    imp::running().flatten().is_some_and(|p| p.parent().is_some_and(|d| same_path(d, dir)))
+}
+
+fn admin_do(ask: &AdminAsk) -> Result<(), AdminFail> {
+    let dir = install_dir().ok_or(AdminFail::Folder)?;
+    match ask {
+        AdminAsk::Install { zip, sha256, port, user, startup } => {
+            let mut bytes = Vec::new();
+            std::fs::File::open(zip).and_then(|f| f.take(MAX_ZIP + 1).read_to_end(&mut bytes)).map_err(|_| AdminFail::Zip)?;
+            if bytes.len() as u64 > MAX_ZIP {
+                return Err(AdminFail::Zip);
+            }
+            if running_from(&dir) {
+                return Err(AdminFail::Running);
+            }
+            let exe = place(&dir, &bytes, sha256, *port, make_admin_only)?;
+            if *startup {
+                make_lhm_task(&exe, user)?;
+            }
+            admin_start(&exe)
+        }
+        AdminAsk::Config { port } => {
+            let exe = hers_in(&dir).ok_or(AdminFail::Gone)?;
+            if running_from(&dir) {
+                return Err(AdminFail::Running);
+            }
+            let file = exe.with_extension("config");
+            let existing = std::fs::read_to_string(&file).ok();
+            std::fs::write(&file, config::turned_on(existing.as_deref(), *port, true)).map_err(|_| AdminFail::Config)?;
+            admin_start(&exe)
+        }
+        AdminAsk::Startup { user } => make_lhm_task(&hers_in(&dir).ok_or(AdminFail::Gone)?, user),
+        AdminAsk::NoStartup => {
+            let exe = hers_in(&dir).ok_or(AdminFail::Gone)?;
+            if task_is_hers(&exe)? {
+                crate::logon::remove(TASK).map_err(|_| AdminFail::Task)?;
+            }
+            Ok(())
+        }
+        AdminAsk::Remove => {
+            let exe = hers_in(&dir).ok_or(AdminFail::Gone)?;
+            if running_from(&dir) {
+                return Err(AdminFail::Running);
+            }
+            if task_is_hers(&exe).unwrap_or(false) {
+                crate::logon::remove(TASK).map_err(|_| AdminFail::Task)?;
+            }
+            std::fs::remove_dir_all(&dir).map_err(|_| AdminFail::Folder)
+        }
+    }
 }
 
 // --- Windows ----------------------------------------------------------------------------
@@ -1312,12 +1628,128 @@ mod imp {
     extern "system" {
         fn CoInitializeEx(reserved: *mut c_void, flags: u32) -> i32;
         fn CoUninitialize();
+        fn CoTaskMemFree(memory: *mut c_void);
     }
 
     #[link(name = "shell32")]
     extern "system" {
         fn ShellExecuteExW(info: *mut ExecInfo) -> i32;
         fn ShellExecuteW(hwnd: *mut c_void, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
+        fn SHGetKnownFolderPath(id: *const Guid, flags: u32, token: Handle, path: *mut *mut u16) -> i32;
+    }
+
+    #[repr(C)]
+    struct Guid(u32, u16, u16, [u8; 8]);
+
+    // FOLDERID_ProgramFiles.
+    const PROGRAM_FILES: Guid = Guid(0x905E_63B6, 0xC1BF, 0x494E, [0xB2, 0x9C, 0x65, 0xB7, 0x32, 0xD3, 0xD2, 0x1A]);
+
+    // SECURITY_ATTRIBUTES.
+    #[repr(C)]
+    struct SecurityAttributes {
+        size: u32,
+        descriptor: *mut c_void,
+        inherit: i32,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateDirectoryW(path: *const u16, attributes: *const SecurityAttributes) -> i32;
+        fn LocalFree(memory: *mut c_void) -> *mut c_void;
+        #[cfg(test)]
+        fn GetCurrentProcess() -> Handle;
+    }
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl: *const u16, revision: u32, descriptor: *mut *mut c_void, size: *mut u32) -> i32;
+        fn ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor: *mut c_void, revision: u32, info: u32, sddl: *mut *mut u16, len: *mut u32) -> i32;
+        fn GetNamedSecurityInfoW(name: *const u16, kind: u32, info: u32, owner: *mut *mut c_void, group: *mut *mut c_void, dacl: *mut *mut c_void, sacl: *mut *mut c_void, descriptor: *mut *mut c_void) -> u32;
+        #[cfg(test)]
+        fn OpenProcessToken(process: Handle, access: u32, token: *mut Handle) -> i32;
+        #[cfg(test)]
+        fn GetTokenInformation(token: Handle, class: i32, info: *mut c_void, len: u32, needed: *mut u32) -> i32;
+    }
+
+    const SDDL_REVISION_1: u32 = 1;
+    const SE_FILE_OBJECT: u32 = 1;
+    const OWNER_SECURITY_INFORMATION: u32 = 0x1;
+    const DACL_SECURITY_INFORMATION: u32 = 0x4;
+    #[cfg(test)]
+    const TOKEN_QUERY: u32 = 0x8;
+    #[cfg(test)]
+    const TOKEN_ELEVATION: i32 = 20;
+
+    // Program Files, as the registry knows it (64-bit Windows' own for her 64-bit exe).
+    pub fn program_files() -> Option<PathBuf> {
+        let mut path: *mut u16 = std::ptr::null_mut();
+        // SAFETY: Windows' string, read up to its end and freed once.
+        unsafe {
+            let ok = SHGetKnownFolderPath(&PROGRAM_FILES, 0, 0, &mut path) >= 0 && !path.is_null();
+            let out = ok.then(|| {
+                let len = (0..).take_while(|&i| *path.add(i) != 0).count();
+                PathBuf::from(String::from_utf16_lossy(std::slice::from_raw_parts(path, len)))
+            });
+            CoTaskMemFree(path.cast());
+            out
+        }
+    }
+
+    // A folder made with this security descriptor (SDDL), not one there already.
+    pub fn make_dir(dir: &Path, sddl: &str) -> std::io::Result<()> {
+        let (path, sddl) = (wide(&dir.to_string_lossy()), wide(sddl));
+        let mut descriptor: *mut c_void = std::ptr::null_mut();
+        // SAFETY: the descriptor Windows made from our string, freed once used.
+        unsafe {
+            if ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.as_ptr(), SDDL_REVISION_1, &mut descriptor, std::ptr::null_mut()) == 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let attributes = SecurityAttributes { size: std::mem::size_of::<SecurityAttributes>() as u32, descriptor, inherit: 0 };
+            let made = CreateDirectoryW(path.as_ptr(), &attributes) != 0;
+            let e = std::io::Error::last_os_error();
+            LocalFree(descriptor);
+            if made { Ok(()) } else { Err(e) }
+        }
+    }
+
+    // A file's or folder's owner and DACL, in SDDL, as Windows reads them.
+    pub fn sddl_of(path: &Path) -> Option<String> {
+        let path = wide(&path.to_string_lossy());
+        let info = OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
+        let (mut owner, mut dacl, mut descriptor) = (std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+        // SAFETY: the descriptor and the text Windows made, each freed once read.
+        unsafe {
+            if GetNamedSecurityInfoW(path.as_ptr(), SE_FILE_OBJECT, info, &mut owner, std::ptr::null_mut(), &mut dacl, std::ptr::null_mut(), &mut descriptor) != 0 {
+                return None;
+            }
+            let mut text: *mut u16 = std::ptr::null_mut();
+            let ok = ConvertSecurityDescriptorToStringSecurityDescriptorW(descriptor, SDDL_REVISION_1, info, &mut text, std::ptr::null_mut()) != 0 && !text.is_null();
+            let out = ok.then(|| {
+                let len = (0..).take_while(|&i| *text.add(i) != 0).count();
+                String::from_utf16_lossy(std::slice::from_raw_parts(text, len))
+            });
+            if !text.is_null() {
+                LocalFree(text.cast());
+            }
+            LocalFree(descriptor);
+            out
+        }
+    }
+
+    // Whether this process runs as administrator (its token elevated).
+    #[cfg(test)]
+    pub fn is_elevated() -> bool {
+        // SAFETY: a token we close; TOKEN_ELEVATION is one DWORD.
+        unsafe {
+            let mut token = 0;
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return false;
+            }
+            let (mut elevated, mut needed) = (0u32, 0u32);
+            let ok = GetTokenInformation(token, TOKEN_ELEVATION, (&mut elevated as *mut u32).cast(), 4, &mut needed) != 0;
+            CloseHandle(token);
+            ok && elevated != 0
+        }
     }
 
     const TH32CS_SNAPPROCESS: u32 = 0x2;
@@ -1421,6 +1853,7 @@ mod imp {
     }
 
     // SHELLEXECUTEINFOW's size as Windows checks it (cbSize).
+    #[cfg(test)]
     pub fn exec_info_size() -> usize {
         std::mem::size_of::<ExecInfo>()
     }
@@ -1432,7 +1865,7 @@ mod imp {
     }
 
     // Run as administrator: ShellExecuteEx's "runas", Windows asking first
-    // over `owner`; waited for when asked to (hidden: schtasks.exe).
+    // over `owner`; waited for when asked to (hidden then: her step).
     pub fn elevate(owner: isize, file: &Path, params: &str, dir: &Path, wait_ms: Option<u32>) -> Asked {
         let (verb, file_w, params_w, dir_w) = (wide("runas"), wide(&file.to_string_lossy()), wide(params), wide(&dir.to_string_lossy()));
         let mut info = ExecInfo {
@@ -1509,6 +1942,18 @@ mod imp {
 
     pub fn elevate(_owner: isize, _file: &Path, _params: &str, _dir: &Path, _wait_ms: Option<u32>) -> Asked {
         Asked::Failed("not on this system".into())
+    }
+
+    pub fn program_files() -> Option<PathBuf> {
+        None
+    }
+
+    pub fn make_dir(_dir: &Path, _sddl: &str) -> std::io::Result<()> {
+        Err(std::io::ErrorKind::Unsupported.into())
+    }
+
+    pub fn sddl_of(_path: &Path) -> Option<String> {
+        None
     }
 }
 
@@ -1740,14 +2185,14 @@ mod tests {
 
     #[test]
     fn its_task_is_lhms_own() {
-        let xml = task_xml("S-1-5-21-1-2-3-1001", r"C:\Users\张三 & co\AppData\Roaming\Wakuwaku\tools\LibreHardwareMonitor\LibreHardwareMonitor.exe", r"C:\Users\张三 & co\AppData\Roaming\Wakuwaku\tools\LibreHardwareMonitor");
+        let xml = task_xml("S-1-5-21-1-2-3-1001", r"D:\Programme & co\张三\LibreHardwareMonitor\LibreHardwareMonitor.exe", r"D:\Programme & co\张三\LibreHardwareMonitor");
         for part in ["<RunLevel>HighestAvailable</RunLevel>", "<LogonType>InteractiveToken</LogonType>", "<UserId>S-1-5-21-1-2-3-1001</UserId>", "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>", "<StartWhenAvailable>true</StartWhenAvailable>", "Starts LibreHardwareMonitor on Windows startup."] {
             assert!(xml.contains(part), "{part}");
         }
         // Its exe unquoted, as LHM compares it with its own path.
         let seen = crate::logon::seen(&xml);
-        assert_eq!(seen.program, r"C:\Users\张三 & co\AppData\Roaming\Wakuwaku\tools\LibreHardwareMonitor\LibreHardwareMonitor.exe");
-        assert!(xml.contains(r"<Command>C:\Users\张三 &amp; co\"));
+        assert_eq!(seen.program, r"D:\Programme & co\张三\LibreHardwareMonitor\LibreHardwareMonitor.exe");
+        assert!(xml.contains(r"<Command>D:\Programme &amp; co\"));
     }
 
     fn install(web: config::WebServer) -> Install {
@@ -1785,15 +2230,145 @@ mod tests {
 
     #[test]
     fn the_install_is_the_one_running_first() {
-        let tools = Path::new(r"C:\d\tools");
-        let hers = PathBuf::from(r"C:\d\tools\LibreHardwareMonitor\LibreHardwareMonitor.exe");
+        let program_files = PathBuf::from(r"C:\Program Files\LibreHardwareMonitor\LibreHardwareMonitor.exe");
         let run = PathBuf::from(r"D:\LHM\LibreHardwareMonitor.exe");
-        assert_eq!(pick(Some(run.clone()), None, Some(hers.clone()), vec![], tools), Some((run.clone(), "running")));
-        assert_eq!(pick(None, None, Some(hers.clone()), vec![("winget", run.clone())], tools), Some((hers.clone(), "hers")));
-        assert_eq!(pick(None, None, None, vec![("winget", run.clone())], tools), Some((run, "winget")));
+        assert_eq!(pick(Some(run.clone()), None, Some(program_files.clone()), vec![]), Some((run.clone(), "running")));
+        assert_eq!(pick(None, None, Some(program_files.clone()), vec![("winget", run.clone())]), Some((program_files.clone(), "programFiles")));
+        assert_eq!(pick(None, None, None, vec![("winget", run.clone())]), Some((run, "winget")));
         // A task whose exe is gone is passed over.
-        assert_eq!(pick(None, Some(PathBuf::from(r"Z:\gone\LibreHardwareMonitor.exe")), None, vec![], tools), None);
-        assert_eq!(pick(None, None, None, vec![], tools), None);
+        assert_eq!(pick(None, Some(PathBuf::from(r"Z:\gone\LibreHardwareMonitor.exe")), None, vec![]), None);
+        assert_eq!(pick(None, None, None, vec![]), None);
+    }
+    // Her step's command line, as she writes it and as her exe takes it
+    // back (split as Windows splits it: quotes round a path with spaces).
+    #[test]
+    fn the_step_as_administrator_is_said_and_read_back() {
+        let split = |line: &str| -> Vec<String> {
+            let (mut out, mut word, mut quoted) = (Vec::new(), String::new(), false);
+            for c in line.chars() {
+                match c {
+                    '"' => quoted = !quoted,
+                    ' ' if !quoted => {
+                        if !word.is_empty() {
+                            out.push(std::mem::take(&mut word));
+                        }
+                    }
+                    c => word.push(c),
+                }
+            }
+            out.extend((!word.is_empty()).then_some(word));
+            out
+        };
+        let sha = "086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001".to_string();
+        let asks = [
+            AdminAsk::Install { zip: PathBuf::from(r"C:\Users\张 三\AppData\Roaming\Wakuwaku\tools\LibreHardwareMonitor.zip.part"), sha256: sha.clone(), port: 8085, user: "S-1-5-21-1-2-3-1001".into(), startup: true },
+            AdminAsk::Install { zip: PathBuf::from(r"C:\d\x.zip.part"), sha256: sha.clone(), port: 9000, user: "S-1-5-21-9-1001".into(), startup: false },
+            AdminAsk::Config { port: 8086 },
+            AdminAsk::Startup { user: "S-1-5-21-1-2-3-1001".into() },
+            AdminAsk::NoStartup,
+            AdminAsk::Remove,
+        ];
+        for ask in asks {
+            let line = admin_args(&ask).unwrap();
+            let words = split(&line);
+            assert_eq!(words[0], ADMIN_FLAG);
+            assert_eq!(admin_ask(&words[1..]), Ok(ask.clone()), "{line}");
+        }
+        let words = |s: &str| split(s);
+        for bad in ["install --zip x --sha256 abc --port 8085 --user S-1-5-21-1", "install --zip x --sha256 SHA --port 0 --user S-1-5-21-1", "install --sha256 SHA --port 8085 --user S-1-5-21-1", "startup --user root", "config --port 70000", "uninstall", ""] {
+            let bad = bad.replace("SHA", &sha);
+            assert!(admin_ask(&words(&bad)).is_err(), "{bad}");
+        }
+        // A path Windows' command line could not hold: not asked.
+        assert_eq!(admin_args(&AdminAsk::Install { zip: PathBuf::from("C:\\a\"b"), sha256: sha.clone(), port: 1, user: "S-1-5-1".into(), startup: false }), None);
+        for f in AdminFail::ALL {
+            assert_eq!(AdminFail::of(f as u32), Some(f));
+        }
+        assert_eq!((AdminFail::of(0), AdminFail::of(1)), (None, None));
+        assert_eq!((AdminFail::NotOurs.code(), AdminFail::Digest as i32), ("notOurs", 12));
+    }
+
+    // The folder's DACL: only administrators change it; Users read and run.
+    #[test]
+    fn hers_is_a_folder_only_administrators_change() {
+        let (protected, aces) = granted(DACL_SDDL).unwrap();
+        assert!(protected);
+        assert_eq!(aces, [(0x1F01FF, "SY".to_string()), (0x1F01FF, "BA".to_string()), (0x1200A9, "BU".to_string())]);
+        assert!(admin_only(&format!("{OWNER_SDDL}{DACL_SDDL}")));
+        // As Windows may write it back: the letters for read and run.
+        assert!(admin_only("O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)"));
+        // Program Files' own (inherited, its creator owner and TrustedInstaller
+        // in it), a user's folder, Users changing it, nobody's: not that.
+        assert!(!admin_only("D:AI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;0x1200a9;;;BU)"));
+        assert!(!admin_only("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;S-1-5-21-1-2-3-1001)"));
+        assert!(!admin_only("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;BU)"));
+        assert!(!admin_only("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;AU)(A;;GA;;;WD)"));
+        assert!(!admin_only("D:P"));
+        assert!(!admin_only("O:BA"));
+        assert_eq!(granted("D:PAI(A;OICI;XX;;;SY)"), None);
+    }
+
+    // Placed: checked by its SHA-256, unpacked, its config and the marker;
+    // again over hers (its config's changes kept); never over someone's.
+    #[test]
+    fn hers_is_placed_only_where_it_is_hers() {
+        let zip = zip_of(&[("LibreHardwareMonitor.exe", b"MZ", true), ("LibreHardwareMonitorLib.dll", b"lib", false)]);
+        let sha: String = Sha256::digest(&zip).iter().map(|b| format!("{b:02x}")).collect();
+        let make = |d: &Path| std::fs::create_dir_all(d).map_err(|_| AdminFail::Folder);
+        let root = scratch("place");
+        let dir = root.join("LibreHardwareMonitor");
+        let exe = place(&dir, &zip, &sha, 8085, make).unwrap();
+        assert_eq!(exe, dir.join("LibreHardwareMonitor.exe"));
+        assert_eq!(hers_in(&dir), Some(exe.clone()));
+        let config = || config::web_server(&config::read(&std::fs::read_to_string(exe.with_extension("config")).unwrap()).unwrap());
+        assert_eq!(config(), config::WebServer { on: Some(true), port: Some(8085), ip: Some("127.0.0.1".into()) });
+        // LHM wrote its own back (another port, a key of its own): kept, on at hers.
+        std::fs::write(exe.with_extension("config"), config::write(&[("listenerPort".into(), "9001".into()), ("theme".into(), "dark".into())])).unwrap();
+        place(&dir, &zip, &sha, 8086, make).unwrap();
+        assert_eq!(config().port, Some(8086));
+        assert!(std::fs::read_to_string(exe.with_extension("config")).unwrap().contains("\"theme\" value=\"dark\""));
+        // Another file than the one checked: nothing touched.
+        assert_eq!(place(&dir, &zip, &"0".repeat(64), 8085, make), Err(AdminFail::Digest));
+        assert!(exe.is_file());
+        // Someone's own LHM there (no marker): left alone.
+        let theirs = root.join("Theirs");
+        std::fs::create_dir_all(&theirs).unwrap();
+        std::fs::write(theirs.join("LibreHardwareMonitor.exe"), b"theirs").unwrap();
+        assert_eq!(place(&theirs, &zip, &sha, 8085, make), Err(AdminFail::NotOurs));
+        assert_eq!(std::fs::read(theirs.join("LibreHardwareMonitor.exe")).unwrap(), b"theirs");
+        assert_eq!(hers_in(&theirs), None);
+        // An empty folder is taken; a zip with no exe is not placed.
+        let empty = root.join("Empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(place(&empty, &zip, &sha, 8085, make).is_ok());
+        let no_exe = zip_of(&[("readme.txt", b"hi", false)]);
+        let no_exe_sha: String = Sha256::digest(&no_exe).iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(place(&root.join("NoExe"), &no_exe, &no_exe_sha, 8085, make), Err(AdminFail::Extract));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    // Program Files as the registry has it, and a folder made with her DACL
+    // read back as Windows keeps it: not hers to write unless elevated.
+    #[cfg(windows)]
+    #[test]
+    fn a_folder_made_with_her_dacl_is_closed_to_the_user() {
+        let pf = imp::program_files().unwrap();
+        if let Some(env) = std::env::var_os("ProgramFiles") {
+            assert!(same_path(&pf, Path::new(&env)), "{pf:?} {env:?}");
+        }
+        assert_eq!(install_dir().unwrap(), pf.join("LibreHardwareMonitor"));
+        let dir = scratch("dacl");
+        // Its owner left as whoever makes it: O:BA takes an administrator.
+        imp::make_dir(&dir, DACL_SDDL).unwrap();
+        assert!(imp::make_dir(&dir, DACL_SDDL).is_err(), "not made over one there");
+        let sddl = imp::sddl_of(&dir).unwrap();
+        println!("{sddl}");
+        assert!(admin_only(&sddl), "{sddl}");
+        assert!(sddl.contains("OICI"), "{sddl}");
+        let wrote = std::fs::write(dir.join("planted.dll"), b"x");
+        assert_eq!(wrote.is_ok(), imp::is_elevated(), "{wrote:?}");
+        let _ = std::fs::remove_file(dir.join("planted.dll"));
+        std::fs::remove_dir(&dir).unwrap();
     }
 
     // This machine looked at as the settings look, read-only: its processes,
@@ -1833,10 +2408,10 @@ mod tests {
         };
         let patience = Duration::from_secs(5);
         let t = answer(0, "0\r\n");
-        assert_eq!(asked_by_test(&dir, 0, &schtasks(), &format!("/Delete /TN {TASK} /F"), &dir, Some(60_000), patience), Asked::Ran(Some(0)));
+        assert_eq!(asked_by_test(&dir, 0, Path::new(r"C:\w\wakuwaku.exe"), &format!("{ADMIN_FLAG} noStartup"), &dir, Some(60_000), patience), Asked::Ran(Some(0)));
         let v = t.join().unwrap();
-        assert_eq!((v["params"].as_str(), v["wait"].as_bool()), (Some("/Delete /TN LibreHardwareMonitor /F"), Some(true)));
-        assert!(v["file"].as_str().unwrap().to_lowercase().ends_with("schtasks.exe"));
+        assert_eq!((v["params"].as_str(), v["wait"].as_bool()), (Some("--wakuwaku-lhm noStartup"), Some(true)));
+        assert!(v["file"].as_str().unwrap().ends_with("wakuwaku.exe"));
         let t = answer(1, "declined");
         assert_eq!(asked_by_test(&dir, 1, Path::new(r"C:\x\LibreHardwareMonitor.exe"), "", &dir, None, patience), Asked::Declined);
         assert_eq!(t.join().unwrap()["wait"], false);

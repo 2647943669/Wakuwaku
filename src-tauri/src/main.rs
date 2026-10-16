@@ -1317,6 +1317,12 @@ fn main() {
         }
         return;
     }
+    // One step for LibreHardwareMonitor run as administrator (lhm_setup.rs
+    // admin: put in Program Files, its config, its task, removed), then
+    // gone with its exit code; nothing of her started.
+    if let Some(at) = args.iter().position(|a| a == lhm_setup::ADMIN_FLAG) {
+        std::process::exit(lhm_setup::admin(&args[at + 1..]));
+    }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
         return ensure_running(port);

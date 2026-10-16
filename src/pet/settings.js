@@ -615,7 +615,7 @@
   // Windows' question for LibreHardwareMonitor (run as administrator) takes
   // the focus too: from the press, and while its job is at that stage.
   let lhmAsking = 0
-  const lhmAsks = () => Date.now() - lhmAsking < 5000 || ['elevate', 'start'].includes(snap?.lhmSetup?.job?.stage)
+  const lhmAsks = () => Date.now() - lhmAsking < 5000 || ['install', 'elevate', 'start'].includes(snap?.lhmSetup?.job?.stage)
   // One ask at a time: its buttons grey until Windows has done it (a step
   // waits up to a few seconds to see the picture change; presses meanwhile
   // went on stepping, 2026-10-10).
@@ -836,52 +836,62 @@
   }
 
   // LibreHardwareMonitor got, set up and started for her (lhm_setup.rs,
-  // snap.lhmSetup), by its step: get (none found: what she would do, its
-  // start at logon, the download), start / turnOn (one found, stopped),
-  // steps / otherPort (running, not answering), busy (a stage under way);
-  // answering: LHM's own note (`note`), where it is and its task. What went
-  // wrong last above it. Nothing off Windows, nor till it was first looked
-  // for (looking).
+  // snap.lhmSetup), by its step: get (none found: what she would do, where
+  // it goes, its start at logon, the download), start / turnOn (one found,
+  // stopped), steps / otherPort (running, not answering), busy (a stage
+  // under way); answering: LHM's own note (`note`), where it is, and for hers
+  // (in Program Files, only administrators change it) its task and its
+  // removal; someone's own is theirs, its start at logon LHM's menu's. What
+  // went wrong last above it. Nothing off Windows, nor till it was first
+  // looked for (looking).
   function lhmSetup(port, note) {
     const u = snap.lhmSetup
     if (!u || !u.step || u.step === 'off' || u.step === 'looking') return note
     const line = (text, bad) => `<div class="note lhm-note${bad ? ' bad' : ''}">${text}</div>`
     const button = (what, label, accent) => `<div class="fr"><span class="fl"></span><span class="grow"></span><button class="pbtn sm${accent ? ' al' : ''}" data-lhm="${what}">${esc(label)}</button></div>`
     const i = u.install
-    const where = i ? i.shown || i.dir : ''
+    const where = i ? i.dir || i.shown : ''
     const code = u.error?.code || ''
-    const failed = code ? line(`${esc(T(`lhm.err${code[0].toUpperCase()}${code.slice(1)}`, { detail: u.error.detail || '', port }))} <span class="link" data-lhm="dismiss">${esc(T('lhm.dismiss'))}</span>`, true) : ''
+    const failed = code ? line(`${esc(T(`lhm.err${code[0].toUpperCase()}${code.slice(1)}`, { detail: u.error.detail || '', port, dir: u.dir || '' }))} <span class="link" data-lhm="dismiss">${esc(T('lhm.dismiss'))}</span>`, true) : ''
     // It asks for PawnIO itself as it starts, until it is there (or older than 2.0).
     const pawnio = !u.pawnio || /^[01]\./.test(u.pawnio) ? ` ${esc(T('lhm.pawnio'))}` : ''
-    const remove = esc(T('lhm.remove', { dir: u.dirShown || u.dir }))
     const startup = `<div class="fr"><span class="fl">${esc(T('lhm.startup'))}</span><span class="d grow">${esc(T('lhm.startupNote'))}</span>${sw('mon:lhmStartup', u.startupWanted !== false)}</div>`
     let body
     if (u.step === 'busy') {
       const j = u.job || {}
       const mb = n => (n / 1048576).toFixed(1)
-      const stage = j.stage === 'download' ? T('lhm.stageDownload', { asset: j.asset || '', version: j.version || '', pct: j.total ? Math.min(100, Math.floor((100 * j.got) / j.total)) : 0, got: mb(j.got || 0), total: mb(j.total || 0) }) : T(`lhm.stage${(j.stage || 'release')[0].toUpperCase()}${(j.stage || 'release').slice(1)}`)
-      body = line(esc(stage) + (j.stage === 'wait' ? pawnio : ''))
+      const name = j.stage || 'look'
+      const stage = name === 'download' ? T('lhm.stageDownload', { asset: j.asset || '', version: j.version || '', pct: j.total ? Math.min(100, Math.floor((100 * j.got) / j.total)) : 0, got: mb(j.got || 0), total: mb(j.total || 0) }) : T(`lhm.stage${name[0].toUpperCase()}${name.slice(1)}`, { dir: u.dir || '' })
+      body = line(esc(stage) + (name === 'wait' || name === 'install' ? pawnio : ''))
     } else if (u.step === 'get') {
-      body = line(esc(T('lhm.notFound')), true) + line(`${esc(T('lhm.separate'))} ${esc(T('lhm.getNote', { dir: u.dirShown || u.dir, port }))}`) + startup + button('get', T('lhm.get'), true) + line(`${pawnio.trim()} ${remove}`.trim()) + line(`${esc(T('lhm.elsewhere'))} <span class="link" data-site="lhm">${esc(T('mon.lhmGet'))} ›</span>`)
+      body =
+        line(esc(T('lhm.notFound')), true) +
+        line(`${esc(T('lhm.separate'))} ${esc(T('lhm.getNote', { dir: u.dir, port }))}`) +
+        startup +
+        button('get', T('lhm.get'), true) +
+        line(`${pawnio.trim()} ${esc(T('lhm.removeLater'))}`.trim()) +
+        line(`${esc(T('lhm.elsewhere'))} <span class="link" data-site="lhm">${esc(T('mon.lhmGet'))} ›</span>`)
     } else if (u.step === 'start' || u.step === 'turnOn') {
-      const how = u.startup ? T('lhm.byTask') : T('lhm.asks')
+      // Hers turned on: the step as administrator, which starts it too.
+      const how = u.startup && !(u.step === 'turnOn' && i?.hers) ? T('lhm.byTask') : T('lhm.asks')
       body = line(esc(T('lhm.foundStopped', { path: where })), true) + line(`${esc(T(u.step === 'turnOn' ? 'lhm.turnOnNote' : 'lhm.startNote', { port }))} ${esc(how)}${pawnio}`) + button('start', T(u.step === 'turnOn' ? 'lhm.turnOn' : 'lhm.start'), true)
     } else if (u.step === 'otherPort') {
       body = line(esc(T('lhm.otherPort', { other: i?.port || '' })), true) + button('usePort', T('lhm.usePort', { other: i?.port || '' }), true)
     } else if (u.step === 'steps') {
       body = line(esc(T('lhm.runningOff', { path: where || 'LibreHardwareMonitor', port })), true)
     } else {
-      // Answering: where it is, hers or not, and its own task.
-      const about = i ? line(`${esc(T('lhm.where', { path: where }))}${i.hers ? ` ${esc(T('lhm.hers'))}` : ''} <span class="link" data-lhm="folder">${esc(T('lhm.folder'))} ›</span>`) : ''
-      const task = i
-        ? `<div class="fr"><span class="fl">${esc(T('lhm.startup'))}</span><span class="d grow">${esc(T(u.startup ? 'lhm.startupOn' : 'lhm.startupOff'))}</span><button class="pbtn sm" data-lhm="${u.startup ? 'noStartup' : 'startup'}">${esc(T(u.startup ? 'lhm.startupUnset' : 'lhm.startupSet'))}</button></div>`
-        : ''
-      const other = u.taskOther ? line(esc(T('lhm.taskOther', { path: u.taskOther }))) : ''
-      body = note + about + task + other + (i?.hers ? line(remove) : '')
+      // Answering: where it is; hers, its task and its removal.
+      const about = i ? line(`${esc(T('lhm.where', { path: where }))} ${esc(T(i.hers ? 'lhm.hers' : 'lhm.theirs'))} <span class="link" data-lhm="folder">${esc(T('lhm.folder'))} ›</span>`) : ''
+      const task =
+        i && i.hers
+          ? `<div class="fr"><span class="fl">${esc(T('lhm.startup'))}</span><span class="d grow">${esc(T(u.startup ? 'lhm.startupOn' : 'lhm.startupOff'))}</span><button class="pbtn sm" data-lhm="${u.startup ? 'noStartup' : 'startup'}">${esc(T(u.startup ? 'lhm.startupUnset' : 'lhm.startupSet'))}</button></div>`
+          : ''
+      const other = u.taskOther && i?.hers ? line(esc(T('lhm.taskOther', { path: u.taskOther }))) : ''
+      const remove = i?.hers ? line(esc(T('lhm.remove', { dir: u.dir }))) + button('remove', T('lhm.uninstall')) : ''
+      body = note + about + task + other + remove
     }
     return failed + body
   }
-
   // Plugins: built in, run by her, or anyone's script, each with its switch
   // (and a step up); how they take turns, whether they may open the island,
   // waku for the terminal, and how to write one.
@@ -2788,7 +2798,7 @@
     // LibreHardwareMonitor: downloaded, started, its task, its folder (lhm_setup.rs).
     const lhmButton = at('[data-lhm]')
     if (lhmButton && !lhmButton.disabled) {
-      if (['get', 'start', 'startup', 'noStartup'].includes(lhmButton.dataset.lhm)) lhmAsking = Date.now()
+      if (['get', 'start', 'startup', 'noStartup', 'remove'].includes(lhmButton.dataset.lhm)) lhmAsking = Date.now()
       return window.pet.settings.lhm(lhmButton.dataset.lhm).then(got => ((snap = got), draw()))
     }
     // Her updates: look now, the release's notes, Update.
