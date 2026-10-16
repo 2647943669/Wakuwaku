@@ -1838,18 +1838,20 @@
 
   // --- The Agent page (agents.js) ---------------------------------------------------------
   // One row for each agent found on this computer: a dot for how it stands
-  // (in the island's colours: connected green, written and waiting for its
-  // first event blue, to repair amber, unreadable or not written red, not
-  // connected grey; colour says how it stands, never which one it is), its
-  // name (and version, where known), what she can do for it (five icons,
-  // lit, half or dim, each with a tooltip saying which buttons or why not),
-  // one button: connect, repair, or remove… (which opens it). A row opens in
-  // place, one at a time, to its details: how it connects and the file
-  // written (the whole path, ~ for the home folder), what works and what
-  // does not, what she can do in words, what to know, the buttons; Claude
-  // Code's two ways (the plugin, settings.json). Connect all at the top, for
-  // those not connected yet; those not found folded under "Other supported
-  // tools", each with where to get it.
+  // in four of the island's colours (connected green, written and waiting
+  // for its first turn blue, the person must act amber, not connected grey;
+  // colour says how it stands, never which one it is), its name (and
+  // version, where known), what she can do for it (five icons, lit, half or
+  // dim, each with a tooltip saying which buttons or why not), and a button
+  // only where the person has something to do (connect, repair, how to
+  // trust Codex's hooks), else a faint ›. A row opens in place, one at a
+  // time, to its details: what the person must do first (amber), how it
+  // connects and the file written (the whole path, ~ for the home folder),
+  // what works and what does not, what she can do in words, what to know,
+  // reinstall and remove; Claude Code's two ways (the plugin,
+  // settings.json). Connect all at the top, for those not connected yet;
+  // those not found folded under "Other supported tools", each with where
+  // to get it.
   let connecting = ''
   // Why each could not be written: { error, kind, folder } (locked, invalid, path, other).
   const failed = {}
@@ -1902,7 +1904,7 @@
       const n = Agents.sessionsOf(snap, id)
       return n ? T(n === 1 ? 'ag.st.on1' : 'ag.st.onN', { n }) : T('ag.st.on')
     }
-    if (state === 'set') return T(`ag.st.set.${id}`)
+    if (state === 'set' || state === 'step') return T(`ag.st.set.${id}`)
     if (state === 'busy') return T('wc.busy')
     if (state === 'failed') return T('ag.st.failed')
     if (state === 'repair' || state === 'error') return T(Agents.wordOf(id, r.status))
@@ -1917,26 +1919,36 @@
     const open = agentOpen === id
     const small = [a.aka, r.version].filter(Boolean).map(text => `<span class="ver">${esc(text)}</span>`).join('')
     const line = agentLine(id, state)
-    let button = ''
-    if (state === 'busy') button = `<button class="pbtn sm" disabled><span class="spin"></span>${esc(T('wc.busy'))}</button>`
-    else if (action?.act === 'open') button = `<button class="pbtn sm" data-ag-open="${id}" data-ag-keep>${esc(T(action.label))}</button>`
-    else if (action) button = `<button class="pbtn sm" data-agent="${id}:${action.act}" ${connecting ? 'disabled' : ''}>${esc(T(action.label))}</button>`
+    // A button only where the person has something to do (agents.js
+    // actionOf); else a faint › saying the row opens.
+    let end = `<span class="fi chev${open ? ' open' : ''}">\uE76C</span>`
+    if (state === 'busy') end = `<button class="pbtn sm" disabled><span class="spin"></span>${esc(T('wc.busy'))}</button>`
+    else if (action?.act === 'open') end = `<button class="pbtn sm" data-ag-open="${id}" data-ag-keep>${esc(T(action.label))}</button>`
+    else if (action) end = `<button class="pbtn sm" data-agent="${id}:${action.act}" ${connecting ? 'disabled' : ''}>${esc(T(action.label))}</button>`
     const caps = `<span class="caps">${Agents.capsOf(snap, id).map(([cap, level, key]) => capIcon(cap, level, key)).join('')}</span>`
-    return `<div class="r ag-row${open ? ' open' : ''}" data-ag-open="${id}"><span class="dot" style="background:${COLOR[Agents.MOOD[state]]}"></span><div class="grow"><div class="ag-name ellip">${esc(a.name)}${small}</div><div class="d ellip" title="${esc(line)}">${esc(line)}</div></div>${caps}${button}</div>${open ? agentDetails(id, state) : ''}`
+    return `<div class="r ag-row${open ? ' open' : ''}" data-ag-open="${id}"><span class="dot" style="background:${COLOR[Agents.MOOD[state]]}"></span><div class="grow"><div class="ag-name ellip">${esc(a.name)}${small}</div><div class="d ellip" title="${esc(line)}">${esc(line)}</div></div>${caps}<span class="ag-end">${end}</span></div>${open ? agentDetails(id, state) : ''}`
   }
 
-  // What to know about one now: a step left (amber), or how it is.
-  function agentNotes(id, state) {
+  // What the person must do now, in amber at the top of the details (as
+  // its dot): Codex's trust, its background hooks, an old Codex, ZCode's
+  // hooks turned off, Claude Code's two ways at once, a file unreadable.
+  function agentSteps(id, state) {
     const r = Agents.read(snap, id)
     const warn = []
-    if (id === 'codex' && state === 'set') warn.push(T('s.codexTrust'))
+    if (id === 'codex' && state === 'step') warn.push(T('ag.trust.codex'))
     if (id === 'codex' && r.status === 'upgradable') warn.push(T('s.codexUpgradeNote'))
     if (id === 'codex' && r.here && snap.codex?.async === false) warn.push(T('s.codexOld', { version: r.version }))
     if (id === 'zcode' && r.status === 'off') warn.push(T('s.zcodeOffNote'))
-    if (id === 'omp' && state === 'set') warn.push(T('s.ompNew'))
-    if (id === 'dsh' && state === 'set') warn.push(T('s.dshRestart'))
     if (id === 'claude' && r.status === 'both') warn.push(T('ag.claude.both'))
-    return `${warn.map(text => `<div class="ag-note warn">${esc(text)}</div>`).join('')}<div class="ag-note">${esc(T(`ag.note.${id}`))}</div>`
+    if (state === 'error') warn.push(T('ag.note.unreadable'))
+    return warn.map(text => `<div class="ag-note warn">${esc(text)}</div>`).join('')
+  }
+
+  // What to know about one: how it is, and what comes next while it waits
+  // for its first turn (a new omp session, DSH restarted).
+  function agentNotes(id, state) {
+    const next = state === 'set' && id === 'omp' ? T('s.ompNew') : state === 'set' && id === 'dsh' ? T('s.dshRestart') : ''
+    return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(`ag.note.${id}`))}</div>`
   }
 
   // A field of the details: its name, what it is.
@@ -1999,10 +2011,10 @@
           ? `<button class="pbtn sm" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'repair' ? 'settings.repair' : 'settings.reinstall'))}</button><button class="pbtn sm no" data-agent="${id}:remove" ${connecting ? 'disabled' : ''}>${esc(T('settings.remove'))}</button>`
           : `<button class="pbtn sm al" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'failed' ? 'wc.toolRetry' : 'ag.do.install'))}</button>`
     const top = id === 'claude' ? claudeWays() : `${field('ag.via', esc(viaOf(id)))}${agentFiles(id)}`
-    return `<div class="ag-det">${top}
+    return `<div class="ag-det">${agentSteps(id, state)}${failed[id] ? failedHTML(id) : ''}${top}
         <div class="ag-what">${esc(T(`ag.what.${id}`))}</div>
         <div class="ag-caps">${caps}</div>
-        ${agentNotes(id, state)}${failed[id] ? failedHTML(id) : ''}
+        ${agentNotes(id, state)}
         ${id === 'claude' ? '' : `<div class="ag-btns">${buttons}</div>`}
       </div>`
   }
@@ -2011,8 +2023,9 @@
     const here = Agents.here(snap)
     const away = Agents.elsewhere(snap)
     const left = Agents.toConnect(snap, known())
+    // Hidden with none left; its tooltip names whom it connects.
     const all = left.length
-      ? `<button class="pbtn sm al" data-ag-all ${connecting || connectingAll ? 'disabled' : ''}>${connectingAll ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('ag.connectAll', { n: left.length }))}</button>`
+      ? `<button class="pbtn sm al" data-ag-all title="${esc(T('ag.connectAllTip', { list: toolNames(left, 'and') }))}" ${connecting || connectingAll ? 'disabled' : ''}>${connectingAll ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T('ag.connectAll', { n: left.length }))}</button>`
       : ''
     const rows = here.length ? here.map(agentRow).join('') : `<div class="note">${esc(T('ag.noneHere'))}</div>`
     // What the icons are, once.
@@ -2136,6 +2149,7 @@
     const state = Agents.stateOf(snap, tool, known())
     if (state === 'on') return 'seen'
     if (state === 'repair' && Agents.isIn(snap, tool)) return Agents.read(snap, tool).seen ? 'seen' : 'set'
+    if (state === 'step') return 'set'
     return ['busy', 'set', 'failed'].includes(state) ? state : 'none'
   }
 
@@ -2235,8 +2249,8 @@
   function agentsLine() {
     const s = Agents.summary(snap, known())
     const n = s.connected.length
-    const what = [n ? toolNames(s.connected, 'and') : '', s.repair.length ? T('ag.lineFix', { n: s.repair.length }) : '', s.none.length ? T('ag.lineMore', { n: s.none.length }) : '']
-    const mood = s.repair.length ? 'waiting' : s.on.length ? 'done' : 'working'
+    const what = [n ? toolNames(s.connected, 'and') : '', s.wants.length ? T('ag.lineFix', { n: s.wants.length }) : '', s.none.length ? T('ag.lineMore', { n: s.none.length }) : '']
+    const mood = s.wants.length ? 'waiting' : s.on.length ? 'done' : 'working'
     const title = n ? T(n === 1 ? 'ag.line1' : 'ag.line', { n }) : T('ag.lineRepair')
     return `<div class="grp"><div class="r go" data-tab="agents"><span class="dot" style="background:${COLOR[mood]}"></span><div class="grow"><div>${esc(title)}</div><div class="d ellip">${esc(what.filter(Boolean).join(' · '))}</div></div><span class="link">${esc(T('wc.manage'))}</span></div></div>`
   }
@@ -2302,8 +2316,8 @@
       b.querySelector('span').textContent = T(TAB_KEY[b.dataset.tab])
     }
     tabs.querySelector('[data-tab="now"] .n').hidden = !(snap.asks || []).length
-    // An agent's connection to repair: the same dot on the Agent page's.
-    tabs.querySelector('[data-tab="agents"] .n').hidden = !Agents.summary(snap, known()).repair.length
+    // An agent that wants the person (amber): the same dot on the Agent page's.
+    tabs.querySelector('[data-tab="agents"] .n').hidden = !Agents.summary(snap, known()).wants.length
   }
 
   // The page, kept as it is when nothing changed; redrawn, the box being

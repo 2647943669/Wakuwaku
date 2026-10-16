@@ -45,6 +45,8 @@
   //   in      the statuses that mean ours is there (connected, or to repair)
   //   good    the ones of those that need nothing
   //   words   its own words for a status that wants something (wordOf)
+  //   step    written, a step of the person's left before its first event
+  //           (Codex: trusting the hooks in its /hooks): its button's words
   //   caps    [level, the words' key] for each of CAPS
   //   mail    its name on the Mail page (agent.rs Agent::name), if it reads mail
   const TABLE = [
@@ -86,6 +88,7 @@
       in: ['ok', 'stale', 'upgradable', 'partial'],
       good: ['ok'],
       words: { upgradable: 's.codexUpgradable', unreadable: 's.codexUnreadable' },
+      step: 'ag.do.trust',
       caps: {
         status: ['yes', 'ag.cap.status.codex'],
         approve: ['yes', 'ag.cap.approve.codex'],
@@ -218,7 +221,9 @@
   // How one stands, for its dot and its button:
   //   busy     being written now
   //   on       connected, an event seen (a session came)
-  //   set      written, no event yet (Codex's to be trusted first)
+  //   set      written, no event yet: nothing for the person to do but use it
+  //   step     written, no event yet, and a step of the person's first
+  //            (Codex: trusting the hooks; the table's step)
   //   repair   ours there but not as this copy would write it (moved, an
   //            older version, a part missing, turned off, both of Claude
   //            Code's ways at once)
@@ -231,29 +236,37 @@
     const a = byId(id)
     const r = read(snap, id)
     if (!a || !r) return 'none'
-    if (a.in.includes(r.status)) return a.good.includes(r.status) ? (r.seen ? 'on' : 'set') : 'repair'
+    if (a.in.includes(r.status)) return !a.good.includes(r.status) ? 'repair' : r.seen ? 'on' : a.step ? 'step' : 'set'
     if (r.status === 'off') return 'repair'
     if (failed[id]) return 'failed'
     if (r.status === 'unreadable') return 'error'
     return 'none'
   }
 
-  // The mood whose colour a state's dot takes (the island's, settings.js
-  // COLOR): colour says how it stands, never which one it is.
-  const MOOD = { on: 'done', set: 'working', busy: 'working', repair: 'waiting', failed: 'error', error: 'error', none: 'idle' }
+  // The states that want the person (a repair, a step, a file to put right,
+  // a write that failed): amber, and the Agent tab's dot.
+  const WANTS = ['step', 'repair', 'error', 'failed']
 
-  // The one thing its row's button does:
+  // The mood whose colour a state's dot takes (the island's, settings.js
+  // COLOR), four of them: green connected, blue written and waiting for
+  // its first turn, amber the person must act, grey not connected. Colour
+  // says how it stands, never which one it is.
+  const MOOD = { on: 'done', set: 'working', busy: 'working', step: 'waiting', repair: 'waiting', error: 'waiting', failed: 'waiting', none: 'idle' }
+
+  // Its row's button, only where the person has something to do:
   //   install   connect (or try again), or repair
   //   remove    Claude Code with both ways at once: settings.json's hooks
-  //             taken out, the plugin kept
-  //   open      its details, where Remove is
-  //   null      none (being written; its file unreadable)
+  //             taken out, the plugin kept (its Repair)
+  //   open      a step to take (Codex's trust): the row opens to say how
+  //   null      none: connected, written and waiting, being written, or its
+  //             file unreadable (to be put right by hand: its details say so)
+  // Reinstall and Remove are in the open row's details.
   function actionOf(snap, id, known) {
     const state = stateOf(snap, id, known)
-    if (state === 'busy' || state === 'error') return null
     if (state === 'none' || state === 'failed') return { act: 'install', label: state === 'failed' ? 'wc.toolRetry' : 'ag.do.install' }
     if (state === 'repair') return id === 'claude' && read(snap, id).status === 'both' ? { act: 'remove', label: 'settings.repair' } : { act: 'install', label: 'settings.repair' }
-    return { act: 'open', label: 'ag.do.remove' }
+    if (state === 'step') return { act: 'open', label: byId(id).step }
+    return null
   }
 
   // The ones on this computer, and the others, in the table's order.
@@ -274,16 +287,18 @@
     })
   }
 
-  // General's status line: the ones on this computer by how they stand.
+  // General's status line and the Agent tab's dot: the ones on this
+  // computer by how they stand. connected: written (Codex's still to be
+  // trusted too); wants: those the person must act on (amber).
   function summary(snap, known) {
-    const out = { here: here(snap), on: [], set: [], repair: [], none: [] }
+    const out = { here: here(snap), on: [], set: [], wants: [], none: [] }
     for (const id of out.here) {
       const state = stateOf(snap, id, known)
       if (state === 'on' || state === 'set') out[state].push(id)
-      else if (state === 'repair' || state === 'error') out.repair.push(id)
+      else if (WANTS.includes(state)) out.wants.push(id)
       else out.none.push(id)
     }
-    out.connected = out.here.filter(id => out.on.includes(id) || out.set.includes(id))
+    out.connected = out.here.filter(id => out.on.includes(id) || out.set.includes(id) || stateOf(snap, id, known) === 'step')
     return out
   }
 
@@ -301,7 +316,7 @@
   // How many sessions of one are in sight now (state.rs: agent, none for Claude Code's).
   const sessionsOf = (snap, id) => (snap.sessions || []).filter(s => (s.agent || 'claude') === id).length
 
-  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, byId, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
+  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

@@ -57,6 +57,7 @@ test('each agent in the table is whole, and its words are there in both language
     for (const k of ['what', 'note', 'how', 'st.set']) keys.add(`ag.${k}.${a.id}`)
     keys.add(`ag.via.${a.via}`)
     for (const k of Object.values(a.words || {})) keys.add(k)
+    if (a.step) keys.add(a.step)
     assert.ok(a.good.every(s => a.in.includes(s)), `${a.id}: good is part of in`)
   }
   for (const cap of Agents.CAPS) keys.add(`ag.cap.${cap}`)
@@ -119,10 +120,21 @@ test('how each stands, and its one button', () => {
   // Not connected: Connect.
   assert.equal(state({}, 'codex'), 'none')
   assert.deepEqual(action({}, 'codex'), { act: 'install', label: 'ag.do.install' })
-  // Written, no event yet; an event seen: Remove… opens it.
-  assert.equal(state({ codex: { hooks: 'ok', seen: false } }, 'codex'), 'set')
+  // Written, waiting for its first turn: nothing to do, no button; an event
+  // seen: connected, no button either (Reinstall and Remove are in its details).
+  for (const id of ['agy', 'omp', 'zcode', 'dsh']) {
+    assert.equal(state({ [id]: { hooks: 'ok', seen: false } }, id), 'set', id)
+    assert.equal(action({ [id]: { hooks: 'ok', seen: false } }, id), null, id)
+    assert.equal(state({ [id]: { hooks: 'ok', seen: true } }, id), 'on', id)
+    assert.equal(action({ [id]: { hooks: 'ok', seen: true } }, id), null, id)
+  }
+  assert.equal(state({ opencode: { plugin: 'ok', seen: false } }, 'opencode'), 'set')
+  // Codex written and not trusted yet: a step of the person's, its button opens the row.
+  assert.equal(state({ codex: { hooks: 'ok', seen: false } }, 'codex'), 'step')
+  assert.deepEqual(action({ codex: { hooks: 'ok', seen: false } }, 'codex'), { act: 'open', label: 'ag.do.trust' })
   assert.equal(state({ codex: { hooks: 'ok', seen: true } }, 'codex'), 'on')
-  assert.deepEqual(action({ codex: { hooks: 'ok', seen: true } }, 'codex'), { act: 'open', label: 'ag.do.remove' })
+  assert.equal(action({ codex: { hooks: 'ok', seen: true } }, 'codex'), null)
+  assert.deepEqual(Agents.TABLE.filter(a => a.step).map(a => a.id), ['codex'])
   // Ours there but to repair (moved, older, part missing, turned off): Repair.
   for (const [id, status] of [['codex', 'stale'], ['codex', 'upgradable'], ['codex', 'partial'], ['agy', 'stale'], ['agy', 'off'], ['omp', 'partial'], ['zcode', 'off'], ['zcode', 'partial'], ['dsh', 'stale']]) {
     assert.equal(state({ [id]: { hooks: status } }, id), 'repair', `${id} ${status}`)
@@ -148,6 +160,7 @@ test("Claude Code's two ways", () => {
   assert.equal(state({ connection: 'plugin' }), 'on')
   // settings.json's hooks: written, then seen; nothing that starts her is fine too.
   assert.equal(state({ connection: 'hooks', hooks: 'ok' }), 'set')
+  assert.equal(Agents.actionOf(snapshot({ connection: 'plugin' }), 'claude'), null)
   assert.equal(state({ connection: 'hooks', hooks: 'ok', claudeSeen: true }), 'on')
   assert.equal(state({ connection: 'hooks', hooks: 'httpOnly', claudeSeen: true }), 'on')
   assert.equal(state({ connection: 'hooks', hooks: 'stale' }), 'repair')
@@ -181,14 +194,27 @@ test('Connect all, and General’s line', () => {
   assert.deepEqual(Agents.toConnect(snap), ['opencode', 'zcode', 'dsh'])
   // One being written is not offered again; one that failed is.
   assert.deepEqual(Agents.toConnect(snap, { busy: 'zcode', failed: { dsh: { kind: 'locked' } } }), ['opencode', 'dsh'])
+  // Codex written, to be trusted: connected, and wanting the person (as agy's repair).
   const s = Agents.summary(snap)
   assert.deepEqual(s.on, ['claude'])
-  assert.deepEqual(s.set, ['codex'])
+  assert.deepEqual(s.set, [])
   assert.deepEqual(s.connected, ['claude', 'codex'])
-  assert.deepEqual(s.repair, ['agy'])
+  assert.deepEqual(s.wants, ['codex', 'agy'])
   assert.deepEqual(s.none, ['opencode', 'zcode', 'dsh'])
-  // Every state has its dot's colour.
-  for (const state of ['busy', 'on', 'set', 'repair', 'error', 'failed', 'none']) assert.ok(['idle', 'working', 'waiting', 'done', 'error'].includes(Agents.MOOD[state]), state)
+  // A file unreadable and a write that failed want the person too.
+  const more = Agents.summary(snapshot({ zcode: { hooks: 'unreadable' }, omp: { hooks: 'ok' } }), { failed: { dsh: { kind: 'locked' } } })
+  assert.deepEqual(more.wants, ['zcode', 'dsh'])
+  assert.deepEqual(more.set, ['omp'])
+  // Nothing wants the person: no tab dot.
+  assert.deepEqual(Agents.summary(snapshot({ connection: 'plugin', codex: { hooks: 'ok', seen: true }, zcode: { hooks: 'ok' } })).wants, [])
+})
+
+test('the dots: four colours, by what the person has to do', () => {
+  // Green connected, blue written and waiting, amber the person must act, grey not connected.
+  assert.deepEqual(Agents.MOOD, { on: 'done', set: 'working', busy: 'working', step: 'waiting', repair: 'waiting', error: 'waiting', failed: 'waiting', none: 'idle' })
+  assert.deepEqual([...new Set(Object.values(Agents.MOOD))].sort(), ['done', 'idle', 'waiting', 'working'])
+  // Every state that wants the person is amber, and only those.
+  for (const [state, mood] of Object.entries(Agents.MOOD)) assert.equal(mood === 'waiting', Agents.WANTS.includes(state), state)
 })
 
 test('mail: lit where its command is found, and the Mail page’s list', () => {

@@ -1954,7 +1954,8 @@
 /* --- The Agent page (settings.js pageAgents, agents.js) ---------------------------
    A row for each agent on this computer, as the other pages' rows: its dot
    (how it stands, in the island's colours), its name and version, what she
-   can do for it in Windows' own glyphs (lit, half, dim), one button. A row
+   can do for it in Windows' own glyphs (lit, half, dim), a button where the
+   person has something to do (else a faint ›). A row
    opens in place to its details, a shade lighter, under it. A row that
    goes somewhere (General's line on the agents, the other tools) lights up
    under the pointer as a session's does. */
@@ -1974,9 +1975,26 @@
   background: rgba(255, 255, 255, 0.035);
 }
 
-/* Its one button as wide in every row, so the icons line up. */
-#island-settings .ag-row > .pbtn {
-  min-width: 84px;
+/* Its end: a button only where the person has something to do, else a
+   faint › saying the row opens; as wide in every row, so the icons line up. */
+#island-settings .ag-end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 96px;
+}
+
+#island-settings .ag-end .chev {
+  color: var(--g4);
+  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  font-size: 11px;
+  opacity: 0.7;
+  transition: transform 0.2s ease;
+}
+
+#island-settings .ag-end .chev.open {
+  transform: rotate(90deg);
 }
 
 #island-settings .ag-det + .r {
