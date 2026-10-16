@@ -466,9 +466,13 @@
     el.addEventListener('pointerup', ev => release(ev))
     el.addEventListener('pointercancel', () => cancel())
     el.addEventListener('dblclick', ev => {
-      if (ev.target.closest('.tools, .sdots, .bbtns, input')) return
-      if (isBoard(n) && ev.target.closest('.bname')) return startRename(n)
-      const tile = tileOf(ev.target)
+      // What is under the pointer: the press took the pointer (press:
+      // setPointerCapture), so the click and the double-click come to the
+      // node itself, not to its name or tile (the VM, 2026-10-16).
+      const under = document.elementFromPoint(ev.clientX, ev.clientY) || ev.target
+      if (under.closest('.tools, .sdots, .bbtns, input')) return
+      if (isBoard(n) && under.closest('.bname')) return startRename(n)
+      const tile = tileOf(under)
       const w = isBoard(n) ? (tile >= 0 ? Widgets.sourcesOf(G.memberOf(n.entry.items[tile]), all)[0] : null) : shownWidget(n.entry)
       if (w) ask('settings', { widget: w.id })
     })
