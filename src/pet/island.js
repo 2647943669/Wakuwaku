@@ -774,10 +774,13 @@
     update()
   }
 
-  // Widgets take turns while the island is quiet and compact.
+  // Widgets take turns while the island is quiet and compact; not while
+  // nobody is about (quiet), as the strip's carousels: each turn redraws
+  // the closed island and its slide, which kept the renderer and the GPU
+  // at about 80 wakes a second between them, against 18 held still.
   function spin() {
     const sec = Number(config.widgetSpin ?? 8)
-    if (!(isQuiet() && widgets.length > 1 && sec > 0 && view === 'compact')) {
+    if (!(isQuiet() && !quiet && widgets.length > 1 && sec > 0 && view === 'compact')) {
       clearTimeout(spinTimer)
       spinTimer = null
       return
@@ -5439,6 +5442,8 @@
     // on (their turns anew) once someone is.
     if (!quiet) for (const [id, state] of carousels) carousels.set(id, { ...state, since: Date.now() })
     tickCarousels()
+    // The capsule's widgets the same: held, or taking turns again.
+    spin()
   })
 
   // Her reactions with words: a hello rings (its words in the island as it
