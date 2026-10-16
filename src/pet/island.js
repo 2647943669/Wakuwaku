@@ -44,6 +44,7 @@
   const { CELL_W, CELL_H, CLIPS, MOOD_CLIP } = window.Sprite
   const Status = window.Status
   const Widgets = window.Widgets
+  const Flow = window.Flow
 
   // Brighter than the pet's colours: these sit on black. On the light
   // taskbar (Windows' light mode) the same, deep enough to read on white.
@@ -190,6 +191,36 @@
   const hintDot = document.createElement('span')
   hintDot.className = 'hint-dot'
   her.after(hintDot)
+  // Something happened while the island stayed closed (the flow light,
+  // below): a dot of the same kind at the same place, in the newest event's
+  // colour, until seen. Never with the hint's: not connected, nothing happens.
+  const newsDot = document.createElement('span')
+  newsDot.className = 'news-dot'
+  hintDot.after(newsDot)
+  newsDot.addEventListener('animationend', () => newsDot.classList.remove('pop', 'hop'))
+  // The dot's event: its kind and (a plugin's) colour, and whether it shows
+  // yet (it comes as the ring fades).
+  let news = null
+  // What the island would have shown by itself: { clip, text, ms, widget,
+  // until }, shown as it next opens (takePending), until then.
+  let pending = null
+  // An app full screen on her display (pet:full-screen, main.rs look_fullscreen).
+  let fullScreen = false
+  // The flow light's ring, by the island in its row (the island clips what
+  // is in it): see "The flow light" below.
+  const flow = document.createElement('div')
+  flow.id = 'flow'
+  flow.innerHTML = '<div class="flow-glow"><div class="flow-ring"><i class="flow-spin"><b></b><b></b></i></div></div><div class="flow-ring"><i class="flow-spin"><b></b><b></b></i></div>'
+  island.after(flow)
+  const spins = [...flow.querySelectorAll('.flow-spin')]
+  const ANCHORED = !!window.CSS?.supports?.('anchor-name: --a')
+  const isRinging = () => flow.classList.contains('on')
+  // Its state (flow.js), its animations running, its colours' blends, its
+  // dot's and its end's timers.
+  let flowState = Flow.idle()
+  let flowAnims = []
+  let blends = []
+  let flowTimers = []
   const gooIsland = document.querySelector('#goo .goo-island')
   const gooNeck = document.querySelector('#goo .goo-neck')
   const gooDrop = document.querySelector('#goo .goo-drop')
@@ -1116,8 +1147,9 @@
   // turned off (islandHideUnder), it slides up out of the way (isl-stowed,
   // style.css): a sliver of its foot left at the screen's edge, nothing of
   // it taking the pointer. Never while something wants the person: open
-  // (hovered, a turn done, an error, a widget's nudge), a prompt, the
-  // settings, a session waiting on you, her being taken home. Down again
+  // (hovered, a turn done, an error, a widget's nudge, with endCue open), a
+  // ring round it (the flow light), a prompt, the settings, a session
+  // waiting on you, her being taken home. Down again
   // once the window has gone, and while the pointer calls it (resting at
   // the edge over it, or on it, until it has been away a moment: island.rs
   // call_look). Never on the taskbar, nor at a Mac's screen top.
@@ -1128,7 +1160,8 @@
   function stowWanted() {
     if (home() !== 'island' || screenTop || config.islandHideUnder === false || !underTop || calledDown) return false
     if (view !== 'compact' || isHover || now.mood === 'waiting') return false
-    return !pull && !isReaching && !isAbsorbing && !isComingHome
+    // Down for a flow light's ring, as it came down when it opened by itself.
+    return !pull && !isReaching && !isAbsorbing && !isComingHome && !isRinging()
   }
 
   function setStow() {
@@ -4542,6 +4575,13 @@
     if (view === 'ask' && !isAsking()) nudge = null
     const was = view
     view = isSetting() ? 'settings' : isAsking() ? 'ask' : isHover || isNudging() || peek ? 'expanded' : 'compact'
+    // Open, for whatever reason: what happened has been seen (its dot and
+    // its ring go), and what the island would have shown by itself is in it.
+    if (view !== 'compact') {
+      news = null
+      if (isRinging()) stopRing()
+    }
+    if (view === 'expanded') takePending()
     // Closed: a card unfolded in it folded again, its widget's menu gone.
     if (view !== 'expanded' && was === 'expanded') {
       cardFor = null
@@ -4585,6 +4625,7 @@
     for (const e of ['top', 'left', 'right']) body.classList.toggle(`tb-${e}`, tbEdge() === e)
     body.classList.toggle('hinting', isHinting() && isHome())
     document.documentElement.style.setProperty('--hint-accent', hintAccent())
+    drawNews()
     body.classList.toggle('tb-side', isSide())
     body.classList.toggle('compact-her', view === 'compact' || view === 'settings')
     if (spriteUrl) sheetImage(herSheet, spriteUrl)
@@ -4613,6 +4654,8 @@
       herShown = isHome()
       animateHer()
       placePlate(resized, from, fromRadius)
+      placeNews()
+      placeFlow()
     }
     if (grows) setTimeout(grow, 40)
     else if (late) {
@@ -4690,6 +4733,218 @@
     isHover = false
     dismissed = true
     update()
+  }
+
+  // --- The flow light (flow.js) -------------------------------------------------------
+  // What opened the island by itself (a turn done, changes to review, an
+  // error, a hello, a plugin's nudge) keeps it closed now: a ring of colour
+  // runs round her capsule (round her portrait on the black strip, where
+  // she has none) about three times and fades, and a dot stays on her
+  // portrait until the island has been open for any reason (seen). What it
+  // would have shown is there as it opens next (pending): an ending's own
+  // words are its session's anyway. Only a session waiting on the person
+  // opens it, or every ending with endCue open (as before).
+  //
+  // The ring: a frame by the island in its row (the island clips what is in
+  // it), laid over the island by anchor positioning (style.css #flow), so it
+  // follows the capsule's size; cut to a 2 px ring by its mask, a square of
+  // conic gradient turning in it, and under it the same blurred on a dark
+  // ground (glow). Its own element, never drawn anew by update(): the island
+  // drawn again (the widgets' words every few seconds, the clock) neither
+  // starts it over nor makes it flicker. Animated by the page (Web
+  // Animations), only its turning (transform) and its light (opacity);
+  // gone (display: none, will-change with it) once it has played.
+  // The ring's colours by Windows' mode (the strip's, or the screen's at
+  // the top): deeper in the light, where the dark set's pale ones are lost.
+  const flowLight = () => modeNow() === 'light'
+  // A ring would not be seen now, or should not turn: something full
+  // screen, nobody at the computer, do not disturb, her window hidden, a
+  // Mac's notch (nothing there moves by itself). The dot alone then, seen
+  // once she is; no ring afterwards to catch up.
+  const flowBlocked = () => fullScreen || quiet || config.dnd === true || document.hidden || !!screenTop?.notch
+
+  // Something happened: kind (waiting, done, review, error, hello, plugin,
+  // notice), and what the island would have opened with ({ clip, text, ms,
+  // widget }).
+  function cue(kind, show) {
+    const how = Flow.cueFor(kind, { setting: Flow.endCue(config), view, blocked: flowBlocked() })
+    // The newest wins: what is kept for the next look is this one's (an
+    // ending's words are its session's: the open island has them), or none
+    // when it shows now; a prompt leaves it for after.
+    if (kind !== 'waiting') pending = how && how !== 'open' && how !== 'show' && !Flow.isEnding(kind) ? { ...show, until: Date.now() + Flow.keepFor(kind, config.hold) } : null
+    if (how === 'open' || how === 'show') return nudgeFor(show.clip, show.text, show.ms, show.widget)
+    if (!how || how === 'later') return update()
+    news = { kind, colour: show.widget?.color, shown: news?.shown === true }
+    if (how === 'dot') showNews('in')
+    else ring(kind)
+    update()
+  }
+
+  // The colours for a kind, on Windows' mode now: a plugin's from its own.
+  const flowStops = kind => Flow.gradient(Flow.palette(kind, flowLight(), news?.colour, hintAccent()))
+
+  function ring(kind) {
+    const step = Flow.play(flowState, kind, performance.now(), { still: stillMotionNow() })
+    flowState = step.state
+    if (step.act === 'start') {
+      // A dot from before goes, and comes again in the new colour as it fades.
+      news.shown = false
+      for (const b of blends) b.anim.cancel()
+      blends = []
+      for (const s of spins) s.firstChild.style.background = flowStops(kind)
+      flow.classList.toggle('glow', Flow.glows(flowLight(), step.ring.still))
+      flow.classList.add('on')
+      placeFlow()
+      animateRing(step.ring)
+    } else if (step.act === 'blend') {
+      blendTo(kind)
+      if (step.retimed) animateRing(step.ring)
+    } else if (step.act === 'hop' || step.act === 'swap') {
+      showNews(step.act)
+    }
+    // hold: the ring keeps its colour; the dot has the new one as it comes.
+  }
+
+  // Its turning and its light from where they are now (Flow.frames), its
+  // dot as it fades and its end, timed anew.
+  function animateRing(r) {
+    for (const a of flowAnims) a.cancel()
+    for (const t of flowTimers) clearTimeout(t)
+    const f = Flow.frames(r, performance.now())
+    flowAnims = [flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' })]
+    const glow = flow.classList.contains('glow')
+    if (f.turn) {
+      for (const s of spins) {
+        if (!glow && s.closest('.flow-glow')) continue
+        const turn = [{ transform: `rotate(${f.turn.from}deg)` }, { transform: `rotate(${f.turn.to}deg)` }]
+        flowAnims.push(s.animate(turn, { delay: f.turn.delay, duration: f.turn.duration, easing: f.turn.easing, fill: 'both' }))
+      }
+    }
+    flowTimers = [setTimeout(() => showNews('in'), Math.max(0, f.dotIn)), setTimeout(endRing, Math.max(0, f.end))]
+  }
+
+  // Into another kind's colours over BLEND_MS: the upper of each square's
+  // two layers takes them and comes up, then the lower has them and the
+  // upper goes again. One coming mid-way: the last finished at once.
+  function blendTo(kind) {
+    const stops = flowStops(kind)
+    for (const b of blends) settle(b)
+    blends = spins.map(s => {
+      const [under, over] = s.children
+      over.style.background = stops
+      const b = { under, stops, anim: over.animate([{ opacity: 0 }, { opacity: 1 }], { duration: stillMotionNow() ? 0 : Flow.BLEND_MS, fill: 'forwards' }) }
+      b.anim.onfinish = () => settle(b)
+      return b
+    })
+  }
+
+  // A blend done (or cut short by the next): the lower layer has its colours.
+  function settle(b) {
+    b.under.style.background = b.stops
+    b.anim.cancel()
+  }
+
+  // Played: nothing of it left running; the dot there if it has not come.
+  function endRing() {
+    for (const b of blends) settle(b)
+    for (const a of flowAnims) a.cancel()
+    for (const t of flowTimers) clearTimeout(t)
+    flowAnims = []
+    blends = []
+    flowTimers = []
+    flow.classList.remove('on', 'glow')
+    if (news && !news.shown) showNews('in')
+    // Back up out of the way, if a window under it had it there.
+    setStow()
+  }
+
+  // The island opened as it played: gone at once (it would grow with the
+  // island), and the next rings anew.
+  function stopRing() {
+    flowState = Flow.stop(flowState)
+    endRing()
+  }
+
+  // The ring's frame where the island is: 3 px out all round, its corners
+  // 3 px rounder than the island's own; on the black strip a circle of 36
+  // round her 30 px portrait. Where anchor positioning is missing (an older
+  // WebKit), set from the island's box as it is now.
+  function placeFlow() {
+    if (!isRinging()) return
+    const round = home() === 'taskbar' && !isCapsule()
+    const a = avatarBox()
+    const [ax, ay] = [a.x + a.px / 2 - 18, a.y + a.px / 2 - 18]
+    flow.classList.toggle('round', round)
+    if (round) {
+      flow.style.setProperty('--flow-x', `${ax}px`)
+      flow.style.setProperty('--flow-y', `${ay}px`)
+    } else {
+      flow.style.setProperty('--flow-r', (island.style.borderRadius || '18px').split(/\s+/).map(r => `${(parseFloat(r) || 0) + 3}px`).join(' '))
+    }
+    if (ANCHORED) return
+    const [x, y, w, h] = round ? [island.offsetLeft + ax, island.offsetTop + ay, 36, 36] : [island.offsetLeft - 3, island.offsetTop - 3, island.offsetWidth + 6, island.offsetHeight + 6]
+    Object.assign(flow.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, right: 'auto', bottom: 'auto' })
+  }
+
+  // Her portrait in the closed island (x, y, px across): her own, or her
+  // still one while she is out.
+  function avatarBox() {
+    if (isHome()) return { x: parseFloat(her.style.left) || 0, y: parseFloat(her.style.top) || 0, px: parseFloat(her.style.width) || TASK_HEAD }
+    const still = compact.querySelector('.still-her')
+    if (still) return { x: still.offsetLeft, y: still.offsetTop, px: still.offsetWidth }
+    return { x: 9, y: 9, px: TASK_HEAD }
+  }
+
+  // The dot over her portrait's top-right, as the hint's (placeHer): 2 px
+  // out; 1 px in on an upright capsule, whose round top would cut it.
+  function placeNews() {
+    if (view !== 'compact') return
+    const a = avatarBox()
+    const [dx, dy] = isSide() ? [a.px - 10, 1] : [a.px - 7, -2]
+    Object.assign(newsDot.style, { left: `${a.x + dx}px`, top: `${a.y + dy}px` })
+  }
+
+  // The dot's colour: a mood's as the island's words have it, a hello's and
+  // a notice's Windows' accent, a plugin's its own (or the accent).
+  function newsColour() {
+    if (Flow.isEnding(news.kind)) return hue()[news.kind]
+    if (news.kind === 'plugin') return ink(news.colour) || hintAccent()
+    return hintAccent()
+  }
+
+  // It comes (in: grown from nothing, a little past full size and back),
+  // hops in a new colour, or only takes it (swap, and with reduced motion).
+  function showNews(how) {
+    if (!news) return
+    const was = news.shown
+    news.shown = true
+    drawNews()
+    const cls = !was ? 'pop' : how === 'hop' ? 'hop' : ''
+    if (!cls || stillMotionNow()) return
+    newsDot.classList.remove('pop', 'hop')
+    void newsDot.offsetWidth
+    newsDot.classList.add(cls)
+  }
+
+  function drawNews() {
+    const on = !!news?.shown && view === 'compact' && !isHinting()
+    body.classList.toggle('has-news', on)
+    if (on) newsDot.style.setProperty('--news', newsColour())
+  }
+
+  // Opened (by a hover, mostly) with something kept: it is what the island
+  // shows, for as long as it would have by itself; gone if its time is up.
+  function takePending() {
+    if (!pending || isNudging()) return
+    const p = pending
+    pending = null
+    if (Date.now() > p.until) return
+    nudge = { until: Date.now() + p.ms, clip: p.clip, text: p.text, widget: p.widget }
+    clearTimeout(nudgeTimer)
+    nudgeTimer = setTimeout(() => {
+      nudge = null
+      update()
+    }, p.ms)
   }
 
   // Now and then a blink, as a class for a moment (no running animation).
@@ -5036,16 +5291,15 @@
     spriteUrl = data.sprite
     second = data.second || null
     quiet = data.quiet === true
+    fullScreen = data.fullScreen === true
     takeWidgets(data.widgets)
     place()
-    // Something new that wants you, or is finished: the island opens for a
-    // moment, a longer one with Claude's words to read. Not for an ending
-    // when it is not to open by itself (openOnEnd, on unless turned off):
-    // her mood and the sound alone say so then; a session waiting on you
-    // still opens it.
+    // Something new that wants you: the island opens for a moment. One that
+    // is finished: as the setting says (endCue, cue): a ring round it (the
+    // default), the island open for a moment as before (a longer one with
+    // Claude's words to read), or only the dot.
     const isReading = isDetailed() && Status.isEnding(now) && !!now.reply
-    const opens = NUDGE_CLIP[now.mood] && !(Status.isEnding(now) && config.openOnEnd === false)
-    if (isOn() && before !== now.mood && opens) nudgeFor(NUDGE_CLIP[now.mood], null, isReading ? NUDGE_READ_MS : NUDGE_MS)
+    if (isOn() && before !== now.mood && NUDGE_CLIP[now.mood]) cue(now.mood, { clip: NUDGE_CLIP[now.mood], text: null, ms: isReading ? NUDGE_READ_MS : NUDGE_MS })
     else update()
   })
 
@@ -5078,12 +5332,22 @@
     tickCarousels()
   })
 
-  // A hello, or something to fix: the island opens to say it, and she waves.
-  window.pet.onReact(({ say: text }) => {
-    if (isOn() && text) nudgeFor('waving', say(lang, text))
+  // A hello, a task done, a tool failed (her reactions with words): a ring
+  // in their colours, the words in the island as it opens next, her waving
+  // (already open: in it now).
+  window.pet.onReact(({ react, say: text }) => {
+    if (isOn() && text) cue(Flow.kindOfReact(react), { clip: 'waving', text: say(lang, text), ms: NUDGE_MS })
   })
 
-  // A widget asks to open the island (main checked that nothing wants you).
+  // An app full screen on her display, or none now: no ring while one is.
+  window.pet.onFullScreen(({ on } = {}) => {
+    fullScreen = on === true
+  })
+
+  // A widget asks to open the island (main checked that nothing wants you):
+  // a ring in its colour, its card in the island as it opens next. A new
+  // version or a crash report (not a widget's): the dot alone, in Windows'
+  // accent; the island opened next says it.
   window.pet.onNudge(n => {
     if (!isOn()) return
     // News for a carousel on the strip that has it: it cuts in.
@@ -5094,7 +5358,9 @@
     const at = widgets.findIndex(w => w.id === n.id)
     if (at >= 0) widgetAt = at
     // Not a widget's (a new version): its own icon.
-    nudgeFor('waving', null, NUDGE_READ_MS, { ...n, icon: widgets[at]?.icon || n.icon, color: widgets[at]?.color, detail: widgets[at]?.detail })
+    const own = widgets[at] || allWidgets.find(w => w.id === n.id)
+    const widget = { ...n, icon: own?.icon || n.icon, color: own?.color, detail: own?.detail }
+    cue(own ? 'plugin' : 'notice', { clip: 'waving', text: null, ms: NUDGE_READ_MS, widget })
   })
 
   // --- The pointer ----------------------------------------------------------------

@@ -90,6 +90,9 @@
     onOverFull: on('island:over-full'),
     // A maximized window on her display, at the top of the screen ({ on }, island.rs look_over_max).
     onOverMax: on('island:over-max'),
+    // An app full screen on her display, or none now ({ on }, main.rs
+    // look_fullscreen): no flow light's ring while one is (island.js).
+    onFullScreen: on('pet:full-screen'),
     // At the top of the screen, a window under her closed island ({ on },
     // island.rs look_under); the pointer has called it down from out of
     // the way, or has gone from it ({ on }, call_look); it is up out of the

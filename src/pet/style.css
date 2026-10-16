@@ -4310,7 +4310,8 @@ html.handoff-wait body.home-taskbar #island-row {
    are); the capsule's words "Connect Claude Code ›" in the accent, a side
    capsule's link glyph in its clock's place; the open island what it is for,
    a row to go and connect, and "don't remind me" at its foot. */
-#island .hint-dot {
+#island .hint-dot,
+#island .news-dot {
   display: none;
   position: absolute;
   z-index: 2;
@@ -4326,17 +4327,163 @@ body.hinting #island[data-view='compact'] .hint-dot {
   display: block;
 }
 
-.home-taskbar.tb-capsule #island .hint-dot {
+.home-taskbar.tb-capsule #island .hint-dot,
+.home-taskbar.tb-capsule #island .news-dot {
   box-shadow: 0 0 0 2px var(--i-bg);
 }
 
 .home-taskbar:not(.tb-capsule) #island .hint-dot,
-.island-bare.home-taskbar.tb-capsule #island .hint-dot {
+.island-bare.home-taskbar.tb-capsule #island .hint-dot,
+.home-taskbar:not(.tb-capsule) #island .news-dot,
+.island-bare.home-taskbar.tb-capsule #island .news-dot {
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.6);
 }
 
-.tb-light.island-bare.home-taskbar.tb-capsule #island .hint-dot {
+.tb-light.island-bare.home-taskbar.tb-capsule #island .hint-dot,
+.tb-light.island-bare.home-taskbar.tb-capsule #island .news-dot {
   box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+}
+
+/* --- The flow light (island.js, "The flow light"; flow.js) --------------------------
+   Something happened with the island closed (a turn done, changes to review,
+   an error, a hello, a plugin's nudge): a ring of colour 2 px wide, 1 px off
+   the capsule's edge (its frame 3 px out each side, its corners 3 px
+   rounder: --flow-r), so it reads as a light round it, not an outline; on
+   the black strip, which has no capsule, a circle of 36 round her portrait
+   (round, --flow-x/--flow-y in the island). Laid over the island by anchor
+   positioning, following it as it changes size. A frame cut to a ring by its
+   mask (the content box taken from the whole), in it a square of conic
+   gradient as wide as 1.5 times the frame's longer side (cqmax: its corners
+   always covered) that alone turns; two layers of it, the upper coming up
+   in a new colour (a blend). Under it on a dark ground the same blurred
+   (glow). The page animates its turning and its light alone; nothing of it
+   drawn, nor will-change, once it has played (on). Then the dot: as the
+   hint's, in the newest event's colour (--news), until seen. */
+#island {
+  anchor-name: --island;
+}
+
+#flow {
+  display: none;
+  position: absolute;
+  z-index: 3;
+  position-anchor: --island;
+  top: calc(anchor(top) - 3px);
+  left: calc(anchor(left) - 3px);
+  right: calc(anchor(right) - 3px);
+  bottom: calc(anchor(bottom) - 3px);
+  border-radius: var(--flow-r, 21px);
+  container-type: size;
+  pointer-events: none;
+}
+
+#flow.round {
+  top: calc(anchor(top) + var(--flow-y, 6px));
+  left: calc(anchor(left) + var(--flow-x, 6px));
+  right: auto;
+  bottom: auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+#flow.on {
+  display: block;
+  will-change: opacity;
+}
+
+/* Pulled out, reached for, up out of the way: not round what is not there. */
+.pulling #flow,
+.reaching #flow,
+.isl-stowed #flow {
+  visibility: hidden;
+}
+
+.oled-shift #flow {
+  translate: var(--oled-x) var(--oled-y);
+}
+
+#flow .flow-ring,
+#flow .flow-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+#flow .flow-ring {
+  box-sizing: border-box;
+  padding: 2px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+#flow .flow-glow {
+  display: none;
+  filter: blur(6px);
+  opacity: 0.45;
+}
+
+#flow.glow .flow-glow {
+  display: block;
+}
+
+#flow .flow-spin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150cqmax;
+  height: 150cqmax;
+  translate: -50% -50%;
+}
+
+#flow.on .flow-spin {
+  will-change: transform;
+}
+
+#flow .flow-spin b {
+  position: absolute;
+  inset: 0;
+}
+
+#flow .flow-spin b + b {
+  opacity: 0;
+}
+
+body.has-news #island[data-view='compact'] .news-dot {
+  display: block;
+  background: var(--news, #34d27b);
+}
+
+/* In the notch, tucked away: nothing of it in sight. */
+.tucked #island .news-dot {
+  visibility: hidden;
+}
+
+/* It comes as the ring fades (0.25 s, a little past full size and back),
+   and hops in a new colour (another soon after a ring: 1, 1.35, 1, 0.3 s). */
+#island .news-dot.pop {
+  animation: news-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#island .news-dot.hop {
+  animation: news-hop 0.3s ease;
+}
+
+@keyframes news-pop {
+  from {
+    transform: scale(0);
+  }
+}
+
+@keyframes news-hop {
+  50% {
+    transform: scale(1.35);
+  }
 }
 
 #island-compact .label.hint {

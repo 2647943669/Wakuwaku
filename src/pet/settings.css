@@ -415,6 +415,16 @@
   align-items: stretch;
 }
 
+/* What a turn's end does (settings.js pageAlerts): its three choices under
+   its words, as wide as they need. */
+#island-settings .r.col.cue {
+  gap: 8px;
+}
+
+#island-settings .r.col.cue .seg {
+  align-self: flex-start;
+}
+
 /* Buttons side by side at a row's end (the desktop's picture: picture, folder). */
 #island-settings .btns {
   display: flex;
