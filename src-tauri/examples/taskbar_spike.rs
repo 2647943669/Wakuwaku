@@ -13,7 +13,7 @@
 //                            one at a time and note what opened, where, and
 //                            whether the taskbar came back (probe.log, and a
 //                            screenshot of each)
-//   taskbar_spike --status   the taskbar, the work area and the bar, now, and where Win alone goes
+//   taskbar_spike --status   the taskbar, the work area and the bar, now, and whose the shell's windows are
 //   taskbar_spike --quit     the bar closed, as its last button does
 //   taskbar_spike --restore  give the taskbar back (after a crash)
 //

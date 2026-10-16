@@ -578,7 +578,7 @@ mod imp {
         }
         *SH.lock().unwrap() = Some(crate::shared(&sh.app));
         let file = sh.dir.join("taskbar.json");
-        // Where Win alone goes before hers is up, to compare with after (shell.rs LoneWin).
+        // The shell's windows before hers is up, to compare with after (shell.rs LoneWin).
         sh.log(&format!("taskbar: {}", shell::lone_win().said()));
         // Each step timed, for a start that took long (one took 600 ms
         // where most take 10, 2026-10-13: which step waited on Explorer?).
@@ -746,7 +746,7 @@ mod imp {
             sh.log(&format!("taskbar: Windows' given back: {}", shell::restore(&file)));
         }
         // Explorer's the taskbar again, shown: every window told so
-        // (systray.rs handed_back), then where Win alone goes now.
+        // (systray.rs handed_back), then whose the shell's windows are now.
         if had_host {
             let told = systray::handed_back();
             sh.log(&format!("taskbar: {}; {}", if told { "every window told Explorer's is the taskbar again" } else { "the tray's window still there: no window told" }, shell::lone_win().said()));
@@ -2924,7 +2924,7 @@ mod tests {
 pub fn recover(sh: &Shared) {
     if crate::shell::recover(&sh.dir.join("taskbar.json")) {
         // Every window told, as the run killed holding it never did
-        // (systray.rs handed_back), and where Win alone goes now.
+        // (systray.rs handed_back), and whose the shell's windows are now.
         crate::systray::handed_back();
         sh.log(&format!("taskbar: Windows' taskbar was left put away: given back, every window told; {}", crate::shell::lone_win().said()));
     }

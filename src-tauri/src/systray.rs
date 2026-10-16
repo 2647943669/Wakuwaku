@@ -272,6 +272,12 @@ mod imp {
     const WM_SYSCOMMAND: u32 = 0x0112;
     const WM_HOTKEY: u32 = 0x0312;
     const WM_CLOSE: u32 = 0x0010;
+    const WM_MOVE: u32 = 0x0003;
+    const WM_SIZE: u32 = 0x0005;
+    const WM_GETMINMAXINFO: u32 = 0x0024;
+    const WM_WINDOWPOSCHANGING: u32 = 0x0046;
+    const WM_WINDOWPOSCHANGED: u32 = 0x0047;
+    const WM_NCCALCSIZE: u32 = 0x0083;
     const ISMEX_SEND: u32 = 0x1;
     const ISMEX_NOTIFY: u32 = 0x2;
     const ISMEX_CALLBACK: u32 = 0x4;
@@ -694,10 +700,12 @@ mod imp {
         // Kept, not handed on: counted for the log when another thread sent
         // it, or when it is a command to the taskbar's window (the system
         // menu's, a hot key's, a close), posted or sent: whether Windows'
-        // way to Start ever passes here (zhoupengjie/Wakuwaku#54).
+        // way to Start ever passes here (zhoupengjie/Wakuwaku#54). Not
+        // ours being placed (place, keep_first, from her other threads).
         // SAFETY: a plain query about the message being handled.
         let sent = unsafe { InSendMessageEx(std::ptr::null_mut()) } & (ISMEX_SEND | ISMEX_NOTIFY | ISMEX_CALLBACK) != 0;
-        if sent || matches!(msg, WM_SYSCOMMAND | WM_HOTKEY | WM_CLOSE) {
+        let placed = matches!(msg, WM_MOVE | WM_SIZE | WM_GETMINMAXINFO | WM_WINDOWPOSCHANGING | WM_WINDOWPOSCHANGED | WM_NCCALCSIZE);
+        if (sent && !placed) || matches!(msg, WM_SYSCOMMAND | WM_HOTKEY | WM_CLOSE) {
             count(&if msg == WM_SYSCOMMAND { format!("kept {msg:#x} {:#x}", wparam & 0xFFF0) } else { format!("kept {msg:#x}") });
         }
         // SAFETY: the default for the rest.

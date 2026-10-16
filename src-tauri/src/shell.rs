@@ -477,16 +477,18 @@ mod imp {
 
 pub use imp::{explorer_tray, guard, hide, keep_room, lone_win, recover, rehide, restore, room, show_bars, shown_room, spawn_guard, started, taskbar_created, taskbars, visible};
 
-// Win pressed alone opens Start by way of windows Explorer owns, none of
-// them hers (zhoupengjie/Wakuwaku#54, where it did nothing after she was
-// quit, until Explorer was started again). As far as is known (Open-Shell
-// catches it at Progman; nothing documents it), win32k hands it to the
-// desktop's shell window (Progman) and its task manager window, which
-// Explorer's taskbar sets to its task band (MSTaskSwWClass, in its
-// Shell_TrayWnd: seen on 26300; hers never sets either), and Explorer opens
-// Start. What a program reaches as the taskbar is the first Shell_TrayWnd,
-// hers while she holds it. Read at each take and give back, and at a start
-// after one was left put away, for the log: whether all three are Explorer's.
+// The shell's windows Win pressed alone may go by, none of them hers
+// (zhoupengjie/Wakuwaku#54, where it opened no Start after she was quit,
+// until Explorer was started again; not seen again in the test VM). Nothing
+// documents its way; Open-Shell catches it at Progman, the desktop's shell
+// window. The first Shell_TrayWnd is what a program reaches as the taskbar:
+// hers while she holds it, Explorer's again once she gives it back. The
+// task manager window (Explorer's task band, MSTaskSwWClass) is told as
+// well, though it is not the way on 26300: cleared in the VM, Win alone
+// still opened Start (2026-10-16); WM_SYSCOMMAND SC_TASKLIST posted to any
+// of the three opens it. Read at each take and give back, and at a start
+// after one was left put away, for the log: whether the shell window and
+// the first tray window are Explorer's.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Seen {
     pub class: String,
@@ -508,15 +510,17 @@ pub struct LoneWin {
 }
 
 impl LoneWin {
+    // The shell window and the first tray window Explorer's (the task
+    // manager window only told).
     pub fn ok(&self) -> bool {
-        [&self.taskman, &self.shell, &self.tray].iter().all(|w| w.as_ref().is_some_and(Seen::explorers))
+        [&self.shell, &self.tray].iter().all(|w| w.as_ref().is_some_and(Seen::explorers))
     }
 
-    // For the log: "Win alone reaches Explorer: …", or "may not open Start".
+    // For the log: "the shell's windows Explorer's: …", or not all.
     pub fn said(&self) -> String {
         let one = |what: &str, w: &Option<Seen>| w.as_ref().map_or_else(|| format!("no {what}"), |s| format!("{what} {} of {}", s.class, s.exe));
-        let parts = [one("taskman window", &self.taskman), one("shell window", &self.shell), one("first tray window", &self.tray)];
-        format!("{}: {}", if self.ok() { "Win alone reaches Explorer" } else { "Win alone may not open Start" }, parts.join(", "))
+        let parts = [one("shell window", &self.shell), one("first tray window", &self.tray), one("taskman window", &self.taskman)];
+        format!("{}: {}", if self.ok() { "the shell's windows Explorer's" } else { "the shell's windows not all Explorer's (Win alone may not open Start)" }, parts.join(", "))
     }
 }
 
@@ -537,19 +541,20 @@ mod tests {
     }
 
     #[test]
-    fn win_alone_reaches_explorer_only_by_explorers_windows() {
+    fn the_shells_windows_are_explorers_or_not() {
         // As on 26300 with Explorer's taskbar its own.
         let fine = LoneWin { taskman: win("MSTaskSwWClass", "explorer.exe"), shell: win("Progman", "Explorer.EXE"), tray: win("Shell_TrayWnd", "explorer.exe") };
         assert!(fine.ok());
-        assert_eq!(fine.said(), "Win alone reaches Explorer: taskman window MSTaskSwWClass of explorer.exe, shell window Progman of Explorer.EXE, first tray window Shell_TrayWnd of explorer.exe");
-        // No task manager window (the one set is gone): nothing to hand Win to.
+        assert_eq!(fine.said(), "the shell's windows Explorer's: shell window Progman of Explorer.EXE, first tray window Shell_TrayWnd of explorer.exe, taskman window MSTaskSwWClass of explorer.exe");
+        // No task manager window: Win alone still opened Start in the VM; told only.
         let none = LoneWin { taskman: None, ..fine.clone() };
-        assert!(!none.ok());
-        assert!(none.said().starts_with("Win alone may not open Start: no taskman window, "), "{}", none.said());
+        assert!(none.ok());
+        assert!(none.said().ends_with(", no taskman window"), "{}", none.said());
         // Hers still first after she gave it back (her window not gone).
         let hers = LoneWin { tray: win("Shell_TrayWnd", "wakuwaku.exe"), ..fine.clone() };
         assert!(!hers.ok());
-        assert!(hers.said().ends_with("first tray window Shell_TrayWnd of wakuwaku.exe"), "{}", hers.said());
+        assert!(hers.said().starts_with("the shell's windows not all Explorer's (Win alone may not open Start): "), "{}", hers.said());
+        assert!(hers.said().contains("first tray window Shell_TrayWnd of wakuwaku.exe"), "{}", hers.said());
         // Explorer not running: none of them.
         assert!(!LoneWin { taskman: None, shell: None, tray: None }.ok());
     }
