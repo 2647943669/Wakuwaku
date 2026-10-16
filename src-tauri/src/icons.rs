@@ -146,6 +146,17 @@ mod imp {
         fn SystemParametersInfoW(action: u32, param: u32, pv: *mut c_void, flags: u32) -> i32;
         fn SendMessageTimeoutW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize, flags: u32, ms: u32, result: *mut usize) -> isize;
         fn GetAncestor(hwnd: Hwnd, flags: u32) -> Hwnd;
+        fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
+        fn CloseHandle(handle: isize) -> i32;
+        fn VirtualAllocEx(process: isize, address: *mut c_void, size: usize, kind: u32, protect: u32) -> *mut c_void;
+        fn VirtualFreeEx(process: isize, address: *mut c_void, size: usize, kind: u32) -> i32;
+        fn ReadProcessMemory(process: isize, base: *const c_void, buffer: *mut c_void, size: usize, read: *mut usize) -> i32;
+        fn WriteProcessMemory(process: isize, base: *mut c_void, buffer: *const c_void, size: usize, written: *mut usize) -> i32;
     }
 
     // SAFETY (callers): the object is alive and has that method there.
@@ -365,6 +376,71 @@ mod imp {
             out
         }
 
+        // Each icon as its list draws it (the screen's px): its picture and its
+        // label, both lines of a long one (LVM_GETITEMRECT, LVIR_BOUNDS, read
+        // in Explorer's memory). Its grid's spacing is not that: on a display
+        // at another scale than the main one the icons are larger than the
+        // spacing says, and a label of two lines reaches below the place
+        // (the test VM, its left display at 175 %: 130 x 147 against 93 x
+        // 125, from 23 px left of where the view says the item is). Empty
+        // when the list cannot be read (another kind of desktop, Explorer
+        // busy): the places and the spacing then (desk.rs icons).
+        pub fn bounds(&self) -> Vec<Rect> {
+            const LVM_GETITEMCOUNT: u32 = 0x1004;
+            const LVM_GETITEMRECT: u32 = 0x100E;
+            const LVIR_BOUNDS: i32 = 0;
+            // PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE.
+            const ACCESS: u32 = 0x8 | 0x10 | 0x20;
+            const MEM_COMMIT_RESERVE: u32 = 0x3000;
+            const MEM_RELEASE: u32 = 0x8000;
+            const PAGE_READWRITE: u32 = 0x4;
+            const MOST: usize = 512;
+            let list = self.list as Hwnd;
+            let size = std::mem::size_of::<Rect>();
+            let mut out = Vec::new();
+            // SAFETY: Explorer's list only asked about, through a RECT of
+            // our own copied into a block of its memory that we allocate and
+            // free here; every call checked, the handle closed once.
+            unsafe {
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(list, &mut pid);
+                if pid == 0 {
+                    return out;
+                }
+                let process = OpenProcess(ACCESS, 0, pid);
+                if process == 0 {
+                    return out;
+                }
+                let block = VirtualAllocEx(process, std::ptr::null_mut(), size, MEM_COMMIT_RESERVE, PAGE_READWRITE);
+                if !block.is_null() {
+                    let mut count = 0usize;
+                    if SendMessageTimeoutW(list, LVM_GETITEMCOUNT, 0, 0, SMTO_ABORTIFHUNG, 500, &mut count) != 0 {
+                        let o = self.origin();
+                        for i in 0..count.min(MOST) {
+                            let mut r = Rect { left: LVIR_BOUNDS, ..Rect::default() };
+                            let mut moved = 0usize;
+                            if WriteProcessMemory(process, block, &r as *const Rect as *const c_void, size, &mut moved) == 0 {
+                                break;
+                            }
+                            let mut got = 0usize;
+                            if SendMessageTimeoutW(list, LVM_GETITEMRECT, i, block as isize, SMTO_ABORTIFHUNG, 500, &mut got) == 0 || got == 0 {
+                                continue;
+                            }
+                            if ReadProcessMemory(process, block, &mut r as *mut Rect as *mut c_void, size, &mut moved) == 0 {
+                                continue;
+                            }
+                            if r.right > r.left && r.bottom > r.top {
+                                out.push(Rect { left: r.left + o.x, top: r.top + o.y, right: r.right + o.x, bottom: r.bottom + o.y });
+                            }
+                        }
+                    }
+                    VirtualFreeEx(process, block, 0, MEM_RELEASE);
+                }
+                CloseHandle(process);
+            }
+            out
+        }
+
         unsafe fn name_of(&self, pidl: *const c_void) -> String {
             if self.folder.is_null() {
                 return String::new();
@@ -415,6 +491,7 @@ mod imp {
             let Some(d) = desktop() else { return json!({ "desktop": null }) };
             let w = work_area();
             let items: Vec<Value> = d.items().iter().map(|i| json!({ "name": i.name, "x": i.at.x, "y": i.at.y })).collect();
+            let drawn: Vec<Value> = d.bounds().iter().map(|r| json!([r.left, r.top, r.right - r.left, r.bottom - r.top])).collect();
             let s = d.spacing();
             let o = d.origin();
             json!({
@@ -425,6 +502,7 @@ mod imp {
                 "windows": { "defview": d.defview, "list": d.list, "top": d.top },
                 "work": [w.left, w.top, w.right, w.bottom],
                 "items": items,
+                "drawn": drawn,
             })
         })
     }

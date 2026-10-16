@@ -76,6 +76,15 @@
     const entries = shown()
     const g = grid()
     const fresh = new Set(entries.filter(e => !drawn.has(e.id)).map(e => e.id))
+    // Something new here and the icons read a while ago: read again first.
+    if (fresh.size && Date.now() - iconsAt > ICONS_FRESH_MS) {
+      if (!iconsLoading)
+        iconsLoading = loadIcons().then(() => {
+          iconsLoading = null
+          draw()
+        })
+      return
+    }
     const { at, moved } = G.settle(entries, here, g, icons, fresh)
     spots = at
     for (const e of entries) {
@@ -730,13 +739,43 @@
     then({ key: there.key, at: G.snap(g, there.x + ox, there.y + oy, size) })
   }
 
+  // The icons as Explorer's list draws them (desk.rs icons: each picture
+  // and label, both lines of a long one), read as a press starts, as the
+  // page comes up, and before something new is placed here if they were
+  // read a while ago (Explorer may have laid them anew meanwhile).
+  const ICONS_FRESH_MS = 5000
+  let iconsAt = 0
+  let iconsLoading = null
+  // Not read (null: Explorer starting again, busy), or none (a desktop
+  // read before Explorer had laid its icons): as they were, asked again
+  // every 3 s, five times at most; known only then, what was placed
+  // meanwhile settled again, clear of them (the VM, 2026-10-16: widgets put
+  // on the desktop as the page came up lay over icons it had not got).
+  let iconsKnown = false
+  let iconsMissed = false
+  let iconsTries = 0
+  let iconsTimer = 0
   async function loadIcons() {
+    let list = null
     try {
-      const list = await invoke('desk_icons')
-      icons = (Array.isArray(list) ? list : []).map(([x, y, w, h]) => ({ x, y, w, h }))
-    } catch {
-      icons = []
+      list = await invoke('desk_icons')
+    } catch {}
+    iconsAt = Date.now()
+    clearTimeout(iconsTimer)
+    if (Array.isArray(list) && list.length) {
+      icons = list.map(([x, y, w, h]) => ({ x, y, w, h }))
+      iconsKnown = true
+      iconsTries = 0
+      if (iconsMissed && !drag) {
+        iconsMissed = false
+        drawn.clear()
+        draw()
+      }
+      return
     }
+    if (Array.isArray(list) && !iconsKnown) icons = []
+    if (!iconsKnown) iconsMissed = true
+    if (iconsTries++ < 5) iconsTimer = setTimeout(loadIcons, 3000)
   }
 
   // A board refusing one (full): its frame shakes, 0.3 s (§7's note); with

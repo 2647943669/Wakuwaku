@@ -63,6 +63,25 @@ test('dropped onto the icons, a widget moves to the nearest free spot', () => {
   assert.ok(Math.abs(next[0] - 11) + Math.abs(next[1] - 4) <= 4, JSON.stringify(next))
 })
 
+test("an icon is all its list draws: a widget let go of over its label's second line moves too", () => {
+  // The test VM's left display at 175 % (CSS px): DeepSeek Harness's icon as
+  // Explorer's list draws it (desk.rs icons: LVM_GETITEMRECT, LVIR_BOUNDS),
+  // and the place of the grid's spacing it was taken for before, its label's
+  // second line and the picture's sides outside that.
+  const drawn = { x: 1560 / 1.75, y: 530 / 1.75, w: 130 / 1.75, h: 147 / 1.75 }
+  const place = { x: 1583 / 1.75, y: 527 / 1.75, w: 93 / 1.75, h: 125 / 1.75 }
+  // A work area whose row falls just under the place, on the label.
+  const g = G.gridOf([0, 350, 1920 / 1.75, 617])
+  const cell = [10, 0]
+  const r = G.rectAt(g, cell, 's')
+  assert.ok(!G.overlaps(r, place) && G.overlaps(r, drawn), JSON.stringify([r, place, drawn]))
+  // Taken for its place, it stayed over the label; taken as drawn, it moves.
+  assert.deepEqual(G.dropAt(g, r.x, r.y, 's', [], [place]), cell)
+  const moved = G.dropAt(g, r.x, r.y, 's', [], [drawn])
+  assert.notDeepEqual(moved, cell)
+  assert.ok(!G.overlaps(G.rectAt(g, moved, 's'), drawn))
+})
+
 test('a display with no room left: over the icons sooner than over a widget', () => {
   const g = G.gridOf([0, 0, 24 * 2 + 156, 24 * 2 + 156])
   assert.deepEqual([g.cols, g.rows], [2, 2])
