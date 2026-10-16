@@ -13,7 +13,7 @@
 //                            one at a time and note what opened, where, and
 //                            whether the taskbar came back (probe.log, and a
 //                            screenshot of each)
-//   taskbar_spike --status   the taskbar, the work area and the bar, now
+//   taskbar_spike --status   the taskbar, the work area and the bar, now, and where Win alone goes
 //   taskbar_spike --quit     the bar closed, as its last button does
 //   taskbar_spike --restore  give the taskbar back (after a crash)
 //
@@ -838,7 +838,9 @@ mod win {
             appbar::remove(bar);
         }
         let ok = shell::restore(&file());
-        log(&format!("given back ({why}): {ok}; {}", state_now()));
+        // Every window told, once ours is gone, as the pet does (systray.rs handed_back).
+        let told = TRAY.load(Ordering::SeqCst) && systray::handed_back();
+        log(&format!("given back ({why}): {ok}; {}; windows told: {told}; {}", state_now(), shell::lone_win().said()));
     }
 
     extern "system" fn on_event(_hook: isize, _event: u32, hwnd: Hwnd, object: i32, _child: i32, _thread: u32, _time: u32) {
@@ -1297,6 +1299,7 @@ mod win {
                     println!("bar at ({},{})-({},{})", r.left, r.top, r.right, r.bottom);
                 }
                 println!("put away (file): {}", file().exists());
+                println!("{}", shell::lone_win().said());
             }
             Some("--restore") => {
                 open_log("spike.log");
