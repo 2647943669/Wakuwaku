@@ -333,21 +333,18 @@
   // the closed island nor pinned at its end; the open island still lists
   // them all, as an overview.
   let placedOut = new Set()
-  let monitorPartOn = true
+  let pinnedNow = false
+  let listedNow = []
 
   // The widgets as sent: those that take turns are those on, but for the
-  // monitor pinned and what is put elsewhere; the same one stays shown as
-  // the list changes around it.
+  // monitor pinned and what is put elsewhere (deskgrid.js placement, the
+  // rule tested there); the same one stays shown as the list changes
+  // around it.
   function takeWidgets(all) {
     const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
     allWidgets = Array.isArray(all) ? all : []
-    monitor = allWidgets.find(w => w.id === 'monitor' && w.on !== false) || null
-    const onBar = home() === 'taskbar' ? Widgets.shownOn(tbLayout(), allWidgets) : new Set()
-    const onDesk = window.DeskGrid ? DeskGrid.shownOn(config.deskLayout, allWidgets) : new Set()
-    placedOut = new Set([...onBar, ...onDesk])
-    // The taskbar her home: the monitor pinned in its part, if the strip has it (#53).
-    monitorPartOn = home() !== 'taskbar' || hasMonitorPart()
-    widgets = allWidgets.filter(w => w.on !== false && !(w === monitor && isPinned()) && !placedOut.has(w.id))
+    const p = DeskGrid.placement({ all: allWidgets, home: home(), taskbar: home() === 'taskbar' ? tbLayout() : null, desk: config.deskLayout, pin: config.monitor?.pin })
+    ;({ monitor, pinned: pinnedNow, listed: listedNow, out: placedOut, turning: widgets } = p)
     const still = widgets.findIndex(w => w.id === was)
     if (still >= 0) widgetAt = still
   }
@@ -616,7 +613,7 @@
   // its setting, unless it is put on the desktop or on the taskbar (§7); the
   // taskbar her home, while the strip has that part (taken off it, #53, it
   // takes its turns in her capsule as any other).
-  const isPinned = () => !!monitor && config.monitor?.pin !== false && !placedOut.has('monitor') && monitorPartOn
+  const isPinned = () => pinnedNow
 
   // A widget's line in the open island (the spec's §6, wcards.js rowHTML),
   // the one shown lit: small, its glyph, name and value in one line;
@@ -744,13 +741,10 @@
     // a session at work not all the island says (2026-10-10). All that are
     // on, wherever each is (the desktop, the taskbar), as an overview (§7);
     // the monitor first while it is pinned or put elsewhere.
-    const monFirst = !!monitor && (isPinned() || placedOut.has('monitor'))
-    const listed = allWidgets.filter(w => w.on !== false && !(monFirst && w === monitor) && (widgets.includes(w) || placedOut.has(w.id)))
-    if ((listed.length || monFirst) && !(isNudging() && nudge.widget)) {
+    if (listedNow.length && !(isNudging() && nudge.widget)) {
       const list = el('span', 'wlist')
       const shown = shownWidget()
-      if (monFirst) list.append(widgetRow(monitor, false))
-      for (const w of listed) list.append(widgetRow(w, w === shown))
+      for (const w of listedNow) list.append(widgetRow(w, w === shown))
       lines.append(list)
     }
     // A widget that asked to open the island: what it says, over all else.

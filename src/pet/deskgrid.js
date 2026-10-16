@@ -399,6 +399,28 @@
     })
   }
 
+  // --- A widget in one place (§7's note; island.js takeWidgets) -------------------------------
+  // Put on the desktop (alone, stacked, in a board), or on the taskbar while
+  // that is her home: out of the closed island, neither taking turns there
+  // nor pinned at its end. The monitor's readings pinned at the island's end
+  // (or in the strip's part) by its setting, unless it is put elsewhere, and,
+  // the taskbar her home, only while the strip has that part (#53: taken
+  // off it, it takes its turns as any other). The open island lists every
+  // widget that is on, wherever it is, the monitor first while it is pinned
+  // or put elsewhere. all: the widgets with something to say (on or off);
+  // taskbar: her taskbar's layout as island.js tbLayout makes it whole.
+  function placement({ all = [], home = 'island', taskbar = null, desk = [], pin } = {}) {
+    const onBar = home === 'taskbar' && taskbar ? Widgets.shownOn(taskbar, all) : new Set()
+    const out = new Set([...onBar, ...shownOn(desk, all)])
+    const monitor = all.find(w => w.id === 'monitor' && w.on !== false) || null
+    const part = home !== 'taskbar' || !taskbar || Object.values(taskbar).some(run => Array.isArray(run) && run.includes('monitor'))
+    const pinned = !!monitor && pin !== false && !out.has('monitor') && part
+    const turning = all.filter(w => w.on !== false && !(w === monitor && pinned) && !out.has(w.id))
+    const monFirst = !!monitor && (pinned || out.has('monitor'))
+    const listed = [...(monFirst ? [monitor] : []), ...all.filter(w => w.on !== false && !(monFirst && w === monitor) && (turning.includes(w) || out.has(w.id)))]
+    return { out, monitor, pinned, turning, listed }
+  }
+
   const api = {
     CELL,
     GAP,
@@ -454,6 +476,7 @@
     has,
     shownOn,
     without,
+    placement,
   }
 
   if (typeof module !== 'undefined' && module.exports) {
