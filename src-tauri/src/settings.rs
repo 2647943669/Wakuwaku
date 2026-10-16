@@ -40,6 +40,11 @@ pub fn snapshot(sh: &Shared) -> Value {
         sh.redraw();
     }
     let omp_files = connection::omp_files();
+    // The monitor's source in effect: the one chosen, else LHM while it answers.
+    let lhm = crate::lhm::view();
+    let lhm_status = lhm["status"].as_str().unwrap_or("").to_string();
+    let monitor_source = crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource"), lhm_status == "found");
+    let lhm_shown = monitor_source == crate::hw::Source::Lhm && sh.island.lock().unwrap().settings_open;
     json!({
         "settings": Value::Object(sh.settings.lock().unwrap().clone()),
         "lang": sh.lang(),
@@ -141,8 +146,18 @@ pub fn snapshot(sh: &Shared) -> Value {
         "plate": crate::backplate::available(),
         "widgets": sh.widgets_view(),
         // The monitor's hardware sensors: LibreHardwareMonitor found or
-        // not, and its sensors (lhm.rs).
-        "lhm": crate::lhm::view(),
+        // not, and its sensors (lhm.rs); the built-in ones (hw.rs); which
+        // of them it shows: the one chosen, else LHM while it answers.
+        "lhm": lhm,
+        "hw": crate::hw::view(),
+        "monitorSource": monitor_source.name(),
+        // The CPU temperature/power helper's state (sensors.rs, #18 part B):
+        // off / pawnioMissing / settingUp / running / notAnswering / needsUpdate.
+        "cpuSensors": crate::sensors::view(&sh.dir),
+        // LibreHardwareMonitor got, set up, started (lhm_setup.rs): what is
+        // offered, what was found, a download under way; looked at again
+        // while the settings show it.
+        "lhmSetup": crate::lhm_setup::view(sh, &lhm_status, lhm_shown),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.
@@ -286,10 +301,13 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
             m.iter().all(|(k, v)| match k.as_str() {
                 "cpu" | "mem" | "net" | "battery" | "pin" => v.is_boolean(),
                 "every" => v.as_u64().is_some_and(|s| (1..=10).contains(&s)),
-                // The hardware's sensors, from LibreHardwareMonitor.
-                _ => crate::lhm::is_setting(k, v).unwrap_or(false),
+                // The hardware's sensors: the built-in ones picked, and
+                // LibreHardwareMonitor's.
+                _ => crate::hw::is_setting(k, v).or_else(|| crate::lhm::is_setting(k, v)).unwrap_or(false),
             })
         }),
+        // Where the monitor's sensors come from (hw.rs Source).
+        "monitorSource" => crate::hw::is_source(v),
         "widgetNudge" => is_bool,
         // Not to be reminded that nothing is connected (island.js isHinting).
         "connectHintOff" => is_bool,
@@ -551,6 +569,38 @@ pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
     }
 }
 
+// The CPU temperature/power helper (sensors.rs, #18 part B). She is not
+// elevated, so each action launches her own exe elevated (one UAC) and
+// returns at once; the switch's state follows as the helper starts (or does
+// not) answering. "install": set up the task (PawnIO must be present);
+// "installPawnIO": download and install PawnIO first; "remove": take the
+// task away (one more UAC) and leave PawnIO installed.
+#[tauri::command]
+pub async fn settings_cpu_sensors(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    let exe = data::exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let sid = crate::logon::user_sid().unwrap_or_default();
+    let data_dir = sh.dir.to_string_lossy().into_owned();
+    let started = if action == "remove" {
+        let params = format!("{} {} \"{}\"", crate::sensors::REMOVE_FLAG, sid, data_dir);
+        crate::tasks::launch_as_admin_with(&exe, &params) > 32
+    } else {
+        let with_pawnio = if action == "installPawnIO" { " pawnio" } else { "" };
+        let params = format!("{} {} {} \"{}\"{}", crate::sensors::SETUP_FLAG, sh.port, sid, data_dir, with_pawnio);
+        let ok = crate::tasks::launch_as_admin_with(&exe, &params) > 32;
+        if ok {
+            crate::sensors::note_setting_up();
+        }
+        ok
+    };
+    // The person turned the UAC prompt down (ShellExecute gave at most 32).
+    if started {
+        json!({ "ok": true, "snapshot": snapshot(&sh) })
+    } else {
+        json!({ "ok": false, "kind": "cancelled", "snapshot": snapshot(&sh) })
+    }
+}
+
 // Download a pet from codex-pets.net: the first one, or one replacing a
 // missing sprite, becomes her.
 #[tauri::command]
@@ -609,6 +659,19 @@ pub async fn settings_update(app: AppHandle, what: String) -> Value {
         "update" => crate::updates::update_now(&sh),
         _ => {}
     }
+    snapshot(&sh)
+}
+
+// LibreHardwareMonitor for the monitor, from its settings (lhm_setup.rs):
+// get (download, set up, start), start (one found: its web server turned
+// on, started), startup and noStartup (its own task, at logon), usePort
+// (hers set to the one its config says), folder (opened), look, dismiss.
+// The snapshot as it is then (a job goes on on its own thread, pushed as it
+// goes).
+#[tauri::command]
+pub async fn settings_lhm(app: AppHandle, what: String) -> Value {
+    let sh = shared(&app);
+    crate::lhm_setup::act(&sh, &what);
     snapshot(&sh)
 }
 

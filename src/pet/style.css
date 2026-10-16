@@ -927,6 +927,31 @@ body {
   font-size: calc(var(--g) * 0.75);
 }
 
+/* A drive read or written (hw.rs): the drive's glyph with the network's
+   small triangle, down or up, at its lower right corner, over the cell's
+   padding, so the cell is no wider than the others. */
+.wcell .wg.rd,
+.wcell .wg.wr {
+  position: relative;
+}
+
+.wcell .wg.rd::after,
+.wcell .wg.wr::after {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  font-size: calc(var(--g) * 0.5);
+  line-height: 1;
+}
+
+.wcell .wg.rd::after {
+  content: '\EDDC';
+}
+
+.wcell .wg.wr::after {
+  content: '\EDDB';
+}
+
 #bar-rest .mon.rows .wcell {
   --g: 16px;
   height: 18px;

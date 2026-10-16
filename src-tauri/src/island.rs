@@ -1214,8 +1214,10 @@ pub fn open_settings(sh: &Arc<Shared>, tab: Option<&str>) {
     sh.log(&format!("island: settings open on {:?}{}", tab, if is_up { "" } else { " (risen for them)" }));
     apply_visibility(sh);
     keep_on_top(sh);
-    // Mail's agents looked for again while they are open.
+    // Mail's agents looked for again while they are open; the monitor's
+    // sensors read whole for their list.
     crate::mail::agent::watch(sh);
+    crate::wake_monitor();
     sh.redraw();
     if ready {
         let _ = sh.app.emit_to("island", "island:settings", json!({ "tab": tab.unwrap_or("") }));

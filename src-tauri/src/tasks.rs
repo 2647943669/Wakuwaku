@@ -395,6 +395,12 @@ mod imp {
         start(path, "runas", "")
     }
 
+    // The same, with what follows it on its command line (the sensor
+    // helper's elevated setup and removal, sensors.rs).
+    pub fn launch_as_admin_with(path: &str, params: &str) -> isize {
+        start(path, "runas", params)
+    }
+
     fn start(path: &str, verb: &str, params: &str) -> isize {
         let dir = path.rsplit_once('\\').map(|(d, _)| d.to_string()).unwrap_or_default();
         let params = (!params.is_empty()).then(|| wide(params));
@@ -1327,6 +1333,9 @@ mod imp {
     pub fn launch_as_admin(_path: &str) -> isize {
         0
     }
+    pub fn launch_as_admin_with(_path: &str, _params: &str) -> isize {
+        0
+    }
     pub fn window_menu(_hwnds: &[isize], _words: [&str; 3]) -> Option<(bool, usize)> {
         None
     }
@@ -1360,7 +1369,7 @@ mod imp {
     }
 }
 
-pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, keys_held, launch, launch_as_admin, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, window_menu, with_com, end_task, launch_with};
+pub use imp::{alive, app_id, app_name, close, covered, destroy_icon, file_icon, front, icon_of, in_use, ime_native, is_ours, is_desktop, is_search, is_shell_flyout, is_start, is_task_window, keys_cheap, keys_held, launch, launch_as_admin, list, net, dwm_flush, no_transitions, plain_program_icon, press, press_all, raise_own, raise_top, shift_down, title, toggle_native, under_desktop, window_menu, with_com, end_task, launch_with, launch_as_admin_with};
 
 #[cfg(test)]
 mod tests {

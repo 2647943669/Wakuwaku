@@ -19,7 +19,9 @@
 //   asks.rs        prompts answered on her or the island
 //   connection.rs  the plugin, hooks in settings.json and Codex's hooks.json, start at login
 //   logon.rs       her logon task (start at login, the taskbar home), the session's logon
+//   hw.rs          the monitor's built-in hardware readings (Windows' own: PDH, D3DKMT, the drives)
 //   lhm.rs         hardware sensors from LibreHardwareMonitor's web server (the monitor)
+//   lhm_setup.rs   LibreHardwareMonitor downloaded, set up and started, on the person's click
 //   fetch.rs       pets from codex-pets.net
 //   fullscreen.rs, focus.rs, notify.rs   bits of Windows
 //   jump.rs        to a session's window, when you click the session
@@ -57,12 +59,14 @@ mod fetch;
 mod focus;
 mod fullscreen;
 mod gpu;
+mod hw;
 mod i18n;
 mod icons;
 mod inputs;
 mod island;
 mod jump;
 mod lhm;
+mod lhm_setup;
 mod logon;
 mod mail;
 mod notch;
@@ -75,6 +79,7 @@ mod power;
 mod proxy;
 mod screen;
 mod scripts;
+mod sensors;
 mod server;
 mod settings;
 mod shell;
@@ -579,7 +584,7 @@ impl Shared {
         let Value::Object(patch) = patch else { return };
         let touches_visibility = ["dnd", "display", "out", "hideInFullscreen", "taskbarEdge", "taskbarDisplays"].iter().any(|k| patch.contains_key(*k));
         let touches_top = ["settingsPin", "settingsTop"].iter().any(|k| patch.contains_key(*k));
-        let touches_monitor = ["monitor", "widgetsOff"].iter().any(|k| patch.contains_key(*k));
+        let touches_monitor = ["monitor", "monitorSource", "widgetsOff"].iter().any(|k| patch.contains_key(*k));
         let touches_stow = patch.contains_key("islandHideUnder");
         let touches_home = patch.get("display").is_some_and(|d| Some(d) != self.settings.lock().unwrap().get("display"));
         {
@@ -1301,6 +1306,46 @@ fn main() {
         icons::given_back(&data);
         return;
     }
+    // One whole reading of the monitor's built-in sensors as JSON, then
+    // gone (hw.rs): to check them on real hardware without starting her.
+    // Printed (the exe has no console of its own: piped, or redirected),
+    // and written to a file when one is named after it.
+    if let Some(at) = args.iter().position(|a| a == hw::DUMP_FLAG) {
+        let dump = serde_json::to_string_pretty(&widgets::hw_dump()).unwrap_or_default();
+        println!("{dump}");
+        if let Some(file) = args.get(at + 1) {
+            let _ = std::fs::write(file, &dump);
+        }
+        return;
+    }
+    // The sensor helper and its elevated setup/removal (sensors.rs, #18 part
+    // B): each ends without starting a pet. The helper takes her port and
+    // data folder; the setup takes the port, the user's SID and the data
+    // folder (and "pawnio" to install the driver first); the removal the SID
+    // and the folder.
+    if let Some(at) = args.iter().position(|a| a == sensors::SENSORS_FLAG) {
+        let port = args.get(at + 1).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+        let data = args.get(at + 2).map(PathBuf::from).unwrap_or_else(data::folder);
+        return sensors::run_helper(port, &data);
+    }
+    if let Some(at) = args.iter().position(|a| a == sensors::SETUP_FLAG) {
+        let port = args.get(at + 1).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+        let sid = args.get(at + 2).cloned().unwrap_or_default();
+        let data = args.get(at + 3).map(PathBuf::from).unwrap_or_else(data::folder);
+        let with_pawnio = args.iter().any(|a| a == "pawnio");
+        return sensors::run_setup(port, &sid, &data, with_pawnio);
+    }
+    if let Some(at) = args.iter().position(|a| a == sensors::REMOVE_FLAG) {
+        let sid = args.get(at + 1).cloned().unwrap_or_default();
+        let data = args.get(at + 2).map(PathBuf::from).unwrap_or_else(data::folder);
+        return sensors::run_remove(&sid, &data);
+    }
+    // One step for LibreHardwareMonitor run as administrator (lhm_setup.rs
+    // admin: put in Program Files, its config, its task, removed), then
+    // gone with its exit code; nothing of her started.
+    if let Some(at) = args.iter().position(|a| a == lhm_setup::ADMIN_FLAG) {
+        std::process::exit(lhm_setup::admin(&args[at + 1..]));
+    }
     let port: u16 = std::env::var("WAKUWAKU_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
     if std::env::args().any(|a| a == connection::ENSURE_FLAG || a == connection::LEGACY_ENSURE_FLAG) {
         return ensure_running(port);
@@ -1427,6 +1472,7 @@ fn main() {
             settings::settings_omp_hooks,
             settings::settings_zcode_hooks,
             settings::settings_dsh_hooks,
+            settings::settings_cpu_sensors,
             bars::bar_ready,
             bars::bar_asks,
             bars::bar_pop,
@@ -1439,6 +1485,7 @@ fn main() {
             settings::settings_gallery,
             settings::settings_open_site,
             settings::settings_update,
+            settings::settings_lhm,
             settings::settings_crash,
             mail::mail_discover,
             mail::mail_probe,
@@ -1626,27 +1673,39 @@ fn main() {
 
             // The monitor: the parts that are on, every so many seconds (its
             // setting, 1 to 10), while it is on; read again at once when it
-            // is turned on, its pace changes or the quiet does (woken by
-            // Shared::change and check_quiet: it looked four times a second
-            // whether they had, #14).
+            // is turned on, its pace or source changes, the quiet does, or
+            // the settings open (their list of sensors, read whole while they
+            // are) (woken by Shared::change, check_quiet and open_settings:
+            // it looked four times a second whether they had, #14).
             let monitored = sh.clone();
             spawn_named("monitor", move || {
                 power::thread_eco();
                 let mut monitor = widgets::Monitor::new();
                 let mut next = std::time::Instant::now();
+                // Read with the settings open since they last opened.
+                let mut watching_listed = false;
                 let mut was = (false, Value::Null, false);
                 loop {
-                    let setting = monitored.setting("monitor");
-                    let mut watching = widgets::Watching::from(&setting);
+                    let setting = json!([monitored.setting("monitor"), monitored.setting("monitorSource")]);
+                    let mut watching = widgets::Watching::from(&setting[0], &setting[1]);
                     let (on, quiet) = (monitored.is_widget_on("monitor"), monitored.is_quiet());
-                    watching.quiet = quiet;
-                    // Any of its settings changed (a sensor picked, too): read now.
-                    if std::time::Instant::now() >= next || (on, &setting, quiet) != (was.0, &was.1, was.2) {
+                    let listing = monitored.island.lock().unwrap().settings_open;
+                    (watching.quiet, watching.listing) = (quiet, listing);
+                    // Any of its settings changed (a sensor picked, too), the
+                    // settings opened, or LibreHardwareMonitor just started
+                    // answering (lhm::ask_now): read now.
+                    if lhm::take_read_now() | (std::time::Instant::now() >= next) || (on, &setting, quiet) != (was.0, &was.1, was.2) || (listing && !watching_listed) {
                         was = (on, setting, quiet);
+                        watching_listed = listing;
                         // Quiet (nobody looking), every ten seconds at least.
                         let every = if quiet { watching.every.max(10) } else { watching.every };
                         next = std::time::Instant::now() + Duration::from_secs(every);
-                        let words = if on { monitor.read(&watching) } else { None };
+                        let words = if on {
+                            monitor.read(&watching)
+                        } else {
+                            monitor.rest();
+                            None
+                        };
                         let changed = {
                             let mut widgets = monitored.widgets.lock().unwrap();
                             match words {
@@ -1657,12 +1716,13 @@ fn main() {
                         if changed {
                             monitored.redraw_widgets();
                         }
-                        // LibreHardwareMonitor found or lost, its sensors' readings:
-                        // the open settings list them.
-                        if lhm::take_changed() {
+                        // LibreHardwareMonitor found or lost, its sensors' readings,
+                        // or the built-in ones': the open settings list them.
+                        if lhm::take_changed() | hw::take_changed() {
                             monitored.push_settings();
                         }
                     }
+                    watching_listed &= listing;
                     // Off, till it is turned on.
                     let wait = if on { next.saturating_duration_since(std::time::Instant::now()) } else { Duration::from_secs(3600) };
                     let (woken, cv) = &MONITOR_WAKE;

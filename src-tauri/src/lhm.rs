@@ -1,9 +1,10 @@
 // The hardware's sensors in the monitor (#18, its first step): temperatures,
 // loads, power, fans, clocks and a card's memory, from a LibreHardwareMonitor
-// (LHM) the person runs themselves. She never installs nor starts it (its
-// driver, and the administrator's rights most sensors need, are theirs to
-// give); she reads what its Remote Web Server serves (LHM's Options → Remote
-// Web Server → Run): GET http://127.0.0.1:<port>/data.json, the whole tree.
+// (LHM) the person runs. She downloads, sets up and starts it only when they
+// click for it (lhm_setup.rs: its driver, and the administrator's rights most
+// sensors need, are theirs to give); she reads what its Remote Web Server
+// serves (LHM's Options → Remote Web Server → Run): GET
+// http://127.0.0.1:<port>/data.json, the whole tree.
 // Its WMI classes (root\LibreHardwareMonitor) would have needed nothing
 // turned on, but LHM 0.9.5 dropped them with .NET 10 (LibreHardwareMonitor
 // #2143): the web server is the one way into a current LHM.
@@ -11,13 +12,18 @@
 // Read on the monitor's thread alone (widgets::Monitor::read), 300 ms at
 // most, at most every 3 s while found (every 10 s while quiet), every 30 s
 // while not; a reading that fails once keeps the last, twice and it is not
-// found. Off, or never found, nothing in the monitor changes.
+// found. Off, or never found, nothing in the monitor changes. Asked only
+// while it is the monitor's source ("monitorSource": "lhm"; the other is the
+// built-in one, hw.rs, which also says which a setting from before there was
+// a choice means).
 //
-// Its settings, in "monitor": lhm (false: never asked), lhmPort (8085),
+// Its settings, in "monitor": lhm (false: never asked; from before the
+// source was chosen), lhmPort (8085),
 // lhmUser and lhmPass (LHM's Basic authentication: the password kept in
 // Windows' Credential Manager, the setting only saying true), sensors (the
 // SensorIds shown, in the tree's order; unset, the CPU's package temperature
-// and the discrete card's temperature and load).
+// and the discrete card's temperature and load), lhmStartup (false: an LHM
+// she downloads is not made to start at logon by its task; lhm_setup.rs).
 //
 // data.json as LHM writes it (HttpServer.cs): nodes of { id, Text, Min,
 // Value, Max, ImageURL, Children }; a sensor's also SensorId
@@ -52,6 +58,9 @@ pub enum Kind {
     Clock,
     // SmallData: a card's memory, in MB.
     Data,
+    // A drive read and written, bytes a second: the built-in source's alone (hw.rs).
+    Read,
+    Write,
 }
 
 impl Kind {
@@ -68,7 +77,7 @@ impl Kind {
     }
 
     // As the page knows it (widgets.js shareOf, isHigh).
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Kind::Temperature => "temp",
             Kind::Load => "load",
@@ -76,6 +85,8 @@ impl Kind {
             Kind::Fan => "fan",
             Kind::Clock => "clock",
             Kind::Data => "data",
+            Kind::Read => "read",
+            Kind::Write => "write",
         }
     }
 }
@@ -129,7 +140,10 @@ fn walk<'a>(node: &'a Value, up: &mut Vec<&'a str>, out: &mut Vec<Sensor>) {
             .as_f64()
             .or_else(|| node["RawValue"].as_str().and_then(number_in))
             .or_else(|| node["Value"].as_str().and_then(number_in))
-            .filter(|v| v.is_finite());
+            .filter(|v| v.is_finite())
+            // A temperature of 0.0 °C is one it cannot read (the CPU's
+            // without its PawnIO driver, seen in the test VM): none, not 0°.
+            .filter(|v| !(kind == Kind::Temperature && *v == 0.0));
         let hardware_id = id.rsplitn(3, '/').nth(2).unwrap_or("").to_string();
         let hardware = up.len().checked_sub(2).map_or("", |i| up[i]).to_string();
         out.push(Sensor { id: id.into(), name: text.into(), kind, hardware_id, hardware, value });
@@ -154,11 +168,16 @@ fn is_gpu(hardware_id: &str) -> bool {
 // three digits), the others (Radeon Graphics, Radeon 780M, UHD, Iris, Arc
 // 140V) taken for the processor's own.
 fn discrete(s: &Sensor) -> u8 {
-    let words: Vec<&str> = s.hardware.split(|c: char| c.is_whitespace() || c == '(' || c == ')').collect();
+    discrete_card(&s.hardware_id, &s.hardware)
+}
+
+// The same by the card's id and name (the built-in source's too, hw.rs).
+pub fn discrete_card(hardware_id: &str, name: &str) -> u8 {
+    let words: Vec<&str> = name.split(|c: char| c.is_whitespace() || c == '(' || c == ')').collect();
     let model = |w: &&str| w.len() == 4 && (w.starts_with('A') || w.starts_with('B')) && w[1..].bytes().all(|c| c.is_ascii_digit());
-    if s.hardware_id.starts_with("/gpu-nvidia/") {
+    if hardware_id.starts_with("/gpu-nvidia/") {
         2
-    } else if words.contains(&"RX") || s.hardware.contains("Radeon Pro") || s.hardware.contains("FirePro") || words.iter().any(model) {
+    } else if words.contains(&"RX") || name.contains("Radeon Pro") || name.contains("FirePro") || words.iter().any(model) {
         1
     } else {
         0
@@ -206,7 +225,7 @@ fn icon(s: &Sensor) -> &'static str {
 
 // A value in a cell's few characters, its unit or a letter for it: 62°,
 // 37%, 8.5W and 122W, 1180 (a fan, revolutions a minute), 4.5G and 800M
-// (a clock), 3.0G and 512M (memory).
+// (a clock), 3.0G and 512M (memory), 1.2M (a drive's bytes a second).
 pub fn short(kind: Kind, v: f64) -> String {
     let one_or_none = |v: f64, unit: &str| if v < 10.0 { format!("{v:.1}{unit}") } else { format!("{v:.0}{unit}") };
     match kind {
@@ -218,6 +237,7 @@ pub fn short(kind: Kind, v: f64) -> String {
         Kind::Clock => format!("{v:.0}M"),
         Kind::Data if v >= 1024.0 => one_or_none(v / 1024.0, "G"),
         Kind::Data => format!("{v:.0}M"),
+        Kind::Read | Kind::Write => crate::widgets::rate(v),
     }
 }
 
@@ -231,6 +251,7 @@ fn long(kind: Kind, v: Option<f64>) -> String {
         Kind::Fan => format!("{v:.0} RPM"),
         Kind::Clock => format!("{v:.0} MHz"),
         Kind::Data => format!("{v:.0} MB"),
+        Kind::Read | Kind::Write => format!("{}/s", crate::widgets::rate(v)),
     }
 }
 
@@ -261,7 +282,7 @@ impl Conf {
 // The settings' "monitor" value may carry these, checked (settings.rs is_ok).
 pub fn is_setting(key: &str, v: &Value) -> Option<bool> {
     Some(match key {
-        "lhm" => v.is_boolean(),
+        "lhm" | "lhmStartup" => v.is_boolean(),
         "lhmPort" => v.as_u64().is_some_and(|p| (1..=65535).contains(&p)),
         "lhmUser" => v.as_str().is_some_and(|s| s.chars().count() <= 64 && !s.contains(':')),
         // A password typed (kept, keep_password) or "" to forget it, or true: one kept.
@@ -274,6 +295,22 @@ pub fn is_setting(key: &str, v: &Value) -> Option<bool> {
 // The password, when one was kept, bumped each time a new one is: asked
 // with the new one at once.
 static SECRET_REV: AtomicU64 = AtomicU64::new(0);
+// Bumped to have it asked at once (its web server just answered, after
+// lhm_setup.rs started it), and the monitor's thread woken to read.
+static ASKED_AGAIN: AtomicU64 = AtomicU64::new(0);
+static READ_NOW: AtomicBool = AtomicBool::new(false);
+
+// LHM asked again at its next reading, which comes now.
+pub fn ask_now() {
+    ASKED_AGAIN.fetch_add(1, Ordering::SeqCst);
+    READ_NOW.store(true, Ordering::SeqCst);
+    crate::wake_monitor();
+}
+
+// Whether a reading is wanted now (ask_now), for the monitor's thread.
+pub fn take_read_now() -> bool {
+    READ_NOW.swap(false, Ordering::SeqCst)
+}
 
 // A password typed in the settings goes to the Credential Manager, the
 // setting kept saying only that there is one; "" forgets it.
@@ -336,9 +373,9 @@ pub fn take_changed() -> bool {
 pub struct Lhm {
     agent: Option<ureq::Agent>,
     asked: Option<Instant>,
-    // What it was last asked with (port, user, a password, which one):
-    // any of them changed, it is asked again at once.
-    with: Option<(u16, String, bool, u64)>,
+    // What it was last asked with (port, user, a password, which one, and
+    // ask_now's count): any of them changed, it is asked again at once.
+    with: Option<(u16, String, bool, u64, u64)>,
     password: String,
     status: Status,
     fails: u8,
@@ -351,6 +388,11 @@ impl Lhm {
         Lhm { agent: None, asked: None, with: None, password: String::new(), status: Status::Unread, fails: 0, version: None, sensors: Vec::new() }
     }
 
+    // Its web server answered (and is kept as answering for one more try).
+    pub fn found(&self) -> bool {
+        self.status == Status::Found
+    }
+
     // Asked when it is time, or at once when how to ask changed.
     pub fn turn(&mut self, conf: &Conf, quiet: bool) {
         if !conf.on {
@@ -359,7 +401,7 @@ impl Lhm {
             }
             return self.publish(conf);
         }
-        let with = (conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst));
+        let with = (conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst), ASKED_AGAIN.load(Ordering::SeqCst));
         let every = match self.status {
             Status::Found if quiet => EVERY_QUIET,
             Status::Found => EVERY,
@@ -499,6 +541,10 @@ mod tests {
         assert_eq!((released.value, released.hardware.as_str(), released.hardware_id.as_str()), (Some(71.0), "Intel Core i7-12700H", "/intelcpu/0"));
         assert_eq!(read(sensor(Value::Null, "71,5 °C")).value, Some(71.5));
         assert_eq!(read(sensor(json!("-"), "-")).value, None);
+        // 0.0 °C: not read (LHM without PawnIO), as none.
+        assert_eq!(read(sensor(json!(0.0), "0.0 °C")).value, None);
+        assert_eq!(read(sensor(json!("0,0 °C"), "0,0 °C")).value, None);
+        assert_eq!(read(sensor(json!(-0.5), "-0.5 °C")).value, Some(-0.5));
         assert_eq!(parse(&sensor(Value::Null, "1")).unwrap().0, None);
     }
 
@@ -575,7 +621,7 @@ mod tests {
         let mut lhm = Lhm::new();
         lhm.password = "pw".into();
         let conf = Conf { on: true, port, user: "me".into(), pass: false, sensors: None };
-        lhm.with = Some((conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst)));
+        lhm.with = Some((conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst), ASKED_AGAIN.load(Ordering::SeqCst)));
         assert!(lhm.ask(&conf).is_ok());
         lhm.password.clear();
         assert_eq!(lhm.ask(&Conf { user: String::new(), ..conf.clone() }).err(), Some(Status::Auth));
