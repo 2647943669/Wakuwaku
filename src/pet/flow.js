@@ -1,10 +1,12 @@
 // The flow light (流光提醒, the design session's spec of 2026-10-16): what
 // happens on her closed capsule when something happens that does not need
 // the person at once. A turn done, changes to review, an error, a hello, a
-// plugin's nudge: the island no longer opens by itself; a thin ring of
-// colour runs round the capsule three times and fades, and a small dot on
-// her portrait stays until it has been seen. Only a session waiting on the
-// person (to approve, answer or choose) still opens it. What to do for an
+// plugin's nudge: the island no longer opens by itself (unless set to, as
+// before); a thin ring of colour runs round the capsule three times and
+// fades, and a small dot on her portrait stays until it has been seen. Only
+// a session waiting on the person (to approve, answer or choose) always
+// opens it; what happens inside a turn (a tool failed) only plays her clip.
+// What to do for an
 // event, the ring's turns and fades as times and angles, how one coming on
 // another's heels carries on from it, and the colours: all here, with no
 // page, so the tests can say it. island.js draws it. Loaded by the page
@@ -42,7 +44,8 @@
   const DOT_IN_MS = 250
   const HOP_MS = 300
 
-  // The setting (endCue) for a turn done, changes to review or an error:
+  // The setting (endCue) for all she has to tell that needs no answer (a
+  // turn done, changes to review, an error, a hello, a plugin's nudge):
   // open the island (as before), a ring (the default), or nothing but the
   // dot. One kept from before it was a choice (openOnEnd off) is nothing.
   function endCue(config) {
@@ -52,32 +55,38 @@
   }
 
   // What an event does, by its kind (waiting, done, review, error, hello,
-  // plugin, or notice: a new version, a crash report), the setting, the
-  // island's shape now (compact, expanded, ask, settings) and whether a
-  // ring may play now (blocked: something full screen, nobody at the
-  // computer, do not disturb, a Mac's notch):
+  // plugin, notice: a new version or a crash report, or process: a reaction
+  // inside a turn), the setting, the island's shape now (compact, expanded,
+  // ask, settings) and whether a ring may play now (blocked: something full
+  // screen, nobody at the computer, do not disturb, a Mac's notch):
   //   open    the island opens by itself, as it always did
   //   show    it is open: what it says goes into it (no ring, no dot)
   //   later   it is a prompt or the settings: kept for the next look, no dot
   //   ring    a ring, then the dot
   //   dot     the dot alone (a ring would not be seen, or is not wanted)
+  //   clip    her portrait plays the reaction's clip, and nothing else
   //   null    nothing (an ending while the island is open: it shows it)
+  // Set to open, everything is as it was before the flow light: whatever
+  // opened the island by itself still does.
   function cueFor(kind, { setting = 'ring', view = 'compact', blocked = false } = {}) {
-    if (kind === 'waiting') return 'open'
-    if (isEnding(kind) && setting === 'open') return 'open'
+    if (kind === 'waiting' || setting === 'open') return 'open'
+    // A tool failed, an item of the turn's list done: how it goes, not how
+    // it ended. An agent mostly finds its way round a failed tool, and a
+    // dot would say something was left undone (the design session).
+    if (kind === 'process') return 'clip'
     if (view === 'expanded') return isEnding(kind) ? null : 'show'
     if (view === 'ask' || view === 'settings') return isEnding(kind) ? null : 'later'
     // A new version or a crash report is never urgent: no turning in the
     // corner of the eye (the design session, 2026-10-16).
-    if (kind === 'notice') return 'dot'
-    if (isEnding(kind) && setting === 'none') return 'dot'
+    if (kind === 'notice' || setting === 'none') return 'dot'
     return blocked ? 'dot' : 'ring'
   }
 
-  // Her reactions with words (state.rs react): a hello, a task done, a tool
-  // that failed. Each rings in its own colours.
-  const REACT_KIND = { wave: 'hello', jump: 'done', failed: 'error' }
-  const kindOfReact = react => REACT_KIND[react] || 'hello'
+  // Her reactions with words (state.rs react): a hello (her arriving, a
+  // session starting) rings; a task-list item done or a tool that failed
+  // is inside a turn (process). Only a turn that ends in error rings red.
+  const REACT_KIND = { wave: 'hello', jump: 'process', failed: 'process' }
+  const kindOfReact = react => REACT_KIND[react] || 'process'
 
   // How long what the island would have shown (a hello's words, a plugin's
   // card) stays to be seen on the next hover: as long as an ending stays

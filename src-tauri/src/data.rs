@@ -137,10 +137,12 @@ fn defaults() -> Map<String, Value> {
         "look": true,
         // Done, changed or failed: shown 8 s, or until seen (8, 30, 120, "seen").
         "hold": 8,
-        // And at each, round her closed island: a ring of colour, then a dot
-        // until seen (ring, the flow light: island.js cue); the island open
-        // by itself for a moment (open, as before 2026-10-16); or the dot
-        // alone (none). A session waiting on you opens it whatever this says.
+        // At each, and whenever she has something to tell that needs no
+        // answer (a hello, a plugin's nudge): round her closed island a ring
+        // of colour, then a dot until seen (ring, the flow light: island.js
+        // cue); the island open by itself for a moment (open, all as before
+        // 2026-10-16); or the dot alone (none). A session waiting on you
+        // opens it whatever this says.
         "endCue": "ring",
         // A session at rest out of sight after this many minutes with nothing
         // new from it (15, 30, 60, 120; 0 never: state.rs is_shown).
@@ -230,9 +232,9 @@ fn keep_old_look(saved: &mut Map<String, Value>) {
 }
 
 // The island opening by itself as a turn ended was a switch (openOnEnd, on
-// by default) until 2026-10-16; now a choice of three (endCue). One who had
-// turned it off gets nothing but the dot (none); everyone else the new
-// default, the ring. The old key goes.
+// by default) until 2026-10-16; now a choice of three for all she has to
+// tell that needs no answer (endCue). One who had turned it off gets nothing
+// but the dot (none); everyone else the new default, the ring. The old key goes.
 fn adopt_end_cue(saved: &mut Map<String, Value>) {
     let Some(old) = saved.remove("openOnEnd") else { return };
     if !saved.contains_key("endCue") && old == false {

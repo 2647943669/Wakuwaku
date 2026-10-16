@@ -12,17 +12,24 @@ test('only a session waiting on the person opens the island; the rest ring', () 
   assert.equal(Flow.cueFor('notice', {}), 'dot')
 })
 
-test('the setting decides the endings alone: open, a ring, or just the dot', () => {
-  for (const kind of ['done', 'review', 'error']) {
+test('the setting decides all that needs no answer: open, a ring, or just the dot', () => {
+  for (const kind of ['done', 'review', 'error', 'hello', 'plugin']) {
     assert.equal(Flow.cueFor(kind, { setting: 'open' }), 'open', kind)
     assert.equal(Flow.cueFor(kind, { setting: 'ring' }), 'ring', kind)
     assert.equal(Flow.cueFor(kind, { setting: 'none' }), 'dot', kind)
   }
-  // A hello and a plugin ring whatever it says; waiting opens whatever it says.
-  for (const setting of ['open', 'none']) {
-    assert.equal(Flow.cueFor('hello', { setting }), 'ring')
-    assert.equal(Flow.cueFor('plugin', { setting }), 'ring')
-    assert.equal(Flow.cueFor('waiting', { setting }), 'open')
+  // Waiting opens whatever it says.
+  for (const setting of ['open', 'ring', 'none']) assert.equal(Flow.cueFor('waiting', { setting }), 'open')
+  // Open is all as before: a notice and what happens inside a turn open it too.
+  assert.equal(Flow.cueFor('notice', { setting: 'open' }), 'open')
+  assert.equal(Flow.cueFor('process', { setting: 'open' }), 'open')
+  assert.equal(Flow.cueFor('notice', { setting: 'none' }), 'dot')
+})
+
+test('inside a turn (a tool failed, an item done): her clip alone, never a ring or a dot', () => {
+  for (const setting of ['ring', 'none']) {
+    for (const view of ['compact', 'expanded', 'ask', 'settings']) assert.equal(Flow.cueFor('process', { setting, view }), 'clip', `${setting} ${view}`)
+    assert.equal(Flow.cueFor('process', { setting, blocked: true }), 'clip')
   }
 })
 
@@ -57,11 +64,11 @@ test('the island open or the settings up: neither ring nor dot', () => {
   }
 })
 
-test('her reactions ring in their own colours', () => {
+test('of her reactions only a hello rings; a task done or a tool failed is inside the turn', () => {
   assert.equal(Flow.kindOfReact('wave'), 'hello')
-  assert.equal(Flow.kindOfReact('jump'), 'done')
-  assert.equal(Flow.kindOfReact('failed'), 'error')
-  assert.equal(Flow.kindOfReact('other'), 'hello')
+  assert.equal(Flow.kindOfReact('jump'), 'process')
+  assert.equal(Flow.kindOfReact('failed'), 'process')
+  assert.equal(Flow.kindOfReact('other'), 'process')
 })
 
 test('what the island would have shown stays as long as an ending does; a notice until seen', () => {

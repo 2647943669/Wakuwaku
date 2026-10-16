@@ -41,7 +41,7 @@
 // island shrinks first and the window after.
 ;(function () {
   const { t, render: say, list: nameList } = window.I18n
-  const { CELL_W, CELL_H, CLIPS, MOOD_CLIP } = window.Sprite
+  const { CELL_W, CELL_H, CLIPS, MOOD_CLIP, REACTIONS } = window.Sprite
   const Status = window.Status
   const Widgets = window.Widgets
   const Flow = window.Flow
@@ -206,6 +206,9 @@
   let pending = null
   // An app full screen on her display (pet:full-screen, main.rs look_fullscreen).
   let fullScreen = false
+  // A reaction inside a turn her portrait plays: { clip, until }.
+  let reacting = null
+  let reactTimer
   // The flow light's ring, by the island in its row (the island clips what
   // is in it): see "The flow light" below.
   const flow = document.createElement('div')
@@ -848,7 +851,9 @@
   function animateHer() {
     if (!isHome()) return
     // Quiet (nobody at the keyboard or mouse): still, on her mood's first frame.
-    const name = quiet ? '' : view === 'ask' ? 'waiting' : isNudging() ? nudge.clip : MOOD_CLIP[now.mood]
+    // A reaction inside a turn (playReaction) over her mood while it plays.
+    const reacts = reacting && Date.now() < reacting.until
+    const name = quiet ? '' : view === 'ask' ? 'waiting' : isNudging() ? nudge.clip : reacts ? reacting.clip : MOOD_CLIP[now.mood]
     if (name && name === herClip) return
     clearTimeout(herTimer)
     herClip = name
@@ -4743,7 +4748,9 @@
   // portrait until the island has been open for any reason (seen). What it
   // would have shown is there as it opens next (pending): an ending's own
   // words are its session's anyway. Only a session waiting on the person
-  // opens it, or every ending with endCue open (as before).
+  // opens it, or all of them with endCue open (all as before). What
+  // happens inside a turn (a tool failed, an item of its list done) only
+  // plays her clip (playReaction): no ring, no dot.
   //
   // The ring: a frame by the island in its row (the island clips what is in
   // it), laid over the island by anchor positioning (style.css #flow), so it
@@ -4764,10 +4771,12 @@
   const flowBlocked = () => fullScreen || quiet || config.dnd === true || document.hidden || !!screenTop?.notch
 
   // Something happened: kind (waiting, done, review, error, hello, plugin,
-  // notice), and what the island would have opened with ({ clip, text, ms,
-  // widget }).
+  // notice, process), and what the island would have opened with ({ clip,
+  // text, ms, widget }; a reaction's name, react).
   function cue(kind, show) {
     const how = Flow.cueFor(kind, { setting: Flow.endCue(config), view, blocked: flowBlocked() })
+    // Inside a turn: her clip, and nothing kept, no ring, no dot.
+    if (how === 'clip') return playReaction(show.react)
     // The newest wins: what is kept for the next look is this one's (an
     // ending's words are its session's: the open island has them), or none
     // when it shows now; a prompt leaves it for after.
@@ -4778,6 +4787,25 @@
     if (how === 'dot') showNews('in')
     else ring(kind)
     update()
+  }
+
+  // A reaction inside a turn (a tool failed, an item of its list done): her
+  // portrait plays its clip as many times as she does out on the desktop
+  // (Sprite.REACTIONS), then her mood's again; the island stays as it is.
+  function playReaction(react) {
+    const r = REACTIONS[react]
+    const clip = r && CLIPS[r.clip]
+    if (!clip) return
+    const span = clip.frames * clip.ms * (r.times || 1)
+    reacting = { clip: r.clip, until: Date.now() + span }
+    clearTimeout(reactTimer)
+    reactTimer = setTimeout(() => {
+      reacting = null
+      herClip = null
+      animateHer()
+    }, span)
+    herClip = null
+    animateHer()
   }
 
   // The colours for a kind, on Windows' mode now: a plugin's from its own.
@@ -5297,7 +5325,8 @@
     // Something new that wants you: the island opens for a moment. One that
     // is finished: as the setting says (endCue, cue): a ring round it (the
     // default), the island open for a moment as before (a longer one with
-    // Claude's words to read), or only the dot.
+    // Claude's words to read), or only the dot. A hello and a plugin's
+    // nudge the same (onReact, onNudge).
     const isReading = isDetailed() && Status.isEnding(now) && !!now.reply
     if (isOn() && before !== now.mood && NUDGE_CLIP[now.mood]) cue(now.mood, { clip: NUDGE_CLIP[now.mood], text: null, ms: isReading ? NUDGE_READ_MS : NUDGE_MS })
     else update()
@@ -5332,11 +5361,12 @@
     tickCarousels()
   })
 
-  // A hello, a task done, a tool failed (her reactions with words): a ring
-  // in their colours, the words in the island as it opens next, her waving
-  // (already open: in it now).
+  // Her reactions with words: a hello rings (its words in the island as it
+  // opens next, already open: in it now); a task done or a tool failed is
+  // inside a turn: her portrait plays its clip, and nothing else. Set to
+  // open, any of them opens the island to say it, her waving, as before.
   window.pet.onReact(({ react, say: text }) => {
-    if (isOn() && text) cue(Flow.kindOfReact(react), { clip: 'waving', text: say(lang, text), ms: NUDGE_MS })
+    if (isOn() && text) cue(Flow.kindOfReact(react), { clip: 'waving', text: say(lang, text), ms: NUDGE_MS, react })
   })
 
   // An app full screen on her display, or none now: no ring while one is.
@@ -5345,9 +5375,10 @@
   })
 
   // A widget asks to open the island (main checked that nothing wants you):
-  // a ring in its colour, its card in the island as it opens next. A new
+  // a ring in its colour, its card in the island as it opens next (or, as
+  // the setting says, the island opened as before, or the dot alone). A new
   // version or a crash report (not a widget's): the dot alone, in Windows'
-  // accent; the island opened next says it.
+  // accent, the island opened next saying it; set to open, it opens.
   window.pet.onNudge(n => {
     if (!isOn()) return
     // News for a carousel on the strip that has it: it cuts in.

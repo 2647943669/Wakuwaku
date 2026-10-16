@@ -330,8 +330,9 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // The programs' buttons in the order dragged: their keys (paths).
         "taskbarOrder" => v.as_array().is_some_and(|keys| keys.len() <= 200 && keys.iter().all(|k| k.as_str().is_some_and(|s| s.len() <= 1024))),
         "hold" => v.as_str() == Some("seen") || matches!(v.as_u64(), Some(8 | 30 | 120)),
-        // At a turn's end: the island open by itself, a ring round it (the
-        // flow light), or only the dot (island.js cue).
+        // When she has something to tell that needs no answer (a turn's end,
+        // a hello, a plugin's nudge): the island open by itself, a ring round
+        // it (the flow light), or only the dot (island.js cue).
         "endCue" => matches!(v.as_str(), Some("open" | "ring" | "none")),
         // Minutes a session at rest stays in sight, or 0: always (state.rs is_shown).
         "idleHideMin" => matches!(v.as_u64(), Some(0 | 15 | 30 | 60 | 120)),

@@ -680,9 +680,10 @@
     const waits = WAITS.map(w => [w, w >= 60 ? T('settings.minutes', { n: Math.round(w / 60) }) : T('settings.seconds', { n: w })])
     const idles = IDLE_HIDES.map(m => [m, !m ? T('s.idleAlways') : m >= 60 ? T('s.paperHours', { n: m / 60 }) : T('s.minutesShort', { n: m })])
     const notify = s.notify || {}
-    // At a turn's end: the island open, a ring round it (the flow light,
-    // the default), or the dot alone (island.js cue); its three choices
-    // under it, too long beside it.
+    // When she has something to tell that needs no answer (a turn's end, a
+    // hello, a plugin's nudge): the island open, a ring round it (the flow
+    // light, the default), or the dot alone (island.js cue); its three
+    // choices under it, too long beside it.
     const cue = window.Flow.endCue(s)
     const cues = [
       ['open', T('s.endCueOpen')],
