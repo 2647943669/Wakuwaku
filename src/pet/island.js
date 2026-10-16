@@ -1567,7 +1567,7 @@
   // put there with its plugin starting, a shimmer for a few seconds; its
   // plugin stopped, an amber glyph and why. A plugin with several (stocks,
   // CI runs) shows them in turn. Several in one place: a carousel (in turn,
-  // drawCarousel) or a stack (the first, its others opened over it).
+  // drawGroup) or a stack (the first, its others opened over it).
   const ENTRY_TURN_MS = 5000
   // What the widgets on the strip are drawn with (wcards.js ctx).
   const barCtx = () => ({ lang, light: isLight(), detailed: isDetailed(), width: STACK_CARD_W, hour: new Date().getHours(), now: Date.now() })
