@@ -234,11 +234,12 @@
   }
 
   // --- A board ---------------------------------------------------------------------------------
-  // Its name: its own, else 工作台, numbered when several have none.
+  // Its name: its own, else 工作台; when several have none, the first is
+  // still 工作台 and the others 工作台 2, 工作台 3 (the design session).
   function boardLabel(b) {
     if (b.name) return b.name
-    const unnamed = layout.filter(x => G.isBoard(x) && !x.name)
-    return unnamed.length > 1 ? t('desk.boardN', { n: unnamed.findIndex(x => x.id === b.id) + 1 }) : t('desk.board')
+    const at = layout.filter(x => G.isBoard(x) && !x.name).findIndex(x => x.id === b.id)
+    return at > 0 ? t('desk.boardN', { n: at + 1 }) : t('desk.board')
   }
   const BOARD_ICONS = 6
   // Its pane: its own picture of the wallpaper (blurred 40), its glass, its
