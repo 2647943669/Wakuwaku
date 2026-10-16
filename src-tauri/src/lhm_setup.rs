@@ -61,8 +61,8 @@
 //
 // For tests: WAKUWAKU_LHM_RELEASE_URL, the release's JSON from elsewhere
 // (its downloads then taken from anywhere); WAKUWAKU_TEST_ELEVATE=<folder>,
-// what would be run as administrator written there (elevate-<n>.json) and
-// its exit code waited for (elevate-<n>.done), for a test machine where no
+// what would be run as administrator written there (elevate-<pid>-<n>.json)
+// and its exit code waited for (elevate-<pid>-<n>.done), for a test machine where no
 // one can answer Windows' question.
 #![cfg_attr(not(windows), allow(dead_code))]
 
@@ -1104,8 +1104,9 @@ static ASKED_N: AtomicU32 = AtomicU32::new(0);
 fn elevate(sh: &Shared, file: &Path, params: &str, dir: &Path, wait_ms: Option<u32>) -> Asked {
     sh.log(&format!("lhm: as administrator: {} {params}", file.display()));
     if let Some(test) = std::env::var_os(ELEVATE_TEST).filter(|v| !v.is_empty()) {
-        let n = ASKED_N.fetch_add(1, Ordering::SeqCst);
-        let asked = asked_by_test(Path::new(&test), n, file, params, dir, wait_ms, Duration::from_secs(300));
+        // Hers alone and never used before (another run of hers left its own).
+        let name = format!("{}-{}", std::process::id(), ASKED_N.fetch_add(1, Ordering::SeqCst));
+        let asked = asked_by_test(Path::new(&test), &name, file, params, dir, wait_ms, Duration::from_secs(300));
         sh.log(&format!("lhm: the test answered for Windows: {asked:?}"));
         return asked;
     }
@@ -1113,10 +1114,11 @@ fn elevate(sh: &Shared, file: &Path, params: &str, dir: &Path, wait_ms: Option<u
 }
 
 // For a test machine where no one answers Windows' question: what would be
-// run as administrator written to <test>/elevate-<n>.json ({ file, params,
-// dir, wait }), and the answer read from <test>/elevate-<n>.done once
-// whoever runs it there has (its exit code, or "declined").
-fn asked_by_test(test: &Path, n: u32, file: &Path, params: &str, dir: &Path, wait_ms: Option<u32>, patience: Duration) -> Asked {
+// run as administrator written to <test>/elevate-<name>.json ({ file,
+// params, dir, wait }; the name her pid and a count), and the answer read
+// from <test>/elevate-<name>.done once whoever runs it there has (its exit
+// code, or "declined").
+fn asked_by_test(test: &Path, n: &str, file: &Path, params: &str, dir: &Path, wait_ms: Option<u32>, patience: Duration) -> Asked {
     let ask = json!({ "file": file, "params": params, "dir": dir, "wait": wait_ms.is_some() });
     // Whole or not there: written aside, then named.
     let part = test.join(format!("elevate-{n}.part"));
@@ -2392,7 +2394,7 @@ mod tests {
     fn the_question_can_be_answered_by_a_test() {
         let dir = scratch("elevate");
         std::fs::create_dir_all(&dir).unwrap();
-        let answer = |n: u32, said: &'static str| {
+        let answer = |n: &'static str, said: &'static str| {
             let dir = dir.clone();
             std::thread::spawn(move || {
                 let ask = dir.join(format!("elevate-{n}.json"));
@@ -2407,15 +2409,15 @@ mod tests {
             })
         };
         let patience = Duration::from_secs(5);
-        let t = answer(0, "0\r\n");
-        assert_eq!(asked_by_test(&dir, 0, Path::new(r"C:\w\wakuwaku.exe"), &format!("{ADMIN_FLAG} noStartup"), &dir, Some(60_000), patience), Asked::Ran(Some(0)));
+        let t = answer("7-0", "0\r\n");
+        assert_eq!(asked_by_test(&dir, "7-0", Path::new(r"C:\w\wakuwaku.exe"), &format!("{ADMIN_FLAG} noStartup"), &dir, Some(60_000), patience), Asked::Ran(Some(0)));
         let v = t.join().unwrap();
         assert_eq!((v["params"].as_str(), v["wait"].as_bool()), (Some("--wakuwaku-lhm noStartup"), Some(true)));
         assert!(v["file"].as_str().unwrap().ends_with("wakuwaku.exe"));
-        let t = answer(1, "declined");
-        assert_eq!(asked_by_test(&dir, 1, Path::new(r"C:\x\LibreHardwareMonitor.exe"), "", &dir, None, patience), Asked::Declined);
+        let t = answer("7-1", "declined");
+        assert_eq!(asked_by_test(&dir, "7-1", Path::new(r"C:\x\LibreHardwareMonitor.exe"), "", &dir, None, patience), Asked::Declined);
         assert_eq!(t.join().unwrap()["wait"], false);
-        assert_eq!(asked_by_test(&dir, 2, Path::new("x.exe"), "", &dir, None, Duration::from_millis(200)), Asked::Failed("no answer".into()));
+        assert_eq!(asked_by_test(&dir, "7-2", Path::new("x.exe"), "", &dir, None, Duration::from_millis(200)), Asked::Failed("no answer".into()));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

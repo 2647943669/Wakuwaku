@@ -140,7 +140,10 @@ fn walk<'a>(node: &'a Value, up: &mut Vec<&'a str>, out: &mut Vec<Sensor>) {
             .as_f64()
             .or_else(|| node["RawValue"].as_str().and_then(number_in))
             .or_else(|| node["Value"].as_str().and_then(number_in))
-            .filter(|v| v.is_finite());
+            .filter(|v| v.is_finite())
+            // A temperature of 0.0 °C is one it cannot read (the CPU's
+            // without its PawnIO driver, seen in the test VM): none, not 0°.
+            .filter(|v| !(kind == Kind::Temperature && *v == 0.0));
         let hardware_id = id.rsplitn(3, '/').nth(2).unwrap_or("").to_string();
         let hardware = up.len().checked_sub(2).map_or("", |i| up[i]).to_string();
         out.push(Sensor { id: id.into(), name: text.into(), kind, hardware_id, hardware, value });
@@ -538,6 +541,10 @@ mod tests {
         assert_eq!((released.value, released.hardware.as_str(), released.hardware_id.as_str()), (Some(71.0), "Intel Core i7-12700H", "/intelcpu/0"));
         assert_eq!(read(sensor(Value::Null, "71,5 °C")).value, Some(71.5));
         assert_eq!(read(sensor(json!("-"), "-")).value, None);
+        // 0.0 °C: not read (LHM without PawnIO), as none.
+        assert_eq!(read(sensor(json!(0.0), "0.0 °C")).value, None);
+        assert_eq!(read(sensor(json!("0,0 °C"), "0,0 °C")).value, None);
+        assert_eq!(read(sensor(json!(-0.5), "-0.5 °C")).value, Some(-0.5));
         assert_eq!(parse(&sensor(Value::Null, "1")).unwrap().0, None);
     }
 

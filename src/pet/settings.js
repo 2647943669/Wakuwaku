@@ -872,9 +872,11 @@
         line(`${pawnio.trim()} ${esc(T('lhm.removeLater'))}`.trim()) +
         line(`${esc(T('lhm.elsewhere'))} <span class="link" data-site="lhm">${esc(T('mon.lhmGet'))} ›</span>`)
     } else if (u.step === 'start' || u.step === 'turnOn') {
-      // Hers turned on: the step as administrator, which starts it too.
+      // Hers turned on: the step as administrator, which starts it too. Hers
+      // stopped is where it can be removed (not while it runs).
       const how = u.startup && !(u.step === 'turnOn' && i?.hers) ? T('lhm.byTask') : T('lhm.asks')
-      body = line(esc(T('lhm.foundStopped', { path: where })), true) + line(`${esc(T(u.step === 'turnOn' ? 'lhm.turnOnNote' : 'lhm.startNote', { port }))} ${esc(how)}${pawnio}`) + button('start', T(u.step === 'turnOn' ? 'lhm.turnOn' : 'lhm.start'), true)
+      const remove = i?.hers ? button('remove', T('lhm.uninstall')) : ''
+      body = line(esc(T('lhm.foundStopped', { path: where })), true) + line(`${esc(T(u.step === 'turnOn' ? 'lhm.turnOnNote' : 'lhm.startNote', { port }))} ${esc(how)}${pawnio}`) + button('start', T(u.step === 'turnOn' ? 'lhm.turnOn' : 'lhm.start'), true) + remove
     } else if (u.step === 'otherPort') {
       body = line(esc(T('lhm.otherPort', { other: i?.port || '' })), true) + button('usePort', T('lhm.usePort', { other: i?.port || '' }), true)
     } else if (u.step === 'steps') {
