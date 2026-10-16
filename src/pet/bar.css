@@ -146,6 +146,15 @@ body {
   overflow: hidden;
 }
 
+/* The buttons' row as thick as the strip, their middles where they were:
+   going up from a button to its list (barpop.js, its window against the
+   strip), the pointer is on the row until it is on the list
+   (zhoupengjie/Wakuwaku#56). */
+#apps,
+#wins {
+  align-self: stretch;
+}
+
 .start,
 .win,
 .clock {

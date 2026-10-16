@@ -2266,6 +2266,8 @@
   const pop = el('div', 'wpop')
   pop.hidden = true
   barRest.append(pop)
+  // Its room for the pointer down to the buttons (style.css .wreach, #56).
+  const popReach = el('span', 'wreach')
   // { app, kind: 'list' | 'menu' } while open, and what it showed last.
   let popFor = null
   let popDrawn = ''
@@ -3154,7 +3156,7 @@
     const drawn = JSON.stringify([popFor.app, popFor.kind, app.name, app.pinned, windows.map(w => [w.id, w.title, w.front, (w.png || '').length]), lang, look.endTask])
     if (drawn !== popDrawn || pop.hidden) {
       popDrawn = drawn
-      pop.replaceChildren(...rows)
+      pop.replaceChildren(...rows, popReach)
     }
     pop.classList.toggle('menu', popFor.kind === 'menu')
     pop.classList.toggle('list', isList)
@@ -3430,20 +3432,37 @@
     if (winMarked) winMarked.classList.add(drop.after ? 'drop-after' : 'drop-before')
   }
 
-  // The pointer resting on a running program's button: its windows.
-  windowsBox.addEventListener('mouseover', e => {
-    const app = appOf(e.target.closest('[data-app]')?.dataset.app)
+  // The pointer resting on a running program's button: its windows. With
+  // another's list open, only once it has been on this button as long as
+  // Windows' own taskbar waits, and not while it is on its way up into
+  // the list (aim.js, zhoupengjie/Wakuwaku#56): it changed at once to any
+  // button crossed on the way to a card.
+  const aim = window.Aim.create()
+  const aimList = () => (popFor?.kind === 'list' && !pop.hidden ? { key: popFor.app, rect: pop.getBoundingClientRect(), edge: tbEdge() } : null)
+  function aimPop() {
     clearTimeout(popTimer)
-    if (winPress?.ghost || menuUp) return
-    if (!app || popFor?.kind === 'menu') return
-    if (popFor?.app === app.app) return
-    popTimer = setTimeout(() => (app.windows || []).length && openPop(app.app, 'list'), popFor ? 0 : 500)
+    const app = appOf(aim.key())
+    if (!app || winPress?.ghost || menuUp || popFor?.kind === 'menu' || !(app.windows || []).length) return
+    const wait = aim.due(aimList(), performance.now())
+    if (wait === null) return
+    if (wait === 0) return openPop(app.app, 'list')
+    popTimer = setTimeout(aimPop, wait)
+  }
+  windowsBox.addEventListener('mousemove', e => aim.move(e.clientX, e.clientY, performance.now()))
+  windowsBox.addEventListener('mouseover', e => {
+    const at = performance.now()
+    aim.move(e.clientX, e.clientY, at)
+    aim.over(e.target.closest('[data-app]')?.dataset.app ?? null, at)
+    aimPop()
   })
-  // Gone from the button and the list a moment: it closes.
+  // Gone from the button and the list a moment: it closes. Between them it
+  // is on the list (style.css .wpop::after: its room reaches the strip, as
+  // Windows' own does).
   for (const node of [windowsBox, pop]) {
     node.addEventListener('mouseleave', () => {
+      if (node === windowsBox) aim.over(null, performance.now())
       clearTimeout(popTimer)
-      popTimer = setTimeout(closePop, 400)
+      popTimer = setTimeout(closePop, window.Aim.CLOSE_MS)
     })
     node.addEventListener('mouseenter', () => popFor && clearTimeout(popTimer))
   }
