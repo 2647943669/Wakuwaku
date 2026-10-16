@@ -835,9 +835,14 @@
   function pageWidgets() {
     const s = snap.settings
     const left = ms => (ms >= 60000 ? T('settings.minutes', { n: Math.round(ms / 60000) }) : T('settings.seconds', { n: Math.max(1, Math.round(ms / 1000)) }))
+    // Where each goes (the widget design's §10): a row in the capsule, or on
+    // the taskbar (island.js placeWidget; where she lives there); the
+    // desktop to come. Its switch stays what turns it off.
+    const onBarHome = s.display === 'taskbar' && !!window.Island?.whereOf
+    const whereSeg = item => (onBarHome ? seg(`where:${item.plugin ? `p:${item.plugin}` : `w:${item.id}`}`, [['isle', T('menu.isle')], ['bar', T('menu.bar')]], window.Island.whereOf(item)) : '')
     const rows = widgetRows()
       .map((r, i) => {
-        const up = i > 0 ? `<button class="pbtn sm" data-wup="${esc(r.key)}" title="${esc(T('w.up'))}">↑</button>` : ''
+        const up = (i > 0 ? `<button class="pbtn sm" data-wup="${esc(r.key)}" title="${esc(T('w.up'))}">↑</button>` : '') + (r.plugin ? whereSeg({ plugin: r.plugin.id }) : whereSeg(r.widget.plugin ? { plugin: r.widget.plugin } : { id: r.widget.id }))
         if (r.plugin) {
           const p = r.plugin
           const says = r.mine.map(w => Widgets.words(lang, w, s.details !== false)).map(({ label, value }) => [label, value].filter(Boolean).join(' ')).join(' · ')
@@ -862,7 +867,7 @@
     const spins = SPINS.map(n => [n, n ? T('settings.seconds', { n }) : T('w.spinOff')])
     const waku = `powershell -ExecutionPolicy Bypass -File "${snap.waku}" npm run build`
     const example = `Invoke-RestMethod -Method Post http://127.0.0.1:${snap.port}/widget -ContentType application/json -Body '{"id":"hello","label":"Hello","value":"42","icon":"star"}'`
-    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}</div>
+    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}${onBarHome ? ` ${esc(T('w.whereNote'))}` : ''}</div>${rows}</div>
       ${sec(T('w.show'))}<div class="grp">
         ${row(esc(T('w.spin')), '', seg('widgetSpin', spins, s.widgetSpin ?? 8))}
         ${row(esc(T('w.nudge')), esc(T('w.nudgeNote')), sw('widgetNudge', s.widgetNudge !== false))}
@@ -2673,6 +2678,14 @@
       if (option.classList.contains('off')) return
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
+      // A widget (w:) or a plugin she runs (p:) put on the taskbar, or back
+      // in the capsule (island.js placeWidget keeps the layout).
+      if (key.startsWith('where:')) {
+        const [kind, ...rest] = key.slice(6).split(':')
+        const item = kind === 'p' ? { plugin: rest.join(':') } : { id: rest.join(':') }
+        window.Island?.placeWidget?.(item, raw)
+        return setTimeout(draw, 50)
+      }
       if (key === 'taskbarLayout') {
         // Its parts as the preset has them; the widgets put there kept.
         const layout = window.Island?.tbWithPreset?.(raw)

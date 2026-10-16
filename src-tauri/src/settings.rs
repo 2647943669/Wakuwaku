@@ -173,7 +173,10 @@ const TASKBAR_PARTS: [&str; 8] = ["her", "start", "apps", "monitor", "tray", "ke
 
 // A widget put on the taskbar (widgets.js isEntry): { id, type, of, size,
 // name, icon }, its id "w" and up to 15 of a-z 0-9; a widget's or a
-// plugin's (of: its id), or a spacer (flex, gap, sep).
+// plugin's (of: its id), or a spacer (flex, gap, sep); or several in one
+// place (carousel: in turn; stack: the first, the rest opened over it),
+// { id, type, items }, 2 to 8 of them, each { type, of, name, icon } as a
+// widget's or a plugin's are, none twice.
 fn is_taskbar_widget(v: &Value) -> Option<&str> {
     let w = v.as_object()?;
     let id = w.get("id")?.as_str()?;
@@ -181,30 +184,69 @@ fn is_taskbar_widget(v: &Value) -> Option<&str> {
     let kind = w.get("type")?.as_str()?;
     let of = w.get("of").map(|of| of.as_str().filter(|of| crate::widgets::is_id(of)));
     let ok_of = match kind {
-        "widget" => matches!(of, Some(Some(_))),
-        "plugin" => matches!(of, Some(Some(of)) if crate::scripts::SCRIPTS.iter().any(|s| s.id == of)),
-        "flex" | "gap" | "sep" => of.is_none(),
+        "widget" | "plugin" => of.is_some_and(|of| of.is_some_and(|of| is_source_of(kind, of))),
+        "flex" | "gap" | "sep" | "carousel" | "stack" => of.is_none(),
+        _ => false,
+    };
+    let group = matches!(kind, "carousel" | "stack");
+    let ok_items = match w.get("items").and_then(Value::as_array) {
+        Some(items) if group => (2..=8).contains(&items.len()) && items.iter().all(is_member) && items.iter().enumerate().all(|(i, m)| !items[..i].iter().any(|x| x["type"] == m["type"] && x["of"] == m["of"])),
+        None => !group,
         _ => false,
     };
     let ok_rest = w.iter().all(|(key, v)| match key.as_str() {
-        "id" | "type" | "of" => true,
-        "size" => matches!(v.as_str(), Some("S" | "M")),
-        "name" => v.as_str().is_some_and(|n| n.chars().count() <= 40 && !n.chars().any(char::is_control)),
+        "id" | "type" | "of" | "items" => true,
+        "size" => !group && matches!(v.as_str(), Some("S" | "M")),
+        "name" => v.as_str().is_some_and(is_name),
         "icon" => v.as_str().is_some_and(|i| crate::widgets::ICONS.contains(&i)),
         _ => false,
     });
-    (ok_id && ok_of && ok_rest).then_some(id)
+    (ok_id && ok_of && ok_items && ok_rest).then_some(id)
+}
+
+fn is_name(n: &str) -> bool {
+    n.chars().count() <= 40 && !n.chars().any(char::is_control)
+}
+
+// A widget by its id, or a plugin she runs.
+fn is_source_of(kind: &str, of: &str) -> bool {
+    match kind {
+        "widget" => crate::widgets::is_id(of),
+        "plugin" => crate::scripts::SCRIPTS.iter().any(|s| s.id == of),
+        _ => false,
+    }
+}
+
+// One of several in one place: a widget's or a plugin's, as put there alone.
+fn is_member(v: &Value) -> bool {
+    v.as_object().is_some_and(|m| {
+        let kind = m.get("type").and_then(Value::as_str).unwrap_or("");
+        m.get("of").and_then(Value::as_str).is_some_and(|of| is_source_of(kind, of))
+            && m.iter().all(|(key, v)| match key.as_str() {
+                "type" | "of" => true,
+                "name" => v.as_str().is_some_and(is_name),
+                "icon" => v.as_str().is_some_and(|i| crate::widgets::ICONS.contains(&i)),
+                _ => false,
+            })
+    })
 }
 
 // Whether a taskbar layout shows this widget: put there by itself, or its
-// plugin's.
+// plugin's; alone or with others in one place.
 pub fn is_on_taskbar(layout: &Value, widget: &str) -> bool {
     let owner = crate::scripts::owner_of(widget);
-    layout.as_object().into_iter().flat_map(|runs| runs.values()).filter_map(Value::as_array).flatten().any(|e| match (e["type"].as_str(), e["of"].as_str()) {
+    let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
         (Some("plugin"), Some(of)) => Some(of) == owner,
         _ => false,
-    })
+    };
+    layout
+        .as_object()
+        .into_iter()
+        .flat_map(|runs| runs.values())
+        .filter_map(Value::as_array)
+        .flatten()
+        .any(|e| shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))
 }
 
 // Its runs: the parts each once, and up to 32 widgets, each once.
@@ -267,6 +309,9 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "notify" => ["waiting", "done", "error"].iter().all(|k| v.get(k).is_some_and(Value::is_boolean)),
         "widgetsOff" | "widgetOrder" => v.as_array().is_some_and(|ids| ids.len() <= 64 && ids.iter().all(|id| id.as_str().is_some_and(crate::widgets::is_id))),
         "widgetSpin" => matches!(v.as_u64(), Some(0 | 5 | 8 | 15)),
+        // Each widget's row in the open island, small or medium, by its id
+        // (island.js rowSize).
+        "widgetSize" => v.as_object().is_some_and(|m| m.len() <= 64 && m.iter().all(|(id, s)| crate::widgets::is_id(id) && matches!(s.as_str(), Some("S" | "M")))),
         "plugins" => scripts::is_ok(v),
         "monitor" => v.as_object().is_some_and(|m| {
             m.iter().all(|(k, v)| match k.as_str() {
@@ -707,6 +752,38 @@ mod layout_tests {
         let many: Vec<_> = (0..33).map(|i| json!({ "id": format!("w{i}"), "type": "gap" })).collect();
         assert!(!super::is_taskbar_layout(&json!({ "right": many })));
         assert!(super::is_taskbar_layout(&json!({ "right": many[..32] })));
+    }
+
+    // Several in one place: a carousel or a stack of 2 to 8 widgets' and
+    // plugins', each as one put there alone, none twice; no size of its own.
+    #[test]
+    fn several_widgets_in_one_place() {
+        let ok = |w| super::is_taskbar_layout(&json!({ "right": [w, "clock"] }));
+        let today = json!({ "type": "widget", "of": "today", "icon": "today" });
+        let stock = json!({ "type": "plugin", "of": "stock", "name": "股票" });
+        let mail = json!({ "type": "widget", "of": "inbox-a1", "name": "me@example.com", "icon": "mail" });
+        assert!(ok(json!({ "id": "wc1", "type": "carousel", "items": [today, stock] })));
+        assert!(ok(json!({ "id": "wc1", "type": "stack", "items": [today, stock, mail] })));
+        // One alone, more than eight, the same one twice: not.
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "items": [today] })));
+        let nine: Vec<_> = (0..9).map(|i| json!({ "type": "widget", "of": format!("w{i}") })).collect();
+        assert!(!ok(json!({ "id": "wc1", "type": "carousel", "items": nine })));
+        assert!(ok(json!({ "id": "wc1", "type": "carousel", "items": nine[..8] })));
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "items": [today, today] })));
+        // A member as a widget alone is, nothing else: no spacer, no size, no id.
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "items": [today, { "type": "sep" }] })));
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "items": [today, { "type": "plugin", "of": "nope" }] })));
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "items": [today, { "type": "widget", "of": "tokens", "size": "M" }] })));
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "items": [today, { "id": "wd", "type": "widget", "of": "tokens" }] })));
+        // The group: items and no of, no size; items only on a group.
+        assert!(!ok(json!({ "id": "wc1", "type": "stack" })));
+        assert!(!ok(json!({ "id": "wc1", "type": "stack", "of": "today", "items": [today, stock] })));
+        assert!(!ok(json!({ "id": "wc1", "type": "carousel", "size": "M", "items": [today, stock] })));
+        assert!(!ok(json!({ "id": "wc1", "type": "widget", "of": "tokens", "items": [today, stock] })));
+        // What it holds is on the taskbar.
+        let layout = json!({ "right": [{ "id": "wc1", "type": "stack", "items": [today, stock] }, "clock"] });
+        assert!(super::is_on_taskbar(&layout, "today") && super::is_on_taskbar(&layout, "stock-nvda"));
+        assert!(!super::is_on_taskbar(&layout, "tokens"));
     }
 
     #[test]

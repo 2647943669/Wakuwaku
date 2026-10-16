@@ -44,6 +44,8 @@ const SENT_EVERY: Duration = Duration::from_secs(600);
 // While a big mailbox comes down, its flags taken again this often (read,
 // starred, deleted elsewhere meanwhile).
 const FLAGS_EVERY: Duration = Duration::from_secs(120);
+// The newest unread letters its widget's card lists (the spec's six).
+const LISTED: usize = 6;
 
 pub fn run(sh: &Arc<Shared>, account: &Account, watch: &Watch) {
     let st = store::of(sh, account);
@@ -125,7 +127,7 @@ pub fn run(sh: &Arc<Shared>, account: &Account, watch: &Watch) {
         watch.set(json!({ "state": "error", "error": fail.json() }));
         sh.push_settings();
         if failures >= 2 {
-            show(sh, account, None, None, false);
+            show(sh, account, None, &[], false);
         }
         // A password said no: not again soon, or the account may be locked.
         let wait = if matches!(fail, Fail::Login(_)) { 300 } else { [15, 30, 60, 120, 300][(failures as usize - 1).min(4)] };
@@ -170,12 +172,14 @@ fn save(st: &Mutex<Store>) {
 // unread, the newest unread letter (new mail opens the island, once the
 // first sync is done: `newest_seen` known), how much is kept whole.
 fn tell(sh: &Shared, account: &Account, watch: &Watch, st: &Mutex<Store>, state: &str, newest_seen: &mut Option<u32>) {
-    let (unread, newest, letter, offline) = {
+    let (unread, newest, letters, offline) = {
         let s = st.lock().unwrap();
         let unseen: Vec<&Entry> = s.inbox.letters.values().filter(|e| !e.seen).collect();
         let newest = unseen.last().map(|e| e.uid);
-        let letter = unseen.last().map(|e| (if e.from.name.is_empty() { e.from.address.clone() } else { e.from.name.clone() }, e.subject.clone()));
-        (unseen.len(), newest, letter, s.offline(offline(sh), now()))
+        // The newest unread first, as many as its widget's card lists.
+        let letters: Vec<(String, String, Option<i64>)> =
+            unseen.iter().rev().take(LISTED).map(|e| (if e.from.name.is_empty() { e.from.address.clone() } else { e.from.name.clone() }, e.subject.clone(), e.date)).collect();
+        (unseen.len(), newest, letters, s.offline(offline(sh), now()))
     };
     let first = state == "ok" && newest_seen.is_none();
     let is_new = state == "ok" && matches!((newest, *newest_seen), (Some(n), Some(seen)) if n > seen);
@@ -184,7 +188,7 @@ fn tell(sh: &Shared, account: &Account, watch: &Watch, st: &Mutex<Store>, state:
     }
     // Before the first sync, what was kept (nothing said new).
     if state == "ok" || !st.lock().unwrap().inbox.letters.is_empty() {
-        show(sh, account, Some(unread), letter.as_ref(), is_new);
+        show(sh, account, Some(unread), &letters, is_new);
     }
     let (have, total, bytes) = offline;
     // Through a proxy: which (the page says so on the account's line).

@@ -456,7 +456,7 @@ impl Shared {
             // Antigravity's and DeepSeek Harness's approvals never come to her.
             let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh";
             self.count_today(|t| {
-                t.turns += out.turns;
+                t.begun(out.turns);
                 if is_agy {
                     t.agy_turns += out.turns;
                 }
@@ -533,14 +533,14 @@ impl Shared {
 
     // Today's counts changed: kept, and the widget says so.
     pub fn count_today(&self, change: impl FnOnce(&mut widgets::Today)) {
-        let words = {
+        let (words, detail) = {
             let mut today = self.today.lock().unwrap();
             today.roll(&widgets::local_date());
             change(&mut today);
             today.save(&self.dir);
-            today.words()
+            (today.words(), today.detail())
         };
-        if self.widgets.lock().unwrap().set_built_in("today", words, now_ms()) {
+        if self.widgets.lock().unwrap().set_built_in_with("today", words, detail, now_ms()) {
             self.redraw();
         }
     }
@@ -1032,7 +1032,7 @@ pub fn jump_to(sh: &Shared, id: &str) -> bool {
 // (Shared::change), the quiet began or ended (Shared::check_quiet).
 static MONITOR_WAKE: (Mutex<bool>, std::sync::Condvar) = (Mutex::new(false), std::sync::Condvar::new());
 
-fn wake_monitor() {
+pub(crate) fn wake_monitor() {
     let (woken, cv) = &MONITOR_WAKE;
     *woken.lock().unwrap() = true;
     cv.notify_one();
@@ -1651,17 +1651,20 @@ fn main() {
                 let mut next = std::time::Instant::now();
                 // Read with the settings open since they last opened.
                 let mut watching_listed = false;
-                let mut was = (false, Value::Null, false);
+                let mut was = (false, Value::Null, false, false);
                 loop {
                     let setting = json!([monitored.setting("monitor"), monitored.setting("monitorSource")]);
                     let mut watching = widgets::Watching::from(&setting[0], &setting[1]);
-                    let (on, quiet) = (monitored.is_widget_on("monitor"), monitored.is_quiet());
+                    // On in the island, or put on the taskbar (its widget there).
+                    let (on, quiet) = (monitored.is_widget_wanted("monitor"), monitored.is_quiet());
                     let listing = monitored.island.lock().unwrap().settings_open;
-                    (watching.quiet, watching.listing) = (quiet, listing);
-                    // Any of its settings changed (a sensor picked, too), or the
-                    // settings opened: read now.
-                    if std::time::Instant::now() >= next || (on, &setting, quiet) != (was.0, &was.1, was.2) || (listing && !watching_listed) {
-                        was = (on, setting, quiet);
+                    // The pointer on her home: its widget's card may be looked at.
+                    let looking = !quiet && island::is_over(&monitored);
+                    (watching.quiet, watching.listing, watching.looking) = (quiet, listing, looking);
+                    // Any of its settings changed (a sensor picked, too), the
+                    // settings opened, or the pointer came: read now.
+                    if std::time::Instant::now() >= next || (on, &setting, quiet) != (was.0, &was.1, was.2) || (looking && !was.3) || (listing && !watching_listed) {
+                        was = (on, setting, quiet, looking);
                         watching_listed = listing;
                         // Quiet (nobody looking), every ten seconds at least.
                         let every = if quiet { watching.every.max(10) } else { watching.every };
@@ -1675,7 +1678,7 @@ fn main() {
                         let changed = {
                             let mut widgets = monitored.widgets.lock().unwrap();
                             match words {
-                                Some(value) => widgets.set_built_in("monitor", value, now_ms()),
+                                Some(value) => widgets.set_built_in_with("monitor", value, monitor.detail(), now_ms()),
                                 None => widgets.remove_built_in("monitor"),
                             }
                         };

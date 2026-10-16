@@ -15,7 +15,7 @@ param(
 )
 
 function Send($widget) {
-  $body = $widget | ConvertTo-Json -Compress
+  $body = $widget | ConvertTo-Json -Compress -Depth 6
   Invoke-RestMethod -Method Post "http://127.0.0.1:$Port/widget" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
 }
 
@@ -49,7 +49,11 @@ while ($true) {
     } else {
       $left = $next.At - $now
       $key = "$($next.At.ToString('o')) $($next.Title)"
-      $widget = @{ id = 'countdown'; icon = 'flag'; color = $(if ($left.TotalHours -lt 1) { '#ff5c6c' } else { '#ffb340' }); label = $next.Title; value = $(if ($left.TotalSeconds -le 0) { '到点了' } else { Left $left }); ttl = 180 }
+      # Its one size (small): the date under it, and the days left as one
+      # number (the hours and minutes under a day).
+      $date = '{0} 月 {1} 日 {2}' -f $next.At.Month, $next.At.Day, @('周日', '周一', '周二', '周三', '周四', '周五', '周六')[[int]$next.At.DayOfWeek]
+      $count = if ($left.TotalDays -ge 1) { @{ kind = 'days'; value = "$([int][math]::Floor($left.TotalDays))"; unit = '天' } } else { @{ kind = 'days'; value = $(if ($left.TotalSeconds -le 0) { '0:00' } else { '{0}:{1:mm}' -f [int][math]::Floor($left.TotalHours), $left }) } }
+      $widget = @{ id = 'countdown'; icon = 'flag'; color = $(if ($left.TotalHours -lt 1) { '#ff5c6c' } else { '#ffb340' }); label = $next.Title; value = $(if ($left.TotalSeconds -le 0) { '到点了' } else { Left $left }); detail = @{ sizes = @('s'); extra = $date; rows = @($count) }; ttl = 180 }
       if ($left.TotalSeconds -le 0 -and -not $told["$key now"]) {
         $widget.nudge = "到点了：$($next.Title)"
         $told["$key now"] = $true

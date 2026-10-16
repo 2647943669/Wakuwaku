@@ -2289,3 +2289,9 @@
 .tb-light #island-settings .wc-err b {
   color: #c42b1c;
 }
+
+/* Where a widget goes, beside its switch (settings.js pageWidgets): small. */
+#island-settings .seg[data-seg^='where:'] span {
+  padding: 2px 8px;
+  font-size: 11.5px;
+}

@@ -66,13 +66,33 @@
       ? `<span class="wicon wglyph" aria-hidden="true">&#x${GLYPHS[name]};</span>`
       : `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.dot}</svg>`
 
+  // A widget's detail (widgets.rs detail_of): which sizes it has, a series
+  // (a curve or bars), rows (a list) and its extra (a few words more). A
+  // string, as main had it before, is its extra. Checked there already.
+  function detailOf(w) {
+    const d = w?.detail
+    if (typeof d === 'string') return d ? { extra: d } : {}
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  }
+
+  // The sizes a widget has: as its detail says; the built-in ones' own; a
+  // script's that says none, small and medium (its value over its label:
+  // nothing more to show large). One that says it is small alone (a
+  // countdown) is small alone, on the taskbar too.
+  const BUILT_SIZES = { monitor: ['s', 'm', 'l'], today: ['s', 'm', 'l'], tokens: ['s', 'm'] }
+  function sizesOf(w) {
+    const said = detailOf(w).sizes
+    if (Array.isArray(said) && said.length) return ['s', 'm', 'l'].filter(z => said.includes(z))
+    return BUILT_SIZES[w?.id] || ['s', 'm']
+  }
+
   // What a widget says: its label and its value, in her language; a private
-  // one's label not, unless the specifics may show. And its detail, for the
-  // open island alone (the weather's range for the day).
+  // one's label not, unless the specifics may show. And its detail's extra,
+  // for the open island alone (the weather's range for the day).
   const words = (lang, w, detailed = true) => ({
     label: w.private && !detailed ? '' : render(lang, w.label),
     value: partsOf(w) ? partsOf(w).map(p => p.text).join(' ') : render(lang, w.value),
-    detail: typeof w.detail === 'string' ? w.detail : '',
+    detail: detailOf(w).extra || '',
   })
 
   // How full a reading is, 0 to 100. The processor, memory and the battery
@@ -182,19 +202,36 @@
   // spacer: 'flex' (takes the room there is), 'gap', 'sep' (a line); size
   // 'S' (its icon and value) or 'M' (its name over its value, as the clock
   // has the date under the time). name and icon: as it was put there, for
-  // while it has nothing to say. settings.rs checks the same.
-  const ENTRY_TYPES = ['widget', 'plugin', 'flex', 'gap', 'sep']
+  // while it has nothing to say. Or several in one place (the spec's §5):
+  // 'carousel' (they take turns there) or 'stack' (the first shown, all of
+  // them opened over it by a press), { id, type, items }, 2 to 8 of them,
+  // each { type, of, name, icon } as one put there alone, none twice, shown
+  // medium. settings.rs checks the same.
+  const ENTRY_TYPES = ['widget', 'plugin', 'flex', 'gap', 'sep', 'carousel', 'stack']
+  const GROUP_TYPES = ['carousel', 'stack']
   const MAX_ENTRIES = 32
+  const MAX_MEMBERS = 8
+  const isOf = of => typeof of === 'string' && /^[a-z0-9_-]{1,40}$/.test(of)
+  const isName = n => n === undefined || (typeof n === 'string' && [...n].length <= 40)
+  const isIcon = i => i === undefined || (typeof i === 'string' && i in ICONS)
+  const isGroup = e => !!e && GROUP_TYPES.includes(e.type)
+  // One of a group's: a widget's or a plugin's, nothing more.
+  const isMember = m =>
+    !!m && typeof m === 'object' && (m.type === 'widget' || m.type === 'plugin') && isOf(m.of) && isName(m.name) && isIcon(m.icon) && Object.keys(m).every(k => ['type', 'of', 'name', 'icon'].includes(k))
+  const memberKey = m => `${m.type}:${m.of}`
   const isEntry = e =>
     !!e &&
     typeof e === 'object' &&
     typeof e.id === 'string' &&
     /^w[a-z0-9]{1,15}$/.test(e.id) &&
     ENTRY_TYPES.includes(e.type) &&
-    (e.type === 'widget' || e.type === 'plugin' ? typeof e.of === 'string' && /^[a-z0-9_-]{1,40}$/.test(e.of) : e.of === undefined) &&
+    (e.type === 'widget' || e.type === 'plugin' ? isOf(e.of) : e.of === undefined) &&
+    (isGroup(e)
+      ? Array.isArray(e.items) && e.items.length >= 2 && e.items.length <= MAX_MEMBERS && e.items.every(isMember) && new Set(e.items.map(memberKey)).size === e.items.length && e.size === undefined
+      : e.items === undefined) &&
     (e.size === undefined || e.size === 'S' || e.size === 'M') &&
-    (e.name === undefined || (typeof e.name === 'string' && [...e.name].length <= 40)) &&
-    (e.icon === undefined || (typeof e.icon === 'string' && e.icon in ICONS))
+    isName(e.name) &&
+    isIcon(e.icon)
   const isSource = e => e.type === 'widget' || e.type === 'plugin'
   // A part by its name, a widget by its id.
   const keyOf = item => (typeof item === 'string' ? item : item.id)
@@ -210,9 +247,95 @@
       entries++
       return !!seen.add(p.id)
     }
-    const run = k => (Array.isArray(saved?.[k]) ? saved[k] : []).filter(keep).map(p => (typeof p === 'string' ? p : { ...p }))
+    const copy = p => (typeof p === 'string' ? p : isGroup(p) ? { ...p, items: p.items.map(m => ({ ...m })) } : { ...p })
+    const run = k => (Array.isArray(saved?.[k]) ? saved[k] : []).filter(keep).map(copy)
     const out = { left: run('left'), center: run('center'), right: run('right') }
     for (const [k, list] of Object.entries(base)) for (const p of list) if (!seen.has(p)) out[k].push(p)
+    return out
+  }
+
+  // --- Several in one place: made, changed, taken apart -----------------------------
+  // Each takes a layout and gives a new one (the one given left as it was);
+  // newId makes an entry's id (island.js: "w" and a-z 0-9).
+  const cloneLayout = layout => JSON.parse(JSON.stringify(layout))
+  const findEntry = (layout, id) => {
+    for (const k of Object.keys(layout)) {
+      const at = layout[k].findIndex(p => typeof p !== 'string' && p.id === id)
+      if (at >= 0) return { run: k, at, entry: layout[k][at] }
+    }
+    return null
+  }
+  // Its members: a group's, or the one a widget alone is.
+  const membersOf = e => (isGroup(e) ? e.items : isSource(e) ? [{ type: e.type, of: e.of, ...(e.name ? { name: e.name } : {}), ...(e.icon ? { icon: e.icon } : {}) }] : [])
+  const alone = (m, id) => ({ id, type: m.type, of: m.of, size: 'M', ...(m.name ? { name: m.name } : {}), ...(m.icon ? { icon: m.icon } : {}) })
+
+  // One (a widget alone, or a group) put with another where that one is: a
+  // group of the two (a widget there alone becomes one, of `type`), or into
+  // the group there (its own type kept), 8 at most, none twice. Unchanged
+  // when either is not a widget or a group, or it is itself.
+  function groupWith(layout, id, intoId, type, newId) {
+    if (id === intoId || !GROUP_TYPES.includes(type)) return layout
+    const out = cloneLayout(layout)
+    const from = findEntry(out, id)
+    const into = findEntry(out, intoId)
+    if (!from || !into || !membersOf(from.entry).length || !membersOf(into.entry).length) return layout
+    const items = [...membersOf(into.entry)]
+    for (const m of membersOf(from.entry)) if (items.length < MAX_MEMBERS && !items.some(x => memberKey(x) === memberKey(m))) items.push(m)
+    if (items.length < 2) return layout
+    const group = isGroup(into.entry) ? { ...into.entry, items } : { id: newId(), type, items }
+    out[into.run][into.at] = group
+    const left = findEntry(out, id)
+    out[left.run].splice(left.at, 1)
+    return out
+  }
+
+  // A group taken apart: its members each alone where it was, in its order.
+  function ungroup(layout, id, newId) {
+    const out = cloneLayout(layout)
+    const at = findEntry(out, id)
+    if (!at || !isGroup(at.entry)) return layout
+    out[at.run].splice(at.at, 1, ...at.entry.items.map(m => alone(m, newId())))
+    return out
+  }
+
+  // One member taken out of a group (dragged out of a stack): alone, just
+  // after it; one member left, the group is that one alone.
+  function takeOut(layout, id, index, newId) {
+    const out = cloneLayout(layout)
+    const at = findEntry(out, id)
+    if (!at || !isGroup(at.entry) || !at.entry.items[index]) return layout
+    const [m] = at.entry.items.splice(index, 1)
+    const rest = at.entry.items.length === 1 ? alone(at.entry.items[0], newId()) : at.entry
+    out[at.run].splice(at.at, 1, rest, alone(m, newId()))
+    return out
+  }
+
+  // One member gone from a group (off the taskbar); one left, it alone.
+  function dropMember(layout, id, index, newId) {
+    const out = cloneLayout(layout)
+    const at = findEntry(out, id)
+    if (!at || !isGroup(at.entry) || !at.entry.items[index]) return layout
+    at.entry.items.splice(index, 1)
+    if (at.entry.items.length === 1) out[at.run][at.at] = alone(at.entry.items[0], newId())
+    return out
+  }
+
+  // A group's members in another order: the one at `from` put at `to`.
+  function reorder(layout, id, from, to) {
+    const out = cloneLayout(layout)
+    const at = findEntry(out, id)
+    const items = at && isGroup(at.entry) ? at.entry.items : null
+    if (!items || !items[from] || to < 0 || to >= items.length || from === to) return layout
+    items.splice(to, 0, ...items.splice(from, 1))
+    return out
+  }
+
+  // A group made the other kind (a carousel a stack, or back).
+  function regroup(layout, id, type) {
+    const out = cloneLayout(layout)
+    const at = findEntry(out, id)
+    if (!at || !isGroup(at.entry) || !GROUP_TYPES.includes(type)) return layout
+    at.entry.type = type
     return out
   }
 
@@ -232,8 +355,47 @@
   }
 
   // What a widget put there shows, of the widgets there are now: the one,
-  // or a plugin's.
-  const sourcesOf = (entry, all) => (entry.type === 'widget' ? all.filter(w => w.id === entry.of) : entry.type === 'plugin' ? all.filter(w => w.plugin === entry.of) : [])
+  // or a plugin's; a group's, each of its members'.
+  const sourcesOf = (entry, all) =>
+    entry.type === 'widget' ? all.filter(w => w.id === entry.of) : entry.type === 'plugin' ? all.filter(w => w.plugin === entry.of) : isGroup(entry) ? entry.items.flatMap(m => sourcesOf(m, all)) : []
+
+  // A group's slides: each widget of each member, in the members' order;
+  // a member with nothing to say one slide still, without a widget (its
+  // name greyed).
+  const slidesOf = (entry, all) =>
+    membersOf(entry).flatMap(m => {
+      const from = sourcesOf(m, all)
+      return from.length ? from.map(w => ({ member: m, w })) : [{ member: m, w: null }]
+    })
+
+  // --- A carousel's turns (the spec's §5, §9) ------------------------------------------
+  // Every CAROUSEL_MS the next slides up, while it may move: not under the
+  // pointer, not while nobody is about, never with motion reduced (island.js
+  // holds it then and calls nothing). A slide with news (newsIn) cuts in at
+  // once, for a turn of its own, and the turns go on from where they were.
+  // { at, since, back }: the slide shown, since when, and where to go back
+  // to after news (-1 none).
+  const CAROUSEL_MS = 6000
+  const carouselStart = now => ({ at: 0, since: now, back: -1 })
+  function carouselTurn(state, n, now, news = -1) {
+    if (n < 2) return { at: 0, since: state.since, back: -1 }
+    const at = Math.min(state.at, n - 1)
+    if (news >= 0 && news < n && news !== at) return { at: news, since: now, back: state.back >= 0 ? state.back : (at + 1) % n }
+    if (now - state.since < CAROUSEL_MS) return { ...state, at }
+    return { at: state.back >= 0 && state.back < n ? state.back : (at + 1) % n, since: now, back: -1 }
+  }
+  // Turned by hand (the wheel): the next or the one before, its turn anew.
+  const carouselStep = (state, n, by, now) => ({ at: n ? (((state.at + by) % n) + n) % n : 0, since: now, back: -1 })
+  // How long until it turns by itself.
+  const carouselDue = (state, now) => Math.max(0, CAROUSEL_MS - (now - state.since))
+
+  // News on a slide: a mailbox's unread grew (a letter came); its own
+  // nudge (island.js) is news too. A clock or a reading changing is not.
+  function newsIn(before, after) {
+    if (!before || !after || after.from !== 'mail') return false
+    const n = w => Number(w?.value?.vars?.n ?? (typeof w?.value === 'string' ? parseInt(w.value, 10) : NaN))
+    return n(after) > (Number.isFinite(n(before)) ? n(before) : Infinity)
+  }
 
   // The widgets the layout shows (not to take their turns in the island too).
   function shownOn(layout, all) {
@@ -246,6 +408,8 @@
   // label (as it was put there, when gone).
   function nameOf(lang, entry, all = [], detailed = true) {
     if (entry.type === 'plugin') return render(lang, { key: `w.ex.${entry.of}` })
+    // A group: its kind and how many ("叠放 · 3 个").
+    if (isGroup(entry)) return render(lang, { key: `taskbar.w.${entry.type}`, vars: { n: String(entry.items.length) } })
     if (entry.type !== 'widget') return render(lang, { key: `taskbar.w.${entry.type}` })
     const w = all.find(x => x.id === entry.of)
     if (w) return words(lang, w, detailed).label || render(lang, { key: 'taskbar.w.widget' })
@@ -255,6 +419,8 @@
   const api = {
     ICONS,
     icon,
+    detailOf,
+    sizesOf,
     words,
     partsOf,
     partsHTML,
@@ -265,15 +431,34 @@
     glyphOf,
     deepen,
     ENTRY_TYPES,
+    GROUP_TYPES,
     isEntry,
     isSource,
+    isGroup,
+    isMember,
+    memberKey,
+    membersOf,
     keyOf,
     layoutOf,
     partsAlone,
     withParts,
+    findEntry,
+    groupWith,
+    ungroup,
+    takeOut,
+    dropMember,
+    reorder,
+    regroup,
     sourcesOf,
+    slidesOf,
     shownOn,
     nameOf,
+    CAROUSEL_MS,
+    carouselStart,
+    carouselTurn,
+    carouselStep,
+    carouselDue,
+    newsIn,
   }
 
   if (typeof module !== 'undefined' && module.exports) {
