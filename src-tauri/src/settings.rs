@@ -28,6 +28,11 @@ pub fn snapshot(sh: &Shared) -> Value {
         sh.redraw();
     }
     let omp_files = connection::omp_files();
+    // The monitor's source in effect: the one chosen, else LHM while it answers.
+    let lhm = crate::lhm::view();
+    let lhm_status = lhm["status"].as_str().unwrap_or("").to_string();
+    let monitor_source = crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource"), lhm_status == "found");
+    let lhm_shown = monitor_source == crate::hw::Source::Lhm && sh.island.lock().unwrap().settings_open;
     json!({
         "settings": Value::Object(sh.settings.lock().unwrap().clone()),
         "lang": sh.lang(),
@@ -126,9 +131,13 @@ pub fn snapshot(sh: &Shared) -> Value {
         // The monitor's hardware sensors: LibreHardwareMonitor found or
         // not, and its sensors (lhm.rs); the built-in ones (hw.rs); which
         // of them it shows: the one chosen, else LHM while it answers.
-        "lhm": crate::lhm::view(),
+        "lhm": lhm,
         "hw": crate::hw::view(),
-        "monitorSource": crate::hw::Source::of(&sh.setting("monitor"), &sh.setting("monitorSource"), crate::lhm::view()["status"] == "found").name(),
+        "monitorSource": monitor_source.name(),
+        // LibreHardwareMonitor got, set up, started (lhm_setup.rs): what is
+        // offered, what was found, a download under way; looked at again
+        // while the settings show it.
+        "lhmSetup": crate::lhm_setup::view(sh, &lhm_status, lhm_shown),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": scripts::view(sh),
         // The mail accounts, each with how its watch is going.
@@ -598,6 +607,19 @@ pub async fn settings_update(app: AppHandle, what: String) -> Value {
         "update" => crate::updates::update_now(&sh),
         _ => {}
     }
+    snapshot(&sh)
+}
+
+// LibreHardwareMonitor for the monitor, from its settings (lhm_setup.rs):
+// get (download, set up, start), start (one found: its web server turned
+// on, started), startup and noStartup (its own task, at logon), usePort
+// (hers set to the one its config says), folder (opened), look, dismiss.
+// The snapshot as it is then (a job goes on on its own thread, pushed as it
+// goes).
+#[tauri::command]
+pub async fn settings_lhm(app: AppHandle, what: String) -> Value {
+    let sh = shared(&app);
+    crate::lhm_setup::act(&sh, &what);
     snapshot(&sh)
 }
 

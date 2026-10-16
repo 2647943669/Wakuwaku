@@ -222,6 +222,9 @@
       openSite: place => invoke('settings_open_site', { place }),
       // Her updates: 'check', 'page' (the release's), 'update' (updates.rs).
       update: what => invoke('settings_update', { what }),
+      // LibreHardwareMonitor for the monitor: 'get', 'start', 'startup', 'noStartup',
+      // 'usePort', 'folder', 'look', 'dismiss' (lhm_setup.rs).
+      lhm: what => invoke('settings_lhm', { what: String(what) }),
       // Her crash reports: 'yes', 'no' (her asking answered), 'send', 'open' (the last one's issue; crash.rs).
       crash: what => invoke('settings_crash', { what }),
     },

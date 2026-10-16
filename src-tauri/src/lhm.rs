@@ -1,9 +1,10 @@
 // The hardware's sensors in the monitor (#18, its first step): temperatures,
 // loads, power, fans, clocks and a card's memory, from a LibreHardwareMonitor
-// (LHM) the person runs themselves. She never installs nor starts it (its
-// driver, and the administrator's rights most sensors need, are theirs to
-// give); she reads what its Remote Web Server serves (LHM's Options → Remote
-// Web Server → Run): GET http://127.0.0.1:<port>/data.json, the whole tree.
+// (LHM) the person runs. She downloads, sets up and starts it only when they
+// click for it (lhm_setup.rs: its driver, and the administrator's rights most
+// sensors need, are theirs to give); she reads what its Remote Web Server
+// serves (LHM's Options → Remote Web Server → Run): GET
+// http://127.0.0.1:<port>/data.json, the whole tree.
 // Its WMI classes (root\LibreHardwareMonitor) would have needed nothing
 // turned on, but LHM 0.9.5 dropped them with .NET 10 (LibreHardwareMonitor
 // #2143): the web server is the one way into a current LHM.
@@ -21,7 +22,8 @@
 // lhmUser and lhmPass (LHM's Basic authentication: the password kept in
 // Windows' Credential Manager, the setting only saying true), sensors (the
 // SensorIds shown, in the tree's order; unset, the CPU's package temperature
-// and the discrete card's temperature and load).
+// and the discrete card's temperature and load), lhmStartup (false: an LHM
+// she downloads is not made to start at logon by its task; lhm_setup.rs).
 //
 // data.json as LHM writes it (HttpServer.cs): nodes of { id, Text, Min,
 // Value, Max, ImageURL, Children }; a sensor's also SensorId
@@ -277,7 +279,7 @@ impl Conf {
 // The settings' "monitor" value may carry these, checked (settings.rs is_ok).
 pub fn is_setting(key: &str, v: &Value) -> Option<bool> {
     Some(match key {
-        "lhm" => v.is_boolean(),
+        "lhm" | "lhmStartup" => v.is_boolean(),
         "lhmPort" => v.as_u64().is_some_and(|p| (1..=65535).contains(&p)),
         "lhmUser" => v.as_str().is_some_and(|s| s.chars().count() <= 64 && !s.contains(':')),
         // A password typed (kept, keep_password) or "" to forget it, or true: one kept.
@@ -290,6 +292,22 @@ pub fn is_setting(key: &str, v: &Value) -> Option<bool> {
 // The password, when one was kept, bumped each time a new one is: asked
 // with the new one at once.
 static SECRET_REV: AtomicU64 = AtomicU64::new(0);
+// Bumped to have it asked at once (its web server just answered, after
+// lhm_setup.rs started it), and the monitor's thread woken to read.
+static ASKED_AGAIN: AtomicU64 = AtomicU64::new(0);
+static READ_NOW: AtomicBool = AtomicBool::new(false);
+
+// LHM asked again at its next reading, which comes now.
+pub fn ask_now() {
+    ASKED_AGAIN.fetch_add(1, Ordering::SeqCst);
+    READ_NOW.store(true, Ordering::SeqCst);
+    crate::wake_monitor();
+}
+
+// Whether a reading is wanted now (ask_now), for the monitor's thread.
+pub fn take_read_now() -> bool {
+    READ_NOW.swap(false, Ordering::SeqCst)
+}
 
 // A password typed in the settings goes to the Credential Manager, the
 // setting kept saying only that there is one; "" forgets it.
@@ -352,9 +370,9 @@ pub fn take_changed() -> bool {
 pub struct Lhm {
     agent: Option<ureq::Agent>,
     asked: Option<Instant>,
-    // What it was last asked with (port, user, a password, which one):
-    // any of them changed, it is asked again at once.
-    with: Option<(u16, String, bool, u64)>,
+    // What it was last asked with (port, user, a password, which one, and
+    // ask_now's count): any of them changed, it is asked again at once.
+    with: Option<(u16, String, bool, u64, u64)>,
     password: String,
     status: Status,
     fails: u8,
@@ -380,7 +398,7 @@ impl Lhm {
             }
             return self.publish(conf);
         }
-        let with = (conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst));
+        let with = (conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst), ASKED_AGAIN.load(Ordering::SeqCst));
         let every = match self.status {
             Status::Found if quiet => EVERY_QUIET,
             Status::Found => EVERY,
@@ -596,7 +614,7 @@ mod tests {
         let mut lhm = Lhm::new();
         lhm.password = "pw".into();
         let conf = Conf { on: true, port, user: "me".into(), pass: false, sensors: None };
-        lhm.with = Some((conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst)));
+        lhm.with = Some((conf.port, conf.user.clone(), conf.pass, SECRET_REV.load(Ordering::SeqCst), ASKED_AGAIN.load(Ordering::SeqCst)));
         assert!(lhm.ask(&conf).is_ok());
         lhm.password.clear();
         assert_eq!(lhm.ask(&Conf { user: String::new(), ..conf.clone() }).err(), Some(Status::Auth));

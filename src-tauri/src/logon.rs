@@ -198,7 +198,7 @@ mod imp {
         _get_state: usize,
         _get_enabled: usize,
         _put_enabled: usize,
-        _run: usize,
+        run: unsafe extern "system" fn(*mut Obj, Variant, *mut *mut Obj) -> i32,
         _run_ex: usize,
         _get_instances: usize,
         _get_last_run_time: usize,
@@ -378,6 +378,22 @@ mod imp {
         })
     }
 
+    // Started now, as the Task Scheduler's Run does: with its own rights
+    // (LibreHardwareMonitor's task, the highest: lhm_setup.rs), which its
+    // author may ask for without being asked by Windows.
+    pub fn run(name: &str) -> Result<(), String> {
+        in_root(|root| {
+            let name = Text::new(name);
+            let mut task = Held(null_mut());
+            // SAFETY: as in_root; the running task given back released (Held).
+            unsafe {
+                check("the task", (root.table::<FolderVtbl>().get_task)(root.0, name.0, &mut task.0))?;
+                let mut running = Held(null_mut());
+                check("the task not run", (task.table::<TaskVtbl>().run)(task.0, EMPTY, &mut running.0))
+            }
+        })
+    }
+
     // Whether there was one to remove.
     pub fn remove(name: &str) -> Result<bool, String> {
         in_root(|root| {
@@ -454,6 +470,10 @@ mod imp {
         Ok(false)
     }
 
+    pub fn run(_name: &str) -> Result<(), String> {
+        Err("not on this system".into())
+    }
+
     pub fn user_sid() -> Option<String> {
         None
     }
@@ -463,7 +483,7 @@ mod imp {
     }
 }
 
-pub use imp::{register, remove, since_logon, user_sid, xml};
+pub use imp::{register, remove, run, since_logon, user_sid, xml};
 
 #[cfg(test)]
 mod tests {
