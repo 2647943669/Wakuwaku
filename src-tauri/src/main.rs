@@ -1501,6 +1501,7 @@ fn main() {
             desk::desk_icons,
             desk::desk_where,
             desk::desk_ask,
+            desk::desk_type,
             bars::bar_asks,
             bars::bar_pop,
             bars::bar_pop_over,

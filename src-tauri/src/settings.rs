@@ -281,7 +281,9 @@ pub fn is_on_taskbar(layout: &Value, widget: &str) -> bool {
 // The desktop's widgets (deskgrid.js isEntry, isLayout): up to 32, each
 // { id, type, of, size, name, icon, d, at } alone (a widget's or a
 // plugin's) or { id, type: "stack", items, size, d, at } several in one, 2
-// to 8 as the taskbar's groups have them; size s, m or l; d the display it
+// to 8 as the taskbar's groups have them, or { id, type: "board", name,
+// items, folded, d, at } a board (its name 16 characters at most, its tiles
+// is_board_tiles); size s, m or l; d the display it
 // is on (desk.rs key_of: a-z 0-9), at where it stood on each display it has
 // been on, 8 at most, { key: [column, row] }. Each id once, each widget or
 // plugin once.
@@ -291,6 +293,17 @@ fn is_desk_entry(v: &Value) -> bool {
     let ok_id = id.len() >= 2 && id.len() <= 16 && id.starts_with('w') && id[1..].chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
     let is_key = |k: &str| !k.is_empty() && k.len() <= 40 && k.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
     let is_cell = |v: &Value| v.as_array().is_some_and(|a| a.len() == 2 && a.iter().all(|n| n.as_u64().is_some_and(|n| n <= 255)));
+    if e.get("type").and_then(Value::as_str) == Some("board") {
+        let ok_rest = e.iter().all(|(key, v)| match key.as_str() {
+            "id" | "type" | "items" => true,
+            "name" => v.as_str().is_some_and(|n| n.chars().count() <= 16 && !n.chars().any(char::is_control)),
+            "folded" => v.is_boolean(),
+            "d" => v.as_str().is_some_and(is_key),
+            "at" => v.as_object().is_some_and(|at| at.len() <= 8 && at.iter().all(|(k, c)| is_key(k) && is_cell(c))),
+            _ => false,
+        });
+        return ok_id && ok_rest && e.get("items").is_some_and(is_board_tiles);
+    }
     let stack = e.get("type").and_then(Value::as_str) == Some("stack");
     let ok_kind = if stack {
         e.get("of").is_none()
@@ -308,6 +321,41 @@ fn is_desk_entry(v: &Value) -> bool {
         _ => false,
     });
     ok_id && e.contains_key("size") && ok_kind && ok_rest
+}
+
+// A board's tiles (deskgrid.js isBoardEntry): 16 at most, each a member
+// with its size and its cell on the board's grid of 8 columns and 4 rows,
+// whole on it, none over another, each widget or plugin once.
+fn is_board_tiles(v: &Value) -> bool {
+    let Some(tiles) = v.as_array() else { return false };
+    let span = |s: &str| match s {
+        "s" => Some((2, 2)),
+        "m" => Some((4, 2)),
+        "l" => Some((4, 4)),
+        _ => None,
+    };
+    let mut placed: Vec<(u64, u64, u64, u64)> = Vec::new();
+    let mut members: Vec<(&Value, &Value)> = Vec::new();
+    for t in tiles {
+        let Some(o) = t.as_object() else { return false };
+        let Some((w, h)) = o.get("size").and_then(Value::as_str).and_then(span) else { return false };
+        let Some([c, r]) = o.get("at").and_then(Value::as_array).and_then(|a| <[Value; 2]>::try_from(a.clone()).ok()) else { return false };
+        let (Some(c), Some(r)) = (c.as_u64(), r.as_u64()) else { return false };
+        let member: serde_json::Map<String, Value> = o.iter().filter(|(k, _)| !matches!(k.as_str(), "size" | "at")).map(|(k, v)| (k.clone(), v.clone())).collect();
+        if c + w > 8 || r + h > 4 || !is_member(&Value::Object(member)) {
+            return false;
+        }
+        if placed.iter().any(|&(pc, pr, pw, ph)| c < pc + pw && pc < c + w && r < pr + ph && pr < r + h) {
+            return false;
+        }
+        let key = (&o["type"], &o["of"]);
+        if members.contains(&key) {
+            return false;
+        }
+        placed.push((c, r, w, h));
+        members.push(key);
+    }
+    tiles.len() <= 16
 }
 
 pub fn is_desk_layout(v: &Value) -> bool {
@@ -977,6 +1025,31 @@ mod layout_tests {
             assert!(!ok(b.clone()), "{b}");
         }
         assert!(!ok(serde_json::Value::Array((0..33).map(|i| json!({ "id": format!("w{i}"), "type": "widget", "of": format!("x{i}"), "size": "s" })).collect())));
+        // Boards: their tiles on their grid of 8 by 4, none over another.
+        assert!(ok(json!([{ "id": "wb", "type": "board", "name": "行情", "folded": true, "d": "d1", "at": { "d1": [1, 1] }, "items": [
+            { "type": "widget", "of": "monitor", "size": "m", "at": [0, 0] },
+            { "type": "plugin", "of": "stock", "size": "l", "at": [4, 0] },
+            { "type": "widget", "of": "today", "size": "s", "at": [0, 2], "name": "今天" }
+        ] }, { "id": "wa", "type": "widget", "of": "weather", "size": "s" }])));
+        assert!(ok(json!([{ "id": "wb", "type": "board", "items": [] }])));
+        let tiles = |items: serde_json::Value| json!([{ "id": "wb", "type": "board", "items": items }]);
+        let bad_boards = [
+            tiles(json!([{ "type": "widget", "of": "a", "size": "s", "at": [0, 0] }, { "type": "widget", "of": "b", "size": "s", "at": [1, 1] }])),
+            tiles(json!([{ "type": "widget", "of": "a", "size": "m", "at": [5, 0] }])),
+            tiles(json!([{ "type": "widget", "of": "a", "size": "l", "at": [0, 1] }])),
+            tiles(json!([{ "type": "widget", "of": "a", "size": "s" }])),
+            tiles(json!([{ "type": "widget", "of": "a", "size": "s", "at": [0, 0], "x": 1 }])),
+            tiles(json!([{ "type": "widget", "of": "a", "size": "s", "at": [0, 0] }, { "type": "widget", "of": "a", "size": "s", "at": [2, 0] }])),
+            tiles(json!((0..17).map(|i| json!({ "type": "widget", "of": format!("t{i}"), "size": "s", "at": [0, 0] })).collect::<Vec<_>>())),
+            json!([{ "id": "wb", "type": "board", "items": [], "name": "一二三四五六七八九十一二三四五六七" }]),
+            json!([{ "id": "wb", "type": "board", "items": [], "size": "s" }]),
+            json!([{ "id": "wb", "type": "board", "items": [], "folded": 1 }]),
+            json!([{ "id": "wb", "type": "board" }]),
+            json!([{ "id": "wb", "type": "board", "items": [{ "type": "widget", "of": "a", "size": "s", "at": [0, 0] }] }, { "id": "wa", "type": "widget", "of": "a", "size": "s" }]),
+        ];
+        for b in bad_boards {
+            assert!(!ok(b.clone()), "{b}");
+        }
         // What it shows.
         let layout = json!([{ "id": "wa", "type": "widget", "of": "monitor", "size": "m" }, { "id": "ws", "type": "stack", "size": "s", "items": [{ "type": "plugin", "of": "stock" }, { "type": "widget", "of": "today" }] }]);
         assert!(super::is_on_desk(&layout, "monitor"));
@@ -984,6 +1057,8 @@ mod layout_tests {
         assert!(super::is_on_desk(&layout, "today"));
         assert!(!super::is_on_desk(&layout, "weather"));
         assert!(!super::is_on_desk(&json!(null), "monitor"));
+        // In a board.
+        assert!(super::is_on_desk(&json!([{ "id": "wb", "type": "board", "items": [{ "type": "widget", "of": "weather", "size": "s", "at": [0, 0] }] }]), "weather"));
     }
 
     // A widget in one place: on the desktop, or on the taskbar while that is

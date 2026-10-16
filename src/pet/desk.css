@@ -19,6 +19,8 @@
   --w-menu: rgba(36, 37, 43, 0.92);
   --w-on: rgba(255, 255, 255, 0.16);
   --w-amber: #ffb340;
+  --w-tile: rgba(255, 255, 255, 0.06);
+  --w-tile-line: rgba(255, 255, 255, 0.06);
 }
 
 body.lw {
@@ -33,6 +35,8 @@ body.lw {
   --w-menu: rgba(249, 249, 251, 0.95);
   --w-on: #ffffff;
   --w-amber: #b25e00;
+  --w-tile: rgba(255, 255, 255, 0.55);
+  --w-tile-line: rgba(0, 0, 0, 0.05);
 }
 
 html,
@@ -780,8 +784,346 @@ body.lw .sdots button.on {
   background: #1b1b1f;
 }
 
-/* --- A widget's menu (§10): as the taskbar's and the capsule's (style.css .wmenu) ---------------- */
-.wmenu {
+/* --- A board (§7 工作台, and its note of 2026-10-16) ----------------------------------------------
+   A larger pane of the same glass (the wallpaper under it blurred 40, desk.js paperFor), its
+   corners 28; its title bar 46 px, always there; its widgets flat tiles on it (no glass of their
+   own: no glass on glass), corners 16, their glow at 55%. desk.js sets its box. */
+.db {
+  position: absolute;
+  inset: 0;
+  border-radius: 28px;
+  box-shadow:
+    0 0 0 1px var(--w-line),
+    var(--w-shadow);
+}
+
+.db > .wpaper,
+.db > .btint {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.db > .btint {
+  background: var(--w-glass);
+  box-shadow: inset 0 1px 0 var(--w-hi);
+}
+
+.dw.board.folded .db {
+  border-radius: 23px;
+}
+
+.bhead {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--w-fg);
+}
+
+.btitle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bname {
+  max-width: 300px;
+  font: 600 14px var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bcount,
+.bmore {
+  color: var(--w-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Folded: its widgets' glyphs after its name, 16 px, six at most, then +N. */
+.bicons {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.bgl {
+  display: flex;
+  flex: none;
+  color: var(--c, var(--w-2));
+}
+
+.bgl .wgl {
+  font: normal 16px/1 var(--font-icon);
+}
+
+.bgl .wsvg {
+  display: flex;
+}
+
+.bgl .wicon {
+  width: 16px;
+  height: 16px;
+}
+
+.bgl .wher {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--w-track);
+  background-repeat: no-repeat;
+}
+
+.bbtns {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.bbtns button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--w-2);
+  font: normal 11px/1 var(--font-icon);
+  cursor: pointer;
+}
+
+.bbtns button:hover {
+  background: var(--w-track);
+}
+
+/* Its name being typed (a double-click on it): Enter keeps it, Esc not. */
+.bname-in {
+  width: 200px;
+  box-sizing: border-box;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 7px;
+  outline: 1.5px solid color-mix(in srgb, var(--w-fg) 38%, transparent);
+  background: var(--w-track);
+  color: var(--w-fg);
+  font: 600 14px var(--font-ui);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Its tiles: flat, a hairline, the glow a little fainter (55%). */
+.wd.tile {
+  position: absolute;
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px var(--w-tile-line);
+}
+
+.wd.tile > .wtint {
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--c) 12%, transparent), transparent 55%),
+    var(--w-tile);
+  box-shadow: none;
+}
+
+/* Dragged: over the others, its own glass colour while it is off the pane. */
+.wd.tile.lifted {
+  z-index: 10;
+  box-shadow:
+    inset 0 0 0 1px var(--w-tile-line),
+    0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+.wd.tile.lifted > .wtint {
+  background: var(--w-glass);
+}
+
+/* Its buttons on the tile under the pointer, not on all of them. */
+.dw.board.hover .tools,
+.dw.board.menu .tools {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dw.board .tile.hover .tools,
+.dw.board .tile.menu .tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dw.board.hover .wd .hd .r,
+.dw.board.menu .wd .hd .r {
+  visibility: visible;
+}
+
+.dw.board.hover .wd:has(.tools) .hd,
+.dw.board.menu .wd:has(.tools) .hd {
+  padding-right: 0;
+}
+
+.dw.board .tile.hover .hd .r,
+.dw.board .tile.menu .hd .r {
+  visibility: hidden;
+}
+
+.dw.board .tile.hover .hd,
+.dw.board .tile.menu .hd {
+  padding-right: 52px;
+}
+
+.dw.board.hover .wpriv.hid {
+  filter: blur(4px);
+}
+
+.dw.board .tile.hover .wpriv.hid {
+  filter: none;
+}
+
+/* Empty: a dashed place to drop into, saying so. */
+.bempty {
+  position: absolute;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed var(--w-3);
+  border-radius: 16px;
+  color: var(--w-3);
+  font-size: 12.5px;
+}
+
+/* Where the one dragged over it would land. */
+.bghost {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px dashed color-mix(in srgb, var(--w-fg) 55%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--w-fg) 6%, transparent);
+  pointer-events: none;
+}
+
+.dw.board.folded .tile,
+.dw.board.folded .bempty,
+.dw.board.folded .bghost {
+  display: none;
+}
+
+/* Full, refusing one: the pane shakes, gently, 0.3 s. */
+.db.shake {
+  animation: bshake 0.3s ease-in-out;
+}
+
+@keyframes bshake {
+  20% {
+    transform: translateX(-5px);
+  }
+  45% {
+    transform: translateX(5px);
+  }
+  70% {
+    transform: translateX(-3px);
+  }
+  90% {
+    transform: translateX(1px);
+  }
+}
+
+/* A word on a board for two seconds (a stack may not go in). */
+.wtoast {
+  position: absolute;
+  z-index: 40;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: var(--w-menu);
+  color: var(--w-fg);
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow:
+    0 0 0 1px var(--w-line),
+    var(--w-shadow);
+  pointer-events: none;
+}
+
+.wtoast[hidden] {
+  display: none;
+}
+
+/* Its Add: the widgets there are, each where it is now. */
+.wmenu.wlib {
+  min-width: 268px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.wlib .wli {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.wlib .wli:hover {
+  background: var(--w-track);
+}
+
+.wli .wln {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wli .wlw {
+  color: var(--w-3);
+  font-size: 11.5px;
+}
+
+.wli .wgl {
+  color: var(--c);
+  font: normal 14px/1 var(--font-icon);
+}
+
+.wli .wsvg {
+  display: flex;
+  color: var(--c);
+}
+
+.wli .wicon {
+  width: 14px;
+  height: 14px;
+}
+
+.wli .wher {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--w-track);
+  background-repeat: no-repeat;
+}
+
+.wlnone {
+  padding: 8px;
+  color: var(--w-3);
+}
+
+/* --- A widget's menu (§10): as the taskbar's and the capsule's (style.css .wmenu) ---------------- */.wmenu {
   position: absolute;
   z-index: 30;
   display: grid;
@@ -939,5 +1281,12 @@ body.lw .sdots button.on {
   .wshim,
   .wmenu {
     animation: none !important;
+  }
+
+  /* A full board: a ring for as long, no shaking. */
+  .db.shake {
+    animation: none;
+    outline: 2px solid var(--w-amber);
+    outline-offset: 2px;
   }
 }

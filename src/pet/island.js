@@ -2641,10 +2641,12 @@
       }
     }
     // Where it goes: the taskbar (only where she lives there), the island; the desktop to come.
+    // Where it is now (one place, §7): an open island's overview lists
+    // those on the desktop and the taskbar too.
     if (w || entry) {
-      const onBar = !!entry
+      const place = entry ? 'bar' : placeOf(w)
       const notBar = home() === 'taskbar' ? '' : t(lang, 'menu.notTaskbar')
-      parts.push(line(t(lang, 'menu.where'), opt('where', 'bar', t(lang, 'menu.bar'), onBar, onBar ? '' : notBar) + opt('where', 'isle', t(lang, 'menu.isle'), !onBar && !!w) + opt('where', 'desk', t(lang, 'menu.desk'), false, window.pet.mac ? t(lang, 'menu.noDesk') : '')))
+      parts.push(line(t(lang, 'menu.where'), opt('where', 'bar', t(lang, 'menu.bar'), place === 'bar', place === 'bar' ? '' : notBar) + opt('where', 'isle', t(lang, 'menu.isle'), place === 'isle') + opt('where', 'desk', t(lang, 'menu.desk'), place === 'desk', window.pet.mac ? t(lang, 'menu.noDesk') : '')))
     }
     parts.push('<div class="wmsep"></div>')
     // With others in one place, or apart again.
@@ -2675,7 +2677,19 @@
         }
       }
     }
-    parts.push(item('board', t(lang, 'menu.board'), t(lang, 'menu.later')))
+    // Into a board on the desktop (§7): each there is (three at most), or a
+    // new one; never a group, never on a Mac.
+    if (window.pet.mac) parts.push(item('board', t(lang, 'menu.board'), t(lang, 'menu.noDesk')))
+    else if (group && member < 0) parts.push(item('board', t(lang, 'menu.board'), t(lang, 'desk.noStackInBoard')))
+    else if (w || entry) {
+      const it = menuItemOf(w, entry, member)
+      const inBoard = b => !!it && b.items.some(x => DeskGrid.keyOf(x) === keyFor(it))
+      for (const b of deskBoards().slice(0, 3)) {
+        if (inBoard(b)) continue
+        parts.push(item('board', t(lang, 'desk.toBoard', { name: boardName(b) }), it && DeskGrid.boardFirst(b, boardSize(it)) ? '' : t(lang, 'desk.boardFull'), b.id))
+      }
+      parts.push(item('board', t(lang, 'desk.newBoard'), '', 'new'))
+    }
     if (w) parts.push(item('settings', t(lang, 'menu.settings')))
     parts.push(item('remove', t(lang, bar && entry ? 'menu.remove' : 'menu.off')))
     parts.push('<div class="wmwhy" hidden></div>')
@@ -2758,10 +2772,16 @@
         if (cardFor === w.id) showCard(null)
         return setRowSize(w.id, v)
       case 'where':
-        if (v === 'bar' && w && !entry) return putOnBar(w)
+        if (v === 'bar' && w && !entry) return placeWidget(menuItemOf(w), 'bar')
         if (v === 'isle' && entry) return backToIsland(w, entry, member)
+        if (v === 'isle' && w) return placeWidget(menuItemOf(w), 'isle')
         if (v === 'desk') return toDesk(w, entry, member)
         return
+      case 'board': {
+        const it = menuItemOf(w, entry, member)
+        // Off the strip (its group, or its place) and into the board.
+        return it && toBoard(it, v)
+      }
       case 'group': {
         const next = entry && neighbourOf(entry.id)
         return next && keepLayout(Widgets.groupWith(tbLayout(), next.id, entry.id, v, newId))
@@ -2815,6 +2835,24 @@
   const keyFor = item => (item.plugin ? `plugin:${item.plugin}` : `widget:${item.id}`)
   // The monitor on the strip is its part (#53): there while her home is the taskbar.
   const isMonitorItem = item => !item.plugin && item.id === 'monitor'
+  // A widget as placeWidget takes it: as the desktop has it (its plugin's
+  // entry, or its own), else its plugin's, else its own; a member of the
+  // strip's (a group's by its index) as it is there.
+  function menuItemOf(w, entry = null, member = -1) {
+    const m = entry ? (Widgets.isGroup(entry) ? entry.items[member] : entry) : null
+    if (m) return m.type === 'plugin' ? { plugin: m.of } : { id: m.of }
+    if (!w) return null
+    if (w.plugin && !DeskGrid.has(config.deskLayout, { id: w.id })) return { plugin: w.plugin }
+    return { id: w.id }
+  }
+  // Where a widget is now: on the desktop (alone, stacked, in a board), on
+  // the strip (the taskbar her home), else in the island.
+  function placeOf(w) {
+    if (!w) return 'isle'
+    if (DeskGrid.has(config.deskLayout, { id: w.id }) || (w.plugin && DeskGrid.has(config.deskLayout, { plugin: w.plugin }))) return 'desk'
+    if (placedOut.has(w.id) || (w.id === 'monitor' && home() === 'taskbar' && hasMonitorPart())) return 'bar'
+    return 'isle'
+  }
   function whereOf(item) {
     if (DeskGrid.has(config.deskLayout, item)) return 'desk'
     if (isMonitorItem(item) && home() === 'taskbar' && hasMonitorPart()) return 'bar'
@@ -2852,6 +2890,20 @@
       for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== 'monitor')
       off = true
     }
+    const dropped = dropFromBar(layout, key)
+    layout = dropped.layout
+    off ||= dropped.off
+    // The taskbar's layout kept only when it was on it (not written as a
+    // preset's for one put on the desktop from the capsule).
+    if (off || where === 'isle') keepLayout(layout)
+    if (where === 'desk') return putOnDesk(item)
+    if (item.id && (config.widgetsOff || []).includes(item.id)) window.pet.settings.set({ widgetsOff: config.widgetsOff.filter(x => x !== item.id) })
+  }
+
+  // A widget or plugin (by its key) off a taskbar layout: alone, or out of
+  // its group (one left: alone).
+  function dropFromBar(layout, key) {
+    let off = false
     for (const k of Object.keys(layout))
       for (const p of [...layout[k]]) {
         if (typeof p === 'string') continue
@@ -2866,11 +2918,71 @@
           off = true
         }
       }
-    // The taskbar's layout kept only when it was on it (not written as a
-    // preset's for one put on the desktop from the capsule).
-    if (off || where === 'isle') keepLayout(layout)
-    if (where === 'desk') return putOnDesk(item)
-    if (item.id && (config.widgetsOff || []).includes(item.id)) window.pet.settings.set({ widgetsOff: config.widgetsOff.filter(x => x !== item.id) })
+    return { layout, off }
+  }
+  // Off the taskbar, these (a desktop's board took them, desk.js): the
+  // monitor its part. Kept only if any was there.
+  function offBar(items) {
+    let layout = tbLayout()
+    let off = false
+    for (const item of items) {
+      if (isMonitorItem(item) && hasMonitorPart(layout)) {
+        for (const k of Object.keys(layout)) layout[k] = layout[k].filter(p => p !== 'monitor')
+        off = true
+      }
+      const dropped = dropFromBar(layout, keyFor(item))
+      layout = dropped.layout
+      off ||= dropped.off
+    }
+    if (off) keepLayout(layout)
+  }
+
+  // --- Boards on the desktop (§7 工作台) ---------------------------------------------
+  // Their names as the desktop's pages give them: their own, else 工作台,
+  // numbered when several have none.
+  const deskBoards = () => (Array.isArray(config.deskLayout) ? config.deskLayout : []).filter(DeskGrid.isBoard)
+  function boardName(b) {
+    if (b.name) return b.name
+    const unnamed = deskBoards().filter(x => !x.name)
+    return unnamed.length > 1 ? t(lang, 'desk.boardN', { n: unnamed.findIndex(x => x.id === b.id) + 1 }) : t(lang, 'desk.board')
+  }
+  // The size a widget takes in a board: small where it has it.
+  function boardSize(item) {
+    const m = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
+    const sizes = DeskGrid.sizesOfEntry(m, allWidgets)
+    return sizes.includes('s') ? 's' : sizes[0] || 's'
+  }
+  // Into a board (its first empty cell), or a new board with it: off the
+  // taskbar and wherever else it was on the desktop first (one place).
+  function toBoard(item, boardId) {
+    const old = Array.isArray(config.deskLayout) ? config.deskLayout : []
+    const m = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
+    const size = boardSize(item)
+    const board = old.find(e => e.id === boardId && DeskGrid.isBoard(e))
+    let next
+    if (board) {
+      const spot = DeskGrid.boardFirst(board, size)
+      if (!spot) return
+      next = DeskGrid.intoBoard(old, board.id, m, size, spot, newId)
+    } else {
+      next = [...DeskGrid.without(old, item, newId), { id: newId(), type: 'board', items: [{ ...m, size, at: [0, 0] }] }]
+    }
+    offBar([item])
+    keepDeskLayout(next)
+  }
+  // A whole desktop layout kept as what changed in it (desk.rs desk_keep
+  // merges it with the pages'; a new board goes to the pointer's display).
+  function keepDeskLayout(next) {
+    const old = Array.isArray(config.deskLayout) ? config.deskLayout : []
+    const was = new Map(old.map(e => [e.id, JSON.stringify(e)]))
+    const ids = new Set(next.map(e => e.id))
+    config.deskLayout = next
+    window.pet.desk.keep(
+      next.filter(e => was.get(e.id) !== JSON.stringify(e)),
+      old.filter(e => !ids.has(e.id)).map(e => e.id),
+    )
+    takeWidgets(allWidgets)
+    update()
   }
 
   // On the desktop (desk.rs, deskgrid.js): medium where it has it; where it
@@ -5484,6 +5596,8 @@
       return w && openWidgetSettings(w)
     }
     if (what === 'place') deskPlace(args)
+    // A board took them from the library: off the taskbar (one place).
+    if (what === 'unbar' && Array.isArray(args?.items)) offBar(args.items.filter(it => it && (typeof it.id === 'string' || typeof it.plugin === 'string')).slice(0, 8))
   })
 
   window.pet.onWidgets(({ widgets: all }) => {

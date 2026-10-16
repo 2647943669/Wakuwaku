@@ -168,6 +168,8 @@ pub fn refresh(sh: &Shared) {
             "light": light,
             "detailed": sh.setting("details") != false,
             "home": sh.home(),
+            // What the taskbar shows while it is her home (a board's Add says where each one is).
+            "bar": if sh.home() == "taskbar" { sh.setting("taskbarLayout") } else { Value::Null },
             "sprite": sprite,
             "layout": if layout.is_array() { layout.clone() } else { json!([]) },
         });
@@ -277,18 +279,22 @@ fn entry_shows(e: &Value, id: &str, owner: Option<&str>) -> bool {
     shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows))
 }
 
+// The same, as it shows: big, medium or large only; a board's tiles each at
+// their own size, none while it is folded (its title bar alone).
+fn entry_shows_at(e: &Value, id: &str, owner: Option<&str>, big: bool) -> bool {
+    let big_enough = |size: &Value| !big || matches!(size.as_str(), Some("m" | "l"));
+    if e["type"] == "board" {
+        return e["folded"] != true && e["items"].as_array().is_some_and(|tiles| tiles.iter().any(|t| big_enough(&t["size"]) && entry_shows(t, id, owner)));
+    }
+    big_enough(&e["size"]) && entry_shows(e, id, owner)
+}
+
 // Whether a display's desktop shows a widget where somebody can see it.
 // big: medium or large only (the monitor's card's readings, its graphics
 // card and drives, are shown there: read only then).
 fn seen_with(sh: &Shared, id: &str, big: bool) -> bool {
     let owner = crate::scripts::owner_of(id);
-    let desks: Vec<(Mon, bool)> = DESKS
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|d| d.ready)
-        .map(|d| (d.mon, d.entries.iter().any(|e| (!big || matches!(e["size"].as_str(), Some("m" | "l"))) && entry_shows(e, id, owner))))
-        .collect();
+    let desks: Vec<(Mon, bool)> = DESKS.lock().unwrap().iter().filter(|d| d.ready).map(|d| (d.mon, d.entries.iter().any(|e| entry_shows_at(e, id, owner, big)))).collect();
     desks.into_iter().any(|(mon, has)| has && seen_now(sh, mon))
 }
 
@@ -610,6 +616,24 @@ pub fn desk_hold(window: WebviewWindow, on: bool) {
     }
 }
 
+// A board's name being typed (desk.js rename): the window takes the keyboard
+// for it (it never takes the focus otherwise: WS_EX_NOACTIVATE), and lets go
+// of it after (Enter, Esc, or a press elsewhere): the window that had it gets
+// it back, and this one goes back down right over the desktop.
+#[tauri::command]
+pub fn desk_type(app: tauri::AppHandle, window: WebviewWindow, on: bool) {
+    count(&COMMANDS);
+    let sh = shared_of(&app);
+    #[cfg(windows)]
+    if let Ok(h) = window.hwnd() {
+        imp::take_keys(h.0 as isize, on);
+    }
+    if on {
+        let _ = window.set_focus();
+    }
+    sh.log(&format!("{}: keyboard {}", window.label(), if on { "taken (a board's name)" } else { "let go" }));
+}
+
 // What a page changed of the layout: these entries (new ones last), those
 // gone; merged with the rest, as the others may have changed theirs. A new
 // one without a display goes to the one the pointer is on.
@@ -688,7 +712,7 @@ pub async fn desk_where(app: tauri::AppHandle, window: WebviewWindow, x: f64, y:
 #[tauri::command]
 pub async fn desk_ask(app: tauri::AppHandle, what: String, args: Value) {
     count(&COMMANDS);
-    if matches!(what.as_str(), "settings" | "place") {
+    if matches!(what.as_str(), "settings" | "place" | "unbar") {
         let _ = app.emit_to("island", "desk:ask", json!({ "what": what, "args": args }));
     }
 }
@@ -1011,6 +1035,35 @@ mod imp {
             } else {
                 "right over the desktop, under the windows"
             })
+        }
+    }
+
+    // The keyboard taken for a board's name, or let go: its WS_EX_NOACTIVATE
+    // off (not tao's set_focusable, which sets all its styles anew, the
+    // clicks let through among them), the window to the front by borrowing
+    // the input of the one there (jump.rs bring_window, as the settings take
+    // it); then that one's again, and this one back right over the desktop.
+    static BEFORE: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+    pub fn take_keys(hwnd: isize, on: bool) {
+        const WS_EX_NOACTIVATE: isize = 0x0800_0000;
+        let mine = hwnd as Hwnd;
+        // SAFETY: our own window's style; the one before only named (focus.rs checks it is still there).
+        unsafe {
+            let ex = GetWindowLongPtrW(mine, GWL_EXSTYLE);
+            if on {
+                let before = crate::focus::foreground();
+                if before != hwnd {
+                    BEFORE.store(before, std::sync::atomic::Ordering::SeqCst);
+                }
+                SetWindowLongPtrW(mine, GWL_EXSTYLE, ex & !WS_EX_NOACTIVATE);
+                crate::jump::bring_window(hwnd);
+            } else {
+                SetWindowLongPtrW(mine, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE);
+                if crate::focus::foreground() == hwnd {
+                    crate::focus::set_foreground(BEFORE.swap(0, std::sync::atomic::Ordering::SeqCst));
+                }
+                keep_all_low();
+            }
         }
     }
 
@@ -1378,6 +1431,22 @@ mod tests {
         assert!(!looks_wanted(false, 0));
         assert!(!looks_wanted(true, 2));
         assert!(looks_wanted(false, 1));
+    }
+
+    // What a board shows: its tiles at their own sizes; nothing while folded.
+    #[test]
+    fn what_a_board_shows() {
+        let tiles = json!([{ "type": "widget", "of": "monitor", "size": "m", "at": [0, 0] }, { "type": "plugin", "of": "stock", "size": "s", "at": [4, 0] }]);
+        let board = json!({ "id": "wb", "type": "board", "items": tiles });
+        assert!(entry_shows_at(&board, "monitor", None, true));
+        assert!(entry_shows_at(&board, "stock-aapl", Some("stock"), false));
+        assert!(!entry_shows_at(&board, "stock-aapl", Some("stock"), true));
+        assert!(!entry_shows_at(&board, "weather", None, false));
+        let folded = json!({ "id": "wb", "type": "board", "folded": true, "items": tiles });
+        assert!(!entry_shows_at(&folded, "monitor", None, false));
+        let alone = json!({ "id": "wa", "type": "widget", "of": "monitor", "size": "s" });
+        assert!(entry_shows_at(&alone, "monitor", None, false));
+        assert!(!entry_shows_at(&alone, "monitor", None, true));
     }
 
     #[test]

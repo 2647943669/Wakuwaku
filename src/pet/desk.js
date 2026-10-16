@@ -1,8 +1,8 @@
 // The desktop's widgets on one display (the widget design of 2026-10-16, §3,
 // §7, §8, §9, §10; desk.rs makes a window for each display that has some):
-// each alone or several stacked, where it stands on the display's grid, its
-// glass the wallpaper under it blurred (mica.js glassPaper, desk.rs reads
-// which picture), the glass colour over it.
+// each alone, several stacked, or several in a board, where it stands on
+// the display's grid, its glass the wallpaper under it blurred (mica.js
+// glassPaper, desk.rs reads which picture), the glass colour over it.
 //
 // Alone: dragged anywhere (it snaps to the grid, clear of the icons and the
 // others; dropped on icons, the nearest free spot); two buttons on the
@@ -10,6 +10,14 @@
 // dragged onto another of its size and held there half a second; a drag
 // moves the whole stack as one alone moves; the wheel (a touchpad's scroll)
 // or a press on its dots turns it (0.45 s); one comes out by its menu.
+// A board (工作台, §7 and its note of 2026-10-16): a larger pane, its glass
+// blurred 40, its title bar always there (its name, how many, Add, More,
+// Fold); its widgets flat tiles on its own grid of 8 columns, as many rows
+// as they need, 2 to 4. One alone dragged onto it lands in the nearest
+// empty cell (a row more if need be); a full board shakes and it goes back;
+// a stack may not go in (it says so). A tile dragged off the board is one
+// alone again; dragged within, it moves. Folded, the title bar alone with
+// its widgets' glyphs. Its name: a double-click, Enter or Esc.
 // Right-click: its menu, as the taskbar's and the capsule's.
 //
 // The window lets clicks through but where a widget is (desk.rs polls the
@@ -26,14 +34,18 @@
 
   // What desk.rs says: this display (key, primary, keys of those there,
   // work area, size), her language, Windows' mode, the specifics setting,
-  // her home, her sheet; the layout (deskLayout, every display's).
+  // her home and what its taskbar shows, her sheet; the layout (deskLayout,
+  // every display's).
   let here = null
   let layout = []
   let all = []
-  // The wallpaper blurred: { url, size: [w, h] with its margin, margin }.
+  // The wallpaper blurred: for the widgets (30) and, while a board is here,
+  // for the boards (40); { canvas, margin, scale } each.
   let paper = null
+  let paper40 = null
   let paperTurn = 0
   let lastPaper = null
+  let paper40For = null
   // The icons on this display (desk_icons), as rects.
   let icons = []
   const nodes = new Map()
@@ -44,6 +56,7 @@
   let menu = null
   let drag = null
   let turnedAt = 0
+  let renaming = null
 
   const lang = () => here?.lang || 'zh'
   const t = (key, vars) => I18n.t(lang(), key, vars)
@@ -55,6 +68,7 @@
   const shown = () => (here ? G.shownHere(layout, here) : [])
   const visiting = e => !!e.d && e.d !== here.key
   const find = id => layout.find(e => e.id === id)
+  const isBoard = n => !!n && G.isBoard(n.entry)
 
   // --- What is drawn ---------------------------------------------------------------------
   function draw() {
@@ -66,7 +80,7 @@
     spots = at
     for (const e of entries) {
       drawn.add(e.id)
-      if (!firstSeen.has(e.id)) firstSeen.set(e.id, Date.now())
+      for (const m of G.membersOf(e)) if (!firstSeen.has(seenKey(e, m))) firstSeen.set(seenKey(e, m), Date.now())
     }
     if (moved.length) keep(entries.filter(e => moved.includes(e.id)).map(e => G.placed(e, here.key, at.get(e.id), visiting(e))))
     const ids = new Set(entries.map(e => e.id))
@@ -80,6 +94,12 @@
       }
     for (const e of entries) drawEntry(e, at.get(e.id))
     if (menu && !nodes.has(menu.id)) closeMenu()
+    if (lib && !nodes.has(lib.id)) closeLib()
+    // A board here, and its glass not blurred yet: the picture again (once for each).
+    if (entries.some(G.isBoard) && !paper40 && lastPaper && paper40For !== lastPaper) {
+      paper40For = lastPaper
+      setPaper(lastPaper)
+    }
     shapes()
   }
 
@@ -93,39 +113,43 @@
       wire(n)
     }
     n.entry = e
-    n.rect = G.rectAt(grid(), cell, e.size)
+    n.rect = G.rectAt(grid(), cell, G.boxOf(e))
     const key = contentKey(e)
     if (key !== n.key) {
       n.key = key
-      fill(n)
+      if (G.isBoard(e)) fillBoard(n)
+      else fill(n)
     }
-    if (!(drag && drag.n === n && drag.mode !== 'press')) place(n, n.rect.x, n.rect.y)
+    if (!(drag && drag.n === n && drag.mode !== 'press' && drag.tile < 0)) place(n, n.rect.x, n.rect.y)
   }
 
   // What a node shows changes with: its entry, the one on top, the words of
   // its widgets, the mode, the language, the specifics, and a member just
-  // put there (loading) or not.
+  // put there (loading) or not; a board's name as shown too.
   function contentKey(e) {
     const ws = G.membersOf(e).map(m => Widgets.sourcesOf(m, all).map(w => [w.id, w.label, w.value, w.detail, w.color, w.private]))
     const loading = G.membersOf(e).map(m => isLoading(e, m))
-    return JSON.stringify([e.type, e.size, G.membersOf(e), topOf(e), ws, here.light, lang(), here.detailed, here.sprite, loading])
+    const board = G.isBoard(e) ? [boardLabel(e), e.folded, e.items.map(x => [x.size, x.at])] : null
+    return JSON.stringify([e.type, e.size, G.membersOf(e), topOf(e), ws, here.light, lang(), here.detailed, here.sprite, loading, board])
   }
   const topOf = e => (G.isStack(e) ? Math.min(tops.get(e.id) || 0, e.items.length - 1) : 0)
   // Just put there, its plugin starting: a glint where its value goes, five
   // seconds at most (the design session), then greyed with "no data".
   const LOADING_MS = 5000
-  const isLoading = (e, m) => !Widgets.sourcesOf(m, all).length && Date.now() - (firstSeen.get(e.id) || 0) < LOADING_MS
+  const seenKey = (e, m) => `${e.id}/${G.keyOf(m)}`
+  const isLoading = (e, m) => !Widgets.sourcesOf(m, all).length && Date.now() - (firstSeen.get(seenKey(e, m)) || 0) < LOADING_MS
 
-  // A member's face at the entry's size: its widget's (a plugin's first,
-  // which shows the others), or, with nothing to say, its name greyed.
-  function face(e, m) {
+  // A member's face at a size (the entry's, or a tile's): its widget's (a
+  // plugin's first, which shows the others), or, with nothing to say, its
+  // name greyed.
+  function face(e, m, size = e.size) {
     const ws = Widgets.sourcesOf(m, all)
     const c = ctx()
     if (!ws.length) {
       const name = emptyName(e, m, c)
       return { html: WDesk.emptyHTML(m, name, isLoading(e, m) ? 'loading' : 'none', c), color: '', w: null }
     }
-    return { html: WDesk.faceHTML(ws[0], e.size, c), color: WCards.colorOf(ws[0], c), w: ws[0] }
+    return { html: WDesk.faceHTML(ws[0], size, c), color: WCards.colorOf(ws[0], c), w: ws[0] }
   }
 
   // A card: its own picture of the wallpaper under it (a canvas: desk.rs's
@@ -148,6 +172,30 @@
   // layers that show, then the rest unseen behind them.
   const LAYERS = ['top', 'b1', 'b2']
   const layerOf = (i, top, n) => LAYERS[(i - top + n) % n] || 'rest'
+  const toolTitles = root => {
+    for (const b of root.querySelectorAll('.tools button')) b.title = t(b.dataset.act === 'size' ? 'menu.size' : 'desk.more')
+  }
+  // A member's words into its card's body, as they changed.
+  function fillBody(wd, e, m, size) {
+    const body = wd?.querySelector('.wbody')
+    if (!body) return
+    const f = face(e, m, size)
+    if (body._html !== f.html) {
+      body.innerHTML = f.html
+      body._html = f.html
+      fillHer(body)
+    }
+    wd.classList.toggle('empty-w', !f.w)
+    if (f.color) wd.style.setProperty('--c', f.color)
+    else wd.style.removeProperty('--c')
+  }
+  // Loading (just put there, its plugin starting): drawn again once that is
+  // over, no data then greyed; one timer, not a loop.
+  function loadingTimer(n, e) {
+    const left = G.membersOf(e).filter(m => isLoading(e, m)).map(m => LOADING_MS + 50 - (Date.now() - (firstSeen.get(seenKey(e, m)) || 0)))
+    clearTimeout(n.loadingTimer)
+    if (left.length) n.loadingTimer = setTimeout(draw, Math.max(0, Math.max(...left)))
+  }
 
   // Built anew only when its shape changes (alone or stacked, its size, its
   // members); else only the words that changed, in place (the monitor's
@@ -157,6 +205,7 @@
     const shape = JSON.stringify([e.type, e.size, G.membersOf(e).map(G.keyOf)])
     const top = topOf(e)
     n.el.className = `dw ${e.size}${G.isStack(e) ? ' stack' : ''}${n.el.classList.contains('hover') ? ' hover' : ''}${menu?.id === e.id ? ' menu' : ''}`
+    n.el.style.width = n.el.style.height = ''
     if (shape !== n.shape) {
       n.shape = shape
       if (!G.isStack(e)) n.el.innerHTML = CARD(e.size)
@@ -167,23 +216,10 @@
       }
       const cards = n.el.querySelectorAll('.wd')
       cards[top].insertAdjacentHTML('beforeend', TOOLS)
-      for (const b of n.el.querySelectorAll('.tools button')) b.title = t(b.dataset.act === 'size' ? 'menu.size' : 'desk.more')
+      toolTitles(n.el)
       n.painted = ''
     }
-    G.membersOf(e).forEach((m, i) => {
-      const wd = n.el.querySelectorAll('.wd')[i]
-      const body = wd?.querySelector('.wbody')
-      if (!body) return
-      const f = face(e, m)
-      if (body._html !== f.html) {
-        body.innerHTML = f.html
-        body._html = f.html
-        fillHer(body)
-      }
-      wd.classList.toggle('empty-w', !f.w)
-      if (f.color) wd.style.setProperty('--c', f.color)
-      else wd.style.removeProperty('--c')
-    })
+    G.membersOf(e).forEach((m, i) => fillBody(n.el.querySelectorAll('.wd')[i], e, m, e.size))
     if (G.isStack(e)) {
       n.el.querySelectorAll('.layer').forEach((l, i) => {
         for (const k of ['top', 'b1', 'b2', 'rest', 'gone']) l.classList.toggle(k, k === layerOf(i, top, e.items.length))
@@ -194,19 +230,70 @@
       if (tools && onTop && tools.parentElement !== onTop) onTop.append(tools)
     }
     paint(n)
-    // Loading (just put there, its plugin starting): drawn again once that
-    // is over, no data then greyed; one timer, not a loop.
-    if (G.membersOf(e).some(m => isLoading(e, m))) {
-      clearTimeout(n.loadingTimer)
-      n.loadingTimer = setTimeout(draw, Math.max(0, LOADING_MS + 50 - (Date.now() - (firstSeen.get(e.id) || 0))))
+    loadingTimer(n, e)
+  }
+
+  // --- A board ---------------------------------------------------------------------------------
+  // Its name: its own, else 工作台, numbered when several have none.
+  function boardLabel(b) {
+    if (b.name) return b.name
+    const unnamed = layout.filter(x => G.isBoard(x) && !x.name)
+    return unnamed.length > 1 ? t('desk.boardN', { n: unnamed.findIndex(x => x.id === b.id) + 1 }) : t('desk.board')
+  }
+  const BOARD_ICONS = 6
+  // Its pane: its own picture of the wallpaper (blurred 40), its glass, its
+  // title bar; its tiles flat on it, each where its cell is, no glass of their
+  // own; an empty one a dashed box to drop into.
+  function fillBoard(n) {
+    const e = n.entry
+    const box = G.boardBox(e)
+    const shape = JSON.stringify(['board', !!e.folded, e.items.map(x => [G.keyOf(x), x.size, x.at])])
+    n.el.className = `dw board${e.folded ? ' folded' : ''}${n.el.classList.contains('hover') ? ' hover' : ''}${menu?.id === e.id ? ' menu' : ''}`
+    n.el.style.width = `${box.w}px`
+    n.el.style.height = `${box.h}px`
+    if (shape !== n.shape) {
+      n.shape = shape
+      const tiles = e.items
+        .map((x, i) => {
+          const r = G.tileRect(x.at, x.size)
+          return `<div class="wd tile ${x.size}" data-i="${i}" style="left:${r.x}px;top:${r.y}px"><div class="wtint"></div><div class="wbody"></div>${TOOLS}</div>`
+        })
+        .join('')
+      const empty = e.items.length ? '' : `<div class="bempty" style="left:${G.BOARD.pad}px;top:${G.BOARD.head}px;width:${G.BOARD.width - 2 * G.BOARD.pad}px;height:${G.sizePx('s').h}px"></div>`
+      n.el.innerHTML = `<div class="db"><canvas class="wpaper"></canvas><div class="btint"></div><div class="bhead"><span class="btitle"></span><span class="bbtns"><button type="button" data-bact="add">&#xE710;</button><button type="button" data-bact="more">&#xE712;</button><button type="button" data-bact="fold"></button></span></div>${tiles}${empty}</div>`
+      toolTitles(n.el)
+      n.painted = ''
     }
+    // The title bar: its name (not while it is being typed), how many, or
+    // folded its widgets' glyphs (six, then +N); its buttons' words.
+    if (renaming?.n !== n) {
+      const glyphs = e.items.slice(0, BOARD_ICONS).map(x => {
+        const w = Widgets.sourcesOf(G.memberOf(x), all)[0]
+        const c = w ? WCards.colorOf(w, ctx()) : ''
+        return `<span class="bgl"${c ? ` style="--c:${c}"` : ''}>${w ? WCards.glyphHTML(w) : WCards.memberGlyph(G.memberOf(x))}</span>`
+      })
+      const more = e.items.length > BOARD_ICONS ? `<span class="bmore">+${e.items.length - BOARD_ICONS}</span>` : ''
+      const after = e.folded ? `<span class="bicons">${glyphs.join('')}${more}</span>` : `<span class="bcount">${esc(t('desk.boardCount', { n: e.items.length }))}</span>`
+      n.el.querySelector('.btitle').innerHTML = `<b class="bname">${esc(boardLabel(e))}</b>${after}`
+      fillHer(n.el.querySelector('.btitle'))
+    }
+    const [add, more, fold] = n.el.querySelectorAll('.bbtns button')
+    add.title = t('desk.add')
+    more.title = t('desk.more')
+    fold.title = t(e.folded ? 'desk.unfold' : 'desk.fold')
+    fold.innerHTML = e.folded ? '&#xE70D;' : '&#xE70E;'
+    const empty = n.el.querySelector('.bempty')
+    if (empty) empty.textContent = t('desk.boardEmpty')
+    e.items.forEach((x, i) => fillBody(n.el.querySelector(`.tile[data-i="${i}"]`), e, G.memberOf(x), x.size))
+    paint(n)
+    loadingTimer(n, e)
   }
 
   // Her face where today's glyph goes: the still first frame of her sheet.
   function fillHer(root) {
     for (const slot of root.querySelectorAll('.wher')) {
       if (!here.sprite) continue
-      const px = slot.closest('.wmh') ? 16 : 14
+      const px = slot.closest('.wmh, .bgl') ? 16 : 14
       const s = px * 0.00875
       slot.style.backgroundImage = `url("${here.sprite}")`
       slot.style.backgroundSize = `${1536 * s}px ${2288 * s}px`
@@ -217,26 +304,36 @@
   // --- Its glass: the wallpaper under it, blurred ---------------------------------------------
   // A card at (x, y), w by h, drawn scaled by s from its middle and moved
   // down by dy (a stack's layers): its canvas given the part of the blurred
-  // picture that lies under it on the screen, so the two line up.
+  // picture (src) that lies under it on the screen, so the two line up.
   const LAYER_FORM = { top: [1, 0], b1: [0.94, 13], b2: [0.88, 25], rest: [0.88, 25], gone: [0.96, -30] }
-  function paperFor(canvas, x, y, w, h, s = 1, dy = 0) {
+  function paperFor(canvas, x, y, w, h, s = 1, dy = 0, src = paper) {
     const dpr = devicePixelRatio || 1
     const cw = Math.round(w * dpr)
     const ch = Math.round(h * dpr)
     if (canvas.width !== cw) canvas.width = cw
     if (canvas.height !== ch) canvas.height = ch
     const c = canvas.getContext('2d')
-    if (!paper) return c.clearRect(0, 0, cw, ch)
-    const k = paper.scale
-    const sx = (x + (w / 2) * (1 - s) + paper.margin) * k
-    const sy = (y + (h / 2) * (1 - s) + dy + paper.margin) * k
+    if (!src) return c.clearRect(0, 0, cw, ch)
+    const k = src.scale
+    const sx = (x + (w / 2) * (1 - s) + src.margin) * k
+    const sy = (y + (h / 2) * (1 - s) + dy + src.margin) * k
     c.imageSmoothingEnabled = true
     c.imageSmoothingQuality = 'high'
-    c.drawImage(paper.canvas, sx, sy, w * s * k, h * s * k, 0, 0, cw, ch)
+    c.drawImage(src.canvas, sx, sy, w * s * k, h * s * k, 0, 0, cw, ch)
   }
   // Each of its cards painted for where it is now; not again while that is
-  // so (the words changing leave its glass as it is).
+  // so (the words changing leave its glass as it is). A board: its pane, at
+  // blur 40 (that of 30 until it is there); its tiles have none.
   function paint(n, force = false) {
+    if (isBoard(n)) {
+      const box = G.boardBox(n.entry)
+      const now = JSON.stringify([n.x, n.y, box.w, box.h, paperTurn, !!paper40, devicePixelRatio])
+      if (!force && now === n.painted) return
+      n.painted = now
+      const canvas = n.el.querySelector('.db > .wpaper')
+      if (canvas) paperFor(canvas, n.x, n.y, box.w, box.h, 1, 0, paper40 || paper)
+      return
+    }
     const { w, h } = G.sizePx(n.entry.size)
     const cards = [...n.el.querySelectorAll('.wd')]
     const forms = cards.map(wd => {
@@ -262,11 +359,12 @@
     paint(n)
   }
 
-  // A new picture (desk:paper): blurred once, for all of them.
+  // A new picture (desk:paper): blurred once, for all of them; once more at
+  // 40 while a board is here.
   async function setPaper(p) {
     const mine = ++paperTurn
     if (!p) {
-      paper = null
+      paper = paper40 = null
       for (const n of nodes.values()) paint(n, true)
       return
     }
@@ -282,24 +380,38 @@
     }
     if (mine !== paperTurn) return
     lastPaper = p
-    const { canvas, margin, scale } = Mica.glassPaper(p, img, { blur: 30, saturate: 1.6 })
+    const blurred = blur => {
+      const { canvas, margin, scale } = Mica.glassPaper(p, img, { blur, saturate: 1.6 })
+      return { canvas, margin, scale }
+    }
+    paper = blurred(30)
+    paper40 = shown().some(G.isBoard) ? blurred(40) : null
+    if (paper40) paper40For = p
     if (img) img.src = ''
-    paper = { canvas, margin, scale }
     for (const n of nodes.values()) paint(n, true)
   }
 
   // --- Where the window takes the mouse -------------------------------------------------------
-  // Each widget (a stack with its layers and its dots), and an open menu.
+  // Each widget (a stack with its layers and its dots), each board, and an
+  // open menu or library (a radius of 12: desk.rs takes the whole display
+  // while one is open, a press elsewhere closes it).
   let sentShapes = ''
   function shapes() {
     const list = []
     for (const n of nodes.values()) {
+      if (isBoard(n)) {
+        const { w, h } = G.boardBox(n.entry)
+        list.push([n.x, n.y, w, h, 28])
+        continue
+      }
       const { w, h } = G.sizePx(n.entry.size)
       if (G.isStack(n.entry)) list.push([n.x, n.y, w + 18, h + 28, 22])
       else list.push([n.x, n.y, w, h, 22])
     }
-    const m = menuEl && !menuEl.hidden ? menuEl.getBoundingClientRect() : null
-    if (m) list.push([m.left, m.top, m.width, m.height, 12])
+    for (const pop of [menuEl, libEl]) {
+      const m = pop && !pop.hidden ? pop.getBoundingClientRect() : null
+      if (m) list.push([m.left, m.top, m.width, m.height, 12])
+    }
     const now = JSON.stringify(list.map(r => r.map(v => Math.round(v))))
     if (now === sentShapes) return
     sentShapes = now
@@ -332,31 +444,55 @@
   }
 
   // --- The pointer: hover, press, drag, drop -----------------------------------------------------
+  // A board's tile under the pointer shows its buttons, as one alone does.
+  function hoverTile(n, tile) {
+    if (!isBoard(n)) return
+    for (const x of n.el.querySelectorAll('.tile')) x.classList.toggle('hover', x === tile)
+  }
   function wire(n) {
     const el = n.el
     el.addEventListener('mouseenter', () => el.classList.add('hover'))
     el.addEventListener('mouseleave', () => {
-      if (!drag) el.classList.remove('hover')
+      if (drag) return
+      el.classList.remove('hover')
+      hoverTile(n, null)
+    })
+    el.addEventListener('mouseover', ev => {
+      if (!drag) hoverTile(n, ev.target.closest('.tile'))
     })
     el.addEventListener('pointerdown', ev => press(ev, n))
     el.addEventListener('pointermove', ev => move(ev))
     el.addEventListener('pointerup', ev => release(ev))
     el.addEventListener('pointercancel', () => cancel())
     el.addEventListener('dblclick', ev => {
-      if (ev.target.closest('.tools, .sdots')) return
-      const w = shownWidget(n.entry)
+      if (ev.target.closest('.tools, .sdots, .bbtns, input')) return
+      if (isBoard(n) && ev.target.closest('.bname')) return startRename(n)
+      const tile = tileOf(ev.target)
+      const w = isBoard(n) ? (tile >= 0 ? Widgets.sourcesOf(G.memberOf(n.entry.items[tile]), all)[0] : null) : shownWidget(n.entry)
       if (w) ask('settings', { widget: w.id })
     })
     el.addEventListener('contextmenu', ev => {
       ev.preventDefault()
-      openMenu(n.entry.id, 'full', { x: ev.clientX, y: ev.clientY })
+      if (ev.target.closest('input')) return
+      const tile = isBoard(n) ? tileOf(ev.target) : -1
+      openMenu(n.entry.id, isBoard(n) && tile < 0 ? 'board' : 'full', { x: ev.clientX, y: ev.clientY }, tile)
     })
     el.addEventListener('click', ev => {
       const b = ev.target.closest('.tools button')
       if (b) {
         ev.stopPropagation()
         const r = b.getBoundingClientRect()
-        return menu?.id === n.entry.id && menu.kind === b.dataset.act ? closeMenu() : openMenu(n.entry.id, b.dataset.act, { x: r.left, y: r.bottom + 6, button: r })
+        const tile = isBoard(n) ? tileOf(b) : -1
+        return menu?.id === n.entry.id && menu.kind === b.dataset.act && menu.tile === tile ? closeMenu() : openMenu(n.entry.id, b.dataset.act, { x: r.left, y: r.bottom + 6, button: r }, tile)
+      }
+      const ba = ev.target.closest('.bbtns button')
+      if (ba) {
+        ev.stopPropagation()
+        const r = ba.getBoundingClientRect()
+        const act = ba.dataset.bact
+        if (act === 'fold') return fold(n)
+        if (act === 'more') return menu?.id === n.entry.id && menu.kind === 'board' ? closeMenu() : openMenu(n.entry.id, 'board', { x: r.left, y: r.bottom + 6, button: r })
+        if (act === 'add') return lib?.id === n.entry.id ? closeLib() : openLib(n, r)
       }
       const dot = ev.target.closest('.sdots button')
       if (dot && G.isStack(n.entry)) turnTo(n, Number(dot.dataset.p))
@@ -374,6 +510,11 @@
       { passive: false },
     )
   }
+  // The tile an element is in (its index on its board), or -1.
+  const tileOf = el => {
+    const tile = el?.closest?.('.tile')
+    return tile ? Number(tile.dataset.i) : -1
+  }
 
   // The widget a stack shows (its top), or the one alone.
   function shownWidget(e) {
@@ -382,15 +523,23 @@
   }
 
   // A press and a drag (the design session, 2026-10-16: no gestures told
-  // apart by time or distance): a drag moves it, alone or the whole stack;
-  // held over one of its size half a second, it goes onto that one (a new
-  // stack, or into that stack). A stack turns by the wheel (a touchpad's
-  // scroll too) or a press on its dots; one comes out of it by the menu.
+  // apart by time or distance): a drag moves it, alone or the whole stack
+  // or board; held over one of its size half a second, it goes onto that one
+  // (a new stack, or into that stack); over a board, into its nearest empty
+  // cell. A tile of a board dragged out of it is one alone; dragged in it,
+  // it moves there. A stack turns by the wheel (a touchpad's scroll too) or
+  // a press on its dots; one comes out of it by the menu.
   function press(ev, n) {
-    if (ev.button !== 0 || ev.target.closest('.tools, .sdots')) return
+    if (ev.button !== 0 || ev.target.closest('.tools, .sdots, .bbtns, input')) return
     closeMenu()
-    drag = { n, mode: 'press', id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - n.x, dy: ev.clientY - n.y, armed: null, over: null, overTimer: 0 }
-    n.el.setPointerCapture(ev.pointerId)
+    closeLib()
+    const tile = isBoard(n) ? tileOf(ev.target) : -1
+    const tileEl = tile >= 0 ? n.el.querySelector(`.tile[data-i="${tile}"]`) : null
+    const tr = tile >= 0 ? G.tileRect(n.entry.items[tile].at, n.entry.items[tile].size) : { x: 0, y: 0 }
+    drag = { n, tile, tileEl, mode: 'press', id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - (n.x + tr.x), dy: ev.clientY - (n.y + tr.y), armed: null, over: null, overTimer: 0, into: null }
+    try {
+      n.el.setPointerCapture(ev.pointerId)
+    } catch {}
     hold(true)
     // The icons as they are now, for the drop.
     loadIcons()
@@ -404,15 +553,25 @@
       if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) < 5) return
       d.mode = 'move'
       n.el.classList.add('dragging')
+      d.tileEl?.classList.add('lifted')
     }
-    place(n, ev.clientX - d.dx, ev.clientY - d.dy)
-    seek(ev, n.entry)
+    // Its top left where it is being dragged to.
+    const x = ev.clientX - d.dx
+    const y = ev.clientY - d.dy
+    if (d.tile >= 0) {
+      const tr = G.tileRect(n.entry.items[d.tile].at, n.entry.items[d.tile].size)
+      d.tileEl.style.transform = `translate(${Math.round(x - n.x - tr.x)}px, ${Math.round(y - n.y - tr.y)}px)`
+    } else place(n, x, y)
+    // A board takes what is not a board; over none, one alone may stack.
+    if (d.tile >= 0 || !isBoard(n)) seekBoard(ev, x, y)
+    if (d.tile < 0 && !d.into) seek(ev, n.entry)
+    else seek(null)
   }
 
   // Over one it may stack onto, held half a second: that one ringed, armed.
   function seek(ev, moving) {
     const d = drag
-    const over = [...nodes.values()].find(o => o !== d.n && ev.clientX >= o.x && ev.clientX <= o.x + o.rect.w && ev.clientY >= o.y && ev.clientY <= o.y + o.rect.h)
+    const over = ev ? [...nodes.values()].find(o => o !== d.n && !isBoard(o) && ev.clientX >= o.x && ev.clientX <= o.x + o.rect.w && ev.clientY >= o.y && ev.clientY <= o.y + o.rect.h) : null
     const ok = over && G.canStack(moving, over.entry) ? over : null
     if (ok === d.over) return
     clearTimeout(d.overTimer)
@@ -428,6 +587,46 @@
       }, 500)
   }
 
+  // The board under the pointer (its title bar too), but the one dragged.
+  function boardUnder(cx, cy, except) {
+    for (const o of nodes.values()) {
+      if (!isBoard(o) || o === except) continue
+      const { w, h } = G.boardBox(o.entry)
+      if (cx >= o.x && cx <= o.x + w && cy >= o.y && cy <= o.y + h) return o
+    }
+    return null
+  }
+  // Over a board: where it would land (a dashed place there), none (full:
+  // it shakes as it is let go of), or a stack, which may not go in.
+  function seekBoard(ev, x, y) {
+    const d = drag
+    const b = boardUnder(ev.clientX, ev.clientY, d.tile >= 0 ? null : d.n)
+    const into = !b ? null : d.tile < 0 && G.isStack(d.n.entry) ? { b, stack: true } : { b, ...spotIn(b, x, y) }
+    const was = d.into
+    d.into = into
+    if (was && (!into || was.b !== into.b || JSON.stringify(was.spot) !== JSON.stringify(into.spot))) was.b.el.querySelector('.bghost')?.remove()
+    if (!into?.spot || into.b.entry.folded) return
+    let ghost = into.b.el.querySelector('.bghost')
+    if (!ghost) {
+      ghost = document.createElement('div')
+      ghost.className = 'bghost'
+      into.b.el.querySelector('.db').append(ghost)
+    }
+    const r = G.tileRect(into.spot, into.size)
+    Object.assign(ghost.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` })
+  }
+  // The cell one dragged with its top left at (x, y) takes in a board.
+  function spotIn(b, x, y) {
+    const d = drag
+    const size = d.tile >= 0 ? d.n.entry.items[d.tile].size : d.n.entry.size
+    const skip = d.tile >= 0 && b === d.n ? d.tile : -1
+    const spot = b.entry.folded ? G.boardFirst(b.entry, size) : G.boardSpot(b.entry, G.tileAt(x - b.x, y - b.y, size), size, skip)
+    return { spot, size }
+  }
+  function dropInto(d) {
+    d?.into?.b.el.querySelector('.bghost')?.remove()
+  }
+
   function release(ev) {
     const d = drag
     if (!d || ev.pointerId !== d.id) return
@@ -437,21 +636,62 @@
     const n = d.n
     n.el.classList.remove('dragging')
     d.over?.el.classList.remove('target')
+    dropInto(d)
     if (d.mode === 'press') return
-    const e = n.entry
     const x = ev.clientX - d.dx
     const y = ev.clientY - d.dy
+    if (d.tile >= 0) return releaseTile(ev, d, x, y)
+    const e = n.entry
+    const back = () => place(n, n.rect.x, n.rect.y)
     if (d.armed) {
       // The one dropped on top.
       tops.set(d.armed, 0)
       return keepLayout(G.stackOnto(layout, e.id, d.armed, newId))
     }
+    if (d.into) {
+      // No stacks in a board (this time round): it says so, and goes back.
+      if (d.into.stack) {
+        toast(d.into.b, t('desk.noStackInBoard'))
+        return back()
+      }
+      if (!d.into.spot) {
+        shake(d.into.b)
+        return back()
+      }
+      return keepLayout(G.intoBoard(layout, d.into.b.entry.id, G.memberOf(e), e.size, d.into.spot, newId))
+    }
+    const box = G.boxOf(e)
     const off = ev.clientX < 0 || ev.clientY < 0 || ev.clientX > innerWidth || ev.clientY > innerHeight
-    if (off) return elsewhere(ev, x - ev.clientX, y - ev.clientY, e.size, cell => keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, cell.key, cell.at) : o))), () => place(n, n.rect.x, n.rect.y))
-    const cell = G.dropAt(grid(), x, y, e.size, others(e.id), icons)
-    n.rect = G.rectAt(grid(), cell, e.size)
+    if (off) return elsewhere(ev, x - ev.clientX, y - ev.clientY, box, cell => keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, cell.key, cell.at) : o))), back)
+    const cell = G.dropAt(grid(), x, y, box, others(e.id), icons)
+    n.rect = G.rectAt(grid(), cell, box)
     place(n, n.rect.x, n.rect.y)
     keepLayout(layout.map(o => (o.id === e.id ? G.placed(o, here.key, cell) : o)))
+  }
+  // A tile let go of: in its board (moved there), in another board, or off
+  // the board, one alone there (on another display too).
+  function releaseTile(ev, d, x, y) {
+    const b = d.n.entry
+    const tile = b.items[d.tile]
+    const back = () => {
+      d.tileEl.style.transform = ''
+      d.tileEl.classList.remove('lifted')
+    }
+    if (d.into) {
+      if (!d.into.spot) {
+        shake(d.into.b)
+        return back()
+      }
+      if (d.into.b === d.n) {
+        back()
+        return keepLayout(G.moveInBoard(layout, b.id, d.tile, d.into.spot))
+      }
+      return keepLayout(G.intoBoard(layout, d.into.b.entry.id, G.memberOf(tile), tile.size, d.into.spot, newId))
+    }
+    const off = ev.clientX < 0 || ev.clientY < 0 || ev.clientX > innerWidth || ev.clientY > innerHeight
+    if (off) return elsewhere(ev, x - ev.clientX, y - ev.clientY, tile.size, cell => keepLayout(G.outOfBoard(layout, b.id, d.tile, newId, cell.key, cell.at)), back)
+    const cell = G.dropAt(grid(), x, y, tile.size, others(''), icons)
+    keepLayout(G.outOfBoard(layout, b.id, d.tile, newId, here.key, cell))
   }
   function cancel() {
     const d = drag
@@ -461,9 +701,14 @@
     hold(false)
     d.n.el.classList.remove('dragging')
     d.over?.el.classList.remove('target')
+    dropInto(d)
+    if (d.tileEl) {
+      d.tileEl.style.transform = ''
+      d.tileEl.classList.remove('lifted')
+    }
     place(d.n, d.n.rect.x, d.n.rect.y)
   }
-  // The others' rects here (not this one).
+  // The others' rects here (not this one; '' all of them).
   const others = id => [...nodes.values()].filter(o => o.entry.id !== id).map(o => o.rect)
 
   // Let go of on another display: its cell there (desk.rs desk_where says
@@ -486,6 +731,84 @@
     } catch {
       icons = []
     }
+  }
+
+  // A board refusing one (full): its frame shakes, 0.3 s (§7's note); with
+  // motion reduced, a ring for as long.
+  function shake(b) {
+    const db = b?.el.querySelector('.db')
+    if (!db) return
+    db.classList.remove('shake')
+    void db.offsetWidth
+    db.classList.add('shake')
+    clearTimeout(b.shakeTimer)
+    b.shakeTimer = setTimeout(() => db.classList.remove('shake'), 320)
+  }
+  // A word on a board for two seconds (a stack may not go in).
+  const toastEl = document.createElement('div')
+  toastEl.className = 'wtoast'
+  toastEl.hidden = true
+  document.body.append(toastEl)
+  let toastTimer = 0
+  function toast(b, text) {
+    const { w } = G.boardBox(b.entry)
+    toastEl.textContent = text
+    toastEl.hidden = false
+    toastEl.style.left = `${Math.round(b.x + w / 2)}px`
+    toastEl.style.top = `${Math.round(b.y + G.BOARD.head + 10)}px`
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => (toastEl.hidden = true), 2000)
+  }
+
+  // Folded to its title bar, or open again.
+  function fold(n) {
+    const b = n.entry
+    const { folded, ...rest } = b
+    keepLayout(layout.map(o => (o.id === b.id ? (folded ? rest : { ...b, folded: true }) : o)))
+  }
+
+  // Its name typed in its title bar (a double-click, or its menu): Enter
+  // keeps it, Esc leaves it as it was, a press elsewhere keeps it. The
+  // window takes the keyboard for it alone (desk.rs desk_type).
+  function startRename(n) {
+    if (renaming || !isBoard(n)) return
+    const name = n.el.querySelector('.bname')
+    if (!name) return
+    closeMenu()
+    const input = document.createElement('input')
+    input.className = 'bname-in'
+    input.maxLength = G.BOARD_NAME
+    input.spellcheck = false
+    input.value = boardLabel(n.entry)
+    name.replaceWith(input)
+    renaming = { n, input }
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') endRename(true)
+      else if (ev.key === 'Escape') endRename(false)
+      else return
+      ev.preventDefault()
+    })
+    input.addEventListener('blur', () => endRename(true))
+    invoke('desk_type', { on: true })
+      .catch(() => {})
+      .then(() => {
+        if (renaming?.input !== input) return
+        input.focus()
+        input.select()
+      })
+  }
+  function endRename(ok) {
+    const r = renaming
+    if (!r) return
+    renaming = null
+    invoke('desk_type', { on: false }).catch(() => {})
+    const b = r.n.entry
+    const name = r.input.value.trim()
+    const named = ok && G.isBoardName(name) && name !== boardLabel(b)
+    r.n.key = ''
+    if (!named) return draw()
+    const { name: _, ...rest } = b
+    keepLayout(layout.map(o => (o.id === b.id ? (name ? { ...rest, name } : rest) : o)))
   }
 
   // --- A stack turned (§7, §9): the one on top up and away, the next rising --------------------
@@ -542,16 +865,15 @@
     }
   }
 
-  // --- Its menu (§7, §10): size; where; stacked or apart; the board to come; settings; off ---------
+  // --- Its menu (§7, §10): size; where; stacked or apart; a board; settings; off -----------------
   const menuEl = document.createElement('div')
   menuEl.className = 'wmenu'
   menuEl.hidden = true
   document.body.append(menuEl)
 
   // Why a size is not there, by kind (the spec's §4, as island.js has it).
-  function noSize(e, size) {
-    if (G.isStack(e)) return t('desk.stackSize')
-    const w = shownWidget(e)
+  function noSizeOf(w, size, stack = false) {
+    if (stack) return t('desk.stackSize')
     const kind = w ? WCards.kindOf(w) : ''
     if (size === 'l' && kind === 'pomodoro') return t('menu.why.pomodoro')
     if (kind === 'countdown') return t(size === 'm' ? 'menu.why.countdownM' : 'menu.why.countdownL')
@@ -570,29 +892,36 @@
     }
     return best?.o.entry || null
   }
-  const nameOfEntry = e => {
-    const w = shownWidget(e)
-    const m = G.isStack(e) ? e.items[topOf(e)] : G.memberOf(e)
+  const nameOfMember = (e, m) => {
+    const w = Widgets.sourcesOf(m, all)[0]
     return w ? WCards.titleOf(w, ctx()) : emptyName(e, m, ctx())
   }
+  const nameOfEntry = e => nameOfMember(e, G.isStack(e) ? e.items[topOf(e)] : G.memberOf(e))
+  // The boards here (three at most in a menu).
+  const boardsHere = () => shown().filter(G.isBoard)
 
-  function menuHTML(e, kind) {
-    const c = ctx()
-    const opt = (act, v, label, on, why = '') => `<button type="button" class="wmo${on ? ' on' : ''}${why ? ' off' : ''}" data-act="${act}" data-v="${v}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
-    const item = (act, label, why = '', v = '') => `<button type="button" class="wmi${why ? ' off' : ''}" data-act="${act}" data-v="${esc(v)}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
-    const line = (label, html) => `<div class="wmr"><span class="wml">${esc(label)}</span><span class="wms">${html}</span></div>`
+  const opt = (act, v, label, on, why = '') => `<button type="button" class="wmo${on ? ' on' : ''}${why ? ' off' : ''}" data-act="${act}" data-v="${v}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
+  const item = (act, label, why = '', v = '') => `<button type="button" class="wmi${why ? ' off' : ''}" data-act="${act}" data-v="${esc(v)}"${why ? ` aria-disabled="true" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
+  const line = (label, html) => `<div class="wmr"><span class="wml">${esc(label)}</span><span class="wms">${html}</span></div>`
+  const head = (w, glyph, title) => `<div class="wmh" style="--c:${w ? WCards.colorOf(w, ctx()) : 'currentColor'}">${glyph}<b>${esc(title)}</b></div>`
+  const whereLine = () => {
+    const notBar = here.home === 'taskbar' ? '' : t('menu.notTaskbar')
+    return line(t('menu.where'), opt('where', 'bar', t('menu.bar'), false, notBar) + opt('where', 'isle', t('menu.isle'), false) + opt('where', 'desk', t('menu.desk'), true))
+  }
+
+  function menuHTML(e, kind, tile = -1) {
+    if (G.isBoard(e)) return tile >= 0 ? tileMenuHTML(e, kind, tile) : boardMenuHTML(e)
     const w = shownWidget(e)
     const stack = G.isStack(e)
     const glyph = w ? WCards.glyphHTML(w, 'wmg') : WCards.memberGlyph(stack ? e.items[0] : G.memberOf(e))
     const title = stack ? `${nameOfEntry(e)} · ${t('desk.inStack', { n: e.items.length })}` : nameOfEntry(e)
-    const parts = [`<div class="wmh" style="--c:${w ? WCards.colorOf(w, c) : 'currentColor'}">${glyph}<b>${esc(title)}</b></div>`]
+    const parts = [head(w, glyph, title)]
     if (kind === 'size' || kind === 'full') {
       const sizes = G.sizesOfEntry(e, all)
-      parts.push(line(t('menu.size'), ['s', 'm', 'l'].map(z => opt('size', z, t(`menu.${z}`), e.size === z, sizes.includes(z) ? '' : noSize(e, z))).join('')))
+      parts.push(line(t('menu.size'), ['s', 'm', 'l'].map(z => opt('size', z, t(`menu.${z}`), e.size === z, sizes.includes(z) ? '' : noSizeOf(w, z, stack))).join('')))
     }
     if (kind === 'more' || kind === 'full') {
-      const notBar = here.home === 'taskbar' ? '' : t('menu.notTaskbar')
-      parts.push(line(t('menu.where'), opt('where', 'bar', t('menu.bar'), false, notBar) + opt('where', 'isle', t('menu.isle'), false) + opt('where', 'desk', t('menu.desk'), true)))
+      parts.push(whereLine())
       parts.push('<div class="wmsep"></div>')
       if (stack) {
         parts.push(item('takeOut', t('menu.takeOut', { name: nameOfEntry(e) }), '', String(topOf(e))))
@@ -602,7 +931,13 @@
         const name = next ? nameOfEntry(next) : ''
         parts.push(next ? item('group', t('menu.stackWith', { name }), '', next.id) : item('group', t('menu.stackWithNone'), t('desk.noNeighbour')))
       }
-      parts.push(item('board', t('menu.board'), t('desk.boardLater')))
+      // Into a board here (its first empty cell), or a new one where it
+      // stands; a stack may not go in (this time round).
+      if (stack) parts.push(item('board', t('menu.board'), t('desk.noStackInBoard')))
+      else {
+        for (const b of boardsHere().slice(0, 3)) parts.push(item('board', t('desk.toBoard', { name: boardLabel(b) }), G.boardFirst(b, e.size) ? '' : t('desk.boardFull'), b.id))
+        parts.push(item('board', t('desk.newBoard'), '', 'new'))
+      }
       if (w) parts.push(item('settings', t('menu.settings')))
       parts.push(item('remove', t('desk.remove')))
     }
@@ -610,50 +945,101 @@
     return parts.join('')
   }
 
-  function openMenu(id, kind, at) {
+  // A tile's: its size (one with no room for it in the board greyed, why),
+  // where, out of the board, its settings, off.
+  function tileMenuHTML(b, kind, i) {
+    const x = b.items[i]
+    const m = G.memberOf(x)
+    const w = Widgets.sourcesOf(m, all)[0]
+    const parts = [head(w, w ? WCards.glyphHTML(w, 'wmg') : WCards.memberGlyph(m), nameOfMember(b, m))]
+    if (kind === 'size' || kind === 'full') {
+      const sizes = G.sizesOfEntry({ type: m.type, of: m.of }, all)
+      const why = z => (!sizes.includes(z) ? noSizeOf(w, z) : z !== x.size && !G.boardSpot(b, x.at, z, i) ? t('desk.noRoom') : '')
+      parts.push(line(t('menu.size'), ['s', 'm', 'l'].map(z => opt('size', z, t(`menu.${z}`), x.size === z, why(z))).join('')))
+    }
+    if (kind === 'more' || kind === 'full') {
+      parts.push(whereLine())
+      parts.push('<div class="wmsep"></div>')
+      parts.push(item('outBoard', t('desk.outOfBoard')))
+      if (w) parts.push(item('settings', t('menu.settings')))
+      parts.push(item('remove', t('desk.remove')))
+    }
+    parts.push('<div class="wmwhy" hidden></div>')
+    return parts.join('')
+  }
+
+  // A board's own (its More, or a right click on its pane): its name,
+  // folded or open, apart (each alone on the desktop), gone (its widgets
+  // back in the capsule).
+  function boardMenuHTML(b) {
+    return [
+      `<div class="wmh"><b>${esc(boardLabel(b))} · ${esc(t('desk.boardCount', { n: b.items.length }))}</b></div>`,
+      item('rename', t('desk.rename')),
+      item('fold', t(b.folded ? 'desk.unfold' : 'desk.fold')),
+      '<div class="wmsep"></div>',
+      item('apart', t('desk.boardApart'), b.items.length ? '' : t('desk.boardEmpty')),
+      item('removeBoard', t('desk.boardRemove')),
+      '<div class="wmwhy" hidden></div>',
+    ].join('')
+  }
+
+  function openMenu(id, kind, at, tile = -1) {
     const e = find(id)
     if (!e || !here) return
-    for (const n of nodes.values()) n.el.classList.toggle('menu', n.entry.id === id)
-    menu = { id, kind }
-    menuEl.innerHTML = menuHTML(e, kind)
+    closeLib()
+    for (const n of nodes.values()) {
+      n.el.classList.toggle('menu', n.entry.id === id)
+      for (const x of n.el.querySelectorAll('.tile')) x.classList.toggle('menu', n.entry.id === id && Number(x.dataset.i) === tile)
+    }
+    menu = { id, kind, tile }
+    menuEl.innerHTML = menuHTML(e, kind, tile)
     fillHer(menuEl)
     menuEl.hidden = false
-    // By the button (under it, its right edge at the button's) or at the
-    // pointer; kept inside the display.
-    const w = menuEl.offsetWidth
-    const h = menuEl.offsetHeight
+    popAt(menuEl, at)
+    shapes()
+  }
+  // By the button (under it, its right edge at the button's) or at the
+  // pointer; kept inside the display.
+  function popAt(pop, at) {
+    const w = pop.offsetWidth
+    const h = pop.offsetHeight
     let x = at.button ? at.button.right - w : at.x
     let y = at.y
     if (y + h > innerHeight - 8) y = (at.button ? at.button.top - 6 : at.y) - h
     x = Math.max(8, Math.min(x, innerWidth - w - 8))
     y = Math.max(8, Math.min(y, innerHeight - h - 8))
-    menuEl.style.left = `${Math.round(x)}px`
-    menuEl.style.top = `${Math.round(y)}px`
-    shapes()
+    pop.style.left = `${Math.round(x)}px`
+    pop.style.top = `${Math.round(y)}px`
   }
   function closeMenu() {
     if (!menu) return
     menu = null
     menuEl.hidden = true
-    for (const n of nodes.values()) n.el.classList.remove('menu')
+    for (const n of nodes.values()) {
+      n.el.classList.remove('menu')
+      for (const x of n.el.querySelectorAll('.tile.menu')) x.classList.remove('menu')
+    }
     shapes()
   }
-  menuEl.addEventListener('mouseover', ev => {
-    const why = menuEl.querySelector('.wmwhy')
-    const off = ev.target.closest('[data-why]')
-    if (!why) return
-    why.hidden = !off
-    if (off) why.textContent = off.dataset.why
-    shapes()
-  })
-  menuEl.addEventListener('contextmenu', ev => ev.preventDefault())
+  for (const pop of [menuEl]) {
+    pop.addEventListener('mouseover', ev => {
+      const why = pop.querySelector('.wmwhy')
+      const off = ev.target.closest('[data-why]')
+      if (!why) return
+      why.hidden = !off
+      if (off) why.textContent = off.dataset.why
+      shapes()
+    })
+    pop.addEventListener('contextmenu', ev => ev.preventDefault())
+  }
   // While a menu is open the window takes the whole display's desktop
   // (desk.rs poll): a press anywhere but on it closes it, as Windows' own
   // menus do; a press in another window closes it too (desk:outside).
   document.addEventListener(
     'pointerdown',
     ev => {
-      if (menu && !menuEl.contains(ev.target) && !ev.target.closest('.tools button')) closeMenu()
+      if (menu && !menuEl.contains(ev.target) && !ev.target.closest('.tools button, .bbtns button')) closeMenu()
+      if (lib && !libEl.contains(ev.target) && !ev.target.closest('.bbtns button')) closeLib()
     },
     true,
   )
@@ -661,18 +1047,22 @@
     if (!ev.target.closest('.dw, .wmenu')) {
       ev.preventDefault()
       closeMenu()
+      closeLib()
     }
   })
   menuEl.addEventListener('click', ev => {
     const b = ev.target.closest('[data-act]')
     if (!b || b.classList.contains('off') || !menu) return
     const e = find(menu.id)
+    const tile = menu.tile
     closeMenu()
-    if (e) act(e, b.dataset.act, b.dataset.v)
+    if (!e) return
+    if (G.isBoard(e)) return tile >= 0 ? actTile(e, tile, b.dataset.act, b.dataset.v) : actBoard(e, b.dataset.act)
+    act(e, b.dataset.act, b.dataset.v)
   })
 
   // Each of its widgets or plugins, as the island's placeWidget takes them.
-  const itemsOf = e => G.membersOf(e).map(m => (m.type === 'plugin' ? { plugin: m.of } : { id: m.of }))
+  const itemsOf = e => G.membersOf(e).map(G.itemOf)
 
   function act(e, what, v) {
     switch (what) {
@@ -702,6 +1092,13 @@
         tops.set(e.id, 0)
         return keepLayout(G.takeOut(layout, e.id, Number(v) || 0, newId, here.key, free))
       }
+      case 'board': {
+        if (v === 'new') return keepLayout(G.newBoard(layout, e.id, newId))
+        const b = find(v)
+        const spot = b && G.boardFirst(b, e.size)
+        if (!spot) return shake(nodes.get(v))
+        return keepLayout(G.intoBoard(layout, b.id, G.memberOf(e), e.size, spot, newId))
+      }
       case 'settings': {
         const w = shownWidget(e)
         return w && ask('settings', { widget: w.id })
@@ -711,8 +1108,119 @@
     }
   }
 
+  // A tile's: another size where it stands (or the nearest room in its
+  // board), elsewhere, out of the board beside it, its settings, off.
+  function actTile(b, i, what, v) {
+    const x = b.items[i]
+    if (!x) return
+    const m = G.memberOf(x)
+    switch (what) {
+      case 'size': {
+        const spot = G.boardSpot(b, x.at, v, i)
+        return spot ? keepLayout(G.moveInBoard(layout, b.id, i, spot, v)) : shake(nodes.get(b.id))
+      }
+      case 'where':
+        if (v === 'desk') return
+        return ask('place', { items: [G.itemOf(m)], where: v })
+      case 'outBoard': {
+        const from = spots.get(b.id) || [0, 0]
+        const cell = G.nearestFree(grid(), from, x.size, [...others(''), ...icons]) || G.nearestFree(grid(), from, x.size, others('')) || from
+        return keepLayout(G.outOfBoard(layout, b.id, i, newId, here.key, cell))
+      }
+      case 'settings': {
+        const w = Widgets.sourcesOf(m, all)[0]
+        return w && ask('settings', { widget: w.id })
+      }
+      case 'remove':
+        return ask('place', { items: [G.itemOf(m)], where: 'isle' })
+    }
+  }
+
+  function actBoard(b, what) {
+    const n = nodes.get(b.id)
+    switch (what) {
+      case 'rename':
+        return n && startRename(n)
+      case 'fold':
+        return n && fold(n)
+      case 'apart':
+        return keepLayout(G.boardApart(layout, b.id, newId))
+      // Its widgets back in the capsule: on the desktop no more.
+      case 'removeBoard':
+        return keepLayout(layout.filter(o => o.id !== b.id))
+    }
+  }
+
+  // --- Its Add: the widgets there are, each where it is now; a press puts it in -----------------
+  const libEl = document.createElement('div')
+  libEl.className = 'wmenu wlib'
+  libEl.hidden = true
+  document.body.append(libEl)
+  let lib = null
+
+  // The widgets there are, a plugin's once (its first): not those already
+  // in this board; each saying where it is (in the capsule, on the taskbar,
+  // on the desktop, in a board).
+  function libItems(b) {
+    const inBoard = new Set(b.items.map(G.keyOf))
+    const bar = here.bar && typeof here.bar === 'object' ? Widgets.shownOn(Widgets.monitorAsPart({ left: [], center: [], right: [], ...here.bar }), all) : new Set()
+    const monitorPart = here.home === 'taskbar' && (!here.bar || Object.values(here.bar).some(run => Array.isArray(run) && run.includes('monitor')))
+    const seen = new Set()
+    const out = []
+    for (const w of all) {
+      const m = w.plugin ? { type: 'plugin', of: w.plugin } : { type: 'widget', of: w.id }
+      const key = G.keyOf(m)
+      if (seen.has(key) || inBoard.has(key)) continue
+      seen.add(key)
+      const holder = layout.find(e => G.membersOf(e).some(x => G.keyOf(x) === key) || (w.plugin && G.membersOf(e).some(x => G.keyOf(x) === `widget:${w.id}`)))
+      const where = holder ? (G.isBoard(holder) ? t('desk.atBoard', { name: boardLabel(holder) }) : t('desk.atDesk')) : bar.has(w.id) || (w.id === 'monitor' && monitorPart) ? t('desk.atBar') : t('desk.atIsle')
+      out.push({ m, w, where, onBar: !holder && (bar.has(w.id) || (w.id === 'monitor' && monitorPart)) })
+    }
+    return out.slice(0, 40)
+  }
+  function libHTML(b) {
+    const items = libItems(b)
+    const rows = items.map((x, i) => {
+      const c = WCards.colorOf(x.w, ctx())
+      return `<button type="button" class="wli" data-k="${i}" style="--c:${c}">${WCards.glyphHTML(x.w, 'wmg')}<span class="wln">${esc(WCards.titleOf(x.w, ctx()))}</span><span class="wlw">${esc(x.where)}</span></button>`
+    })
+    return `<div class="wmh"><b>${esc(t('desk.library'))}</b></div>${rows.length ? rows.join('') : `<div class="wlnone">${esc(t('desk.libNone'))}</div>`}`
+  }
+  function openLib(n, button) {
+    closeMenu()
+    lib = { id: n.entry.id, items: libItems(n.entry) }
+    libEl.innerHTML = libHTML(n.entry)
+    fillHer(libEl)
+    libEl.hidden = false
+    popAt(libEl, { x: button.left, y: button.bottom + 6, button })
+    shapes()
+  }
+  function closeLib() {
+    if (!lib) return
+    lib = null
+    libEl.hidden = true
+    shapes()
+  }
+  libEl.addEventListener('contextmenu', ev => ev.preventDefault())
+  libEl.addEventListener('click', ev => {
+    const row = ev.target.closest('[data-k]')
+    if (!row || !lib) return
+    const b = find(lib.id)
+    const x = lib.items[Number(row.dataset.k)]
+    closeLib()
+    if (!b || !x) return
+    // Small where it has it; the first empty cell (a row more if need be).
+    const sizes = G.sizesOfEntry({ type: x.m.type, of: x.m.of }, all)
+    const size = sizes.includes('s') ? 's' : sizes[0] || 's'
+    const spot = G.boardFirst(b, size)
+    if (!spot) return shake(nodes.get(b.id))
+    keepLayout(G.intoBoard(layout, b.id, x.m, size, spot, newId))
+    // On the taskbar: off it (one place), by the island's page.
+    if (x.onBar) ask('unbar', { items: [G.itemOf(x.m)] })
+  })
+
   // What her island's page does for the desktop (desk.rs desk_ask): a
-  // widget's settings opened, a widget put elsewhere.
+  // widget's settings opened, a widget put elsewhere, off the taskbar.
   const ask = (what, args) => invoke('desk_ask', { what, args }).catch(() => {})
 
   // --- From desk.rs -------------------------------------------------------------------------------
@@ -735,20 +1243,26 @@
       news(before)
     }),
     on('desk:paper', p => setPaper(p)),
-    // The pointer went off its widgets: the window lets clicks through again.
     // The window took the mouse (where the pointer is: the widget under it
-    // shown hovered at once, before any move), or lets it through again.
+    // shown hovered at once, before any move, a board's tile too), or lets
+    // it through again.
     on('desk:pointer', at => {
       if (drag) return
-      const under = at ? document.elementFromPoint(at.x, at.y)?.closest('.dw') : null
-      for (const n of nodes.values()) n.el.classList.toggle('hover', n.el === under)
+      const el = at ? document.elementFromPoint(at.x, at.y) : null
+      const under = el?.closest('.dw')
+      for (const n of nodes.values()) {
+        n.el.classList.toggle('hover', n.el === under)
+        hoverTile(n, n.el === under ? el.closest('.tile') : null)
+      }
     }),
     // A press elsewhere (on the desktop, another window): the menu goes.
-    on('desk:outside', () => closeMenu()),
+    on('desk:outside', () => {
+      closeMenu()
+      closeLib()
+    }),
   ])
     .then(() => invoke('desk_ready'))
     .catch(err => console.log('desk: listeners failed', err))
-
 
   // The page's console into debug.log (when it is on), and /debug/eval.
   const log = console.log.bind(console)
@@ -764,5 +1278,19 @@
   }
   window.addEventListener('error', e => console.log('error:', e.message, e.filename, e.lineno))
   // For the tests' eyes: what is drawn where.
-  window.Desk = { state: () => ({ here, layout, spots: Object.fromEntries(spots), icons, paper: !!paper, shapes: sentShapes }), draw, turn: (id, by) => nodes.get(id) && turn(nodes.get(id), by), openMenu, paperAgain: () => lastPaper && setPaper(lastPaper) }
+  window.Desk = {
+    state: () => ({ here, layout, spots: Object.fromEntries(spots), icons, paper: !!paper, paper40: !!paper40, shapes: sentShapes }),
+    draw,
+    turn: (id, by) => nodes.get(id) && turn(nodes.get(id), by),
+    openMenu,
+    openLib: id => {
+      const n = nodes.get(id)
+      const b = n?.el.querySelector('[data-bact=add]')
+      if (n && b) openLib(n, b.getBoundingClientRect())
+    },
+    rename: id => nodes.get(id) && startRename(nodes.get(id)),
+    shake: id => shake(nodes.get(id)),
+    toast: (id, text) => nodes.get(id) && toast(nodes.get(id), text),
+    paperAgain: () => lastPaper && setPaper(lastPaper),
+  }
 })()
