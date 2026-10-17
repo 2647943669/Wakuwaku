@@ -19,6 +19,8 @@
 //           every one of WORLD_KEYS (test/preview.test.js checks)
 //   play    async p => {...}: what happens once her pages are up (a turn
 //           ending, the settings opening), on her home's page
+//   deskPlay  async p => {...}: the same on the desktop's page (p.win: its
+//           window; widgets picked with Ctrl, their menu open)
 //
 // A shot (LIST), one picture of the gallery:
 //   id        its name, and the PNG's (<id>-dark.png, <id>-light.png)
@@ -264,6 +266,22 @@
         p.emit('island:picker', { open: 'capsule' })
       },
     },
+    {
+      id: 'multi-select',
+      title: 'Ctrl 多选',
+      note: '按住 Ctrl 在桌面空白处拖出一个框，或按住 Ctrl 点小工具（单个或叠放；工作台不行），选中几个；右键其中一个：「组成工作台」放在最左上那个的位置，接着直接给它起名；「从桌面移除」把它们都放回胶囊。不按 Ctrl 点一下、按 Esc 或点别处就取消选择。',
+      world: F => ({ ...desktop(F), sessions: [F.session('working')], widgets: F.WIDGETS, deskLayout: F.DESK.full }),
+      // Four picked (one alone, a stack, two at the far side) and their menu, as Ctrl and presses would.
+      deskPlay: async p => {
+        await p.wait(500)
+        const D = p.win.Desk
+        if (!D?.select) return
+        D.select(['wa', 'wst', 'wfm', 'wfd'])
+        await p.wait(100)
+        const r = p.win.document.querySelector('[data-id="wfd"]').getBoundingClientRect()
+        D.openMenu('wfd', 'sel', { x: r.left + 60, y: r.top + 40 })
+      },
+    },
   ]
   const sceneById = id => SCENES.find(s => s.id === id) || null
 
@@ -341,6 +359,7 @@
     { id: 'scene-edit-layout', section: 'scenes', scene: 'edit-layout', title: '编辑任务栏布局中', page: 'island', view: [0, above(200), 1600, 200], settle: 700 },
     { id: 'scene-add-widgets', section: 'scenes', scene: 'add-widgets', title: '添加小工具 · 编辑任务栏，右边是小工具库', page: 'screen', view: WHOLE, budget: 4000, settle: 700 },
     { id: 'scene-edit-capsule', section: 'scenes', scene: 'edit-capsule', title: '编辑胶囊 · 她的胶囊上方的面板', page: 'island', view: [0, above(440), 720, 440], settle: 700 },
+    { id: 'scene-multi-select', section: 'scenes', scene: 'multi-select', title: 'Ctrl 多选 · 选中四个，右键的菜单', page: 'screen', view: WHOLE, budget: 4000 },
 
     // --- The taskbar's strip ---------------------------------------------------------------
     ...[
@@ -500,7 +519,8 @@
       world: F => ({ ...busy(F), widgets: F.widgets('monitor', 'today', 'tokens', 'weather', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'inbox-a1', 'deploy'), deskLayout: F.DESK.everyday }),
       steps: async p => {
         p.emit('island:settings', { tab: 'widgets:countdown' })
-        await p.wait(600)
+        // Past the settings' last scroll to the part (1.6 s), as it stays.
+        await p.wait(1800)
       },
     },
 
@@ -587,6 +607,24 @@
         await p.wait(400)
       },
     })),
+    {
+      id: 'desktop-ctrl-marquee',
+      section: 'desktop',
+      title: '按住 Ctrl 在桌面空白处拖出的框，碰到的小工具选中（工作台不选）',
+      page: 'desk',
+      view: [0, 0, 1240, 620],
+      budget: 4000,
+      world: F => ({ widgets: F.WIDGETS, deskLayout: F.DESK.scene }),
+      steps: async p => {
+        await p.wait(400)
+        const at = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, ctrlKey: true, button: 0, buttons: 1, pointerId: 1, isPrimary: true, bubbles: true, cancelable: true })
+        const desk = document.getElementById('desk')
+        desk.dispatchEvent(at('pointerdown', 10, 300))
+        desk.dispatchEvent(at('pointermove', 300, 360))
+        desk.dispatchEvent(at('pointermove', 600, 380))
+        await p.wait(100)
+      },
+    },
   ]
 
   const DEFAULT_BUDGET = 3000
@@ -609,6 +647,8 @@
   }
   // What plays before a shot's own steps: its scene's, unless left out.
   const playOf = s => (s.scene && s.play !== false ? sceneById(s.scene)?.play || null : null)
+  // And on the desktop's page (deskPlay).
+  const deskPlayOf = s => (s.scene && s.play !== false ? sceneById(s.scene)?.deskPlay || null : null)
   // The page a shot's steps run on (a screen shot's: her home's).
   const stepsOn = s => (s.page === 'screen' ? 'island' : s.page)
 
@@ -641,6 +681,7 @@
     windowOf,
     worldFor,
     playOf,
+    deskPlayOf,
     stepsOn,
     plain,
     list: () => LIST.map(plain),

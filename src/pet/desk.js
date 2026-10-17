@@ -18,7 +18,9 @@
 // a stack may not go in (it says so). A tile dragged off the board is one
 // alone again; dragged within, it moves. Folded, the title bar alone with
 // its widgets' glyphs. Its name: a double-click, Enter or Esc.
-// Right-click: its menu, as the taskbar's and the capsule's.
+// Right-click: its menu, as the taskbar's and the capsule's. Ctrl and a
+// press (or a rectangle dragged over the desktop) picks several, which
+// their menu makes one board.
 //
 // The window lets clicks through but where a widget is (desk.rs polls the
 // pointer against the shapes this page sends, desk_shapes); while a press is
@@ -59,6 +61,20 @@
   let renaming = null
   // A board's 移除 being asked ({ id }), or null.
   let asking = null
+  // Those picked with Ctrl (entry ids: ones alone, stacks), the rectangle
+  // being dragged for them, a new board to name once it is drawn.
+  const selected = new Set()
+  let marquee = null
+  let renameNext = null
+  // The keyboard taken (desk_type), while something here wants it: a name
+  // being typed, a board's 移除 asked, widgets picked (Esc lets them go).
+  let keysTaken = false
+  function keys() {
+    const want = !!renaming || !!asking || selected.size > 0
+    if (want === keysTaken) return Promise.resolve()
+    keysTaken = want
+    return invoke('desk_type', { on: want }).catch(() => {})
+  }
 
   const lang = () => here?.lang || 'zh'
   const t = (key, vars) => I18n.t(lang(), key, vars)
@@ -103,10 +119,17 @@
         // Back here later (from another display): new here again, clear of the icons.
         drawn.delete(id)
       }
+    for (const id of [...selected]) if (!ids.has(id)) selected.delete(id)
     for (const e of entries) drawEntry(e, at.get(e.id))
     if (menu && !nodes.has(menu.id)) closeMenu()
     if (lib && !nodes.has(lib.id)) closeLib()
     if (asking) nodes.has(asking.id) ? placeAsk() : endAsk(false)
+    // A board just made of those picked: its name typed at once (as 改名).
+    if (renameNext && nodes.has(renameNext)) {
+      const n = nodes.get(renameNext)
+      renameNext = null
+      startRename(n)
+    }
     // A board here, and its glass not blurred yet: the picture again (once for each).
     if (entries.some(G.isBoard) && !paper40 && lastPaper && paper40For !== lastPaper) {
       paper40For = lastPaper
@@ -216,7 +239,7 @@
     const e = n.entry
     const shape = JSON.stringify([e.type, e.size, G.membersOf(e).map(G.keyOf)])
     const top = topOf(e)
-    n.el.className = `dw ${e.size}${G.isStack(e) ? ' stack' : ''}${n.el.classList.contains('hover') ? ' hover' : ''}${menu?.id === e.id ? ' menu' : ''}`
+    n.el.className = `dw ${e.size}${G.isStack(e) ? ' stack' : ''}${n.el.classList.contains('hover') ? ' hover' : ''}${menu?.id === e.id ? ' menu' : ''}${selected.has(e.id) ? ' sel' : ''}`
     n.el.style.width = n.el.style.height = ''
     if (shape !== n.shape) {
       n.shape = shape
@@ -494,6 +517,9 @@
     el.addEventListener('contextmenu', ev => {
       ev.preventDefault()
       if (ev.target.closest('input')) return
+      // One of several picked: the menu for all of them.
+      if (selected.size > 1 && selected.has(n.entry.id)) return openMenu(n.entry.id, 'sel', { x: ev.clientX, y: ev.clientY })
+      clearSelection()
       const tile = isBoard(n) ? tileOf(ev.target) : -1
       openMenu(n.entry.id, isBoard(n) && tile < 0 ? 'board' : 'full', { x: ev.clientX, y: ev.clientY }, tile)
     })
@@ -554,6 +580,13 @@
     closeMenu()
     closeLib()
     endAsk(false)
+    // Ctrl: picked, or not (one alone, a stack; a board is not), and no drag.
+    if (ev.ctrlKey) {
+      ev.preventDefault()
+      if (G.isSelectable(n.entry)) toggleSelected(n.entry.id)
+      return
+    }
+    clearSelection()
     const tile = isBoard(n) ? tileOf(ev.target) : -1
     const tileEl = tile >= 0 ? n.el.querySelector(`.tile[data-i="${tile}"]`) : null
     const tr = tile >= 0 ? G.tileRect(n.entry.items[tile].at, n.entry.items[tile].size) : { x: 0, y: 0 }
@@ -840,19 +873,17 @@
       ev.preventDefault()
     })
     input.addEventListener('blur', () => endRename(true))
-    invoke('desk_type', { on: true })
-      .catch(() => {})
-      .then(() => {
-        if (renaming?.input !== input) return
-        input.focus()
-        input.select()
-      })
+    keys().then(() => {
+      if (renaming?.input !== input) return
+      input.focus()
+      input.select()
+    })
   }
   function endRename(ok) {
     const r = renaming
     if (!r) return
     renaming = null
-    invoke('desk_type', { on: false }).catch(() => {})
+    keys()
     const b = r.n.entry
     const name = r.input.value.trim()
     const named = ok && G.isBoardName(name) && name !== boardLabel(b)
@@ -962,6 +993,7 @@
   }
 
   function menuHTML(e, kind, tile = -1) {
+    if (kind === 'sel') return selMenuHTML()
     if (G.isBoard(e)) return tile >= 0 ? tileMenuHTML(e, kind, tile) : boardMenuHTML(e)
     const w = shownWidget(e)
     const stack = G.isStack(e)
@@ -995,6 +1027,16 @@
     }
     parts.push('<div class="wmwhy" hidden></div>')
     return parts.join('')
+  }
+
+  // Several picked (Ctrl): made one board (greyed, why, past what a board
+  // holds), or all of them off the desktop (back in her capsule, as one's
+  // 从桌面移除).
+  function selMenuHTML() {
+    const chosen = layout.filter(e => selected.has(e.id))
+    const r = G.tilesOf(chosen, spots)
+    const why = r.why === 'tooMany' ? t('desk.selTooMany', { n: G.MAX_TILES }) : r.why ? t('desk.selNone') : ''
+    return [`<div class="wmh"><b>${esc(t('desk.selected', { n: chosen.length }))}</b></div>`, item('combine', t('desk.combine'), why), item('removeAll', t('desk.remove')), '<div class="wmwhy" hidden></div>'].join('')
   }
 
   // A tile's: its size (one with no room for it in the board greyed, why),
@@ -1107,8 +1149,9 @@
     const b = ev.target.closest('[data-act]')
     if (!b || b.classList.contains('off') || !menu) return
     const e = find(menu.id)
-    const tile = menu.tile
+    const { tile, kind } = menu
     closeMenu()
+    if (kind === 'sel') return actSel(b.dataset.act)
     if (!e) return
     if (G.isBoard(e)) return tile >= 0 ? actTile(e, tile, b.dataset.act, b.dataset.v) : actBoard(e, b.dataset.act)
     act(e, b.dataset.act, b.dataset.v)
@@ -1204,6 +1247,108 @@
     }
   }
 
+  // --- Several picked with Ctrl (the user's call of 2026-10-17) -------------------------------------
+  // Ctrl and a press on one alone or a stack: picked, or not; Ctrl and a
+  // drag over the desktop: a rectangle (dashed, Windows' accent), those it
+  // meets picked too (boards left out). A press without Ctrl, Esc, or one
+  // elsewhere lets them go. A right press on one picked: the menu for all
+  // of them (selMenuHTML).
+  //
+  // The real app: desk.rs lets the pointer through but over the widgets,
+  // so Ctrl and a press on the bare desktop reach this page only once its
+  // poll takes the mouse there too (phase 2): while Ctrl is down
+  // (GetAsyncKeyState(VK_CONTROL) & 0x8000, read in poll) and the pointer
+  // is over this display's desktop, seen (seen_now) and off Explorer's
+  // icons (desk_icons' rects, so a Ctrl-click on an icon is still
+  // Explorer's), catch as over a widget; let go again as Ctrl is let go
+  // (a drag begun is held, desk_hold). Ctrl comes a moment before the
+  // press: poll at 30 to 50 ms while Ctrl is down over such a display
+  // (pace's 250 ms would let a quick Ctrl-press through to Explorer), or a
+  // low-level keyboard hook's Ctrl edge to look at once. And while some are
+  // picked a press off them should go on to Explorer and come here as
+  // desk:outside (as a menu's press off it does, but without catching it).
+  const selEl = document.createElement('div')
+  selEl.className = 'dsel'
+  selEl.hidden = true
+  document.body.append(selEl)
+
+  function paintSelected() {
+    for (const n of nodes.values()) n.el.classList.toggle('sel', selected.has(n.entry.id))
+    keys()
+  }
+  function toggleSelected(id) {
+    if (!selected.delete(id)) selected.add(id)
+    paintSelected()
+  }
+  function clearSelection() {
+    if (!selected.size) return
+    selected.clear()
+    paintSelected()
+  }
+
+  function startMarquee(ev) {
+    marquee = { x0: ev.clientX, y0: ev.clientY, id: ev.pointerId, base: new Set(selected) }
+    try {
+      desk.setPointerCapture(ev.pointerId)
+    } catch {}
+    hold(true)
+  }
+  function moveMarquee(ev) {
+    const m = marquee
+    const box = { x: Math.min(m.x0, ev.clientX), y: Math.min(m.y0, ev.clientY), w: Math.abs(ev.clientX - m.x0), h: Math.abs(ev.clientY - m.y0) }
+    if (box.w < 4 && box.h < 4 && selEl.hidden) return
+    Object.assign(selEl.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` })
+    selEl.hidden = false
+    const hit = G.selectIn(box, [...nodes.values()].map(n => ({ id: n.entry.id, entry: n.entry, rect: { x: n.x, y: n.y, w: n.rect.w, h: n.rect.h } })))
+    selected.clear()
+    for (const id of [...m.base, ...hit]) selected.add(id)
+    paintSelected()
+  }
+  function endMarquee() {
+    if (!marquee) return
+    marquee = null
+    selEl.hidden = true
+    hold(false)
+  }
+  // Ctrl and a press on the bare desktop: the rectangle; without Ctrl, they go.
+  document.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0 || ev.target.closest?.('.dw, .wmenu, .bask, input')) return
+    if (!ev.ctrlKey) return clearSelection()
+    ev.preventDefault()
+    startMarquee(ev)
+  })
+  window.addEventListener('pointermove', ev => marquee && ev.pointerId === marquee.id && moveMarquee(ev))
+  window.addEventListener('pointerup', ev => marquee && ev.pointerId === marquee.id && endMarquee())
+  window.addEventListener('pointercancel', () => endMarquee())
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !ev.defaultPrevented && !renaming && !asking && selected.size) clearSelection()
+  })
+
+  // Their menu's: one board of them (where the top-left-most stood, its
+  // name typed at once, 工作台 N to start with), or all off the desktop.
+  function actSel(what) {
+    const chosen = layout.filter(e => selected.has(e.id) && G.isSelectable(e))
+    if (!chosen.length) return
+    if (what === 'removeAll') {
+      clearSelection()
+      return ask('place', { items: chosen.flatMap(itemsOf), where: 'isle' })
+    }
+    if (what !== 'combine') return
+    const r = G.boardOf(layout, chosen.map(e => e.id), { at: spots, grid: grid(), key: here.key, icons, newId, name: freshBoardName() })
+    if (r.why) return
+    clearSelection()
+    renameNext = r.board.id
+    keepLayout(r.layout)
+  }
+  // 工作台 N, N one more than the boards there are, past any of those names.
+  function freshBoardName() {
+    const boards = layout.filter(G.isBoard)
+    const names = new Set(boards.map(boardLabel))
+    let k = boards.length + 1
+    while (names.has(t('desk.boardN', { n: k }))) k++
+    return t('desk.boardN', { n: k })
+  }
+
   // --- 移除工作台, asked first (the user's call of 2026-10-17) ------------------------------------
   // It sends the board's widgets back to her capsule with no way back, so
   // a dim layer over the board's own area asks first, in the menu's look:
@@ -1235,9 +1380,7 @@
     askEl.hidden = false
     placeAsk()
     // The keyboard for Esc, 取消 the one it starts on (Enter keeps the board).
-    invoke('desk_type', { on: true })
-      .catch(() => {})
-      .then(() => asking?.id === b.id && askEl.querySelector('[data-ask="no"]')?.focus({ preventScroll: true }))
+    keys().then(() => asking?.id === b.id && askEl.querySelector('[data-ask="no"]')?.focus({ preventScroll: true }))
   }
   // Over the board's box where it stands.
   function placeAsk() {
@@ -1254,7 +1397,7 @@
     asking = null
     askEl.hidden = true
     if (askEl.contains(document.activeElement)) document.activeElement.blur()
-    invoke('desk_type', { on: false }).catch(() => {})
+    keys()
     shapes()
     if (ok) keepLayout(layout.filter(o => o.id !== a.id))
   }
@@ -1352,6 +1495,12 @@
       here = s
       layout = Array.isArray(s.layout) ? s.layout : []
       document.body.classList.toggle('lw', !!s.light)
+      // Windows' accent (what is picked, the rectangle): its light shade on
+      // dark, its dark one on light; none said (desk.rs adds it in phase 2,
+      // as taskbar:look has it), Windows' own blue (desk.css).
+      const accent = s.accent && (s.light ? s.accent.dark : s.accent.light)
+      if (accent) document.body.style.setProperty('--w-accent', accent)
+      else document.body.style.removeProperty('--w-accent')
       draw()
     }),
     on('desk:widgets', p => {
@@ -1379,6 +1528,7 @@
       closeMenu()
       closeLib()
       endAsk(false)
+      clearSelection()
     }),
   ])
     .then(() => invoke('desk_ready'))
@@ -1411,6 +1561,13 @@
     rename: id => nodes.get(id) && startRename(nodes.get(id)),
     askRemove: id => nodes.get(id) && askRemove(nodes.get(id)),
     asking: () => asking?.id || null,
+    // Picked as Ctrl and presses pick them (the scenes' shots), and which are.
+    select: ids => {
+      selected.clear()
+      for (const id of ids || []) if (G.isSelectable(find(id))) selected.add(id)
+      paintSelected()
+    },
+    selected: () => [...selected],
     shake: id => shake(nodes.get(id)),
     toast: (id, text) => nodes.get(id) && toast(nodes.get(id), text),
     paperAgain: () => lastPaper && setPaper(lastPaper),

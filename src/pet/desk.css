@@ -23,6 +23,7 @@
   --w-tile-line: rgba(255, 255, 255, 0.06);
   --w-red: #ff6b7a;
   --w-dim: rgba(14, 14, 18, 0.5);
+  --w-accent: #4cc2ff;
 }
 
 body.lw {
@@ -41,6 +42,7 @@ body.lw {
   --w-tile-line: rgba(0, 0, 0, 0.05);
   --w-red: #c42b3c;
   --w-dim: rgba(246, 246, 248, 0.58);
+  --w-accent: #005fb8;
 }
 
 html,
@@ -105,6 +107,29 @@ body {
 .dw.target .layer.top .wd {
   outline: 2px solid color-mix(in srgb, var(--w-fg) 70%, transparent);
   outline-offset: 3px;
+}
+
+/* Picked with Ctrl: ringed in Windows' accent (desk.js selected). */
+.dw.sel > .wd,
+.dw.sel .layer.top .wd {
+  outline: 2px solid var(--w-accent);
+  outline-offset: 3px;
+}
+
+/* The rectangle Ctrl and a drag over the desktop draws, as Explorer's: a
+   thin dashed line in the accent, a light fill of it. */
+.dsel {
+  position: absolute;
+  z-index: 45;
+  box-sizing: border-box;
+  border: 1px dashed var(--w-accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--w-accent) 14%, transparent);
+  pointer-events: none;
+}
+
+.dsel[hidden] {
+  display: none;
 }
 
 /* --- The glass ----------------------------------------------------------------------------- */

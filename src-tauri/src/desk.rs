@@ -436,6 +436,16 @@ fn contains(r: Mon, (x, y): (i32, i32)) -> bool {
 // One look at the pointer (physical px): each window takes the mouse while
 // it is on one of its widgets (or held, or a menu open there), lets it
 // through elsewhere. How long until the next look (ms; IDLE_MS: none wanted).
+//
+// Phase 2, for the widgets picked with Ctrl (desk.js, "Several picked with
+// Ctrl"): while Ctrl is down (GetAsyncKeyState(VK_CONTROL) & 0x8000) and the
+// pointer is over a display's desktop, seen and off its icons, that window
+// catches as over a widget, and lets go as Ctrl is let go (a drag begun is
+// held, desk_hold); looked at every 30 to 50 ms while Ctrl is down there
+// (250 ms lets a quick Ctrl-press through to Explorer). While some are
+// picked, a press off its widgets goes on to Explorer and is told as
+// desk:outside. desk:state carries Windows' accent ({ base, light, dark },
+// as taskbar:look) for them.
 pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     // Nobody about: the pointer rests; each window keeps what it does.
     if !looks_wanted(sh.is_quiet(), 1) {

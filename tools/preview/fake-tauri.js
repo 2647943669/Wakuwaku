@@ -399,7 +399,8 @@
     const [w, h] = world.screen
     const s = world.home === 'taskbar' ? world.strip : 0
     const work = { bottom: [0, 0, w, h - s], top: [0, s, w, h - s], left: [s, 0, w - s, h], right: [0, 0, w - s, h] }[world.edge] || [0, 0, w, h - s]
-    return { key: 'd1', primary: true, keys: ['d1'], sf: 1, size: [w, h], work, lang: world.lang, light: world.mode === 'light', detailed: config().details !== false, home: world.home, sprite: world.sprite, layout: world.deskLayout }
+    // accent: Windows' (as taskbar:look has it), for what is picked with Ctrl (desk.rs adds it in phase 2).
+    return { key: 'd1', primary: true, keys: ['d1'], sf: 1, size: [w, h], work, lang: world.lang, light: world.mode === 'light', accent: world.accent, detailed: config().details !== false, home: world.home, sprite: world.sprite, layout: world.deskLayout }
   }
 
   const deskPaper = () => {

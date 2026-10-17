@@ -113,8 +113,10 @@
     setHash(scene.id)
     freshUi()
     loadAll(() => {
-      if (!play || !scene.play) return
-      scene.play(player).catch(err => note(`场景没放完：${err.message}`))
+      if (!play) return
+      if (scene.play) scene.play(player).catch(err => note(`场景没放完：${err.message}`))
+      // The desktop's page's part (deskPlay: widgets picked with Ctrl, their menu).
+      if (scene.deskPlay && frames.desk.win) scene.deskPlay({ wait: player.wait, win: frames.desk.win }).catch(err => note(`场景没放完：${err.message}`))
     })
     drawPanel()
   }
@@ -354,7 +356,9 @@
     f.win = win
     const doc = win.document
     const toScreen = e => [f.rect[0] + e.clientX, f.rect[1] + e.clientY]
-    doc.addEventListener('pointermove', e => route(...toScreen(e), e.buttons), true)
+    doc.addEventListener('pointermove', e => route(...toScreen(e), e.buttons, e.ctrlKey), true)
+    // Ctrl down or up with the keyboard there: the pointer routed anew where it is.
+    for (const type of ['keydown', 'keyup']) doc.addEventListener(type, e => e.key === 'Control' && ctrlTo(type === 'keydown'), true)
     doc.addEventListener('pointerdown', e => pressed(...toScreen(e), f), true)
     doc.addEventListener('contextmenu', e => (lastMenuAt = toScreen(e)), true)
   }
@@ -380,11 +384,27 @@
       return false
     }
     const doc = f.win.document
+    // Ctrl down over the desktop: its page takes the pointer there too (a
+    // rectangle to pick widgets with), as desk.rs will (desk.js, phase 2).
+    if (f === frames.desk && ctrlDown) return true
     if (!el || el === doc.documentElement || el === doc.body) return false
     return f === frames.desk ? el.id !== 'desk' : !THROUGH.has(el.id)
   }
 
-  function route(sx, sy, buttons = 0) {
+  // Ctrl, as the last pointer event or key said; where the pointer last was.
+  let ctrlDown = false
+  let lastAt = null
+  function ctrlTo(down) {
+    if (ctrlDown === down) return
+    ctrlDown = down
+    if (lastAt) route(...lastAt, 0, down)
+  }
+  for (const type of ['keydown', 'keyup']) window.addEventListener(type, e => e.key === 'Control' && ctrlTo(type === 'keydown'), true)
+  window.addEventListener('blur', () => ctrlTo(false))
+
+  function route(sx, sy, buttons = 0, ctrl = ctrlDown) {
+    lastAt = [sx, sy]
+    ctrlDown = !!ctrl
     // A press held (a drag): whoever has it keeps it.
     if (buttons) return
     const onHome = catches(frames.island, sx, sy)
@@ -402,7 +422,7 @@
     const r = screenEl.getBoundingClientRect()
     return [r.left + sx * scale, r.top + sy * scale]
   }
-  screenEl.addEventListener('pointermove', e => route(...fromClient(e.clientX, e.clientY), e.buttons))
+  screenEl.addEventListener('pointermove', e => route(...fromClient(e.clientX, e.clientY), e.buttons, e.ctrlKey))
   screenEl.addEventListener('pointerdown', e => {
     const [sx, sy] = fromClient(e.clientX, e.clientY)
     // A touch (no hover first): the frame under it takes the next one.

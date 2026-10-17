@@ -122,6 +122,8 @@
       </div>`
     },
     freeze,
+    // The page's own window (a scene's deskPlay reads window.Desk from it, as in the playground).
+    win: window,
   }
   window.Preview = P
 
@@ -195,7 +197,7 @@
     if (!scene) return tell({ ready: true, role })
     try {
       // The scene's play is her home's page's; the shot's steps the page shot's.
-      const play = role === 'island' ? window.Scenes.playOf(scene) : null
+      const play = role === 'island' ? window.Scenes.playOf(scene) : role === 'desk' ? window.Scenes.deskPlayOf(scene) : null
       if (play) await play(P)
       if (scene.steps && role === window.Scenes.stepsOn(scene)) await scene.steps(P)
     } catch (err) {
