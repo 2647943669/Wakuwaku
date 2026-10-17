@@ -14,6 +14,8 @@
 //   title   as the playground's button says it
 //   note    what there is to try in it (under the buttons)
 //   home    her home: taskbar (the default) or island
+//   islandPos  at the top of the screen, where the island sits: left,
+//           center (the default), right (config.islandPos; its window put there)
 //   mode    dark or light, for a scene about one (else the viewer's, or the shot's)
 //   world   F => ({...}): the rest of its world (F: fixtures.js), whole:
 //           every one of WORLD_KEYS (test/preview.test.js checks)
@@ -33,6 +35,7 @@
 //   scene     the scene it shoots; or world: F => ({...}), a world of its
 //             own (the detail shots below: one state each, on a bare desktop)
 //   home      her home, over the scene's
+//   islandPos where the island sits at the top, over the scene's
 //   view      [x, y, w, h]: the part of the 1600 x 900 screen shot
 //   play      false: the scene's play left out
 //   steps     async p => {...}: what it does after the play (p: boot.js),
@@ -58,6 +61,16 @@
     desk: [0, 0, SCREEN[0], SCREEN[1]],
     // Her taskbar on another display (bars.rs): the strip alone.
     bar: [0, SCREEN[1] - STRIP, SCREEN[0], STRIP],
+  }
+  // The island's window at a top corner (islandPos: left, right), as
+  // island.rs will put it (phase 2 of zhoupengjie/Wakuwaku#59; anchor.js
+  // windowLeft): at the screen's side; the island in it 8 px from that side.
+  // Windows' own taskbar at the bottom, not drawn: the work area's top and
+  // sides are the screen's.
+  function islandWindow(pos) {
+    const [, y, w, h] = WINDOWS.island
+    const x = pos === 'left' ? 0 : pos === 'right' ? SCREEN[0] - w : WINDOWS.island[0]
+    return [x, y, w, h]
   }
 
   const SECTIONS = [
@@ -170,6 +183,21 @@
       world: F => ({ ...desktop(F), sessions: [F.session('error'), codex(F)], config: { endCue: 'ring' } }),
       play: turnEnds,
     },
+    // The hold setting (停留多久, zhoupengjie/Wakuwaku#65), for each way of telling.
+    {
+      id: 'hold-ring',
+      title: '提醒停留',
+      note: '「停留多久」是 30 秒：一轮刚做完，流光转完三圈后光环静静亮着，到 30 秒才变成小点；鼠标停到胶囊上就算看过。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（含自定义秒数）。',
+      world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'ring', hold: 30 } }),
+      play: turnEnds,
+    },
+    {
+      id: 'hold-open',
+      title: '展开停留',
+      note: '「她有事告诉你时」选了「展开胶囊」，停留 30 秒：一轮做完，胶囊自己展开，开 30 秒再收起；鼠标停上去再移开就马上收起，那个会话又开始干活也收起。换成「看到为止」，就一直开着，等鼠标经过。',
+      world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'open', hold: 30 } }),
+      play: turnEnds,
+    },
     {
       id: 'taskbar-full',
       title: '放满小工具的任务栏',
@@ -199,6 +227,19 @@
       home: 'island',
       note: '她的家在屏幕顶部的灵动岛：鼠标停上去展开。底下的任务栏是 Windows 自己的，这里不画。',
       world: F => ({ ...desktop(F), sessions: workingAndDone(F) }),
+    },
+    {
+      id: 'island-right',
+      title: '岛在右上',
+      home: 'island',
+      islandPos: 'right',
+      note: '灵动岛放在屏幕右上角（设置「外观 → 位置」），这里是展开的样子：朝屏幕中间长。流光、小点、往上收起、右键的「添加小工具…」「编辑胶囊」都跟着它。右边「环境」里能换左上、居中、右上。',
+      world: F => ({ ...desktop(F), sessions: workingAndDone(F) }),
+      // Opened, as the pointer resting on it opens it.
+      play: async p => {
+        await p.wait(200)
+        p.hover('#island')
+      },
     },
     {
       id: 'light-clear',
@@ -381,10 +422,15 @@
       },
     },
     { id: 'scene-error', section: 'scenes', scene: 'error', title: '出错了 · 流光播完留下的红点', page: 'island', view: CLOSED, budget: 6000, steps: p => p.wait(3400) },
+    // Past the turns (2.55 s), held lit and still (hold 30 s).
+    { id: 'scene-hold-ring', section: 'scenes', scene: 'hold-ring', title: '提醒停留 · 流光转完，光环静止亮着（停 30 秒）', page: 'island', view: CLOSED, budget: 8000, steps: p => p.wait(4500) },
+    // Past the few seconds it used to stay open (6.5 s with Claude's words), open still.
+    { id: 'scene-hold-open', section: 'scenes', scene: 'hold-open', title: '展开停留 · 做完自己展开，7 秒时还开着（停 30 秒）', page: 'island', view: [0, above(420), 520, 420], budget: 10000, steps: p => p.wait(7000) },
     { id: 'scene-taskbar-full', section: 'scenes', scene: 'taskbar-full', title: '放满小工具的任务栏', page: 'island', view: STRIP_VIEW },
     { id: 'scene-desktop', section: 'scenes', scene: 'desktop', title: '桌面 · 单个、叠放、两个工作台', page: 'screen', view: WHOLE, budget: 4000 },
     { id: 'scene-desktop-empty', section: 'scenes', scene: 'desktop-empty', title: '空桌面', page: 'screen', view: WHOLE, budget: 4000 },
     { id: 'scene-island-home', section: 'scenes', scene: 'island-home', title: '灵动岛模式 · 展开', page: 'island', view: [400, 0, 800, 420], steps: openIsland },
+    { id: 'scene-island-right', section: 'scenes', scene: 'island-right', title: '岛在右上 · 展开，朝屏幕中间长', page: 'island', view: [800, 0, 800, 420], settle: 700 },
     { id: 'scene-light-clear', section: 'scenes', scene: 'light-clear', title: '浅色 + 透明任务栏', page: 'island', view: STRIP_VIEW },
     { id: 'scene-edit-layout', section: 'scenes', scene: 'edit-layout', title: '编辑任务栏布局中', page: 'island', view: [0, above(200), 1600, 200], settle: 700 },
     { id: 'scene-add-widgets', section: 'scenes', scene: 'add-widgets', title: '添加小工具 · 编辑任务栏，右边是小工具库', page: 'screen', view: WHOLE, budget: 4000, settle: 700 },
@@ -428,6 +474,15 @@
       open: [520, 0, 560, 400],
       card: [520, 0, 560, 600],
     }),
+    // At a top corner (islandPos, zhoupengjie/Wakuwaku#59): closed 8 px in
+    // from the screen's side, and open, grown toward the middle.
+    ...[
+      ['left', '左上', [0, 0, 640, 60], [0, 0, 560, 400]],
+      ['right', '右上', [960, 0, 640, 60], [1040, 0, 560, 400]],
+    ].flatMap(([pos, name, closed, open]) => [
+      { id: `island-${pos}`, section: 'island', title: `${name} · 收起 · 干活中`, page: 'island', home: 'island', islandPos: pos, view: closed, world: F => ({ ...inMood('working')(F), home: 'island' }) },
+      { id: `island-${pos}-open`, section: 'island', title: `${name} · 展开，朝屏幕中间长`, page: 'island', home: 'island', islandPos: pos, view: open, world: F => ({ ...busy(F), home: 'island' }), steps: openIsland },
+    ]),
     // Five pinned at the capsule's end (the most there may be), the monitor
     // among them, a session at work: in each home.
     ...[
@@ -509,6 +564,29 @@
         p.freeze({ flow: 1100 })
       },
     },
+    // Held (停留多久 30 s, zhoupengjie/Wakuwaku#65): its turns over, lit and
+    // still, nothing of it animated; on the taskbar, at the top, at a corner.
+    ...[
+      ['flow-held', '任务栏上', 'taskbar', 'center', CLOSED],
+      ['flow-held-island', '顶部灵动岛上', 'island', 'center', [480, 0, 640, 60]],
+      ['flow-held-right', '右上角的灵动岛上', 'island', 'right', [960, 0, 640, 60]],
+    ].map(([id, name, home_, islandPos, view]) => ({
+      id,
+      section: 'flow',
+      title: `停留 · 转完后光环静止亮着 · ${name}`,
+      page: 'island',
+      home: home_,
+      islandPos,
+      view,
+      budget: 8000,
+      world: F => ({ ...home(F), home: home_, sessions: [F.session('working')], config: { hold: 30 } }),
+      steps: async p => {
+        await p.wait(300)
+        p.set({ sessions: [p.F.session('done')] })
+        p.push()
+        await p.wait(4000)
+      },
+    })),
 
     // --- Menus -------------------------------------------------------------------------------
     // Her own right-click menu is Windows' (tray.rs): not a page's, not here.
@@ -608,6 +686,57 @@
       steps: async p => {
         p.emit('island:settings', { tab: 'widgets:countdown' })
         // Past the settings' last scroll to the part (1.6 s), as it stays.
+        await p.wait(1800)
+      },
+    },
+
+    // General's 提醒: 她有事告诉你时, and just under it 停留多久, its note for
+    // the cue chosen (zhoupengjie/Wakuwaku#59, #65): a ring, Custom's 45 s
+    // in its box; the dot alone, greyed.
+    ...[
+      ['settings-alerts', '流光，自定义 45 秒', { endCue: 'ring', hold: 45 }],
+      ['settings-alerts-none', '只留小点时变灰', { endCue: 'none', hold: 30 }],
+    ].map(([id, name, config]) => ({
+      id,
+      section: 'settings',
+      title: `设置 · 通用 · 提醒：${name}`,
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(660), 560, 660],
+      world: F => ({ ...busy(F), config }),
+      steps: async p => {
+        p.emit('island:settings', { tab: 'alerts' })
+        // Past the settings' last scroll to the part (1.6 s), as it stays.
+        await p.wait(1800)
+      },
+    })),
+    // Look's 位置 (zhoupengjie/Wakuwaku#59): at the top of the screen, three
+    // places (at the left here, as the island is); on the taskbar, a line
+    // and the way to drag her capsule.
+    {
+      id: 'settings-look-island',
+      section: 'settings',
+      title: '设置 · 外观 · 灵动岛的位置（左上）',
+      page: 'island',
+      home: 'island',
+      islandPos: 'left',
+      view: [0, 0, 560, 720],
+      world: F => ({ ...busy(F), home: 'island' }),
+      steps: async p => {
+        p.emit('island:settings', { tab: 'place' })
+        await p.wait(1800)
+      },
+    },
+    {
+      id: 'settings-look-taskbar',
+      section: 'settings',
+      title: '设置 · 外观 · 任务栏模式下的「位置」：拖动她的胶囊',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(660), 560, 660],
+      world: busy,
+      steps: async p => {
+        p.emit('island:settings', { tab: 'place' })
         await p.wait(1800)
       },
     },
@@ -734,18 +863,29 @@
   const byId = id => LIST.find(s => s.id === id) || null
   // Her home in a shot: its own, else its scene's, else the taskbar.
   const homeOf = s => s.home || (s.scene && sceneById(s.scene)?.home) || 'taskbar'
+  // Where the island sits at the top in a shot: its own, else its scene's, else the centre.
+  const posOf = s => s.islandPos || (s.scene && sceneById(s.scene)?.islandPos) || 'center'
+  // Her home's window in a shot: the taskbar's, or the island's where it sits.
+  const homeWindowOf = s => (homeOf(s) === 'island' ? islandWindow(posOf(s)) : WINDOWS.taskbar)
   // Where a shot's page lies on the screen (a screen shot: the desktop's; her home's frame is put by shot.js).
-  const windowOf = s => (s.page === 'desk' || s.page === 'bar' || s.page === 'screen' ? WINDOWS[s.page === 'screen' ? 'desk' : s.page] : WINDOWS[homeOf(s)])
+  const windowOf = s => (s.page === 'desk' || s.page === 'bar' || s.page === 'screen' ? WINDOWS[s.page === 'screen' ? 'desk' : s.page] : homeWindowOf(s))
 
-  // A scene's world, whole: its home and its mode with it.
+  // Where the island sits, into a world's settings (as the settings keep it).
+  const withPos = (w, pos) => (pos ? { ...w, config: { ...(w.config || {}), islandPos: pos } } : w)
+
+  // A scene's world, whole: its home, where the island sits and its mode with it.
   function sceneWorld(scene, F) {
-    return { ...scene.world(F), home: scene.home || 'taskbar', ...(scene.mode ? { mode: scene.mode } : {}) }
+    return withPos({ ...scene.world(F), home: scene.home || 'taskbar', ...(scene.mode ? { mode: scene.mode } : {}) }, scene.islandPos)
   }
-  // A shot's world: its scene's, or its own; its home over either.
+  // A shot's world: its scene's, or its own; its home and where the island sits over either.
   function worldFor(s, F) {
     const scene = s.scene ? sceneById(s.scene) : null
     if (s.scene && !scene) throw new Error(`shot ${s.id}: no scene ${s.scene}`)
-    return { ...(scene ? sceneWorld(scene, F) : {}), ...(s.world ? s.world(F) : {}), ...(s.home ? { home: s.home } : {}) }
+    const base = scene ? sceneWorld(scene, F) : {}
+    const own = s.world ? s.world(F) : {}
+    // The shot's own settings over its scene's (where the island sits kept).
+    const config = base.config || own.config ? { ...(base.config || {}), ...(own.config || {}) } : undefined
+    return withPos({ ...base, ...own, ...(config ? { config } : {}), ...(s.home ? { home: s.home } : {}) }, s.islandPos)
   }
   // What plays before a shot's own steps: its scene's, unless left out.
   const playOf = s => (s.scene && s.play !== false ? sceneById(s.scene)?.play || null : null)
@@ -780,6 +920,9 @@
     sceneWorld,
     byId,
     homeOf,
+    posOf,
+    islandWindow,
+    homeWindowOf,
     windowOf,
     worldFor,
     playOf,

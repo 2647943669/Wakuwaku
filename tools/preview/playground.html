@@ -344,6 +344,34 @@
     grid-template-columns: 1fr 1fr;
     gap: 6px;
   }
+  .wk-btns.wk-three {
+    grid-template-columns: 1fr 1fr 1fr;
+    margin-bottom: 6px;
+  }
+  .wk-group h2.wk-sub {
+    margin-top: 12px;
+  }
+  .wk-seg.tight button {
+    padding: 5px 4px;
+    white-space: nowrap;
+  }
+  .wk-secs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--soft);
+  }
+  .wk-secs input {
+    box-sizing: border-box;
+    width: 72px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font: inherit;
+    text-align: center;
+  }
   .wk-scenes button {
     border: 0;
     padding: 7px 8px;
@@ -548,6 +576,8 @@
         <li>桌面上的小工具可以拖；拖到同样大小的另一个上停半秒就叠起来；双击工作台的标题可以改名。</li>
         <li>按住 Ctrl 在桌面空白处拖出一个框，或按住 Ctrl 点小工具，能选中几个；右键选中的一个：「组成工作台」（接着给它起名）或「从桌面移除」。Esc 或不按 Ctrl 点一下就取消。</li>
         <li>工作台的 ⋯ 里「存为组合…」把它存起来；小工具库的「组合」里把它拖到桌面上，或单击，就按原样再搭一块；右键卡片能改名、删除。</li>
+        <li>提醒停多久：右边「她有事告诉你时」下面的「停留多久」（设置「通用 → 提醒」里是同一个）。流光转完三圈后光环静静亮着，到时间才变成小点；「展开胶囊」时胶囊开这么久；选「看到为止」就等鼠标经过。「发生点什么」里的做完、改好、出错、打招呼能一次次再来；场景「提醒停留」「展开停留」直接开始。</li>
+        <li>灵动岛模式下，右边「环境」的「岛的位置」（设置「外观 → 位置」）能把岛放到左上、居中、右上：展开时朝屏幕中间长，流光、小点、小工具库、胶囊面板都跟着。场景「岛在右上」是展开的样子。真机上要等 Rust 那边跟上才会挪窗口。</li>
       </ul>
     </section>
     <aside id="wk-panel" class="wk-panel" aria-label="控制台">
@@ -563,6 +593,7 @@
         <div class="wk-row"><span>Windows</span><div class="wk-seg" data-seg="mode"></div></div>
         <div class="wk-row" data-row="material"><span>条带</span><div class="wk-seg" data-seg="material"></div></div>
         <div class="wk-row" data-row="edge"><span>位置</span><div class="wk-seg" data-seg="edge"></div></div>
+        <div class="wk-row" data-row="islandPos"><span>岛的位置</span><div class="wk-seg" data-seg="islandPos"></div></div>
       </div>
       <div class="wk-group">
         <h2>会话</h2>
@@ -572,17 +603,26 @@
       </div>
       <div class="wk-group">
         <h2>发生点什么</h2>
+        <div class="wk-btns wk-three">
+          <button type="button" data-act="end:done">做完</button>
+          <button type="button" data-act="end:review">改好</button>
+          <button type="button" data-act="end:error">出错</button>
+        </div>
         <div class="wk-btns">
           <button type="button" data-act="hello">打招呼</button>
           <button type="button" data-act="fail">工具失败</button>
           <button type="button" data-act="nudge">插件冒头</button>
           <button type="button" data-act="version">新版本</button>
         </div>
-        <p class="wk-note">工具失败发生在回合中间：按规格只让头像播个小动作，不转流光。新版本只留一个强调色小点。</p>
+        <p class="wk-note">做完、改好、出错：最上面的会话先干一会儿再这样结束，每按一次来一次。工具失败发生在回合中间：按规格只让头像播个小动作，不转流光。新版本只留一个强调色小点。</p>
       </div>
       <div class="wk-group">
         <h2>她有事告诉你时</h2>
         <div class="wk-seg wide" data-seg="endCue"></div>
+        <h2 class="wk-sub">停留多久</h2>
+        <div class="wk-seg wide tight" data-seg="hold"></div>
+        <div class="wk-row" data-row="holdSecs" hidden><span>自定义</span><span class="wk-secs"><input id="wk-hold-secs" type="number" min="3" max="600" step="1" inputmode="numeric" aria-label="自定义的秒数，3 到 600"> 秒</span></div>
+        <p class="wk-note">和设置「通用 → 提醒」里的是同一个，从事情发生时算起：展开胶囊时开这么久；流光转完后光环静止亮着，到时间变成小点。只留小点时用不上。到时间（或鼠标从她的家移开）那个会话就回到空闲，和真机一样。</p>
       </div>
       <div class="wk-group">
         <h2>其他</h2>

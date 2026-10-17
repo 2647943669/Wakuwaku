@@ -161,6 +161,7 @@
     display: 'taskbar',
     out: false,
     islandWidth: 'normal',
+    islandPos: 'center',
     islandHideUnder: true,
     taskbarMaterial: 'mica',
     taskbarDisplays: 'main',
@@ -299,6 +300,7 @@
   // The plugins as plugins.rs views them: on and running, or off.
   const pluginsNow = () => world.plugins.map(p => (pluginOn(p.id) ? { ...p, on: true, state: p.state === 'off' ? 'running' : p.state } : { ...p, on: false, state: 'off' }))
 
+  const ISLAND_POS = ['left', 'center', 'right']
   const IDLE = { id: '', project: '', agent: 'claude', jump: false, mood: 'idle', detail: null, since: null, took: null, name: '', step: null, stepSince: null, todo: null, files: 0, reply: '', error: null }
 
   // pet:update, as main.rs payload makes it.
@@ -324,6 +326,11 @@
       fullScreen: false,
       plate: true,
       ...(world.home !== 'taskbar' ? { winLight: world.mode === 'light' } : {}),
+      // At the top of the screen, the side her window is at (anchor.js): as
+      // island.rs will say it once it places the window by islandPos (phase 2
+      // of zhoupengjie/Wakuwaku#59). The playground and the gallery put the
+      // island's page there (scenes.js islandWindow).
+      ...(world.home !== 'taskbar' ? { islandAt: ISLAND_POS.includes(config().islandPos) ? config().islandPos : 'center' } : {}),
       widgets: widgetsNow(),
       unconnected: !world.connected,
       ...(world.connected ? {} : { tools: ['claude', 'codex'] }),

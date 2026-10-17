@@ -15,8 +15,9 @@ const compare = require('../tools/preview/compare')
 
 const REPO = path.join(__dirname, '..')
 
-// The playground's one-click scenes, as agreed (2026-10-17), in order.
-const WANTED = ['新用户第一次打开', '平常', '三个会话在忙', '等你批准', '做完了（流光）', '出错了', '放满小工具的任务栏', '桌面', '空桌面', '灵动岛模式', '浅色 + 透明任务栏', '编辑任务栏布局中', '添加小工具', '编辑胶囊', '组合', 'Ctrl 多选']
+// The playground's one-click scenes, as agreed (2026-10-17; the hold and the
+// island at a corner, zhoupengjie/Wakuwaku#59 and #65, 2026-10-18), in order.
+const WANTED = ['新用户第一次打开', '平常', '三个会话在忙', '等你批准', '做完了（流光）', '出错了', '提醒停留', '展开停留', '放满小工具的任务栏', '桌面', '空桌面', '灵动岛模式', '岛在右上', '浅色 + 透明任务栏', '编辑任务栏布局中', '添加小工具', '编辑胶囊', '组合', 'Ctrl 多选']
 
 test('the playground has each agreed scene, in order, with a note on what to try', () => {
   assert.deepEqual(
@@ -78,6 +79,40 @@ test('the scenes say what they are about', () => {
   assert.equal(w('light-clear').mode, 'light')
   assert.equal(w('light-clear').material, 'clear')
   assert.ok(Scenes.sceneById('edit-layout').play, 'edit-layout starts editing')
+  // The hold (停留多久 30 s) with a ring, and open; a turn ending as each opens.
+  assert.deepEqual([w('hold-ring').config.endCue, w('hold-ring').config.hold, w('hold-ring').sessions[0].mood], ['ring', 30, 'done'])
+  assert.deepEqual([w('hold-open').config.endCue, w('hold-open').config.hold, w('hold-open').sessions[0].mood], ['open', 30, 'done'])
+  assert.ok(Scenes.sceneById('hold-ring').play && Scenes.sceneById('hold-open').play)
+  // The island at the top right, opened.
+  assert.deepEqual([w('island-right').home, w('island-right').config.islandPos], ['island', 'right'])
+  assert.ok(Scenes.sceneById('island-right').play, 'island-right opens it')
+})
+
+test("the island's window where it sits, as island.rs will put it (anchor.js windowLeft)", () => {
+  const A = require('../src/pet/anchor')
+  const area = [0, 0, ...Scenes.SCREEN]
+  for (const pos of ['left', 'center', 'right']) {
+    const [x, y, w, h] = Scenes.islandWindow(pos)
+    assert.equal(x, A.windowLeft(pos, area, w), pos)
+    assert.deepEqual([y, w, h], [0, 760, 720], pos)
+  }
+  assert.deepEqual(Scenes.islandWindow('center'), Scenes.WINDOWS.island)
+  assert.deepEqual(Scenes.islandWindow(undefined), Scenes.WINDOWS.island)
+  // A shot's: its own place, else its scene's; its world says it too.
+  assert.deepEqual(Scenes.windowOf(Scenes.byId('island-right-open')), Scenes.islandWindow('right'))
+  assert.deepEqual(Scenes.windowOf(Scenes.byId('island-left')), Scenes.islandWindow('left'))
+  assert.deepEqual(Scenes.windowOf(Scenes.byId('scene-island-right')), Scenes.islandWindow('right'))
+  assert.deepEqual(Scenes.windowOf(Scenes.byId('scene-island-home')), Scenes.WINDOWS.island)
+  assert.deepEqual(Scenes.homeWindowOf({ scene: 'everyday' }), Scenes.WINDOWS.taskbar)
+  assert.equal(Scenes.worldFor(Scenes.byId('island-left-open'), F).config.islandPos, 'left')
+  assert.equal(Scenes.worldFor(Scenes.byId('flow-held-right'), F).config.islandPos, 'right')
+  assert.equal(Scenes.worldFor(Scenes.byId('flow-held-right'), F).config.hold, 30)
+  // Each shot's view on its page's window, at least in part (what it shows is there).
+  for (const s of Scenes.LIST.filter(x => x.page === 'island' && Scenes.homeOf(x) === 'island')) {
+    const [vx, , vw] = s.view
+    const [wx, , ww] = Scenes.windowOf(s)
+    assert.ok(vx < wx + ww && vx + vw > wx, `${s.id}: its view on its window`)
+  }
 })
 
 test('the gallery shoots every scene, and each shot is a scene or a world of its own', () => {

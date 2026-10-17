@@ -16,10 +16,13 @@
 //
 // The panel at the side drives what Rust would send: a scene (scenes.js:
 // a whole world at once, and what then happens in it; #<id> opens the
-// page on one), sessions and their moods, a hello, a tool failing, a
-// plugin's or a new version's nudge, Windows' mode, her home, the strip's
-// material and edge, the setting for endings, nobody about, reduced
-// motion; and starts the scene over.
+// page on one), sessions and their moods, a turn ending (done, review, an
+// error: again on each press), a hello, a tool failing, a plugin's or a new
+// version's nudge, Windows' mode, her home, the strip's material and edge,
+// where the island sits at the top (its window moved there, as island.rs
+// will), the setting for endings and how long they stay, nobody about,
+// reduced motion; and starts the scene over. As main does, an ending goes
+// back to rest once its hold is up, or once the pointer leaves her home.
 //
 // Served by publish.js dev (window.WAKU_DEV), it follows the repo's files:
 // a page's stylesheet changed is swapped in its frame, a script or page
@@ -199,6 +202,48 @@
     }
   }
 
+  // What main does with an ending (state.rs): held for the hold setting's
+  // seconds from it (settle_at), then back to rest, seen; until seen
+  // ("seen"), no time of its own. At work again before then, nothing.
+  const ENDINGS = ['done', 'review', 'error']
+  function settleLater(s) {
+    const hold = Fake.config().hold
+    if (!Number.isInteger(hold) || hold <= 0 || !ENDINGS.includes(s.mood)) return
+    const { mood, at } = s
+    setTimeout(() => {
+      if (s.mood !== mood || s.at !== at || !world.sessions.includes(s)) return
+      moodOf(s, 'idle')
+      pushAll()
+    }, hold * 1000)
+  }
+  // The pointer gone off her home (island.rs hover): every ending back to
+  // rest, seen (state.rs seen), whatever the hold.
+  function seenAll() {
+    const ended = world.sessions.filter(s => ENDINGS.includes(s.mood))
+    if (!ended.length) return
+    setTimeout(() => {
+      for (const s of ended) if (ENDINGS.includes(s.mood)) moodOf(s, 'idle')
+      pushAll()
+    })
+  }
+
+  // A turn played to its end on the session shown (one made, if none): at
+  // work a moment, then ended in mood, so the ending comes as one does (her
+  // island's cue: a ring, open, the dot), again on each press.
+  function endTurn(mood) {
+    let s = world.sessions[0]
+    if (!s) world.sessions = [(s = newSession('working'))]
+    else moodOf(s, 'working', true)
+    pushAll()
+    setTimeout(() => {
+      if (!world.sessions.includes(s)) return
+      moodOf(s, mood)
+      world.sessions = [s, ...world.sessions.filter(x => x !== s)]
+      pushAll()
+      settleLater(s)
+    }, 300)
+  }
+
   // --- The frames -------------------------------------------------------------------------
   const screenEl = $('#wk-screen')
   const viewport = $('#wk-viewport')
@@ -208,9 +253,23 @@
   }
   const byLabel = label => (label === 'island' ? frames.island : label.startsWith('desk') ? frames.desk : null)
 
+  // Her home's window: the island's at the top where it sits (islandPos: a
+  // top corner, or the middle), as island.rs will put it (scenes.js
+  // islandWindow, phase 2 of zhoupengjie/Wakuwaku#59); the taskbar's along its edge.
   function homeRect() {
-    if (world.home === 'island') return [(W - 760) / 2, 0, 760, 720]
+    if (world.home === 'island') return Scenes.islandWindow(Fake.config().islandPos)
     return { top: [0, 0, W, STRIP + ROOM], left: [0, 0, STRIP + SIDE_ROOM, H], right: [W - STRIP - SIDE_ROOM, 0, STRIP + SIDE_ROOM, H] }[world.edge] || [0, H - STRIP - ROOM, W, STRIP + ROOM]
+  }
+
+  // Where the island sits changed: its window moved there (as island.rs
+  // does, not loaded again), the page told the side (pushAll: islandAt), the
+  // acrylic under it with it.
+  function moveHome() {
+    const f = frames.island
+    f.rect = homeRect()
+    const [x, y, w, h] = f.rect
+    Object.assign(f.el.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` })
+    drawPlate(plateNow)
   }
 
   // A frame's page (re)loaded; told once it is up (ready, below).
@@ -472,12 +531,20 @@
       // The desktop's layout is the desktop's (desk.rs keeps it, its pages hear it).
       if (Array.isArray(p.deskLayout)) world.deskLayout = p.deskLayout
       delete p.deskLayout
+      const moves = 'islandPos' in p && p.islandPos !== Fake.config().islandPos
       Object.assign(world.config, p)
       setTimeout(() => {
+        // Where the island sits: its window there (island.rs, phase 2).
+        if (moves && world.home === 'island') moveHome()
         frames.island.win?.Fake.emit('settings:changed', frames.island.win.Fake.snapshot())
         pushAll()
       })
       return { value: Fake.snapshot() }
+    },
+    // The pointer on her home or off it (island.rs hover): off it, every
+    // ending goes back to rest, seen (state.rs seen), as main does.
+    pet_hover(from, { isOver }) {
+      if (from === 'island' && !isOver) seenAll()
     },
     settings_win_look(from, { light, accent }) {
       if (typeof light === 'boolean') viewerMode = world.mode = light ? 'light' : 'dark'
@@ -764,7 +831,9 @@
   const appColor = app => APP_COLORS[app?.app] || '#5e9bff'
 
   const plateEl = $('#wk-plate')
+  let plateNow = null
   function drawPlate(rect) {
+    plateNow = rect || null
     plateEl.hidden = !rect
     if (!rect) return
     const [fx, fy] = frames.island.rect
@@ -858,18 +927,49 @@
       ['left', '左'],
       ['right', '右'],
     ],
+    // Where the island sits at the top (islandPos, zhoupengjie/Wakuwaku#59).
+    islandPos: [
+      ['left', '左上'],
+      ['center', '居中'],
+      ['right', '右上'],
+    ],
     endCue: [
       ['open', '展开胶囊'],
       ['ring', '流光'],
       ['none', '只留小点'],
     ],
+    // How long it stays (hold, zhoupengjie/Wakuwaku#65): as the settings
+    // offer it, Custom's seconds in the box under it.
+    hold: [
+      ['8', '8 秒'],
+      ['30', '30 秒'],
+      ['120', '2 分钟'],
+      ['seen', '看到为止'],
+      ['custom', '自定义'],
+    ],
+  }
+  const QUICK_HOLDS = [8, 30, 120]
+  const holdNow = () => Fake.config().hold
+  const holdChoice = () => {
+    const h = holdNow()
+    return QUICK_HOLDS.includes(h) ? String(h) : Number.isInteger(h) && h > 0 ? 'custom' : 'seen'
   }
   const segValue = {
     home: () => world.home,
     mode: () => world.mode,
     material: () => world.material,
     edge: () => world.edge,
+    islandPos: () => Fake.config().islandPos || 'center',
     endCue: () => world.config.endCue || 'ring',
+    hold: holdChoice,
+  }
+
+  // A setting changed here, as the settings page would: kept, the page
+  // told (the settings open showing it), sent as main sends it.
+  function setConfig(patch) {
+    Object.assign(world.config, patch)
+    frames.island.win?.Fake.emit('settings:changed', frames.island.win.Fake.snapshot())
+    pushAll()
   }
 
   function drawPanel() {
@@ -893,6 +993,12 @@
     }
     panel.querySelector('[data-row="material"]').hidden = world.home !== 'taskbar'
     panel.querySelector('[data-row="edge"]').hidden = world.home !== 'taskbar'
+    panel.querySelector('[data-row="islandPos"]').hidden = world.home !== 'island'
+    // Custom's seconds: the box, unless being typed in.
+    const custom = holdChoice() === 'custom'
+    panel.querySelector('[data-row="holdSecs"]').hidden = !custom
+    const secs = panel.querySelector('#wk-hold-secs')
+    if (custom && document.activeElement !== secs) secs.value = String(holdNow())
     const list = panel.querySelector('#wk-sessions')
     list.replaceChildren(
       ...world.sessions.map(s => {
@@ -922,9 +1028,19 @@
         delete world.config.taskbarMaterial
         pushAll()
       } else if (seg === 'edge') setEdge(v)
-      else if (seg === 'endCue') {
-        world.config.endCue = v
-        pushAll()
+      else if (seg === 'endCue') setConfig({ endCue: v })
+      else if (seg === 'islandPos') {
+        world.config.islandPos = v
+        moveHome()
+        setConfig({})
+      } else if (seg === 'hold') {
+        // Custom: the seconds kept if it is one already, else 45 to start from, its box to type in.
+        if (v === 'custom') {
+          if (holdChoice() !== 'custom') setConfig({ hold: 45 })
+          drawPanel()
+          return panel.querySelector('#wk-hold-secs').select()
+        }
+        setConfig({ hold: v === 'seen' ? 'seen' : Number(v) })
       }
       return drawPanel()
     }
@@ -939,10 +1055,13 @@
         moodOf(s, b.dataset.mood)
         // The one something just happened to is the one shown.
         world.sessions = [s, ...world.sessions.filter(x => x !== s)]
+        settleLater(s)
       }
       return pushAll()
     }
     const act = b.dataset.act
+    // A turn ended, again on each press (the hold to try).
+    if (act?.startsWith('end:')) return endTurn(act.slice(4))
     if (act === 'add') {
       if (world.sessions.length >= 6) return note('六个够多了')
       world.sessions = [newSession('working'), ...world.sessions]
@@ -963,6 +1082,15 @@
       drawPanel()
     }
   })
+
+  // Custom's seconds, kept as the settings keep them (flow.js holdSecs):
+  // whole, 3 to 600; none typed, as they were.
+  $('#wk-hold-secs').addEventListener('change', e => {
+    const n = Math.round(Number(e.target.value))
+    if (!e.target.value.trim() || !Number.isFinite(n)) return drawPanel()
+    setConfig({ hold: Math.min(600, Math.max(3, n)) })
+  })
+  $('#wk-hold-secs').addEventListener('keydown', e => e.key === 'Enter' && e.target.blur())
 
   $('#wk-fold')?.addEventListener('click', () => panel.classList.toggle('folded'))
 
