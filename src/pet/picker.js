@@ -463,6 +463,7 @@
       Isle.placedAt.set(key, Date.now())
       switchOn([key])
       Isle.askPlugins(true)
+      askFirst([key])
     }
     if (shrink.length) note1(T('picker.shrunk'))
     flash(typeof entry === 'string' ? Isle.PART_NODES[entry] : Isle.entryNodes.get(entry.id))
@@ -482,6 +483,7 @@
     switchOn(keys)
     writeCapsule(list)
     Isle.askPlugins(true)
+    askFirst(keys)
     flash(home() === 'taskbar' ? Isle.herSlot : Isle.island)
   }
 
@@ -610,7 +612,9 @@
   }
 
   // --- Toasts ----------------------------------------------------------------------------
-  function toast(text, undo = null) {
+  // A word for a few seconds; with a way back (undo: 撤销, or what label
+  // says) for 10 s.
+  function toast(text, undo = null, label = '') {
     theme()
     const node = el('div', undo ? 'pk-toast' : 'pk-toast pk-info')
     node.append(el('span', '', text))
@@ -623,7 +627,7 @@
     }
     if (undo) {
       node.append(el('span', 'pk-dot', '·'))
-      const b = el('button', 'pk-undo', T('picker.undo'))
+      const b = el('button', 'pk-undo', label || T('picker.undo'))
       b.type = 'button'
       b.addEventListener('click', () => {
         gone()
@@ -641,6 +645,30 @@
   }
   const undoToast = (name, undo) => toast(T('picker.removed', { name }), undo)
   const note1 = text => toast(text)
+
+  // A plugin just put somewhere that wants a parameter first (the CI's
+  // repo, the countdown's day: scripts.rs runs it only then, and until then
+  // it shows nothing there): it says so, with the way to it, its row on the
+  // Plugins page with its settings folded out.
+  function askFirst(keys) {
+    const ids = keys.filter(k => k.startsWith('plugin:')).map(k => k.slice(7))
+    if (!ids.length) return
+    const check = list => {
+      for (const id of ids) {
+        const what = P.missingParam((Array.isArray(list) ? list : []).find(p => p.id === id))
+        if (!what) continue
+        return toast(T('picker.needs', { name: T(`w.ex.${id}`), what: T(`pl.${id}.${what}`) }), () => settingsOf(id), T('picker.fill'))
+      }
+    }
+    if (snap?.plugins) check(snap.plugins)
+    else window.pet.settings.get().then(got => check(got?.plugins))
+  }
+  // Its settings: editing done first (the settings come over her island), the picker closed.
+  function settingsOf(plugin) {
+    if (editing()) Isle.endEdit(true)
+    hide()
+    Isle.openWidgetSettings({ plugin })
+  }
 
   function flash(node) {
     if (!node?.isConnected) return
@@ -1092,7 +1120,7 @@
   // where the desktop's page finds room (top right).
   function dropOnDesk(d, x, y) {
     const ticket = `t${++tickets}`
-    const was = { key: d.key, strip: d.src === 'strip' ? d.strip : d.strip || null, item: d.item, keys: d.capsuleKeys }
+    const was = { key: d.key, strip: d.src === 'strip' ? d.strip : d.strip || null, item: d.item, keys: d.capsuleKeys, fresh: d.src === 'card' }
     clearTimeout(pending?.timer)
     pending = { ticket, was, timer: setTimeout(() => pending?.ticket === ticket && deskFallback(), 700) }
     window.pet.deskDrop({ x: Math.round(x), y: Math.round(y), item: d.item, size: d.size, ticket })
@@ -1104,6 +1132,7 @@
     Isle.placeWidget(P.itemOf(was.key), 'desk')
     switchOn([was.key])
     refresh()
+    if (was.fresh) askFirst([was.key])
   }
   window.pet.onDeskAnswer(a => {
     if (!a || typeof a !== 'object') return
@@ -1130,6 +1159,7 @@
     Isle.placedAt.set(was.key, Date.now())
     switchOn([was.key])
     refresh()
+    if (was.fresh) askFirst([was.key])
   })
 
   window.addEventListener(
@@ -1245,8 +1275,9 @@
     window.CapsulePanel?.close()
   })
   // Her menu in the island's home: 添加小工具… (the picker alone), 编辑胶囊;
-  // on the taskbar, the picker comes with editing its layout.
-  window.pet.onPicker(p => {
+  // on the taskbar, the picker comes with editing its layout. The Plugins
+  // page's 添加小工具… (settings.js, in this page) the same.
+  function fromMenu(p) {
     const what = p?.open === 'capsule' ? 'capsule' : 'picker'
     if (what === 'capsule') {
       if (home() === 'island') hide()
@@ -1255,9 +1286,22 @@
     if (home() === 'taskbar') return Isle.editTaskbar({ picker: true })
     window.CapsulePanel?.close()
     show()
-  })
+  }
+  window.pet.onPicker(fromMenu)
+  // Placed is on, and nothing else says it now (the Plugins page has no
+  // switches since 2026-10-17): one put on the strip or the desktop that a
+  // switch of before turned off there (to hide it from her capsule, its
+  // desktop copy went quiet with it) runs again, once, as the page comes up.
+  let healed = false
+  function heal() {
+    if (healed || !Object.keys(Isle.config).length) return
+    healed = true
+    const strip = home() === 'taskbar' ? Isle.tbLayout() : null
+    setConfig(P.placedOnPatch(Isle.config, { taskbar: strip, desk: Isle.config.deskLayout, home: home() }))
+  }
   // What it shows follows the settings and the widgets.
   window.pet.onUpdate(() => {
+    heal()
     if (open) {
       theme()
       drawBadges()
@@ -1277,6 +1321,7 @@
     pressStrip,
     escape,
     remove,
+    fromMenu,
     setMode(w, mode) {
       const key = C.keyOfWidget(w)
       const list = listNow()

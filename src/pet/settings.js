@@ -11,7 +11,7 @@
 //             opened in place to its details; the others to get
 //   look      her home (island, taskbar), size, strolls, eyes; Windows' own
 //             mode and accent colour; her and the pets (downloaded, the gallery)
-//   widgets   plugins: the built-in ones, those she runs for you (a switch, their settings folded under), their order, turns, nudges, waku, and how to write one
+//   widgets   plugins: the built-in ones, those she runs for you (how each is and where it is put, no switch: placed is on; their settings folded under), turns, nudges, waku, and how to write one
 //   mail      mail accounts, and setting one up as Thunderbird does: an address and a password, the server found or typed
 //
 // What they show comes from main as a snapshot, again whenever it changes;
@@ -722,9 +722,13 @@
     return rows.map((r, i) => ({ ...r, i })).sort((x, y) => rank(x.key) - rank(y.key) || x.i - y.i)
   }
 
-  // What a plugin she runs says under its name: what it does, or why it
-  // shows nothing.
-  function pluginNote(p, mine) {
+  // What a plugin she runs says under its name, as it is (placed is on, so
+  // put nowhere is off): 没放; running, 运行中 and what it does; else why it
+  // shows nothing (a parameter to fill in, 出错 with its last line). Put
+  // somewhere and not on yet (picker.js turns it on): starting.
+  function pluginNote(p, mine, placed) {
+    if (!placed) return { text: T('pl.unplaced') }
+    if (p.state === 'off') return { text: T('pl.starting') }
     if (p.state === 'needs') return { text: T('pl.needs', { what: T(`pl.${p.id}.${p.missing}`) }), bad: true }
     if (p.state === 'stopped') {
       // No PowerShell would start it: not the plugin's fault (#28).
@@ -732,7 +736,16 @@
       return { text: p.retryIn ? `${why} · ${T('pl.retry', { n: p.retryIn })}` : why, bad: true }
     }
     if (p.state === 'running' && !mine.length) return p.said ? { text: T('pl.trouble', { line: p.said }), bad: true } : { text: T('pl.starting') }
-    return { text: T(`w.ex.${p.id}.note`) }
+    return { text: `${T('pl.running')} · ${T(`w.ex.${p.id}.note`)}` }
+  }
+
+  // Where one is put (island.js placeNow): its place in a quiet word, or,
+  // put nowhere, 添加小工具… (the picker, as her menu opens it).
+  const placeOf = (item, on) => window.Island?.placeNow?.(item, on) || { at: on ? 'isle' : null }
+  function placeHTML(place) {
+    if (!place.at) return `<button class="pbtn sm" data-padd>${esc(T('pl.add'))}</button>`
+    const where = esc(T(`pl.at.${place.at}`, { name: place.name || '' }))
+    return `<span class="pl-at" title="${where}">${where}</span>`
   }
 
   // A plugin's settings, folded out under it: what is being typed stays.
@@ -949,46 +962,46 @@
     }
     return failed + body
   }
-  // Plugins: built in, run by her, or anyone's script, each with its switch
-  // (and a step up); how they take turns, whether they may open the island,
-  // waku for the terminal, and how to write one.
+  // Plugins: built in, run by her, or anyone's script, none with a switch
+  // (the user's call of 2026-10-17: a switch both started one and hid it
+  // from her capsule, its desktop copy stopped with it; placed is on now,
+  // picker.js). Each says how it is and where it is put, or, put nowhere,
+  // offers 添加小工具…; its settings folded under it. Then how they take
+  // turns, whether they may open the island, waku for the terminal, and how
+  // to write one.
   function pageWidgets() {
     const s = snap.settings
     const left = ms => (ms >= 60000 ? T('settings.minutes', { n: Math.round(ms / 60000) }) : T('settings.seconds', { n: Math.max(1, Math.round(ms / 1000)) }))
-    // Where each goes (the widget design's §10): a row in the capsule, on
-    // the taskbar (where she lives there), or on the desktop (Windows'; desk.rs),
-    // island.js placeWidget keeping each. Its switch stays what turns it off.
-    const places = [['isle', T('menu.isle')], ...(s.display === 'taskbar' ? [['bar', T('menu.bar')]] : []), ...(window.pet?.mac ? [] : [['desk', T('menu.desk')]])]
-    const onBarHome = !!window.Island?.whereOf && places.length > 1
-    const whereSeg = item => (onBarHome ? seg(`where:${item.plugin ? `p:${item.plugin}` : `w:${item.id}`}`, places, window.Island.whereOf(item)) : '')
     const rows = widgetRows()
-      .map((r, i) => {
-        const up = (i > 0 ? `<button class="pbtn sm" data-wup="${esc(r.key)}" title="${esc(T('w.up'))}">↑</button>` : '') + (r.plugin ? whereSeg({ plugin: r.plugin.id }) : whereSeg(r.widget.plugin ? { plugin: r.widget.plugin } : { id: r.widget.id }))
+      .map(r => {
         if (r.plugin) {
           const p = r.plugin
+          const place = placeOf({ plugin: p.id }, p.on)
           const says = r.mine.map(w => Widgets.words(lang, w, s.details !== false)).map(({ label, value }) => [label, value].filter(Boolean).join(' ')).join(' · ')
-          const note = pluginNote(p, r.mine)
+          const note = pluginNote(p, r.mine, !!place.at)
           const color = (r.mine[0] && r.mine[0].color) || (p.on ? '#5e9bff' : COLOR.idle)
           const isOpen = openPlugin === p.id
           const more = p.params.length ? `<button class="pbtn sm" data-pexp="${esc(p.id)}">${esc(T(isOpen ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-          return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(color)}">${Widgets.icon(p.icon)}</span><div class="grow"><div class="ellip">${esc(T(`w.ex.${p.id}`))}<span class="d"> ${esc(says)}</span></div><div class="d${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${up}${sw('pl:' + p.id, p.on)}</div>${isOpen ? pluginFields(p) : ''}`
+          return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(color)}">${Widgets.icon(p.icon)}</span><div class="grow"><div class="ellip">${esc(T(`w.ex.${p.id}`))}<span class="d"> ${esc(says)}</span></div><div class="d${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${placeHTML(place)}</div>${isOpen ? pluginFields(p) : ''}`
         }
         const w = r.widget
+        const place = placeOf({ id: w.id }, w.on)
         const { label, value } = Widgets.words(lang, w, s.details !== false)
         // A built-in one says what it shows; on, with nothing read, says so.
         const builtIn = w.builtIn && [T('w.builtIn'), T(`w.about.${w.id}`), w.on && w.value == null ? T('w.unread') : ''].filter(Boolean).join(' · ')
         const from = builtIn || (w.from === 'mail' ? T('w.fromMail') : [T('w.script', { time: left(w.leftMs || 0) }), w.private ? T('w.private') : ''].filter(Boolean).join(' · '))
+        const state = place.at ? `${T('pl.running')} · ${from}` : T('pl.unplaced')
         // The monitor: its readings as icon and number, its settings folded under it.
         const says = Widgets.partsOf(w) ? ` ${Widgets.partsHTML(w)}` : `<span class="d"> ${esc(value)}</span>`
         const isMonitor = w.id === 'monitor'
         const more = isMonitor ? `<button class="pbtn sm" data-pexp="monitor">${esc(T(openPlugin === 'monitor' ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-        return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(w.color || COLOR.idle)}">${Widgets.iconHTML(w, lang)}</span><div class="grow"><div class="ellip">${esc(label)}${says}</div><div class="d">${esc(from)}</div></div>${more}${up}${sw('w:' + w.id, w.on)}</div>${isMonitor && openPlugin === 'monitor' ? monitorFields() : ''}`
+        return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(w.color || COLOR.idle)}">${Widgets.iconHTML(w, lang)}</span><div class="grow"><div class="ellip">${esc(label)}${says}</div><div class="d">${esc(state)}</div></div>${more}${placeHTML(place)}</div>${isMonitor && openPlugin === 'monitor' ? monitorFields() : ''}`
       })
       .join('')
     const spins = SPINS.map(n => [n, n ? T('settings.seconds', { n }) : T('w.spinOff')])
     const waku = `powershell -ExecutionPolicy Bypass -File "${snap.waku}" npm run build`
     const example = `Invoke-RestMethod -Method Post http://127.0.0.1:${snap.port}/widget -ContentType application/json -Body '{"id":"hello","label":"Hello","value":"42","icon":"star"}'`
-    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}${onBarHome ? ` ${esc(T('w.whereNote'))}` : ''}</div>${rows}</div>
+    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}</div>
       ${sec(T('w.show'))}<div class="grp">
         ${row(esc(T('w.spin')), '', seg('widgetSpin', spins, s.widgetSpin ?? 8))}
         ${row(esc(T('w.nudge')), esc(T('w.nudgeNote')), sw('widgetNudge', s.widgetNudge !== false))}
@@ -2761,12 +2774,6 @@
       if (key === 'paperShuffle') return paperDo('shuffle', !snap.winPaper?.shuffle)
       if (key === 'ilookBare') return ilookSave(ilookFor(), { ...ilookOf(ilookFor()), bare: !ilookOf(ilookFor()).bare })
       if (key.startsWith('notify.')) return patch({ notify: { ...s.notify, [key.slice(7)]: !s.notify?.[key.slice(7)] } })
-      // A widget on or off.
-      if (key.startsWith('w:')) {
-        const id = key.slice(2)
-        const off = (s.widgetsOff || []).filter(o => o !== id)
-        return patch({ widgetsOff: off.length === (s.widgetsOff || []).length ? [...off, id] : off })
-      }
       if (key === 'widgetNudge') return patch({ widgetNudge: s.widgetNudge === false })
       // One of the monitor's parts on or off.
       if (key.startsWith('mon:')) return patch({ monitor: { ...(s.monitor || {}), [key.slice(4)]: (s.monitor || {})[key.slice(4)] === false } })
@@ -2781,13 +2788,6 @@
         const view = source === 'lhm' ? snap.lhm : snap.hw
         const picked = Array.isArray(s.monitor?.[name]) ? s.monitor[name] : (view?.sensors || []).filter(x => x.on && !x.toggle).map(x => x.id)
         return patch({ monitor: { ...(s.monitor || {}), [name]: picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id].slice(-32) } })
-      }
-      // A plugin she runs on or off; on and missing a setting, its settings open.
-      if (key.startsWith('pl:')) {
-        const p = (snap.plugins || []).find(x => x.id === key.slice(3))
-        if (!p) return
-        if (!p.on && p.params.some(f => f.required && !String(f.value || '').trim())) openPlugin = p.id
-        return setPlugin(p.id, { on: !p.on })
       }
       // A plugin's yes-or-no setting.
       if (key.startsWith('pf:')) {
@@ -2819,13 +2819,12 @@
       draw()
       return relayout()
     }
-    // A row a step up: the order as shown, with it and the one before swapped.
-    const up = at('[data-wup]')
-    if (up) {
-      const ids = widgetRows().map(r => r.key)
-      const i = ids.indexOf(up.dataset.wup)
-      if (i > 0) [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]]
-      return patch({ widgetOrder: ids })
+    // One put nowhere: 添加小工具…, the picker as her menu's opens it
+    // (picker.js fromMenu: on the taskbar, editing it with the picker open;
+    // at the top, the picker alone); the settings make way.
+    if (at('[data-padd]')) {
+      close('picker')
+      return window.Picker?.fromMenu?.({ open: 'picker' })
     }
     const option = at('[data-seg] > span')
     if (option) {
@@ -2837,14 +2836,6 @@
       if (key.startsWith('pc:')) {
         const [id, name] = key.slice(3).split('.')
         return setPlugin(id, { [name]: raw })
-      }
-      // A widget (w:) or a plugin she runs (p:) put on the taskbar or the
-      // desktop, or back in the capsule (island.js placeWidget keeps the layouts).
-      if (key.startsWith('where:')) {
-        const [kind, ...rest] = key.slice(6).split(':')
-        const item = kind === 'p' ? { plugin: rest.join(':') } : { id: rest.join(':') }
-        window.Island?.placeWidget?.(item, raw)
-        return setTimeout(draw, 50)
       }
       if (key === 'taskbarLayout') {
         // Its parts as the preset has them; the widgets put there kept.

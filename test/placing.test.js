@@ -146,3 +146,47 @@ test('let go of over a board: its first free cell; full, no; the layout with it 
   assert.deepEqual(G.landing({ grid: g, x: 0, y: 0, size: 's', board: full }), { ok: false, where: 'board', why: 'boardFull' })
   assert.equal(G.dropped(layout, { ok: false }, { m, size: 'm', key: 'd1', newId }), layout)
 })
+
+test('where one is for the Plugins page: on the desktop (a board by itself), on the strip of her taskbar home, else her capsule while on, else nowhere', () => {
+  const desk = [
+    { id: 'ws', type: 'stack', size: 's', items: [{ type: 'widget', of: 'today' }, { type: 'plugin', of: 'pomodoro' }] },
+    { id: 'wb', type: 'board', name: '工作', items: [{ type: 'plugin', of: 'stock', size: 's', at: [0, 0] }] },
+    { id: 'wd', type: 'widget', of: 'ci-main', size: 's' },
+  ]
+  const bar = { ...WIN11, right: [{ id: 'w1', type: 'carousel', items: [{ type: 'plugin', of: 'weather' }, { type: 'widget', of: 'inbox' }] }, ...WIN11.right] }
+  const at = (keys, on = true, home = 'taskbar') => P.whereIs({ keys, on, taskbar: bar, desk, home })
+  assert.deepEqual(at(['plugin:pomodoro']), { at: 'desk' })
+  assert.deepEqual(at(['widget:today']), { at: 'desk' })
+  assert.deepEqual(at(['plugin:stock']), { at: 'board', board: desk[1] })
+  // A plugin's widget standing on the desktop by itself counts as the plugin.
+  assert.deepEqual(at(['plugin:ci', 'widget:ci-main']), { at: 'desk' })
+  assert.deepEqual(at(['plugin:weather']), { at: 'bar' })
+  assert.deepEqual(at(['widget:inbox']), { at: 'bar' })
+  assert.deepEqual(at(['widget:monitor']), { at: 'bar' })
+  // The island her home: the strip is not there; on, her capsule's.
+  assert.deepEqual(at(['plugin:weather'], true, 'island'), { at: 'isle' })
+  assert.deepEqual(at(['widget:monitor'], true, 'island'), { at: 'isle' })
+  assert.deepEqual(at(['widget:tokens']), { at: 'isle' })
+  // Off and put nowhere: nowhere (没放).
+  assert.deepEqual(at(['plugin:devserver'], false), { at: null })
+  assert.deepEqual(P.whereIs(), { at: null })
+})
+
+test("a plugin's first parameter not given yet: as the snapshot says it, else from its parameters", () => {
+  assert.equal(P.missingParam({ id: 'ci', missing: 'Repo', params: [] }), 'Repo')
+  assert.equal(P.missingParam({ id: 'ci', missing: null, params: [{ name: 'Repo', required: true, value: '' }] }), null)
+  assert.equal(P.missingParam({ id: 'ci', params: [{ name: 'Repo', required: true, value: '  ' }] }), 'Repo')
+  assert.equal(P.missingParam({ id: 'countdown', params: [{ name: 'Title', required: true, value: 'v0.4' }, { name: 'At', required: true }] }), 'At')
+  assert.equal(P.missingParam({ id: 'weather', params: [{ name: 'City', required: false, value: '' }] }), null)
+  assert.equal(P.missingParam(null), null)
+})
+
+test('placed is on: those on the strip or the desktop and off are turned on (a switch of before), once; none, nothing', () => {
+  const where = { taskbar: { ...WIN11, right: [{ id: 'w1', type: 'plugin', of: 'stock', size: 'M' }, ...WIN11.right] }, desk: [{ id: 'wa', type: 'plugin', of: 'weather', size: 'm' }], home: 'taskbar' }
+  const config = { plugins: { weather: { on: false, City: 'Dresden' }, stock: { on: true }, ci: { on: false } }, widgetsOff: ['monitor', 'tokens'] }
+  assert.deepEqual(P.placedOnPatch(config, where), { plugins: { weather: { on: true, City: 'Dresden' }, stock: { on: true }, ci: { on: false } }, widgetsOff: ['tokens'] })
+  // All placed ones on already: nothing to write.
+  assert.equal(P.placedOnPatch({ plugins: { weather: { on: true }, stock: { on: true } } }, where), null)
+  // The island her home: the strip's are not placed (the monitor's part stays off).
+  assert.deepEqual(P.placedOnPatch(config, { ...where, home: 'island' }), { plugins: { ...config.plugins, weather: { on: true, City: 'Dresden' } } })
+})

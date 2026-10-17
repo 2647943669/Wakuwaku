@@ -2905,10 +2905,10 @@
     keepLayout(layout)
   }
 
-  // For the plugins page (settings.js, its "where" column): where a widget
-  // ({ id }) or a plugin she runs ({ plugin }) is, the taskbar, the island
-  // or the desktop, and put there. On the taskbar alone or in a group; put there, at
-  // the right run's start; back in the island, out of wherever it was.
+  // Where a widget ({ id }) or a plugin she runs ({ plugin }) is, the
+  // taskbar, the island or the desktop, and put there (a menu's 放到, the
+  // desktop's asks). On the taskbar alone or in a group; put there, at the
+  // right run's start; back in the island, out of wherever it was.
   const keyFor = item => (item.plugin ? `plugin:${item.plugin}` : `widget:${item.id}`)
   // The monitor on the strip is its part (#53): there while her home is the taskbar.
   const isMonitorItem = item => !item.plugin && item.id === 'monitor'
@@ -2935,6 +2935,15 @@
     if (isMonitorItem(item) && home() === 'taskbar' && hasMonitorPart()) return 'bar'
     const keys = new Set(Object.values(tbLayout()).flatMap(run => run.filter(p => typeof p !== 'string').flatMap(Widgets.membersOf).map(Widgets.memberKey)))
     return keys.has(keyFor(item)) ? 'bar' : 'isle'
+  }
+  // For the Plugins page (settings.js): where one is put now, as placing.js
+  // whereIs says (the strip, the desktop, a board by its name, her capsule
+  // while it is on, or nowhere: null), a plugin's widgets standing on the
+  // desktop by themselves counted as it.
+  function placeNow(item, on) {
+    const keys = [keyFor(item), ...(item.plugin ? allWidgets.filter(w => w.plugin === item.plugin).map(w => `widget:${w.id}`) : [])]
+    const p = window.Placing.whereIs({ keys, on, taskbar: home() === 'taskbar' ? tbLayout() : null, desk: config.deskLayout, home: home() })
+    return p.board ? { at: 'board', name: boardName(p.board) } : { at: p.at }
   }
   function placeWidget(item, where) {
     const key = keyFor(item)
@@ -5729,5 +5738,5 @@
     compact,
     expanded,
   }
-  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow }
 })()

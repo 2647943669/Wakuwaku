@@ -467,6 +467,21 @@
   stroke-linejoin: round;
 }
 
+/* Where a widget or plugin is put (the Plugins page, no switches): a quiet
+   word at its row's end, one column down the page, its settings' button
+   before it; put nowhere, a button to the picker in its place. */
+#island-settings .pl-at {
+  flex: none;
+  min-width: 64px;
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--g5);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* A session with a window to go to. */
 #island-settings .r.jumps {
   cursor: pointer;

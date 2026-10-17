@@ -2,7 +2,8 @@
 // the tests: where on the taskbar's strip one goes, whether the strip has
 // room for it, how one taken off is put back (undo), and which widgets and
 // plugins are on (placed is on: put somewhere, it runs; taken from its last
-// place, it stops; no switch of its own, the Plugins page's aside).
+// place, it stops; no switch of its own, the Plugins page has none since
+// 2026-10-17), and where one is for that page.
 ;(function (root) {
   const RUNS = ['left', 'center', 'right']
   const keyOf = item => (item.plugin ? `plugin:${item.plugin}` : `widget:${item.id}`)
@@ -146,7 +147,41 @@
     return Object.keys(patch).length ? patch : null
   }
 
-  const api = { RUNS, keyOf, itemOf, slotAt, beforeTray, insertAt, fitStrip, withSizes, removalOf, without, restoreEntry, placedKeys, switchPatch, switchesPatch }
+  // Those put on the strip or the desktop and off, turned on (a switch of
+  // before turned one off where it stood: its desktop copy said nothing
+  // since). null: none.
+  const placedOnPatch = (config = {}, where = {}) => switchesPatch(config, [...placedKeys(where)], true)
+
+  // --- Where one is (the Plugins page) -------------------------------------------------
+  // Where a widget or plugin is put, by its keys (its own, and a plugin's
+  // widgets', which may stand on the desktop by themselves): on the desktop
+  // ('desk', alone or stacked; 'board', in that board), on the strip ('bar',
+  // her home the taskbar), in her capsule ('isle': on and nowhere else, as
+  // her capsule's rule has it), or nowhere (null: off). { at, board? }.
+  function whereIs({ keys = [], on = false, taskbar = null, desk = [], home = 'taskbar' } = {}) {
+    const want = new Set(keys)
+    const has = m => !!m && want.has(`${m.type}:${m.of}`)
+    for (const e of Array.isArray(desk) ? desk : []) {
+      const ms = e?.type === 'stack' || e?.type === 'board' ? e.items || [] : [e]
+      if (ms.some(has)) return e.type === 'board' ? { at: 'board', board: e } : { at: 'desk' }
+    }
+    if (home === 'taskbar' && taskbar) {
+      for (const run of RUNS) for (const p of taskbar[run] || []) if ((p === 'monitor' && want.has('widget:monitor')) || membersOf(p).some(has)) return { at: 'bar' }
+    }
+    return { at: on ? 'isle' : null }
+  }
+
+  // A plugin's first parameter it needs and has not been given (scripts.rs
+  // missing, as the settings' snapshot says it; else from its parameters),
+  // or null: put somewhere, it shows nothing until that is filled in.
+  function missingParam(plugin) {
+    if (!plugin || typeof plugin !== 'object') return null
+    if ('missing' in plugin) return plugin.missing || null
+    const f = (plugin.params || []).find(x => x.required && !String(x.value ?? '').trim())
+    return f ? f.name : null
+  }
+
+  const api = { RUNS, keyOf, itemOf, slotAt, beforeTray, insertAt, fitStrip, withSizes, removalOf, without, restoreEntry, placedKeys, switchPatch, switchesPatch, placedOnPatch, whereIs, missingParam }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Placing = api
 })(this)

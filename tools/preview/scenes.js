@@ -482,12 +482,27 @@
       page: 'island',
       home: 'taskbar',
       view: [0, above(660), 560, 660],
-      world: F => ({ ...busy(F), widgets: F.widgets('monitor', 'today', 'weather', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'inbox-a1', 'deploy') }),
+      // The everyday desktop: the Plugins page says where each is (the
+      // capsule, the taskbar, the desktop, the board 工作), or 没放.
+      world: F => ({ ...busy(F), widgets: F.widgets('monitor', 'today', 'tokens', 'weather', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'inbox-a1', 'deploy'), deskLayout: F.DESK.everyday }),
       steps: async p => {
         p.emit('island:settings', { tab })
         await p.wait(600)
       },
     })),
+    {
+      id: 'settings-plugins-unplaced',
+      section: 'settings',
+      title: '设置 · 插件，往下：没放的（添加小工具…）',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(660), 560, 660],
+      world: F => ({ ...busy(F), widgets: F.widgets('monitor', 'today', 'tokens', 'weather', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'inbox-a1', 'deploy'), deskLayout: F.DESK.everyday }),
+      steps: async p => {
+        p.emit('island:settings', { tab: 'widgets:countdown' })
+        await p.wait(600)
+      },
+    },
 
     // --- Controls, from the settings ---------------------------------------------------------
     {
