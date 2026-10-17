@@ -421,7 +421,8 @@
         p.freeze({ flow: 1100 })
       },
     },
-    { id: 'scene-error', section: 'scenes', scene: 'error', title: '出错了 · 流光播完留下的红点', page: 'island', view: CLOSED, budget: 6000, steps: p => p.wait(3400) },
+    // Past its hold (8 s from the event, the default) and its fade.
+    { id: 'scene-error', section: 'scenes', scene: 'error', title: '出错了 · 流光播完留下的红点', page: 'island', view: CLOSED, budget: 12000, steps: p => p.wait(9200) },
     // Past the turns (2.55 s), held lit and still (hold 30 s).
     { id: 'scene-hold-ring', section: 'scenes', scene: 'hold-ring', title: '提醒停留 · 流光转完，光环静止亮着（停 30 秒）', page: 'island', view: CLOSED, budget: 8000, steps: p => p.wait(4500) },
     // Past the few seconds it used to stay open (6.5 s with Claude's words), open still.
@@ -539,13 +540,14 @@
       page: 'island',
       home: 'taskbar',
       view: CLOSED,
-      budget: 6000,
+      budget: 12000,
       world: F => ({ ...home(F), sessions: [F.session('working')] }),
+      // Past its hold (8 s from the event, the default) and its fade.
       steps: async p => {
         await p.wait(300)
         p.set({ sessions: [p.F.session('done')] })
         p.push()
-        await p.wait(3400)
+        await p.wait(9200)
       },
     },
     {
