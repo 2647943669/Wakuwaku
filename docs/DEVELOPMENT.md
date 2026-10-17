@@ -221,7 +221,7 @@ hook 事件在 `events.rs`（Codex 的在 `events_codex.rs`，omp 的在 `events
 
 | 请求 | 说明 |
 | --- | --- |
-| `GET /health` | `{ ok, app: "wakuwaku", runtime: "tauri", state }`；调试模式下还有 `window`、`island`、`settings` |
+| `GET /health` | `{ ok, app: "wakuwaku", runtime: "tauri", state, ready: { pet, island }, waiting }`：`ready` 是两个页面各自说过就绪（`pet_ready`）没有，`waiting` 是另一份她占着任务栏、这份在等（这时不建岛的窗口，`island` 一直是 false）；调试模式下还有 `window`、`island`、`settings`。测试里启动一份副本后等 `ready`，别只等端口或日志里的某一行：起来一两秒内就被杀掉或 `/quit` 的副本，日志停在 `started … after logon`，两个页面都还没就绪，看着像起不来（2026-10-16 测试虚拟机里"新复制的 exe 两次启动都没有页面"就是这样：等日志的那段脚本多了一个 `}`，VM 的代理回了 `ERROR: …`，被 `Out-Null` 吞掉，没等就杀了、退了；同一份 exe、同一个数据目录，等 15 秒的第三次就好了） |
 | `POST /hook` | Claude Code 的 hook 事件；一般立刻回 `{}`，`PermissionRequest` 等面板上的回答。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来），`?agent=opencode` 的是 OpenCode 里她的插件发来的（见 OpenCode 一节），`?agent=omp` 的是 omp 里她的扩展发来的 |
 | `POST /state` | 一条消息 |
 | `POST /widget` | 岛上的一个插件（见"岛上的插件"）；回 `{ ok: true }`，或者 400 和 `{ error }` |

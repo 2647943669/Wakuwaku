@@ -758,6 +758,12 @@ fn call_look(isl: &mut Island, cursor: (i32, i32), passive: bool, now: std::time
     Some(true)
 }
 
+// Whether its page has said it is ready (for /health): never while no
+// window is made for it (another copy holding the taskbar, taskbar.rs).
+pub fn is_ready(sh: &Shared) -> bool {
+    sh.island.lock().unwrap().ready
+}
+
 // Its page has its listeners up: draw, show, say hello.
 pub fn ready(sh: &Arc<Shared>) {
     sh.log("island: page ready");

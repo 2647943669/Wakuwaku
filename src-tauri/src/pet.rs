@@ -244,6 +244,11 @@ pub fn create(sh: &Shared) -> tauri::Result<()> {
     Ok(())
 }
 
+// Whether her page has said it is ready (for /health).
+pub fn is_ready(sh: &Shared) -> bool {
+    sh.win.lock().unwrap().ready
+}
+
 // Her page has its listeners up: draw and show (her home says hello).
 pub fn ready(sh: &Shared) {
     sh.log("pet: page ready");
