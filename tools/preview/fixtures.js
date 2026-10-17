@@ -4,7 +4,7 @@
 // taskbar's programs, tray and keyboard (taskbar.rs), and desktop layouts
 // (desk.rs). Loaded after fake-tauri.js (its clock, Fake.T0).
 ;(function () {
-  const T0 = window.Fake.T0
+  const T0 = window.Fake?.T0 ?? Date.now()
 
   // A program's icon as Windows gives one (a PNG): a rounded square in its
   // colour with its letter, drawn here.
@@ -118,7 +118,9 @@
   ]
 
   // --- The taskbar ------------------------------------------------------------------------
+  let apps = 0
   const app = (name, color, letter, titles, opts = {}) => {
+    const n = ++apps
     const png = appIcon(color, letter)
     return {
       app: name.toLowerCase(),
@@ -126,7 +128,7 @@
       name,
       pinned: !!opts.pinned,
       png,
-      windows: titles.map((title, i) => ({ id: 100 * (name.length + 1) + i, title, png, front: !!opts.front && i === 0, min: false, max: false, flash: false, sessions: [] })),
+      windows: titles.map((title, i) => ({ id: 100 * n + i, title, png, front: !!opts.front && i === 0, min: false, max: false, flash: false, sessions: [] })),
     }
   }
   const WINDOWS = [
