@@ -44,14 +44,15 @@
   // welcome shows is the welcome, at General's top.
   const TABS = ['now', 'agents', 'look', 'widgets', 'mail']
   const TAB_KEY = { now: 's.tabGeneral', agents: 's.tabAgents', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
-  const PART_OF = { pets: 'look', alerts: 'now', connect: 'agents', update: 'now', crash: 'now' }
+  const PART_OF = { pets: 'look', place: 'look', alerts: 'now', connect: 'agents', update: 'now', crash: 'now' }
   const HEAD_KEY = { working: 's.headWorking', waiting: 's.headWaiting', done: 's.headDone', review: 's.headReview', error: 's.headError' }
   const SIZES = [['small', 0.4], ['medium', 0.55], ['large', 0.75]]
   const HOMES = ['island', 'taskbar']
   const HOME_KEY = { island: 's.displayIsland', taskbar: 's.displayTaskbar' }
-  // How long endings stay: until seen, the quick choices, and Custom, whole
-  // seconds typed in a box beside them (flow.js holdSecs, #59).
-  const HOLDS = ['seen', ...window.Flow.HOLD_QUICK]
+  // How long what she tells stays (停留多久): the quick choices, until seen,
+  // and Custom, whole seconds typed in a box beside them (flow.js holdSecs,
+  // zhoupengjie/Wakuwaku#59).
+  const HOLDS = [...window.Flow.HOLD_QUICK, 'seen']
   // Minutes a session at rest stays in sight; 0 always (state.rs is_shown).
   const IDLE_HIDES = [15, 30, 60, 120, 0]
   const WAITS = [30, 60, 120, 290]
@@ -562,6 +563,21 @@
     return row(esc(T('s.taskbarLayout')), esc(note), `<span class="btns">${seg('taskbarLayout', presets, preset)}<button class="pbtn sm" data-tb-edit>${esc(T('s.layoutEdit'))}</button></span>`)
   }
 
+  // Where her island sits at the top of the screen (zhoupengjie/Wakuwaku#59):
+  // a top corner, or the top centre (as ever, the default); it opens
+  // downward and toward the screen's middle (island.js anchor). Round a
+  // Mac's notch, the centre only. On the taskbar she is where her capsule
+  // is dragged: a line saying so instead, and the way there, the layout
+  // edited as her menu's 编辑任务栏布局 does (data-tb-edit).
+  function islandPosRow() {
+    const s = snap.settings
+    if (s.display === 'taskbar') return row(esc(T('s.islandPos')), esc(T('s.islandPosTaskbar')), `<button class="pbtn sm" data-tb-edit>${esc(T('s.islandPosEdit'))}</button>`)
+    const notch = window.Island?.notched?.() === true
+    const pos = !notch && ['left', 'right'].includes(s.islandPos) ? s.islandPos : 'center'
+    const places = ['left', 'center', 'right'].map(p => [p, T(`s.islandPos.${p}`), notch && p !== 'center'])
+    return row(esc(T('s.islandPos')), esc(T(notch ? 's.islandPosNotch' : 's.islandPosNote')), seg('islandPos', places, pos))
+  }
+
   // At the top of the screen, up out of the way while a window lies under
   // it (island.js setStow, zhoupengjie/Wakuwaku#49): on unless turned off.
   // Not on a Mac, where it hangs over the menu bar.
@@ -583,7 +599,7 @@
         <div class="mode${s.display === 'taskbar' ? ' on' : ''}" data-mode="taskbar"><div class="pv"><s></s></div><div class="l"><span class="rd"></span>${esc(T('s.displayTaskbar'))}</div></div>
       </div>
       ${s.display === 'taskbar' ? `<div class="grp"><div class="note">${esc(T('s.taskbarNote'))}</div></div><div class="grp">${row(esc(T('s.taskbarEdge')), esc(T('s.taskbarEdgeNote')), seg('taskbarEdge', ['bottom', 'top', 'left', 'right'].map(e => [e, T(`s.edge.${e}`)]), s.taskbarEdge || 'bottom'))}${displaysRow()}${row(esc(T('s.taskbarMaterial')), esc(T('s.taskbarMaterialNote')), seg('taskbarMaterial', ['mica', 'black', 'clear'].map(m => [m, T(`s.material.${m}`)]), s.taskbarMaterial || 'mica'))}${s.taskbarMaterial === 'clear' ? row(esc(T('s.clearWhen')), esc(T('s.clearWhenNote')), seg('taskbarClearWhen', ['mica', 'solid', 'always'].map(w => [w, T(`s.clearWhen.${w}`)]), ['solid', 'always'].includes(s.taskbarClearWhen) ? s.taskbarClearWhen : 'mica')) : ''}${['left', 'right'].includes(s.taskbarEdge) ? row(esc(T('s.taskbarButtons')), esc(T('s.taskbarButtonsSide')), `<span class="seg off">${['icons', 'labels'].map(b => `<span class="${b === 'icons' ? 'on' : ''}">${esc(T(`s.buttons.${b}`))}</span>`).join('')}</span>`) : row(esc(T('s.taskbarButtons')), esc(T('s.taskbarButtonsNote')), seg('taskbarButtons', ['icons', 'labels'].map(b => [b, T(`s.buttons.${b}`)]), s.taskbarButtons || 'icons'))}${layoutRow()}${ilookRow()}</div>` : ''}
-      <div class="grp">${row(esc(T('s.islandWidth')), esc(T('s.islandWidthNote')), seg('islandWidth', ['narrow', 'normal', 'wide'].map(w => [w, T(`s.width.${w}`)]), s.islandWidth || 'normal'))}${s.display === 'taskbar' || window.pet.mac ? '' : hideUnderRow()}${row(esc(T('s.oledShift')), esc(T('s.oledShiftNote')), sw('oledShift', s.oledShift))}${s.display === 'taskbar' ? '' : ilookRow()}</div>
+      ${part('place', '')}<div class="grp">${islandPosRow()}${row(esc(T('s.islandWidth')), esc(T('s.islandWidthNote')), seg('islandWidth', ['narrow', 'normal', 'wide'].map(w => [w, T(`s.width.${w}`)]), s.islandWidth || 'normal'))}${s.display === 'taskbar' || window.pet.mac ? '' : hideUnderRow()}${row(esc(T('s.oledShift')), esc(T('s.oledShiftNote')), sw('oledShift', s.oledShift))}${s.display === 'taskbar' ? '' : ilookRow()}</div>
       ${pageWindows()}
       ${sec(T('s.her'))}<div class="grp">
         ${row(esc(T('menu.size')), '', seg('scale', SIZES.map(([name, scale]) => [scale, T(`menu.${name}`)]), s.scale))}
@@ -681,21 +697,6 @@
 
   function pageAlerts() {
     const s = snap.settings
-    // How long endings stay: the choices under the words (five, too long
-    // beside them), and with Custom on, the box for its seconds beside them,
-    // kept as it is left or Enter is pressed (holdTyped).
-    const holds = HOLDS.map(h => [h, h === 'seen' ? T('s.holdSeen') : h >= 60 ? T('settings.minutes', { n: h / 60 }) : T('settings.seconds', { n: h })])
-    holds.push(['custom', T('s.holdCustom')])
-    const holdOn = window.Flow.holdChoice(s.hold, holdCustom)
-    const range = esc(T('s.holdRange', { min: window.Flow.HOLD_MIN, max: window.Flow.HOLD_MAX }))
-    const typed = 'hold:secs' in drafts ? drafts['hold:secs'] : Number.isInteger(s.hold) ? String(s.hold) : ''
-    const secs =
-      holdOn === 'custom'
-        ? `<span class="hold-secs"><input class="in secs" data-hold="secs" value="${esc(typed)}" inputmode="numeric" maxlength="5" placeholder="${window.Flow.HOLD_MIN}–${window.Flow.HOLD_MAX}" title="${range}" aria-label="${range}" spellcheck="false" autocomplete="off"><span class="d">${esc(T('s.holdUnit'))}</span></span>`
-        : ''
-    const waits = WAITS.map(w => [w, w >= 60 ? T('settings.minutes', { n: Math.round(w / 60) }) : T('settings.seconds', { n: w })])
-    const idles = IDLE_HIDES.map(m => [m, !m ? T('s.idleAlways') : m >= 60 ? T('s.paperHours', { n: m / 60 }) : T('s.minutesShort', { n: m })])
-    const notify = s.notify || {}
     // When she has something to tell that needs no answer (a turn's end, a
     // hello, a plugin's nudge): the island open, a ring round it (the flow
     // light, the default), or the dot alone (island.js cue); its three
@@ -706,7 +707,28 @@
       ['ring', T('s.endCueRing')],
       ['none', T('s.endCueNone')],
     ]
-    return `${sec(T('s.holdTitle'))}<div class="grp"><div class="r col cue"><div>${esc(T('s.hold'))}</div><div class="hold-pick">${seg('hold', holds, holdOn)}${secs}</div></div><div class="r col cue"><div><div>${esc(T('s.endCue'))}</div><div class="d">${esc(T('s.endCueNote'))}</div></div>${seg('endCue', cues, cue)}</div></div>
+    // How long it stays (停留多久, just under it: zhoupengjie/Wakuwaku#59,
+    // #65): the island opened, or the ring lit and still after its turns
+    // (its note says which, for the choice above); with the dot alone there
+    // is nothing it holds (the dot waits until seen), so it is greyed then,
+    // its choice kept. The choices under the words (five, too long beside
+    // them), and with Custom on, the box for its seconds beside them, kept
+    // as it is left or Enter is pressed (holdTyped).
+    const holdOff = cue === 'none'
+    const holds = HOLDS.map(h => [h, h === 'seen' ? T('s.holdSeen') : h >= 60 ? T('settings.minutes', { n: h / 60 }) : T('settings.seconds', { n: h })])
+    holds.push(['custom', T('s.holdCustom')])
+    const holdOn = window.Flow.holdChoice(s.hold, holdCustom)
+    const range = esc(T('s.holdRange', { min: window.Flow.HOLD_MIN, max: window.Flow.HOLD_MAX }))
+    const typed = 'hold:secs' in drafts ? drafts['hold:secs'] : Number.isInteger(s.hold) ? String(s.hold) : ''
+    const secs =
+      holdOn === 'custom'
+        ? `<span class="hold-secs"><input class="in secs" data-hold="secs" value="${esc(typed)}" inputmode="numeric" maxlength="5" placeholder="${window.Flow.HOLD_MIN}–${window.Flow.HOLD_MAX}" title="${range}" aria-label="${range}" spellcheck="false" autocomplete="off"${holdOff ? ' disabled' : ''}><span class="d">${esc(T('s.holdUnit'))}</span></span>`
+        : ''
+    const holdPick = holdOff ? seg('hold', holds, holdOn).replace('class="seg"', 'class="seg off" aria-disabled="true"') : seg('hold', holds, holdOn)
+    const waits = WAITS.map(w => [w, w >= 60 ? T('settings.minutes', { n: Math.round(w / 60) }) : T('settings.seconds', { n: w })])
+    const idles = IDLE_HIDES.map(m => [m, !m ? T('s.idleAlways') : m >= 60 ? T('s.paperHours', { n: m / 60 }) : T('s.minutesShort', { n: m })])
+    const notify = s.notify || {}
+    return `${sec(T('s.holdTitle'))}<div class="grp"><div class="r col cue"><div><div>${esc(T('s.endCue'))}</div><div class="d">${esc(T('s.endCueNote'))}</div></div>${seg('endCue', cues, cue)}</div><div class="r col cue hold${holdOff ? ' off' : ''}"><div><div class="t">${esc(T('s.hold'))}</div><div class="d">${esc(T(`s.holdNote.${cue}`))}</div></div><div class="hold-pick">${holdPick}${secs}</div></div></div>
       ${sec(T('s.idleTitle'))}<div class="grp">${row(esc(T('s.idleHide')), esc(T('s.idleHideNote')), seg('idleHideMin', idles, s.idleHideMin))}</div>
       ${sec(T('settings.notify'))}<div class="grp">
         ${row(esc(T('settings.notifyWaiting')), '', sw('notify.waiting', notify.waiting))}
@@ -2904,7 +2926,7 @@
         gallery.items = []
         return loadGallery(false)
       }
-      const value = ['lang', 'monitorSource', 'islandWidth', 'taskbarMaterial', 'taskbarClearWhen', 'taskbarButtons', 'taskbarAlign', 'taskbarEdge', 'taskbarDisplays', 'mailAgent', 'mailOffline', 'updateFrom', 'endCue'].includes(key) ? raw : raw === 'seen' ? 'seen' : Number(raw)
+      const value = ['lang', 'monitorSource', 'islandPos', 'islandWidth', 'taskbarMaterial', 'taskbarClearWhen', 'taskbarButtons', 'taskbarAlign', 'taskbarEdge', 'taskbarDisplays', 'mailAgent', 'mailOffline', 'updateFrom', 'endCue'].includes(key) ? raw : raw === 'seen' ? 'seen' : Number(raw)
       return patch({ [key]: value })
     }
     const tile = at('[data-tile]')

@@ -425,7 +425,7 @@
   align-self: flex-start;
 }
 
-/* How long endings stay (settings.js pageAlerts): its choices under its
+/* How long it stays (停留多久, settings.js pageAlerts): its choices under its
    words the same, and with Custom on, the box for its seconds beside them
    (a box as the others, as tall as the choices), the unit after it. */
 #island-settings .hold-pick {
@@ -437,6 +437,13 @@
 
 #island-settings .r.col.cue .hold-pick .seg {
   align-self: auto;
+}
+
+/* With the dot alone (endCue none) nothing is held: its name and its
+   choices greyed, not to be changed; its note says why. */
+#island-settings .r.cue.hold.off .t,
+#island-settings .r.cue.hold.off .hold-secs {
+  opacity: 0.45;
 }
 
 #island-settings .hold-secs {
