@@ -1,5 +1,6 @@
 // Her home's window (the page draws it, src/pet/island.js), by display:
-//   island  a black pill at the top centre
+//   island  a black pill at the top centre (a top corner: phase 2 of
+//           zhoupengjie/Wakuwaku#59, see fit)
 //   taskbar a strip along the bottom in place of Windows' own, which is put
 //           away while it is up, its tray taken over (taskbar.rs); what
 //           opens grows up from it, into room kept above it (appbar.rs)
@@ -242,6 +243,19 @@ fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
         "taskbar" => window_at(edge, isl.bar.unwrap_or_else(|| edge.strip(area.mon, (TASKBAR_H * area.sf).round() as i32)), size),
         // On a Mac the notch's place, over the menu bar (notch.rs); elsewhere
         // the top centre, below a taskbar that sits at the top.
+        // Phase 2 of zhoupengjie/Wakuwaku#59, the island at a top corner
+        // (settings islandPos: left, center, right; the page side is done,
+        // anchor.js): elsewhere than round a notch, the window at the work
+        // area's top left (area.x, area.y) or top right (area.x + area.w -
+        // size.0, area.y), as wide as ever; grown for a wider shape (set_room)
+        // its right edge kept there at the right, as the centre keeps its
+        // middle. Then tell the page the side it is at, in pet:update
+        // (main.rs payload: "islandAt": "left" | "center" | "right", the
+        // centre round a notch), with the move: the page lays the island out
+        // at that side of its window by it, never by the setting itself, so
+        // until then it stays where this puts the window. A change of
+        // islandPos (main.rs settings_set) places the window anew (place),
+        // and seat(), closed_rect() follow the side too (see there).
         _ => crate::notch::at_top(area.mon, size.0).unwrap_or((area.x + (area.w - size.0) / 2, area.y)),
     };
     if (pos, size) == (isl.pos, isl.size) {
@@ -649,6 +663,11 @@ const LEAVE_MS: u128 = 600;
 // The closed island on the screen (physical x, y, w, h): in the middle of
 // the window's width, TOP below its top edge; none before the page said
 // its size, or in another home.
+// Phase 2 of zhoupengjie/Wakuwaku#59 (the island at a top corner): at the
+// left, TOP in from the window's left edge (pos.0 + TOP * sf); at the right,
+// TOP in from its right edge (pos.0 + size.0 - w - TOP * sf), as the page
+// lays it out there (anchor.js, style.css isl-at-left / isl-at-right); the
+// stowed band, the edge that calls it down (call_look) follow from this.
 fn closed_rect(isl: &Island) -> Option<(i32, i32, i32, i32)> {
     let (w, h) = isl.stow.closed;
     if !isl.created || w <= 0.0 || h <= 0.0 {
@@ -1167,6 +1186,8 @@ pub fn seat(sh: &Shared) -> Option<(i32, i32)> {
                 Edge::Right => (x, y + at),
             }
         }
+        // Phase 2 of zhoupengjie/Wakuwaku#59: at a top corner, the middle of
+        // the closed island there (TOP in from the side, as closed_rect).
         _ => (area.x + area.w / 2, area.y + px(TOP + COMPACT_H)),
     })
 }

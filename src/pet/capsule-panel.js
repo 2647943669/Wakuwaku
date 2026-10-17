@@ -87,7 +87,8 @@
   }
 
   // Over her capsule on the strip (beside a side bar's), under the island
-  // at the top; kept on the screen.
+  // at the top (at a top corner, lined up with its side there: anchor.js,
+  // zhoupengjie/Wakuwaku#59); kept on the screen.
   function place() {
     const w = panel.offsetWidth
     const h = panel.offsetHeight
@@ -103,7 +104,7 @@
       if (edge === 'right') [x, y] = [r.left - w - 10, r.top]
     } else {
       const r = Isle.island.getBoundingClientRect()
-      x = r.left + r.width / 2 - w / 2
+      x = window.Anchor.under(r, w, Isle.anchor(), innerWidth)
       y = Math.max(r.bottom, 44) + 12
     }
     panel.style.left = `${Math.round(Math.max(8, Math.min(x, innerWidth - w - 8)))}px`

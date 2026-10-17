@@ -502,6 +502,14 @@ fn is_hold(v: &Value) -> bool {
     v.as_str() == Some("seen") || v.as_u64().is_some_and(|s| HOLD_SECS.contains(&s))
 }
 
+// Where her island sits at the top of the screen (zhoupengjie/Wakuwaku#59):
+// a top corner, or the top centre (the default). Kept here; placing the
+// window by it is island.rs's (fit: phase 2, see there), and the page lays
+// the island out at the side it is told (anchor.js, pet:update islandAt).
+fn is_island_pos(v: &Value) -> bool {
+    matches!(v.as_str(), Some("left" | "center" | "right"))
+}
+
 // What a settings patch may hold, checked: anything else is dropped.
 fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
     let is_bool = v.is_boolean();
@@ -517,6 +525,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // The taskbar home stands in for Windows' own: elsewhere, only the island.
         "display" => v.as_str() == Some("island") || (cfg!(windows) && v.as_str() == Some("taskbar")),
         "islandWidth" => matches!(v.as_str(), Some("narrow" | "normal" | "wide")),
+        // Where her island sits at the top of the screen (anchor.js, #59).
+        "islandPos" => is_island_pos(v),
         // At the top of the screen, up out of the way of a window under it (island.rs look_under).
         "islandHideUnder" => is_bool,
         "taskbarMaterial" => matches!(v.as_str(), Some("mica" | "black" | "clear")),
@@ -1011,6 +1021,17 @@ mod tests {
         }
         for bad in [json!(2), json!(601), json!(0), json!(-8), json!(7.5), json!(8.0), json!("x"), json!("8"), json!(null), json!(true)] {
             assert!(!super::is_hold(&bad), "{bad}");
+        }
+    }
+
+    // Where her island sits: a top corner or the top centre, no other (#59).
+    #[test]
+    fn island_positions() {
+        for ok in ["left", "center", "right"] {
+            assert!(super::is_island_pos(&json!(ok)), "{ok}");
+        }
+        for bad in [json!("centre"), json!("top-left"), json!("bottom-left"), json!("Left"), json!(""), json!(0), json!(null), json!(true)] {
+            assert!(!super::is_island_pos(&bad), "{bad}");
         }
     }
 }

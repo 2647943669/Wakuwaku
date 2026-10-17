@@ -1,5 +1,5 @@
 // Her home: by display, a black pill at the top centre after the iPhone's
-// Dynamic Island (island), or a strip along the bottom of the screen in
+// Dynamic Island (island; or at a top corner, anchor.js), or a strip along the bottom of the screen in
 // place of Windows' taskbar (taskbar): its left end hers, the other sessions
 // as tags along the rest, with the Start button, the tray's icons
 // (taskbar.rs) and the clock besides. The same element in each, which
@@ -45,6 +45,7 @@
   const Status = window.Status
   const Widgets = window.Widgets
   const Flow = window.Flow
+  const Anchor = window.Anchor
 
   // Brighter than the pet's colours: these sit on black. On the light
   // taskbar (Windows' light mode) the same, deep enough to read on white.
@@ -107,6 +108,13 @@
   // its right, the words (which the notch would hide) left out.
   let screenTop = null
   const EAR = 64
+  // At the top of the screen, the side island.rs placed her window at
+  // (pet:update islandAt: left, center, right; zhoupengjie/Wakuwaku#59): the
+  // island laid out at that side of it (isl-at-left, isl-at-right), and all
+  // that follows it (anchor.js). None said (island.rs not yet placing it so,
+  // phase 2), the centre, where it is.
+  let islandAt = 'center'
+  const anchor = () => Anchor.anchorOf({ home: home(), at: islandAt, notch: !!screenTop?.notch })
   // Dropped open from the notch by her tray icon (setPeek), for PEEK_MS at
   // most if the pointer never comes.
   let peek = false
@@ -1179,10 +1187,11 @@
   }
 
   // Where the island will lie at its new size, from where it lies: at the
-  // top of the screen from its top, about its middle; on the taskbar from
-  // the strip's edge it grows from, at her end's side (isl-right, isl-low).
+  // top of the screen from its top, about its middle (at a corner, from its
+  // side there: anchor.js); on the taskbar from the strip's edge it grows
+  // from, at her end's side (isl-right, isl-low).
   function rectAt(r, width, height) {
-    if (home() !== 'taskbar') return { x: r.left + (r.width - width) / 2, y: r.top, width, height }
+    if (home() !== 'taskbar') return Anchor.grown(r, width, height, anchor())
     const fromRight = tbEdge() === 'right' || (!isSide() && body.classList.contains('isl-right'))
     const fromFoot = tbEdge() === 'bottom' || (isSide() && body.classList.contains('isl-low'))
     return { x: fromRight ? r.right - width : r.left, y: fromFoot ? r.bottom - height : r.top, width, height }
@@ -3774,6 +3783,8 @@
     body.classList.toggle('at-top', !!screenTop)
     body.classList.toggle('notched', !!screenTop?.notch)
     document.documentElement.style.setProperty('--top-h', `${screenTop ? screenTop.height : 36}px`)
+    // Round a notch, only ever in the middle.
+    placeAnchor()
     update()
   })
   // The page as big as its window (told with the strip, its physical size).
@@ -5523,6 +5534,15 @@
 
   // --- On and off ---------------------------------------------------------------
 
+  // At a top corner (anchor.js): the island at that side of its window
+  // (style.css isl-at-left, isl-at-right), growing toward the screen's
+  // middle; the picker and its toasts under it there too (picker.css).
+  function placeAnchor() {
+    const at = isOn() ? anchor() : 'center'
+    body.classList.toggle('isl-at-left', at === 'left')
+    body.classList.toggle('isl-at-right', at === 'right')
+  }
+
   // The prompt panel lives in the island while it is on (a banner in the
   // settings while they are open), above the pet otherwise.
   function seatPanel() {
@@ -5535,6 +5555,7 @@
     body.classList.toggle('island', isOn())
     body.classList.remove('home-island', 'home-taskbar')
     if (isOn()) body.classList.add(`home-${home()}`)
+    placeAnchor()
     drawMica()
     seatPanel()
     if (!isOn() && panel.parentElement !== stage) stage.prepend(panel)
@@ -5567,6 +5588,8 @@
     if (config.out !== true) isComingHome = false
     spriteUrl = data.sprite
     second = data.second || null
+    // Where island.rs put her window at the top of the screen (anchor.js).
+    islandAt = Anchor.posOf(data.islandAt)
     quiet = data.quiet === true
     fullScreen = data.fullScreen === true
     takeWidgets(data.widgets)
@@ -5852,6 +5875,8 @@
     },
     isOn,
     home,
+    // At the top of the screen, the side the island is at (anchor.js).
+    anchor,
     tbEdge,
     isSide,
     isLight,
@@ -5901,5 +5926,5 @@
     compact,
     expanded,
   }
-  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch }
 })()

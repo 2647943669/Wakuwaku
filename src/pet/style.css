@@ -309,6 +309,22 @@ body {
   padding-top: 8px;
 }
 
+/* At a top corner (islandPos, island.js placeAnchor, anchor.js;
+   zhoupengjie/Wakuwaku#59): at that side of its window (island.rs puts the
+   window at the screen's corner), as far in from the side as down from the
+   top, so it grows toward the screen's middle as it opens: from the left
+   corner to the right, from the right one to the left. What is laid over
+   it (the ring, the dot) goes with it. */
+.home-island.isl-at-left #island-bar {
+  align-items: flex-start;
+  padding-left: 8px;
+}
+
+.home-island.isl-at-right #island-bar {
+  align-items: flex-end;
+  padding-right: 8px;
+}
+
 /* On a Mac it hangs from the screen's top edge over the menu bar, as tall as
    the band there (island.js screenTop): black on the black notch, no ring. */
 .island.at-top #island-bar {

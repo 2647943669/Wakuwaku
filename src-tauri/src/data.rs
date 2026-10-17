@@ -120,6 +120,9 @@ fn defaults() -> Map<String, Value> {
         "out": false,
         // The compact island's width: narrow, normal or wide (island.js WIDTHS).
         "islandWidth": "normal",
+        // Where it sits at the top of the screen: left, center or right
+        // (anchor.js, zhoupengjie/Wakuwaku#59); the top centre as ever.
+        "islandPos": "center",
         // At the top of the screen, slid up out of the way while a window
         // lies under it (island.js setStow, zhoupengjie/Wakuwaku#49).
         "islandHideUnder": true,
