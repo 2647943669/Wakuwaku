@@ -1736,11 +1736,14 @@ fn main() {
                     let c = screen::cursor(&pointer, 1.0);
                     (c, c)
                 };
+                // Quiet or not first: woken by a key after a quiet while (Ctrl,
+                // desk.rs), the looks are someone's at once, not a turn later.
+                let quiet = pointer.check_quiet();
                 let wait = match at {
                     (Some(her), Some(home)) => pet::poll(&pointer, her).min(island::poll(&pointer, home)).min(desk::poll(&pointer, home)),
                     _ => 200,
                 };
-                let wait = if pointer.check_quiet() { wait.max(1000) } else { wait };
+                let wait = if quiet { wait.max(1000) } else { wait };
                 std::thread::park_timeout(Duration::from_millis(wait));
             });
 
