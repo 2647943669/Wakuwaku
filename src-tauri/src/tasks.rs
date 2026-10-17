@@ -49,6 +49,7 @@ mod imp {
     extern "system" {
         fn GetBestInterface(dest: u32, index: *mut u32) -> u32;
         fn ConvertInterfaceIndexToLuid(index: u32, luid: *mut u64) -> u32;
+        fn GetIpForwardTable(table: *mut u32, size: *mut u32, order: i32) -> u32;
     }
 
     #[repr(C)]
@@ -1181,23 +1182,203 @@ mod imp {
 
     // The network's way out, as Windows' taskbar shows it: "wired", "wifi",
     // "other" (a VPN's, a phone's) or "none": the interface Windows would
-    // send to a public address by, its type in its LUID's top 16 bits.
+    // send to a public address by, its type in its LUID's top 16 bits (way_out).
     pub fn net() -> &'static str {
         let mut index = 0u32;
+        // SAFETY: our own out-parameter; 1.1.1.1 reads the same in either byte order.
+        if unsafe { GetBestInterface(u32::from_ne_bytes([1, 1, 1, 1]), &mut index) } != 0 {
+            return "none";
+        }
+        way_out(if_type(index), under_tunnel)
+    }
+
+    // Interface types (ipifcons.h): a cable (Ethernet), Wi-Fi, a phone's
+    // mobile broadband (WWANPP and WWANPP2).
+    const IF_ETHERNET: u64 = 6;
+    const IF_WIFI: u64 = 71;
+    const IF_WWAN: [u64; 2] = [243, 244];
+
+    // An interface's type, in its LUID's top 16 bits (6 a cable, 71 Wi-Fi,
+    // 53 a virtual one…); None for one gone.
+    fn if_type(index: u32) -> Option<u64> {
         let mut luid = 0u64;
-        // SAFETY: our own out-parameters; 1.1.1.1 reads the same in either byte order.
-        unsafe {
-            if GetBestInterface(u32::from_ne_bytes([1, 1, 1, 1]), &mut index) != 0 {
-                return "none";
-            }
-            if ConvertInterfaceIndexToLuid(index, &mut luid) != 0 {
-                return "other";
+        // SAFETY: our own out-parameter.
+        (unsafe { ConvertInterfaceIndexToLuid(index, &mut luid) } == 0).then_some(luid >> 48)
+    }
+
+    // The way out by the type of the interface Windows would send by: a
+    // cable, Wi-Fi; a phone's, its own ("other"). Any other rides on one of
+    // those: a proxy's TUN (Clash Meta's, "Meta", of type 53, its default
+    // route taken before the Wi-Fi's), a VPN's. Windows' taskbar showed the
+    // Wi-Fi under the TUN, and hers "other", no Wi-Fi
+    // (zhoupengjie/Wakuwaku#64): so the one under it (under), else "other"
+    // as before.
+    fn way_out(best: Option<u64>, under: impl FnOnce() -> Option<&'static str>) -> &'static str {
+        match best {
+            Some(IF_ETHERNET) => "wired",
+            Some(IF_WIFI) => "wifi",
+            Some(t) if IF_WWAN.contains(&t) => "other",
+            _ => under().unwrap_or("other"),
+        }
+    }
+
+    // MIB_IPFORWARDTABLE in DWORDs: a count, then the rows, 14 DWORDs each
+    // (MIB_IPFORWARDROW: destination, mask, policy, next hop, interface
+    // index, type, protocol, age, next hop's AS, five metrics).
+    const ROW: usize = 14;
+
+    // The IPv4 routing table, as above (an IPv6-only way out stays "other").
+    // Its size asked first; a route that comes between the asking and the
+    // reading leaves the buffer short again (ERROR_INSUFFICIENT_BUFFER, the
+    // size needed given back), so asked again with that, a few times at most.
+    fn forward_table() -> Option<Vec<u32>> {
+        const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
+        let mut words: Vec<u32> = Vec::new();
+        for _ in 0..4 {
+            let mut size = (words.len() * 4) as u32;
+            let at = if words.is_empty() { std::ptr::null_mut() } else { words.as_mut_ptr() };
+            // SAFETY: our own buffer (or none, its size 0), its size in bytes
+            // given; Windows writes within it, DWORD-aligned as the table is.
+            match unsafe { GetIpForwardTable(at, &mut size, 0) } {
+                0 => return Some(words),
+                ERROR_INSUFFICIENT_BUFFER => words = vec![0; (size as usize).div_ceil(4)],
+                _ => return None,
             }
         }
-        match luid >> 48 {
-            6 => "wired",
-            71 => "wifi",
-            _ => "other",
+        None
+    }
+
+    fn under_tunnel() -> Option<&'static str> {
+        under_tunnel_in(&forward_table()?, if_type)
+    }
+
+    // The way out under a tunnel, from the routing table (forward_table) and
+    // each interface's type: the way Windows would send were the tunnel not
+    // there. Of the cables' and Wi-Fi's own default routes (0.0.0.0/0;
+    // addresses in network order, but 0 reads the same either way), the one
+    // with the lowest metric (its route's and its interface's together, as
+    // GetIpForwardTable gives it), Wi-Fi on a tie. So a cable and Wi-Fi both
+    // up go as they would with no tunnel: by the metrics, which Windows sets
+    // by speed (the cable's mostly the lower). VMware's host-only adapters
+    // (VMnet1 and VMnet8, of type 6) have no default route, nor an adapter
+    // unplugged, and a VPN's two halves (0.0.0.0/1 and 128.0.0.0/1) are none
+    // either: neither taken for a way out. None: no cable nor Wi-Fi has one.
+    fn under_tunnel_in(table: &[u32], type_of: impl Fn(u32) -> Option<u64>) -> Option<&'static str> {
+        let (&count, rows) = table.split_first()?;
+        rows.chunks_exact(ROW)
+            .take(count as usize)
+            .filter(|r| r[0] == 0 && r[1] == 0)
+            .filter_map(|r| type_of(r[4]).filter(|t| *t == IF_ETHERNET || *t == IF_WIFI).map(|t| (r[9], t != IF_WIFI, t)))
+            .min()
+            .map(|(_, _, t)| if t == IF_WIFI { "wifi" } else { "wired" })
+    }
+
+    #[cfg(test)]
+    mod net_tests {
+        use super::*;
+
+        // Interfaces by index: 1 Wi-Fi, 2 a cable, 3 a proxy's TUN (53), 4
+        // and 5 VMware's VMnet1 and VMnet8 (6), 6 a VPN's (53), 7 a VPN's
+        // TAP adapter (6), 8 a phone's (243); 9 gone.
+        fn kind(index: u32) -> Option<u64> {
+            match index {
+                1 => Some(71),
+                2 | 4 | 5 | 7 => Some(6),
+                3 | 6 => Some(53),
+                8 => Some(243),
+                _ => None,
+            }
+        }
+
+        // A row: destination and mask (a.b.c.d, in network order as
+        // Windows has them), interface, metric.
+        fn row(dest: [u8; 4], mask: [u8; 4], index: u32, metric: u32) -> Vec<u32> {
+            let mut r = vec![0; ROW];
+            r[0] = u32::from_ne_bytes(dest);
+            r[1] = u32::from_ne_bytes(mask);
+            r[4] = index;
+            r[9] = metric;
+            r
+        }
+
+        fn table(rows: &[Vec<u32>]) -> Vec<u32> {
+            let mut t = vec![rows.len() as u32];
+            rows.iter().for_each(|r| t.extend_from_slice(r));
+            t
+        }
+
+        const ANY: [u8; 4] = [0, 0, 0, 0];
+        const HALF: [u8; 4] = [128, 0, 0, 0];
+        const ONE: [u8; 4] = [255, 255, 255, 255];
+        const NET24: [u8; 4] = [255, 255, 255, 0];
+
+        // VMware's host-only adapters: their subnets and own addresses alone.
+        fn vmware() -> Vec<Vec<u32>> {
+            vec![row([192, 168, 56, 0], NET24, 4, 291), row([192, 168, 56, 1], ONE, 4, 291), row([192, 168, 128, 0], NET24, 5, 291), row([192, 168, 128, 1], ONE, 5, 291)]
+        }
+
+        fn under(rows: Vec<Vec<u32>>) -> Option<&'static str> {
+            under_tunnel_in(&table(&rows), kind)
+        }
+
+        #[test]
+        fn the_way_out_under_a_tunnel() {
+            let tun = || row(ANY, ANY, 3, 1);
+            // The reporter's (zhoupengjie/Wakuwaku#64): Clash Meta's TUN and
+            // the Wi-Fi each with a default route, VMware's two adapters.
+            let wifi = [vec![tun(), row([198, 18, 0, 0], [255, 255, 0, 0], 3, 1), row(ANY, ANY, 1, 35), row([192, 168, 5, 0], NET24, 1, 291)], vmware()].concat();
+            assert_eq!(under(wifi), Some("wifi"));
+            // A cable under it.
+            assert_eq!(under([vec![tun(), row(ANY, ANY, 2, 25)], vmware()].concat()), Some("wired"));
+            // Both: the lower metric, as Windows would send; Wi-Fi on a tie.
+            assert_eq!(under(vec![tun(), row(ANY, ANY, 1, 35), row(ANY, ANY, 2, 25)]), Some("wired"));
+            assert_eq!(under(vec![tun(), row(ANY, ANY, 2, 15), row(ANY, ANY, 1, 10)]), Some("wifi"));
+            assert_eq!(under(vec![tun(), row(ANY, ANY, 2, 25), row(ANY, ANY, 1, 25)]), Some("wifi"));
+            // VMware's adapters alone (a cable's type, no default route): none.
+            assert_eq!(under([vec![tun()], vmware()].concat()), None);
+            // A VPN that splits the default route in two over the Wi-Fi's:
+            // the halves are no default route, on a TUN nor on a TAP (of a
+            // cable's type).
+            let halves = |i| vec![row(ANY, HALF, i, 1), row(HALF, HALF, i, 1)];
+            assert_eq!(under([halves(6), vec![row(ANY, ANY, 1, 35)], vmware()].concat()), Some("wifi"));
+            assert_eq!(under([halves(7), vec![row(ANY, ANY, 1, 35)]].concat()), Some("wifi"));
+            assert_eq!(under([halves(7), vmware()].concat()), None);
+            // A phone's default route, or one of an interface gone, is no
+            // cable nor Wi-Fi.
+            assert_eq!(under(vec![tun(), row(ANY, ANY, 8, 5), row(ANY, ANY, 9, 5)]), None);
+        }
+
+        #[test]
+        fn the_routing_table_read_within_itself() {
+            // Nothing, or a count alone.
+            assert_eq!(under_tunnel_in(&[], kind), None);
+            assert_eq!(under_tunnel_in(&[0], kind), None);
+            // Rows past the count are not the table's (the buffer is larger
+            // than the table, as Windows sizes it).
+            let mut t = table(&[row([10, 0, 0, 0], NET24, 2, 1)]);
+            t.extend(row(ANY, ANY, 1, 35));
+            assert_eq!(under_tunnel_in(&t, kind), None);
+            // A count past the rows there: only whole rows read.
+            let mut t = table(&[row(ANY, ANY, 2, 25)]);
+            t[0] = 5;
+            t.extend([0; ROW - 1]);
+            assert_eq!(under_tunnel_in(&t, kind), Some("wired"));
+        }
+
+        #[test]
+        fn the_way_out_by_the_interface_type() {
+            let none = || -> Option<&'static str> { panic!("not looked under") };
+            assert_eq!(way_out(Some(6), none), "wired");
+            assert_eq!(way_out(Some(71), none), "wifi");
+            // A phone's is a way out of its own, not looked under.
+            assert_eq!(way_out(Some(243), none), "other");
+            assert_eq!(way_out(Some(244), none), "other");
+            // A TUN's, a VPN's (PPP 23, a tunnel 131): the one under it, else "other".
+            assert_eq!(way_out(Some(53), || Some("wifi")), "wifi");
+            assert_eq!(way_out(Some(23), || Some("wired")), "wired");
+            assert_eq!(way_out(Some(131), || None), "other");
+            // Its type unknown (gone between the two asks): looked under too.
+            assert_eq!(way_out(None, || Some("wifi")), "wifi");
         }
     }
 
