@@ -14,10 +14,18 @@
 // desktop's widgets, the wallpaper). Presses anywhere are told back to the
 // pages that wait for them (taskbar:press, desk:outside, island:blur).
 //
-// The panel at the side drives what Rust would send: sessions and their
-// moods, a hello, a tool failing, a plugin's or a new version's nudge,
-// Windows' mode, her home, the strip's material and edge, the setting for
-// endings, nobody about, reduced motion; and starts it all over.
+// The panel at the side drives what Rust would send: a scene (scenes.js:
+// a whole world at once, and what then happens in it; #<id> opens the
+// page on one), sessions and their moods, a hello, a tool failing, a
+// plugin's or a new version's nudge, Windows' mode, her home, the strip's
+// material and edge, the setting for endings, nobody about, reduced
+// motion; and starts the scene over.
+//
+// Served by publish.js dev (window.WAKU_DEV), it follows the repo's files:
+// a page's stylesheet changed is swapped in its frame, a script or page
+// changed reloads the frames it is in (the world kept, the settings or the
+// layout editing open again), and the playground's own files reload it
+// whole, the world, the scene and the panel carried over (sessionStorage).
 //
 // ?demo=open|done|edit|menu|thumbs|card|settings plays one of those once the
 // pages are up (the headless shots); ?still=1 holds their transitions at
@@ -25,6 +33,7 @@
 ;(function () {
   const Fake = window.Fake
   const F = window.Fixtures
+  const Scenes = window.Scenes
   const world = Fake.world
   const Q = new URLSearchParams(location.search)
   const W = 1600
@@ -62,37 +71,111 @@
     return s
   }
 
-  function startWorld() {
-    nextSession = 1
-    nextAsk = 1
-    const fresh = Fake.makeWorld()
+  // --- The scenes (scenes.js): a whole world at once ------------------------------------
+  // Windows' mode as the viewer picked it (the panel), or ?mode=, or their
+  // system's: a scene about one mode (light-clear) has its own.
+  let viewerMode = ['light', 'dark'].includes(Q.get('mode')) ? Q.get('mode') : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  let current = 'everyday'
+  const DEFAULT_SCENE = 'everyday'
+
+  // The fixtures' clock is this page's start (Fake.T0): a scene's times
+  // moved to now, so a turn picked later has run as long as it says.
+  function retime(w) {
+    const by = Date.now() - F.T0
+    for (const s of w.sessions || []) for (const k of ['since', 'stepSince', 'at']) if (typeof s[k] === 'number') s[k] += by
+    for (const wd of w.widgets || []) for (const r of wd.detail?.rows || []) if (typeof r.at === 'number') r.at += by
+    return w
+  }
+
+  // The next session and prompt numbers, after the ones there are.
+  function countFrom(w) {
+    const top = (list, of) => Math.max(0, ...list.map(of).filter(Number.isFinite))
+    nextSession = top(w.sessions || [], s => parseInt(String(s.id).replace(/\D/g, ''), 10)) + 1
+    nextAsk = top(w.asks || [], a => Number(a.id)) + 1
+  }
+
+  // The world made the scene's (over a fresh one: nothing of the last kept
+  // but the viewer's mode and reduced motion), the pages loaded anew, then
+  // its play. ?home=, ?material=, ?edge= over the first one (a link to a look).
+  function applyScene(id, { play = true, overrides = false } = {}) {
+    const scene = Scenes.sceneById(id) || Scenes.sceneById(DEFAULT_SCENE)
+    current = scene.id
+    const reduced = world.reducedMotion
+    const fresh = { ...Fake.makeWorld(), ...retime(clone(Scenes.sceneWorld(scene, F))) }
     for (const k of Object.keys(world)) delete world[k]
-    Object.assign(world, fresh, {
-      // ?mode=, ?home=, ?material=, ?edge= start it so (a link to a look); else as the viewer's system is.
-      mode: ['light', 'dark'].includes(Q.get('mode')) ? Q.get('mode') : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark',
-      home: Q.get('home') === 'island' ? 'island' : 'taskbar',
-      material: ['mica', 'clear', 'black'].includes(Q.get('material')) ? Q.get('material') : 'mica',
-      edge: ['bottom', 'top', 'left', 'right'].includes(Q.get('edge')) ? Q.get('edge') : 'bottom',
-      widgets: clone(F.widgets('monitor', 'today', 'weather', 'tokens', 'inbox-a1', 'pomodoro', 'countdown', 'stock-aapl', 'deploy')),
-      plugins: clone(F.PLUGINS),
-      windows: clone(F.WINDOWS),
-      tray: clone(F.TRAY),
-      keys: clone(F.KEYS),
-      taskbarLayout: clone(F.TASKBAR.win11),
-      deskLayout: [
-        { id: 'wds', type: 'stack', size: 'm', d: 'd1', at: { d1: [0, 0] }, items: [{ type: 'widget', of: 'inbox-a1' }, { type: 'plugin', of: 'pomodoro' }] },
-        {
-          id: 'wdb', type: 'board', name: '工作', d: 'd1', at: { d1: [0, 3] },
-          items: [{ type: 'widget', of: 'today', size: 'm', at: [0, 0] }, { type: 'widget', of: 'tokens', size: 's', at: [4, 0] }, { type: 'plugin', of: 'countdown', size: 's', at: [6, 0] }],
-        },
-        { id: 'wd1', type: 'widget', of: 'deploy', size: 's', d: 'd1', at: { d1: [16, 0] } },
-        { id: 'wd2', type: 'plugin', of: 'stock', size: 's', d: 'd1', at: { d1: [16, 2] } },
-      ],
+    Object.assign(world, fresh, { mode: scene.mode || viewerMode, reducedMotion: reduced })
+    if (overrides) {
+      if (['island', 'taskbar'].includes(Q.get('home'))) world.home = Q.get('home')
+      if (['mica', 'clear', 'black'].includes(Q.get('material'))) world.material = Q.get('material')
+      if (['bottom', 'top', 'left', 'right'].includes(Q.get('edge'))) world.edge = Q.get('edge')
+    }
+    countFrom(world)
+    setHash(scene.id)
+    freshUi()
+    loadAll(() => {
+      if (!play || !scene.play) return
+      scene.play(player).catch(err => note(`场景没放完：${err.message}`))
     })
-    const working = newSession('working')
-    const done = newSession('working')
-    moodOf(done, 'done')
-    world.sessions = [working, done]
+    drawPanel()
+  }
+
+  // A clean slate for what this page draws over the frames.
+  function freshUi() {
+    document.documentElement.dataset.theme = world.mode
+    editing = false
+    watching = false
+    drawThumbs([])
+    drawPlate(null)
+    hideMenu()
+  }
+
+  // #<id>: the scene to open on (the only part of the address the hosted page is given).
+  const hashScene = () => {
+    const id = decodeURIComponent(location.hash.slice(1))
+    return Scenes.sceneById(id) ? id : null
+  }
+  function setHash(id) {
+    try {
+      if (hashScene() !== id) history.replaceState(null, '', `#${id}`)
+    } catch {}
+  }
+  window.addEventListener('hashchange', () => {
+    const id = hashScene()
+    if (id && id !== current) applyScene(id)
+  })
+
+  // What a scene's play is given (scenes.js), here: the world, sent as main
+  // would; events and the pointer to her home's page.
+  const player = {
+    get F() {
+      return F
+    },
+    get world() {
+      return world
+    },
+    wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
+    set: patch => Fake.set(patch),
+    push: () => pushAll(),
+    emit: (channel, payload) => {
+      toIsland(channel, payload)
+      if (channel === 'island:settings' || channel === 'taskbar:edit') focusFrame(frames.island)
+    },
+    hover: sel => pointerOn(sel, 'enter'),
+    click: sel => pointerOn(sel, 'click'),
+    context: sel => pointerOn(sel, 'context'),
+    freeze: () => {},
+  }
+  function pointerOn(sel, what) {
+    const win = frames.island.win
+    const n = win?.document.querySelector(sel)
+    if (!n) throw new Error(`no ${sel}`)
+    const r = n.getBoundingClientRect()
+    const at = { clientX: r.left + Math.min(20, r.width / 2), clientY: r.top + Math.min(10, r.height / 2), view: win }
+    if (what === 'enter') {
+      n.dispatchEvent(new win.PointerEvent('pointerenter', { ...at, bubbles: false }))
+      n.dispatchEvent(new win.MouseEvent('mouseenter', { ...at, bubbles: false }))
+    } else if (what === 'context') n.dispatchEvent(new win.MouseEvent('contextmenu', { ...at, bubbles: true, cancelable: true, button: 2 }))
+    else n.click()
   }
 
   // A session into a mood, as state.rs keeps it: a turn's clock from its
@@ -128,12 +211,137 @@
     return { top: [0, 0, W, STRIP + ROOM], left: [0, 0, STRIP + SIDE_ROOM, H], right: [W - STRIP - SIDE_ROOM, 0, STRIP + SIDE_ROOM, H] }[world.edge] || [0, H - STRIP - ROOM, W, STRIP + ROOM]
   }
 
+  // A frame's page (re)loaded; told once it is up (ready, below).
+  let loads = 0
   function load(f) {
     f.win = null
+    ready.delete(f.role)
+    loads++
     if (f === frames.island) f.rect = homeRect()
     const [x, y, w, h] = f.rect
     Object.assign(f.el.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, pointerEvents: 'none' })
-    f.el.src = `preview/page.html?role=${f.role}&play=1${Q.get('still') ? '&still=1' : ''}`
+    f.el.src = `preview/page.html?role=${f.role}&play=1${Q.get('still') ? '&still=1' : ''}&n=${loads}`
+  }
+
+  // Both pages up: what waits for them runs (a scene's play, the settings
+  // open again), and once, a demo (?demo=).
+  const ready = new Set()
+  let waiting = []
+  const bothUp = () => ready.has('island') && ready.has('desk')
+  const whenReady = fn => (bothUp() ? fn() : waiting.push(fn))
+  window.addEventListener('message', e => {
+    if (!e.data?.wk || !e.data.ready) return
+    ready.add(e.data.role)
+    if (!bothUp()) return
+    const run = waiting
+    waiting = []
+    for (const fn of run) {
+      try {
+        fn()
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    demo()
+  })
+  function loadAll(then) {
+    load(frames.island)
+    load(frames.desk)
+    if (then) whenReady(then)
+  }
+
+  // --- Following the repo's files (publish.js dev) ----------------------------------------
+  // What is open on her home's page that a reload would close: the settings
+  // (on their tab), the layout being edited.
+  function captureUi() {
+    const ui = { settings: null, editing }
+    try {
+      const win = frames.island.win
+      if (win?.Settings?.isOpen()) ui.settings = win.document.querySelector('.s-tabs button.on')?.dataset.tab || 'now'
+    } catch {}
+    return ui
+  }
+  function restoreUi(ui) {
+    if (ui?.editing) toIsland('taskbar:edit', null)
+    if (ui?.settings) toIsland('island:settings', { tab: ui.settings })
+    if (ui?.editing || ui?.settings) focusFrame(frames.island)
+  }
+
+  // A script or page of theirs changed: these frames anew, the world kept.
+  function reloadFrames(roles = ['island', 'desk']) {
+    const ui = roles.includes('island') ? captureUi() : null
+    if (roles.includes('island')) {
+      freshUi()
+      load(frames.island)
+    }
+    if (roles.includes('desk')) load(frames.desk)
+    whenReady(() => restoreUi(ui))
+  }
+
+  // A stylesheet changed: swapped in the frames that have it, nothing else touched.
+  let cssSwaps = 0
+  function swapCss(byRole) {
+    for (const [role, files] of Object.entries(byRole || {})) {
+      const win = frames[role]?.win
+      if (!win) continue
+      for (const link of win.document.querySelectorAll('link[rel="stylesheet"]')) {
+        const url = new URL(link.href)
+        if (!files.includes(url.pathname.replace(/^\//, ''))) continue
+        url.searchParams.set('v', String(Date.now()))
+        // Windows' animations off: the new sheet's reduced-motion rules made to apply too.
+        if (world.reducedMotion === true) link.addEventListener('load', () => win.Fake.stillStyles(), { once: true })
+        link.href = url.href
+        cssSwaps++
+      }
+    }
+  }
+
+  // The playground's own files changed: the page anew, all it holds carried over.
+  const CARRY = 'wk-playground-carry'
+  function carryAndReload() {
+    try {
+      sessionStorage.setItem(CARRY, JSON.stringify({ at: Date.now(), scene: current, viewerMode, world, ui: captureUi(), folded: panel.classList.contains('folded'), y: scrollY }))
+    } catch {}
+    location.reload()
+  }
+  function carried() {
+    try {
+      const c = JSON.parse(sessionStorage.getItem(CARRY) || 'null')
+      sessionStorage.removeItem(CARRY)
+      return c && Date.now() - c.at < 60e3 && c.world ? c : null
+    } catch {
+      return null
+    }
+  }
+  function restore(c) {
+    current = Scenes.sceneById(c.scene) ? c.scene : DEFAULT_SCENE
+    viewerMode = c.viewerMode === 'light' ? 'light' : 'dark'
+    for (const k of Object.keys(world)) delete world[k]
+    Object.assign(world, Fake.makeWorld(), c.world)
+    countFrom(world)
+    freshUi()
+    panel.classList.toggle('folded', !!c.folded)
+    loadAll(() => restoreUi(c.ui))
+    drawPanel()
+    requestAnimationFrame(() => scrollTo(0, c.y || 0))
+  }
+
+  function follow() {
+    const short = files => files.map(f => f.split('/').pop()).join('、')
+    const es = new EventSource('__live')
+    es.addEventListener('change', e => {
+      let m
+      try {
+        m = JSON.parse(e.data)
+      } catch {
+        return
+      }
+      if (m.page) return carryAndReload()
+      if (m.frames?.length) reloadFrames(m.frames)
+      const css = Object.fromEntries(Object.entries(m.css || {}).filter(([role]) => !m.frames?.includes(role)))
+      swapCss(css)
+      note(`${m.frames?.length ? '重新载入了' : '换上了新样式：'}${short(m.files || [])}`)
+    })
   }
 
   // A frame's own events, once its stand-in is up (WakuHost.attach): the
@@ -245,7 +453,7 @@
       return { value: Fake.snapshot() }
     },
     settings_win_look(from, { light, accent }) {
-      if (typeof light === 'boolean') world.mode = light ? 'light' : 'dark'
+      if (typeof light === 'boolean') viewerMode = world.mode = light ? 'light' : 'dark'
       if (accent) world.accent = { base: accent, light: accent, dark: accent }
       setTimeout(() => {
         pushAll()
@@ -535,6 +743,7 @@
   }
   function setMode(mode) {
     world.mode = mode
+    viewerMode = mode
     document.documentElement.dataset.theme = mode
     pushAll()
   }
@@ -604,6 +813,18 @@
   }
 
   function drawPanel() {
+    const scenesEl = panel.querySelector('#wk-scenes')
+    if (!scenesEl.children.length) {
+      for (const s of Scenes.SCENES) {
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.dataset.scene = s.id
+        b.textContent = s.title
+        scenesEl.append(b)
+      }
+    }
+    for (const b of scenesEl.children) b.classList.toggle('on', b.dataset.scene === current)
+    panel.querySelector('#wk-scene-note').textContent = Scenes.sceneById(current)?.note || ''
     for (const [key, options] of Object.entries(segs)) {
       const box = panel.querySelector(`[data-seg="${key}"]`)
       if (!box) continue
@@ -630,6 +851,7 @@
   panel.addEventListener('click', e => {
     const b = e.target.closest('button')
     if (!b) return
+    if (b.dataset.scene) return applyScene(b.dataset.scene)
     const seg = b.closest('[data-seg]')?.dataset.seg
     if (seg) {
       const v = b.dataset.v
@@ -669,7 +891,7 @@
     else if (act === 'fail') toIsland('pet:react', { react: 'failed', say: 'Bash 失败了' })
     else if (act === 'nudge') toIsland('pet:nudge', { id: 'weather', words: '一小时后有雨，记得带伞', label: 'Dresden · 阴', value: '11°', private: false, open: null })
     else if (act === 'version') toIsland('pet:nudge', { id: 'update', icon: 'star', words: '有新版本 0.3.3', label: '点一下看看', value: '', private: false, open: { tab: 'update' } })
-    else if (act === 'reset') reset()
+    else if (act === 'reset') applyScene(current)
     const toggle = b.dataset.toggle
     if (toggle === 'quiet') {
       world.quiet = !world.quiet
@@ -677,26 +899,12 @@
       pushAll()
     } else if (toggle === 'reduced') {
       world.reducedMotion = world.reducedMotion === true ? false : true
-      load(frames.island)
-      load(frames.desk)
+      reloadFrames()
       drawPanel()
     }
   })
 
   $('#wk-fold')?.addEventListener('click', () => panel.classList.toggle('folded'))
-
-  function reset() {
-    startWorld()
-    document.documentElement.dataset.theme = world.mode
-    editing = false
-    watching = false
-    drawThumbs([])
-    drawPlate(null)
-    hideMenu()
-    load(frames.island)
-    load(frames.desk)
-    drawPanel()
-  }
 
   // --- Fitting the screen to the page --------------------------------------------------------
   function fit() {
@@ -708,13 +916,7 @@
   new ResizeObserver(fit).observe(viewport)
   fit()
 
-  // --- The shots' hooks (?demo=...) ----------------------------------------------------------
-  const ready = new Set()
-  window.addEventListener('message', e => {
-    if (!e.data?.wk || !e.data.ready) return
-    ready.add(e.data.role)
-    if (ready.has('island') && ready.has('desk')) demo()
-  })
+  // --- The shots' hooks (?demo=...), once both pages are up first ---------------------------
   let demoDone = false
   function demo() {
     const what = Q.get('demo')
@@ -862,5 +1064,19 @@
     }, Number(Q.get('debug')) > 1 ? Number(Q.get('debug')) : 3000)
 
   // --- Go ----------------------------------------------------------------------------------
-  reset()
+  // For checks from outside (a headless browser): what is shown, how often
+  // the frames loaded and the stylesheets were swapped.
+  window.WakuPlay = {
+    world,
+    scene: () => current,
+    loads: () => loads,
+    cssSwaps: () => cssSwaps,
+    ready: () => bothUp(),
+    apply: applyScene,
+    reloadFrames,
+  }
+  const back = carried()
+  if (back) restore(back)
+  else applyScene(hashScene() || DEFAULT_SCENE, { overrides: true })
+  if (window.WAKU_DEV) follow()
 })()

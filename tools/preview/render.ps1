@@ -25,6 +25,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
+# -Only a,b as one word too (pwsh -File passes it so).
+$Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 if (-not (Test-Path -LiteralPath $Edge)) { throw "Edge not found at $Edge (-Edge <msedge.exe>)" }
 
 # The live gallery, in an Edge of its own that may read her pages over file://.
