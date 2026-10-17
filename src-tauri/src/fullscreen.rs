@@ -106,8 +106,20 @@ mod imp {
         }
     }
     const GWL_STYLE: i32 = -16;
-    const WS_CAPTION: isize = 0x00c0_0000;
+    // Two bits, WS_BORDER and WS_DLGFRAME: a title bar is both (titled).
+    const WS_CAPTION: u32 = 0x00c0_0000;
     const MONITOR_DEFAULTTONEAREST: u32 = 2;
+
+    // A title bar, by the window's style: both of WS_CAPTION's bits, as a
+    // window has them maximised or not. Either alone is none: a popup with a
+    // thin border alone (WS_BORDER) over all of its display is an app full
+    // screen all the same. HELLDIVERS 2's (0x94880000, a pixel past the
+    // display on every side) was taken for a titled window while either bit
+    // was enough, and her taskbar stayed over the game
+    // (zhoupengjie/Wakuwaku#63). The style's flags are all in its low 32 bits.
+    fn titled(style: u32) -> bool {
+        style & WS_CAPTION == WS_CAPTION
+    }
 
     // None: the foreground window is one of ours (keep what was decided).
     pub fn check(own: &[isize], on: &[(i32, i32, i32, i32)]) -> Option<bool> {
@@ -136,7 +148,7 @@ mod imp {
             if SKIP_CLASSES.contains(&String::from_utf16_lossy(&name[..n]).as_str()) {
                 return Some(None);
             }
-            if GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CAPTION != 0 {
+            if titled(GetWindowLongPtrW(hwnd, GWL_STYLE) as u32) {
                 return Some(None);
             }
             let mut rect = Rect::default();
@@ -189,6 +201,26 @@ mod imp {
     }
 
     pub const AVAILABLE: bool = true;
+
+    #[cfg(test)]
+    mod tests {
+        use super::titled;
+
+        #[test]
+        fn a_title_bar_is_both_bits() {
+            // HELLDIVERS 2's: WS_POPUP, WS_VISIBLE, WS_CLIPSIBLINGS, WS_BORDER
+            // and WS_SYSMENU, a thin border and no title bar
+            // (zhoupengjie/Wakuwaku#63).
+            assert!(!titled(0x9488_0000));
+            // A window as most are (WS_OVERLAPPEDWINDOW, shown), and maximised.
+            assert!(titled(0x14cf_0000));
+            assert!(titled(0x15cf_0000));
+            // A plain popup, shown or not; and one with a dialog frame alone.
+            assert!(!titled(0x8000_0000));
+            assert!(!titled(0x9000_0000));
+            assert!(!titled(0x9040_0000));
+        }
+    }
 }
 
 #[cfg(not(windows))]
