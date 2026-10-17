@@ -2,13 +2,17 @@
 // each mood (state.rs view), a prompt (asks.rs view), widgets with their
 // details and sizes (widgets.rs), the plugins (scripts.rs view), the
 // taskbar's programs, tray and keyboard (taskbar.rs), and desktop layouts
-// (desk.rs). Loaded after fake-tauri.js (its clock, Fake.T0).
-;(function () {
-  const T0 = window.Fake?.T0 ?? Date.now()
+// (desk.rs). Loaded after fake-tauri.js (its clock, Fake.T0). Node reads it
+// too (the tests of scenes.js): there the icons are a placeholder.
+;(function (root) {
+  const T0 = root.Fake?.T0 ?? Date.now()
+  const canDraw = typeof document !== 'undefined'
+  const NO_ICON = 'data:image/png;base64,'
 
   // A program's icon as Windows gives one (a PNG): a rounded square in its
   // colour with its letter, drawn here.
   function appIcon(color, letter, size = 48) {
+    if (!canDraw) return NO_ICON
     const c = document.createElement('canvas')
     c.width = c.height = size
     const g = c.getContext('2d')
@@ -28,6 +32,7 @@
   }
   // A tray icon: a small round mark in its colour.
   function trayIcon(color, letter, size = 32) {
+    if (!canDraw) return NO_ICON
     const c = document.createElement('canvas')
     c.width = c.height = size
     const g = c.getContext('2d')
@@ -64,6 +69,8 @@
     { ...BASE, id: 's2', agent: 'codex', name: '邮件同步', project: 'mail', mood: 'working', since: T0 - 412e3, step: { key: 'step.command', vars: { what: 'cargo test' } }, stepSince: T0 - 30e3 },
     { ...BASE, id: 's3', name: '发布说明', project: 'pet', mood: 'done', took: 73e3, reply: '写好了。' },
   ]
+  // A third at work: reading, in another project.
+  const reading = () => ({ ...BASE, id: 's3', name: '周报', project: 'docs', mood: 'working', since: T0 - 48e3, step: { key: 'step.read', vars: { file: 'style.md' } }, stepSince: T0 - 2e3 })
 
   // A permission prompt (asks.rs view).
   const ASK = { id: 1, kind: 'permission', tool: 'Bash', summary: 'npm test -- --watch=false', project: 'pet', session: 's1', always: { rules: ['Bash(npm test:*)'], dirs: [], modes: [], where: ['localSettings'] } }
@@ -185,7 +192,21 @@
         items: [{ type: 'plugin', of: 'stock', size: 's', at: [0, 0] }, { type: 'plugin', of: 'weather', size: 's', at: [2, 0] }, { type: 'widget', of: 'deploy', size: 's', at: [4, 0] }],
       },
     ],
+    // An everyday desktop (the playground's from the start): a stack, a
+    // board, two alone at the far side.
+    everyday: [
+      { id: 'wds', type: 'stack', size: 'm', ...at(0, 0), items: [{ type: 'widget', of: 'inbox-a1' }, { type: 'plugin', of: 'pomodoro' }] },
+      {
+        id: 'wdb', type: 'board', name: '工作', ...at(0, 3),
+        items: [{ type: 'widget', of: 'today', size: 'm', at: [0, 0] }, { type: 'widget', of: 'tokens', size: 's', at: [4, 0] }, { type: 'plugin', of: 'countdown', size: 's', at: [6, 0] }],
+      },
+      { id: 'wd1', type: 'widget', of: 'deploy', size: 's', ...at(16, 0) },
+      { id: 'wd2', type: 'plugin', of: 'stock', size: 's', ...at(16, 2) },
+    ],
   }
+  // A full desktop: the scene's (one alone, a stack, two boards, one
+  // folded) and two more alone at the far side.
+  DESK.full = [...DESK.scene, { id: 'wfm', type: 'widget', of: 'monitor', size: 'm', ...at(14, 0) }, { id: 'wfd', type: 'widget', of: 'deploy', size: 's', ...at(14, 2) }, { id: 'wfb', type: 'widget', of: 'build', size: 's', ...at(16, 2) }]
 
   // --- The taskbar's layouts (taskbarLayout) -------------------------------------------------
   const PARTS = ['tray', 'keys', 'quick', 'clock']
@@ -204,7 +225,21 @@
         ...PARTS,
       ],
     },
+    // As full as one would make it: a medium by her; a medium, a carousel
+    // and a stack at the right (more is wider than a 1600 px strip has room for).
+    full: {
+      left: ['her', { id: 'wfp', type: 'plugin', of: 'pomodoro', size: 'M', icon: 'timer' }],
+      center: ['start', 'apps'],
+      right: [
+        { id: 'wfw', type: 'plugin', of: 'weather', size: 'M', icon: 'weather' },
+        { id: 'wtc', type: 'carousel', items: [{ type: 'widget', of: 'inbox-a1', icon: 'mail' }, { type: 'plugin', of: 'stock' }] },
+        { id: 'wts', type: 'stack', items: [{ type: 'widget', of: 'today', icon: 'today' }, { type: 'widget', of: 'monitor', icon: 'gauge' }, { type: 'widget', of: 'tokens', icon: 'code' }] },
+        ...PARTS,
+      ],
+    },
   }
 
-  window.Fixtures = { T0, appIcon, trayIcon, session, others, ASK, WIDGETS, widget, widgets, PLUGINS, WINDOWS, TRAY, KEYS, DESK, TASKBAR }
-})()
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, WIDGETS, widget, widgets, PLUGINS, WINDOWS, TRAY, KEYS, DESK, TASKBAR }
+  if (typeof module !== 'undefined' && module.exports) module.exports = api
+  else root.Fixtures = api
+})(typeof window !== 'undefined' ? window : globalThis)

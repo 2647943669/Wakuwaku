@@ -22,9 +22,9 @@
 //                 which plays the Rust side for all its frames.
 //
 // The clock: alone, Date starts at a fixed moment (Fake.T0, 14:42 on a
-// Saturday) and runs with the page's own clock, so the taskbar's time, the
-// sessions' clocks and her frames are the same each run; ?clock=real, and
-// in the playground, the real one.
+// Saturday) and moves on as the page's timers fire (each at its due time),
+// so the taskbar's time, the sessions' clocks and her frames are the same
+// each run; ?clock=real, and in the playground, the real one.
 //
 // Where things are: in the repo (tools/preview beside src/ and pets/), or as
 // the playground is published (preview/ beside pet/, shared/, pets/, assets/).
@@ -56,8 +56,31 @@
   const T0 = realClock ? Date.now() : new Date(2026, 9, 17, 14, 42, 0).getTime()
   if (!realClock) {
     const Real = Date
-    const start = performance.now()
-    const nowMs = () => T0 + Math.floor(performance.now() - start)
+    // The clock moves only as the page's timers fire, each at the time it
+    // was due: the same in each run, however busy the machine is (with the
+    // page's own clock, a turn's 1:36 was 1:37 in a run with more at once).
+    let clock = 0
+    const nowMs = () => T0 + clock
+    const realTimeout = window.setTimeout.bind(window)
+    const realInterval = window.setInterval.bind(window)
+    const delay = ms => Math.max(0, Number(ms) || 0)
+    window.setTimeout = (fn, ms, ...args) => {
+      if (typeof fn !== 'function') return realTimeout(fn, ms, ...args)
+      const due = clock + delay(ms)
+      return realTimeout(() => {
+        if (due > clock) clock = due
+        fn(...args)
+      }, ms)
+    }
+    window.setInterval = (fn, ms, ...args) => {
+      if (typeof fn !== 'function') return realInterval(fn, ms, ...args)
+      let due = clock + delay(ms)
+      return realInterval(() => {
+        if (due > clock) clock = due
+        due = clock + delay(ms)
+        fn(...args)
+      }, ms)
+    }
     class FakeDate extends Real {
       constructor(...args) {
         super(...(args.length ? args : [nowMs()]))

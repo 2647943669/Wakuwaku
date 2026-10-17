@@ -70,6 +70,9 @@
     get F() {
       return window.Fixtures
     },
+    get world() {
+      return window.Fake.world
+    },
     $,
     $$: sel => [...document.querySelectorAll(sel)],
     wait,
@@ -179,9 +182,10 @@
   }
 
   // --- Running ---------------------------------------------------------------------------
-  // The scene's world, Windows' mode, and its home over what the world may
-  // say. Played with (no scene), the world is the playground's as it is.
-  if (scene) window.Fake.set({ mode, ...(scene.world ? scene.world(window.Fixtures) : {}), ...(scene.home ? { home: scene.home } : {}) })
+  // Windows' mode, then the shot's world (its scene's, or its own: a scene
+  // about one mode says it). Played with (no scene), the world is the
+  // playground's as it is.
+  if (scene) window.Fake.set({ mode, ...window.Scenes.worldFor(scene, window.Fixtures) })
 
   window.addEventListener('load', async () => {
     await wait(60)
@@ -190,7 +194,10 @@
     window.Fake.push()
     if (!scene) return tell({ ready: true, role })
     try {
-      if (scene?.steps) await scene.steps(P)
+      // The scene's play is her home's page's; the shot's steps the page shot's.
+      const play = role === 'island' ? window.Scenes.playOf(scene) : null
+      if (play) await play(P)
+      if (scene.steps && role === window.Scenes.stepsOn(scene)) await scene.steps(P)
     } catch (err) {
       errors.push(`steps: ${err.message}`)
     }

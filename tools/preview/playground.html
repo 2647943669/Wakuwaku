@@ -92,9 +92,33 @@
     padding: 20px max(16px, env(safe-area-inset-right, 0px)) 28px max(16px, env(safe-area-inset-left, 0px));
   }
   .wk-head h1 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
     margin: 0;
     font-size: 22px;
     font-weight: 600;
+  }
+  /* Which build this is (publish.js build --label, or the local preview's). */
+  .wk-build {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--chip);
+    color: var(--soft);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .wk-build.wk-live::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #34c759;
   }
   .wk-head p {
     margin: 6px 0 16px;
@@ -314,10 +338,30 @@
     flex: 1;
     padding: 5px 0;
   }
-  .wk-btns {
+  .wk-btns,
+  .wk-scenes {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
+  }
+  .wk-scenes button {
+    border: 0;
+    padding: 7px 8px;
+    border-radius: 8px;
+    background: var(--chip);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    line-height: 1.3;
+    cursor: pointer;
+  }
+  .wk-scenes button:hover {
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .wk-scenes button.on {
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
   }
   .wk-btn,
   .wk-btns button {
@@ -483,8 +527,8 @@
 
 <div class="wk-page">
   <header class="wk-head">
-    <h1>Wakuwaku 手感试玩</h1>
-    <p>她真正的页面跑在一张假的桌面上：悬停、点击、右键、拖动，都是她自己的代码在处理。右边的控制台替 Rust 那边发消息，比如会话变了、她打个招呼。要靠 Windows 才能做的事（开始菜单、打开程序），会在左下角说一声。</p>
+    <h1>Wakuwaku 手感试玩<!--wk-build--></h1>
+    <p>她真正的页面跑在一张假的桌面上：悬停、点击、右键、拖动，都是她自己的代码在处理。右边的控制台先挑一个场景，再替 Rust 那边发消息，比如会话变了、她打个招呼。要靠 Windows 才能做的事（开始菜单、打开程序），会在左下角说一声。</p>
   </header>
   <div class="wk-main">
     <section class="wk-stage">
@@ -506,6 +550,11 @@
     </section>
     <aside id="wk-panel" class="wk-panel" aria-label="控制台">
       <button id="wk-fold" class="wk-fold" type="button">控制台</button>
+      <div class="wk-group">
+        <h2>场景</h2>
+        <div id="wk-scenes" class="wk-scenes"></div>
+        <p id="wk-scene-note" class="wk-note"></p>
+      </div>
       <div class="wk-group">
         <h2>环境</h2>
         <div class="wk-row"><span>她的家</span><div class="wk-seg" data-seg="home"></div></div>
@@ -537,7 +586,7 @@
         <h2>其他</h2>
         <div class="wk-row"><span>没人在电脑前</span><button type="button" class="wk-switch" data-toggle="quiet" aria-label="没人在电脑前"></button></div>
         <div class="wk-row"><span>减少动画</span><button type="button" class="wk-switch" data-toggle="reduced" aria-label="减少动画"></button></div>
-        <button type="button" class="wk-btn" data-act="reset">从头开始</button>
+        <button type="button" class="wk-btn" data-act="reset">这个场景从头开始</button>
       </div>
     </aside>
   </div>
@@ -549,4 +598,5 @@
 </script>
 <script src="preview/fake-tauri.js"></script>
 <script src="preview/fixtures.js"></script>
+<script src="preview/scenes.js"></script>
 <script src="preview/playground.js"></script>
