@@ -17,7 +17,7 @@
 // next one that wants something. The words come from status.js.
 //
 // While no session needs anything, plugins (widgets.rs, widgets.js) take
-// turns in the compact island, and the open one lists them all; the wheel
+// turns in the compact island, and the open one lists her capsule's; the wheel
 // turns to the next, a click on one keeps it. One may ask to open the island
 // for itself (a nudge): never while a session wants you.
 //
@@ -341,17 +341,15 @@
 
   // Those put elsewhere: on the desktop (desk.rs), or on the taskbar while
   // it is her home. A widget is in one place (§7): neither taking turns in
-  // the closed island nor pinned at its end; the open island still lists
-  // them all, as an overview.
+  // the closed island nor pinned at its end, nor listed in the open island
+  // (that lists her capsule's own, the picker of 2026-10-17).
   let placedOut = new Set()
   let pinnedNow = false
   let listedNow = []
   // picker.js: her capsule's members (capsule.js: the capsule setting's
-  // order and modes), those pinned at its right end, and where each one put
-  // elsewhere is ('bar', 'desk'), for the open island's list.
+  // order and modes), and those pinned at its right end.
   let membersNow = []
   let pinsNow = []
-  let whereNow = new Map()
 
   // The widgets as sent: those that take turns are those on, but for the
   // monitor pinned and what is put elsewhere (deskgrid.js placement, the
@@ -361,7 +359,7 @@
     const was = widgets.length ? widgets[widgetAt % widgets.length].id : null
     allWidgets = Array.isArray(all) ? all : []
     const p = DeskGrid.placement({ all: allWidgets, home: home(), taskbar: home() === 'taskbar' ? tbLayout() : null, desk: config.deskLayout, pin: config.monitor?.pin, capsule: config.capsule })
-    ;({ monitor, pinned: pinnedNow, listed: listedNow, out: placedOut, turning: widgets, members: membersNow, pins: pinsNow, where: whereNow } = p)
+    ;({ monitor, pinned: pinnedNow, listed: listedNow, out: placedOut, turning: widgets, members: membersNow, pins: pinsNow } = p)
     const still = widgets.findIndex(w => w.id === was)
     if (still >= 0) widgetAt = still
   }
@@ -677,9 +675,6 @@
     const row = el('span', `wrow wr-${size}${isShown ? ' on' : ''}${open ? ' open' : ''}${card ? ' carded' : ''}`)
     row.dataset.widget = widget.id
     row.innerHTML = WCards.rowHTML(widget, size, ctx, { open, card })
-    // picker.js: one put elsewhere (after the capsule's own) says where.
-    const where = whereNow.get(widget.id)
-    if (where) row.querySelector('.wtwo, .wl')?.after(el('span', 'wwhere', t(lang, where === 'desk' ? 'capsule.atDesk' : 'capsule.atBar')))
     fillHer(row, 14)
     if (!open) return row
     const unfolded = el('span', 'icard')
@@ -760,10 +755,10 @@
       if (others.length > OTHERS_SHOWN) list.append(el('span', 'other rest', t(lang, 'status.moreSessions', { n: others.length - OTHERS_SHOWN })))
       lines.append(list)
     }
-    // The monitor, and the widgets, the one shown lit: under the sessions too,
-    // a session at work not all the island says (2026-10-10). All that are
-    // on, wherever each is (the desktop, the taskbar), as an overview (§7);
-    // the monitor first while it is pinned or put elsewhere.
+    // The widgets, the one shown lit: under the sessions too, a session at
+    // work not all the island says (2026-10-10). Her capsule's members in
+    // their order (deskgrid.js placement); those on the taskbar or the
+    // desktop are there, not here again (one widget, one place).
     if (listedNow.length && !(isNudging() && nudge.widget)) {
       const list = el('span', 'wlist')
       const shown = shownWidget()
@@ -2713,9 +2708,9 @@
         parts.push(line(t(lang, 'menu.size'), opt('size', 'S', t(lang, 'menu.s'), now === 'S' && !open) + opt('size', 'M', t(lang, 'menu.m'), now === 'M' && !open, sizes.includes('m') ? '' : noSize(w, 'M')) + opt('size', 'L', t(lang, 'menu.l'), open, WCards.hasCard(w) ? '' : noSize(w, 'L'))))
       }
     }
-    // Where it goes: the taskbar (only where she lives there), the island; the desktop to come.
-    // Where it is now (one place, §7): an open island's overview lists
-    // those on the desktop and the taskbar too.
+    // Where it goes: the taskbar (only where she lives there), the island, the desktop.
+    // Where it is now (one place, §7): the strip's own on the strip, her
+    // capsule's in the open island (it lists those alone).
     if (w || entry) {
       const place = entry ? 'bar' : placeOf(w)
       const notBar = home() === 'taskbar' ? '' : t(lang, 'menu.notTaskbar')
@@ -2765,10 +2760,10 @@
     }
     if (w) parts.push(item('settings', t(lang, 'menu.settings')))
     // picker.js: in the open island, a member's way of showing in her
-    // capsule (under its name), and out of it, or off where it is.
+    // capsule (under its name), and out of it (移出胶囊).
     const isle = !bar && w ? window.Picker?.isleMenu?.(w, { opt, line }) : null
     if (isle) parts.splice(1, 0, ...isle.lines)
-    parts.push(item('remove', isle?.remove || t(lang, bar && entry ? 'menu.remove' : 'menu.off')))
+    parts.push(item('remove', isle?.remove || t(lang, bar && entry ? 'menu.remove' : 'capsule.out')))
     parts.push('<div class="wmwhy" hidden></div>')
     return parts.join('')
   }
@@ -2884,7 +2879,7 @@
         // picker.js: taken off, with a way back (undo), and off once it is nowhere.
         if (window.Picker?.remove(m.where === 'bar' && entry ? { entry: entry.id, member } : { widget: w })) return
         if (m.where === 'bar' && entry) return Widgets.isGroup(entry) && member >= 0 ? removeMember(entry.id, member) : removeEntry(entry.id)
-        // Off in the island (its switch on the plugins page).
+        // Out of her capsule with no picker to do it: off (put nowhere now).
         if (w) return window.pet.settings.set({ widgetsOff: [...new Set([...(config.widgetsOff || []), w.id])] })
     }
   })
@@ -5675,9 +5670,6 @@
     },
     get members() {
       return membersNow
-    },
-    get where() {
-      return whereNow
     },
     get view() {
       return view

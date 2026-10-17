@@ -537,30 +537,16 @@
   // --- Taken off, put back ---------------------------------------------------------------
   // A widget taken off: where it was, how it comes back, in a toast.
   // what: { entry, member } (the strip: an entry by its id, one of a
-  // group's by its index), { widget } (one listed in the open island:
-  // wherever it is), { key } (her capsule's). True when it was done here.
+  // group's by its index), { widget } (one listed in the open island: her
+  // capsule's, as it lists those alone), { key } (her capsule's). True when
+  // it was done here.
   function remove(what) {
     if (what?.entry) return removeFromStrip(what.entry, what.member ?? -1)
     if (what?.key) return removeFromCapsule(what.key)
     const w = what?.widget
     if (!w) return false
     const key = C.keyOfWidget(w)
-    if (Isle.members.some(m => m.key === key)) return removeFromCapsule(key)
-    const where = Isle.where.get(w.id)
-    if (where === 'bar') {
-      const id = stripEntryOf(key)
-      if (id) return removeFromStrip(id)
-      const layout = Isle.tbLayout()
-      for (const run of P.RUNS)
-        for (const p of layout[run])
-          if (p && Widgets.isGroup(p)) {
-            const at = p.items.findIndex(m => Widgets.memberKey(m) === key)
-            if (at >= 0) return removeFromStrip(p.id, at)
-          }
-      return false
-    }
-    if (where === 'desk') return removeFromDesk(key)
-    return false
+    return Isle.members.some(m => m.key === key) && removeFromCapsule(key)
   }
 
   function removeFromStrip(id, member = -1) {
@@ -1298,16 +1284,14 @@
       if (mode === 'pin' && !C.canPin(list, key)) return note1(T('capsule.pinFull'))
       writeCapsule(C.setMode(list, key, mode))
     },
-    // The open island's menu for one listed there: its way of showing in
-    // her capsule and 移出胶囊 (a member), or off where it is.
+    // The open island's menu for one listed there (a member of her
+    // capsule, as it lists those alone): its way of showing in her capsule,
+    // and 移出胶囊.
     isleMenu(w, { opt, line }) {
       const key = C.keyOfWidget(w)
       const list = listNow()
       const m = list.find(x => x.key === key)
-      if (!m) {
-        const where = Isle.where.get(w.id)
-        return where ? { lines: [], remove: T(where === 'desk' ? 'desk.remove' : 'menu.remove') } : null
-      }
+      if (!m) return null
       const why = C.canPin(list, key) ? '' : T('capsule.pinFull')
       return {
         lines: [line(T('capsule.show'), opt('cmode', 'turn', T('capsule.turn'), m.mode === 'turn') + opt('cmode', 'pin', T('capsule.pin'), m.mode === 'pin', why) + opt('cmode', 'open', T('capsule.openOnlyLong'), m.mode === 'open'))],

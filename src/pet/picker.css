@@ -1057,22 +1057,7 @@ body.pk-dragging .pk-toasts {
   font-size: 11.5px;
 }
 
-/* --- In her island: where one put elsewhere is, a member pinned at its end ------------- */
-#island-expanded .wrow .wwhere {
-  flex: none;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  color: rgba(235, 235, 245, 0.55);
-  font-size: 10.5px;
-  line-height: 16px;
-}
-
-.isl-light #island-expanded .wrow .wwhere {
-  background: rgba(0, 0, 0, 0.05);
-  color: rgba(30, 30, 36, 0.55);
-}
-
+/* --- In her island: a member pinned at its end ------------------------------------------ */
 #island-compact .pinned .wpin {
   display: inline-flex;
   align-items: center;

@@ -36,7 +36,7 @@ test('nothing put elsewhere: all on take turns, the monitor pinned by its settin
   assert.equal(r.monitor, null)
 })
 
-test('on the desktop (alone, stacked or in a board): out of the turns and not pinned, still listed', () => {
+test('on the desktop (alone, stacked or in a board): out of the turns, not pinned, not listed', () => {
   const desk = [
     { id: 'wa', type: 'widget', of: 'monitor', size: 'm' },
     { id: 'ws', type: 'stack', size: 's', items: [{ type: 'widget', of: 'today' }, { type: 'plugin', of: 'weather' }] },
@@ -46,10 +46,10 @@ test('on the desktop (alone, stacked or in a board): out of the turns and not pi
   assert.equal(p.pinned, false)
   assert.deepEqual([...p.out].sort(), ['monitor', 'stock-aapl', 'stock-nvda', 'today', 'weather'])
   assert.deepEqual(ids(p.turning), ['tokens'])
-  // The overview: every one on, the capsule's first (the picker of
-  // 2026-10-17), then those elsewhere, each saying where.
-  assert.deepEqual(ids(p.listed), ['tokens', 'monitor', 'today', 'weather', 'stock-aapl', 'stock-nvda'])
-  assert.deepEqual([...p.where.values()], ['desk', 'desk', 'desk', 'desk', 'desk'])
+  // The open island lists her capsule's own alone (one widget, one place,
+  // the user's call of 2026-10-17): those on the desktop are there, not here.
+  assert.deepEqual(ids(p.listed), ['tokens'])
+  assert.equal(p.where, undefined)
 })
 
 test('on the taskbar: out of the island while the taskbar is her home only', () => {
@@ -57,6 +57,9 @@ test('on the taskbar: out of the island while the taskbar is her home only', () 
   const p = G.placement({ all, home: 'taskbar', taskbar: bar })
   assert.deepEqual(ids(p.turning), ['weather'])
   assert.equal(p.pinned, true)
+  // Listed in the open island: the capsule's alone; the strip's (the
+  // monitor's part too) are on the strip.
+  assert.deepEqual(ids(p.listed), ['weather'])
   // Her home the island: the taskbar's layout is not there to show them.
   assert.deepEqual(ids(G.placement({ all, home: 'island', taskbar: bar }).turning), ['today', 'tokens', 'weather', 'stock-aapl', 'stock-nvda'])
 })

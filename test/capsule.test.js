@@ -103,7 +103,7 @@ test('written as the capsule and, for the Rust side of now, widgetOrder and the 
   assert.equal(C.spinPatch({}, 7), null)
 })
 
-test('in the island: members in order (turns, pinned at its end, the open ones listed only), then those elsewhere with where they are', () => {
+test('in the island: members in order (turns, pinned at its end, the open ones listed only); those elsewhere not listed', () => {
   const capsule = {
     members: [
       { key: 'plugin:weather', mode: 'pin' },
@@ -117,15 +117,31 @@ test('in the island: members in order (turns, pinned at its end, the open ones l
   assert.deepEqual(ids(p.turning), ['tokens', 'stock-aapl', 'stock-nvda'])
   assert.deepEqual(ids(p.pins), ['weather'])
   assert.equal(p.pinned, false)
-  assert.deepEqual(ids(p.listed), ['weather', 'tokens', 'today', 'stock-aapl', 'stock-nvda', 'monitor'])
-  assert.equal(p.where.get('monitor'), 'desk')
-  assert.equal(p.where.has('weather'), false)
-  // The taskbar her home: one on the strip is listed as there; its monitor part shows its readings.
+  // The members' widgets alone (one widget, one place: the monitor is on the desktop).
+  assert.deepEqual(ids(p.listed), ['weather', 'tokens', 'today', 'stock-aapl', 'stock-nvda'])
+  assert.deepEqual(ids(p.listed), p.members.flatMap(m => ids(m.widgets)))
+  assert.equal(p.where, undefined)
+  // The taskbar her home: one on the strip is not listed; its monitor part shows its readings.
   const bar = { left: ['her'], center: ['start', 'apps'], right: [{ id: 'w1', type: 'plugin', of: 'stock', size: 'M' }, 'monitor', 'tray', 'keys', 'quick', 'clock'] }
   const q = G.placement({ all, home: 'taskbar', taskbar: bar, capsule })
   assert.equal(q.pinned, true)
   assert.deepEqual(ids(q.turning), ['tokens'])
-  assert.deepEqual(ids(q.listed), ['weather', 'tokens', 'today', 'monitor', 'stock-aapl', 'stock-nvda'])
-  assert.deepEqual([...q.where.entries()], [['monitor', 'bar'], ['stock-aapl', 'bar'], ['stock-nvda', 'bar']])
+  assert.deepEqual(ids(q.listed), ['weather', 'tokens', 'today'])
   assert.deepEqual(keys(q.members), ['plugin:weather', 'widget:tokens', 'widget:today'])
+})
+
+test("an old config: a plugin on and put nowhere is her capsule's member, listed in the open island; no migration", () => {
+  // The Plugins page's switch of before turned it on, nothing put it anywhere.
+  const old = [...all.filter(w => w.id !== 'off'), { id: 'ci-main', plugin: 'ci', on: true }]
+  for (const capsule of [undefined, { members: [{ key: 'widget:today', mode: 'turn' }] }]) {
+    const p = G.placement({ all: old, home: 'island', desk: [], capsule })
+    assert.ok(keys(p.members).includes('plugin:ci'), JSON.stringify(capsule))
+    assert.ok(ids(p.listed).includes('ci-main'))
+    assert.ok(ids(p.turning).includes('ci-main'))
+  }
+  // On the strip of her taskbar home, it is the strip's alone.
+  const bar = { left: ['her'], center: ['start', 'apps'], right: [{ id: 'w1', type: 'plugin', of: 'ci', size: 'M' }, 'tray'] }
+  const q = G.placement({ all: old, home: 'taskbar', taskbar: bar })
+  assert.equal(keys(q.members).includes('plugin:ci'), false)
+  assert.equal(ids(q.listed).includes('ci-main'), false)
 })

@@ -408,10 +408,11 @@
   // pinned at its end (two at most), those only in the open island. The
   // taskbar her home, the monitor's readings are the strip's monitor part
   // while it has one and its pin is on (#53: taken off it, it is a member
-  // as any other). The open island lists the members in their order, then
-  // those put elsewhere (where: 'bar' or 'desk', by id). all: the widgets
-  // with something to say (on or off); taskbar: her taskbar's layout as
-  // island.js tbLayout makes it whole; capsule: the capsule setting.
+  // as any other). The open island lists the members alone, in their order
+  // (one widget, one place, as Plasma has it: one on the strip or the
+  // desktop is not shown there again; the user's call of 2026-10-17). all:
+  // the widgets with something to say (on or off); taskbar: her taskbar's
+  // layout as island.js tbLayout makes it whole; capsule: the capsule setting.
   function placement({ all = [], home = 'island', taskbar = null, desk = [], pin, capsule } = {}) {
     const C = root.Capsule || (typeof require === 'function' ? require('./capsule') : null)
     const onBar = home === 'taskbar' && taskbar ? Widgets.shownOn(taskbar, all) : new Set()
@@ -425,10 +426,8 @@
     const turning = members.filter(m => m.mode === 'turn').flatMap(m => m.widgets)
     const pins = members.filter(m => m.mode === 'pin').map(m => m.widgets[0])
     const pinned = inPart || (home !== 'taskbar' && !!monitor && pins.includes(monitor))
-    const elsewhere = all.filter(w => w.on !== false && (out.has(w.id) || (inPart && w === monitor)))
-    const listed = [...members.flatMap(m => m.widgets), ...elsewhere]
-    const where = new Map(elsewhere.map(w => [w.id, onDesk.has(w.id) ? 'desk' : 'bar']))
-    return { out, monitor, pinned, turning, listed, members, pins, where }
+    const listed = members.flatMap(m => m.widgets)
+    return { out, monitor, pinned, turning, listed, members, pins }
   }
 
   // --- Let go of here from her home (picker.js, desk-drop.js) ---------------------------------
