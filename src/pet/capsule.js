@@ -180,7 +180,56 @@
     return { widgetSpin: sec, capsule: { ...(config.capsule && typeof config.capsule === 'object' && !Array.isArray(config.capsule) ? config.capsule : {}), spin: sec } }
   }
 
-  const api = { MODES, MAX_PINS, SPINS, isKey, keyOfWidget, idOfKey, storedOf, derive, effective, canPin, setMode, move, add, remove, restore, patchFor, spinOf, spinPatch }
+  // --- Its pins in the room there is (island.js, the closed capsule) ----------------------------
+  // Five pinned may not fit at its right end (the island at the top within
+  // its window, the capsule on the strip before what stands beside it). Each
+  // pin's width with its value and as its icon alone (px; the monitor's
+  // readings marked monitor), the room for them all: as they are while they
+  // fit; else the values go, the leftmost first (the monitor's readings
+  // kept the longest; once they go, the values that fit again come back,
+  // the rightmost first), then the leftmost icons too, a "+k" before the rest
+  // saying how many are not shown (none fits, not even that: none shown).
+  // { modes: ['full' | 'icon' | 'hidden'], more }.
+  function fitPins(pins, room, { gap = 8, plus = 24 } = {}) {
+    const modes = pins.map(() => 'full')
+    const width = () => {
+      const shown = pins.filter((_, i) => modes[i] !== 'hidden')
+      const hidden = pins.length - shown.length
+      const own = pins.reduce((a, p, i) => a + (modes[i] === 'full' ? p.full : modes[i] === 'icon' ? p.icon : 0), 0)
+      const items = shown.length + (hidden ? 1 : 0)
+      return own + (hidden ? plus : 0) + Math.max(0, items - 1) * gap
+    }
+    const done = () => ({ modes: [...modes], more: modes.filter(m => m === 'hidden').length })
+    if (width() <= room) return done()
+    for (const [i, p] of pins.entries()) {
+      if (p.monitor) continue
+      modes[i] = 'icon'
+      if (width() <= room) return done()
+    }
+    // The monitor's readings too, then the values back that fit again, the
+    // rightmost first (its readings take the room of several).
+    if (pins.some(p => p.monitor)) {
+      pins.forEach((p, i) => p.monitor && (modes[i] = 'icon'))
+      if (width() <= room) {
+        for (let i = pins.length - 1; i >= 0; i--) {
+          if (pins[i].monitor) continue
+          modes[i] = 'full'
+          if (width() > room) {
+            modes[i] = 'icon'
+            break
+          }
+        }
+        return done()
+      }
+    }
+    for (const i of pins.keys()) {
+      modes[i] = 'hidden'
+      if (width() <= room) return done()
+    }
+    return { modes, more: 0 }
+  }
+
+  const api = { MODES, MAX_PINS, SPINS, isKey, keyOfWidget, idOfKey, storedOf, derive, effective, canPin, setMode, move, add, remove, restore, patchFor, spinOf, spinPatch, fitPins }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Capsule = api
 })(this)

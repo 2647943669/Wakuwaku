@@ -156,3 +156,28 @@ test("a new script's widget joins her capsule taking turns (轮播), at its end,
     assert.equal(m.at(-1).mode, 'turn')
   }
 })
+
+test('five pinned in the room there is: as they are while they fit, then values off from the left (the monitor last, the others back that fit), then icons off from the left with a +k', () => {
+  // The monitor's readings (200 px, its icon 16), four others (80 px, their icons 16); 8 between, the +k 24.
+  const pins = [{ full: 200, icon: 16, monitor: true }, ...Array.from({ length: 4 }, () => ({ full: 80, icon: 16 }))]
+  const fit = room => C.fitPins(pins, room, { gap: 8, plus: 24 })
+  // All of it: 200 + 4 * 80 + 4 * 8 = 552.
+  assert.deepEqual(fit(552), { modes: ['full', 'full', 'full', 'full', 'full'], more: 0 })
+  // A little less: the leftmost other's value goes (the monitor's kept).
+  assert.deepEqual(fit(551).modes, ['full', 'icon', 'full', 'full', 'full'])
+  assert.deepEqual(fit(552 - 64 * 3).modes, ['full', 'icon', 'icon', 'icon', 'full'])
+  // The others all icons (200 + 4 * 16 + 32 = 296), then the monitor's readings.
+  assert.deepEqual(fit(296).modes, ['full', 'icon', 'icon', 'icon', 'icon'])
+  // Its readings as its icon, the values back that fit again from the right (16 + 2 * 16 + 2 * 80 + 32 = 240).
+  assert.deepEqual(fit(295).modes, ['icon', 'icon', 'icon', 'full', 'full'])
+  assert.deepEqual(fit(239).modes, ['icon', 'icon', 'icon', 'icon', 'full'])
+  // Icons alone (5 * 16 + 32 = 112), then the leftmost out with a +k before the rest.
+  assert.deepEqual(fit(112), { modes: ['icon', 'icon', 'icon', 'icon', 'icon'], more: 0 })
+  // (one out would be 4 * 16 + 24 + 4 * 8 = 120: the +k as wide as an icon and its gap, two go)
+  assert.deepEqual(fit(111), { modes: ['hidden', 'hidden', 'icon', 'icon', 'icon'], more: 2 })
+  assert.deepEqual(fit(64), { modes: ['hidden', 'hidden', 'hidden', 'hidden', 'icon'], more: 4 })
+  assert.deepEqual(fit(24), { modes: ['hidden', 'hidden', 'hidden', 'hidden', 'hidden'], more: 5 })
+  // No room even for that: none shown.
+  assert.deepEqual(fit(10), { modes: ['hidden', 'hidden', 'hidden', 'hidden', 'hidden'], more: 0 })
+  assert.deepEqual(C.fitPins([], 0), { modes: [], more: 0 })
+})

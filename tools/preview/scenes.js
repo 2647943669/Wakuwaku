@@ -331,6 +331,21 @@
     p.context('#island-expanded [data-widget="weather"]', 60, 12)
     await p.wait(300)
   }
+  // Her capsule with five pinned (the most), the monitor first, two taking
+  // turns; the strip without the monitor's part (so its readings are the
+  // capsule's: #53).
+  const PINS5 = {
+    members: [
+      { key: 'widget:monitor', mode: 'pin' },
+      { key: 'plugin:weather', mode: 'pin' },
+      { key: 'widget:today', mode: 'pin' },
+      { key: 'plugin:stock', mode: 'pin' },
+      { key: 'plugin:pomodoro', mode: 'pin' },
+      { key: 'plugin:countdown', mode: 'turn' },
+      { key: 'widget:tokens', mode: 'turn' },
+    ],
+  }
+  const NO_MONITOR_PART = { left: ['her'], center: ['start', 'apps'], right: ['tray', 'keys', 'quick', 'clock'] }
   const WHOLE = [0, 0, SCREEN[0], SCREEN[1]]
   const STRIP_VIEW = [0, above(88), SCREEN[0], 88]
   const CLOSED = [0, above(80), 440, 80]
@@ -413,6 +428,36 @@
       open: [520, 0, 560, 400],
       card: [520, 0, 560, 600],
     }),
+    // Five pinned at the capsule's end (the most there may be), the monitor
+    // among them, a session at work: in each home.
+    ...[
+      ['capsule', 'taskbar', [0, above(88), 1600, 88], '任务栏上的胶囊'],
+      ['island', 'island', [240, 0, 1120, 60], '顶部的灵动岛'],
+    ].map(([section, home, view, name]) => ({
+      id: `${section}-pins5`,
+      section,
+      title: `收起 · 干活中，固定了五个（含系统监控）· ${name}`,
+      page: 'island',
+      home,
+      view,
+      world: F => ({ ...inMood('working')(F), home, widgets: F.widgets('monitor', 'weather', 'today', 'tokens', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown'), taskbarLayout: NO_MONITOR_PART, config: { capsule: PINS5 } }),
+    })),
+    // The strip crowded (her capsule wide, two widgets after it): the
+    // leftmost pins out, a +k before the rest.
+    {
+      id: 'capsule-pins5-tight',
+      section: 'capsule',
+      title: '收起 · 固定了五个，任务栏挤：左边的收成 +k',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(88), 1600, 88],
+      world: F => ({
+        ...inMood('working')(F),
+        widgets: F.widgets('monitor', 'weather', 'today', 'tokens', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'deploy'),
+        taskbarLayout: { ...NO_MONITOR_PART, left: ['her', { id: 'wtk', type: 'widget', of: 'deploy', size: 'M' }, { id: 'wtt', type: 'widget', of: 'tokens', size: 'S' }] },
+        config: { capsule: PINS5, islandWidth: 'wide' },
+      }),
+    },
 
     // --- The flow light ----------------------------------------------------------------------
     // A turn done: the ring paused part of the way round, then the dot it leaves.

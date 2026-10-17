@@ -596,9 +596,14 @@
     // picker.js: the members pinned at its end (five at most, capsule.js): the
     // monitor's readings as they were, another its glyph and value.
     const pinned = pinsNow.length ? el('span', 'pinned') : null
-    if (pinned) pinned.innerHTML = pinsNow.map(w => (Widgets.partsOf(w) ? Widgets.partsHTML(w) : `<span class="wpin" style="color:${ink(w.color) || hue().idle}">${Widgets.iconHTML(w, lang)}<b>${WCards.esc(WCards.briefOf(w, { lang, light: inkLight, detailed: isDetailed() }).value)}</b></span>`)).join('')
+    if (pinned) pinned.innerHTML = pinsNow.map(pinHTML).join('')
     compact.replaceChildren(...(isHome() ? [] : [stillHer(24)]), ...(isBare && pinned ? [] : [turning]), ...(pinned ? [pinned] : []))
     compact.classList.toggle('bare', isBare)
+    // As many as there is room for (fitPins), what it says in the middle as wide as set.
+    if (pinned && !screenTop?.notch) {
+      if (isBare) compact.style.width = ''
+      fitPinned(pinned, pinRoom(isBare ? compact.offsetWidth - pinned.offsetWidth : slotWidth() + 12))
+    }
     // As wide as set, and the readings' width more when pinned (their own,
     // fixed); just her (and the readings) with nothing to say.
     // Round a notch: always tucked into it, just as wide and empty, whatever
@@ -611,7 +616,7 @@
       ? `${screenTop.notch}px`
       : isBare && !screenTop?.notch
         ? ''
-        : `${slotWidth() + (pinned ? pinned.offsetWidth + 12 : 0)}px`
+        : `${slotWidth() + (pinned?.offsetWidth ? pinned.offsetWidth + 12 : 0)}px`
     compactWidth = compact.style.width ? parseFloat(compact.style.width) : Math.max(MIN_W, compact.offsetWidth)
     if (key !== shownKey) {
       if (shownKey && view === 'compact') turnedAt = Date.now()
@@ -622,6 +627,63 @@
       turning.classList.add('turn')
       turning.style.animationDelay = `-${into}ms`
     }
+  }
+
+  // A pin at the capsule's end: its glyph and value; the monitor its
+  // readings, or (short of room) its glyph alone.
+  function pinHTML(w) {
+    const color = ink(w.color) || hue().idle
+    if (Widgets.partsOf(w)) return `<span class="wpin wmon"><span class="wmfull">${Widgets.partsHTML(w)}</span><span class="wmico" style="color:${color}">${Widgets.iconHTML(w, lang)}</span></span>`
+    return `<span class="wpin" style="color:${color}">${Widgets.iconHTML(w, lang)}<b>${WCards.esc(WCards.briefOf(w, { lang, light: inkLight, detailed: isDetailed() }).value)}</b></span>`
+  }
+  // Five pinned (the user's call of 2026-10-17) may not fit: each measured
+  // with its value and as its glyph alone, capsule.js fitPins says which
+  // shows how (the values going from the left first, the monitor's
+  // readings last, then the others' that fit back; then the leftmost out,
+  // a "+k" before the rest, their names in its tip).
+  function fitPinned(pinned, room) {
+    const nodes = [...pinned.children]
+    const sizes = nodes.map(n => {
+      const full = n.offsetWidth
+      n.classList.add('short')
+      const icon = n.offsetWidth
+      n.classList.remove('short')
+      return { full, icon, monitor: n.classList.contains('wmon') }
+    })
+    const more = el('span', 'wpmore', `+${nodes.length}`)
+    pinned.prepend(more)
+    const cs = getComputedStyle(pinned)
+    const own = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.borderLeftWidth) || 0)
+    const fit = window.Capsule.fitPins(sizes, room - own, { gap: parseFloat(cs.columnGap) || 8, plus: more.offsetWidth })
+    nodes.forEach((n, i) => {
+      n.classList.toggle('short', fit.modes[i] === 'icon')
+      n.classList.toggle('gone', fit.modes[i] === 'hidden')
+    })
+    more.textContent = `+${fit.more}`
+    more.hidden = !fit.more
+    more.title = pinsNow.filter((_, i) => fit.modes[i] === 'hidden').map(w => WCards.titleOf(w, isleCtx())).join('、')
+    pinned.classList.toggle('gone', fit.modes.every(m => m === 'hidden') && !fit.more)
+  }
+  // The most the pins may take (the line before them too): at the top, what
+  // keeps the island in its window as it is (BASE less the 48 px roomFor
+  // adds, so the window never grows for them); on the strip, the room up to
+  // what stands beside her capsule, so nothing there moves for them: the
+  // middle run where it is centred (her capsule before it), else the free
+  // room between the runs (growNode, and the middle's margin where nothing
+  // is centred). head: what the capsule takes besides its pins.
+  function pinRoom(head) {
+    if (home() !== 'taskbar') return BASE.width - 48 - head
+    if (isSide() || !taskbarBuilt) return Infinity
+    const pad = isCapsule() ? CAPSULE_X : 0
+    const now = len(herSlot.getBoundingClientRect()) - 2 * pad
+    const middle = zones.center
+    const at = middle.getBoundingClientRect()
+    const margin = parseFloat(getComputedStyle(middle).marginLeft) || 0
+    const grow = len(growNode.getBoundingClientRect())
+    const zone = Object.keys(zones).find(k => zones[k].contains(herSlot))
+    const centred = middle.childElementCount > 0 && !barRest.classList.contains('tb-stretch')
+    const free = zone === 'left' && centred ? (innerWidth - len(at)) / 2 - (lo(at) - margin) : zone === 'center' ? 2 * Math.min(margin, grow) : grow + (centred ? 0 : margin)
+    return now + free - RUNS_APART - head
   }
 
   // How long something new takes to slide into the compact island.
