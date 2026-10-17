@@ -33,7 +33,7 @@ node tools/preview/publish.js serve [端口] [文件夹]          # 按发布的
 - `playground.html` 只有页面内容（title、meta、一个 style、标记和脚本），托管方会套上 html/head/body；`serve`、`dev` 也照这样套。仓库里这一份只能通过 `publish.js` 打开。
 - 控制台（右边）：场景；她的家、深浅色、条带和它的边，灵动岛模式下岛的位置（左上、居中、右上：窗口像第二步的 `island.rs` 那样挪过去，页面从 `pet:update` 的 `islandAt` 知道在哪边）；会话和心情；「发生点什么」里做完、改好、出错（最上面的会话先干一会儿再结束，每按一次来一次）、打招呼、工具失败、插件冒头、新版本；「她有事告诉你时」和「停留多久」（含自定义秒数）；没人在电脑前、减少动画。结束的会话照 Rust 的样子：停留时间到了回到空闲，鼠标离开她的家也算看过（`pet_hover`）。
 - `playground.js` 替 Rust 回答两个页面（`window.WakuHost`）：设置的保存和回送、询问的回答、桌面布局、程序按钮的前后台和固定、音量、任务栏布局编辑时的键盘。它还代画 Windows 画的东西：她的右键菜单（含「添加小工具…」「编辑胶囊」）、窗口的实时预览、岛下面的亚克力；从小工具库拖到桌面时，替 Rust 把指针位置和松手转给桌面页（`desk_drag_preview`、`desk_drop`，桌面页回 `desk_drag_answer`）。指针按她的窗口那样「穿过」：哪个页面的元素在指针下面，哪个 iframe 才接住指针。需要 Windows 的事（开始菜单、打开程序、连接 agent）不做，在左下角说一声。
-- 本地还能用参数：`?home=island`、`?mode=light`、`?material=clear`、`?edge=left`；截图钩子 `?demo=open|card|done|ring|ask|answer|edit|menu|thumbs|settings|probe|check`，加 `&still=1` 让过渡停在终点。`window.WakuPlay` 给外面的检查用（当前场景、frame 载入次数、换样式次数）。无头 Edge 窗口最窄 500 px；看 400 px 宽用 `http://127.0.0.1:8765/__frame?w=400&h=860`。
+- 本地还能用参数：`?home=island`、`?mode=light`、`?material=clear`、`?edge=left`；截图钩子 `?demo=open|card|done|ring|ask|answer|edit|menu|thumbs|settings|probe|check`，加 `&still=1` 让过渡停在终点；量流光的耗电用 `?demo=flow`（一轮做完，光环一直流动，看到为止）、`noflow`（同样，只留小点）、`flowquiet`（流动 4 秒后没人在电脑前，光环停住）。`window.WakuPlay` 给外面的检查用（当前场景、frame 载入次数、换样式次数）。无头 Edge 窗口最窄 500 px；看 400 px 宽用 `http://127.0.0.1:8765/__frame?w=400&h=860`。
 
 ## 样例页（gallery）
 
