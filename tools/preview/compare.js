@@ -178,6 +178,12 @@ function render(root, out, { only, modes, scale }) {
   return r.status
 }
 
+// The shots --only picks, as render.ps1 -Only does (* and ? as -like has them).
+function picks(globs) {
+  const res = globs.map(g => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`, 'i'))
+  return id => res.some(r => r.test(id))
+}
+
 // --- The pairs, drawn (pairs.ps1) and listed (index.html) ---------------------------------
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
@@ -289,6 +295,8 @@ function main() {
     }
 
     const list = JSON.parse(fs.readFileSync(path.join(shots.after, 'scenes.json'), 'utf8'))
+    const picked = picks(o.only)
+    list.scenes = list.scenes.filter(s => picked(s.id))
     const pairs = []
     for (const s of list.scenes) {
       for (const mode of o.modes) {
@@ -321,7 +329,7 @@ function main() {
   }
 }
 
-module.exports = { readPng, diffImages, judge, parseArgs, indexPage, TOLERANCE, NOISE }
+module.exports = { readPng, diffImages, judge, parseArgs, picks, indexPage, TOLERANCE, NOISE }
 
 if (require.main === module) {
   try {

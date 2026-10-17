@@ -277,3 +277,10 @@ test('compare.js takes its options', () => {
   assert.deepEqual([o.base, o.head, o.only, o.modes, o.scale, o.keep], ['v0.3.2', 'simulator', ['scene-*', 'capsule-open'], ['light'], 1, true])
   assert.throws(() => compare.parseArgs(['--what']), /unknown/)
 })
+
+test('compare.js pairs only the shots --only picks, as render.ps1 matches them', () => {
+  const p = compare.picks(['scene-*', 'capsule-open', 'fl?w-dot'])
+  assert.deepEqual(['scene-ask', 'capsule-open', 'capsule-idle', 'flow-dot', 'Scene-Desktop', 'menu.app'].map(p), [true, true, false, true, true, false])
+  assert.equal(compare.picks(['*'])('anything'), true)
+  assert.equal(compare.picks(['menu.app'])('menuxapp'), false, 'a dot is a dot')
+})
