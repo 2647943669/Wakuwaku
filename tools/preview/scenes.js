@@ -567,6 +567,26 @@
       budget: 4000,
       world: F => ({ widgets: F.WIDGETS, deskLayout: F.DESK.scene }),
     },
+    // 移除工作台 from a board's menu: asked first, over the board (open, then folded).
+    ...[
+      ['wbw', '', '展开的'],
+      ['wbf', '-folded', '折叠的'],
+    ].map(([board, id, name]) => ({
+      id: `desktop-board-remove${id}`,
+      section: 'desktop',
+      title: `${name}工作台：「移除工作台」先问一句`,
+      page: 'desk',
+      view: [0, 0, 1240, 620],
+      budget: 4000,
+      world: F => ({ widgets: F.WIDGETS, deskLayout: F.DESK.scene }),
+      steps: async p => {
+        await p.wait(400)
+        window.Desk.openMenu(board, 'board', { x: 980, y: board === 'wbw' ? 60 : 580 })
+        await p.wait(100)
+        p.click('.wmenu [data-act="removeBoard"]')
+        await p.wait(400)
+      },
+    })),
   ]
 
   const DEFAULT_BUDGET = 3000

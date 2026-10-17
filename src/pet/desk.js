@@ -57,6 +57,8 @@
   let drag = null
   let turnedAt = 0
   let renaming = null
+  // A board's 移除 being asked ({ id }), or null.
+  let asking = null
 
   const lang = () => here?.lang || 'zh'
   const t = (key, vars) => I18n.t(lang(), key, vars)
@@ -104,6 +106,7 @@
     for (const e of entries) drawEntry(e, at.get(e.id))
     if (menu && !nodes.has(menu.id)) closeMenu()
     if (lib && !nodes.has(lib.id)) closeLib()
+    if (asking) nodes.has(asking.id) ? placeAsk() : endAsk(false)
     // A board here, and its glass not blurred yet: the picture again (once for each).
     if (entries.some(G.isBoard) && !paper40 && lastPaper && paper40For !== lastPaper) {
       paper40For = lastPaper
@@ -419,7 +422,9 @@
       if (G.isStack(n.entry)) list.push([n.x, n.y, w + 18, h + 28, 22])
       else list.push([n.x, n.y, w, h, 22])
     }
-    for (const pop of [menuEl, libEl]) {
+    // A board's 移除 asked (askEl) as a menu is: over the board, the whole
+    // display caught while it shows, a press off it keeping the board.
+    for (const pop of [menuEl, libEl, askEl]) {
       const m = pop && !pop.hidden ? pop.getBoundingClientRect() : null
       if (m) list.push([m.left, m.top, m.width, m.height, 12])
     }
@@ -548,6 +553,7 @@
     if (ev.button !== 0 || ev.target.closest('.tools, .sdots, .bbtns, input')) return
     closeMenu()
     closeLib()
+    endAsk(false)
     const tile = isBoard(n) ? tileOf(ev.target) : -1
     const tileEl = tile >= 0 ? n.el.querySelector(`.tile[data-i="${tile}"]`) : null
     const tr = tile >= 0 ? G.tileRect(n.entry.items[tile].at, n.entry.items[tile].size) : { x: 0, y: 0 }
@@ -1016,7 +1022,7 @@
 
   // A board's own (its More, or a right click on its pane): its name,
   // folded or open, apart (each alone on the desktop), gone (its widgets
-  // back in the capsule).
+  // back in the capsule; asked first, askRemove).
   function boardMenuHTML(b) {
     return [
       `<div class="wmh"><b>${esc(boardLabel(b))}${b.items.length ? ` · ${esc(t('desk.boardCount', { n: b.items.length }))}` : ''}</b></div>`,
@@ -1086,6 +1092,7 @@
     ev => {
       if (menu && !menuEl.contains(ev.target) && !ev.target.closest('.tools button, .bbtns button')) closeMenu()
       if (lib && !libEl.contains(ev.target) && !ev.target.closest('.bbtns button')) closeLib()
+      if (asking && !ev.target.closest?.('.bask-card')) endAsk(false)
     },
     true,
   )
@@ -1191,11 +1198,76 @@
         return n && fold(n)
       case 'apart':
         return keepLayout(G.boardApart(layout, b.id, newId))
-      // Its widgets back in the capsule: on the desktop no more.
+      // Its widgets back in the capsule, on the desktop no more: asked first.
       case 'removeBoard':
-        return keepLayout(layout.filter(o => o.id !== b.id))
+        return n && askRemove(n)
     }
   }
+
+  // --- 移除工作台, asked first (the user's call of 2026-10-17) ------------------------------------
+  // It sends the board's widgets back to her capsule with no way back, so
+  // a dim layer over the board's own area asks first, in the menu's look:
+  // 移除「工作」？, a grey line on what becomes of its widgets, 取消 and a red
+  // 移除 (folded, all of it in one line over its title bar). 取消, Esc, or a
+  // press anywhere off its card keeps the board. While it shows, the window
+  // takes the mouse over it as over a menu (shapes: the whole display, a
+  // press elsewhere desk:outside) and the keyboard for Esc (desk_type).
+  const askEl = document.createElement('div')
+  askEl.className = 'bask'
+  askEl.hidden = true
+  askEl.setAttribute('role', 'alertdialog')
+  document.body.append(askEl)
+
+  function askRemove(n) {
+    const b = n.entry
+    if (!isBoard(n)) return
+    endRename(true)
+    asking = { id: b.id }
+    const k = b.items.length
+    const sub = k ? (k === 1 ? t('desk.removeOne') : t('desk.removeSome', { n: k })) : t('desk.removeEmpty')
+    askEl.innerHTML = `<div class="bask-card"><div class="bask-text"><b class="bask-q"></b><span class="bask-sub"></span></div><div class="bask-btns"><button type="button" data-ask="no"></button><button type="button" class="bask-yes" data-ask="yes"></button></div></div>`
+    askEl.querySelector('.bask-q').textContent = t('desk.removeAsk', { name: boardLabel(b) })
+    askEl.querySelector('.bask-sub').textContent = sub
+    askEl.querySelector('[data-ask="no"]').textContent = t('desk.cancel')
+    askEl.querySelector('[data-ask="yes"]').textContent = t('desk.removeIt')
+    askEl.setAttribute('aria-label', t('desk.removeAsk', { name: boardLabel(b) }))
+    askEl.classList.toggle('folded', !!b.folded)
+    askEl.hidden = false
+    placeAsk()
+    // The keyboard for Esc, 取消 the one it starts on (Enter keeps the board).
+    invoke('desk_type', { on: true })
+      .catch(() => {})
+      .then(() => asking?.id === b.id && askEl.querySelector('[data-ask="no"]')?.focus({ preventScroll: true }))
+  }
+  // Over the board's box where it stands.
+  function placeAsk() {
+    const n = asking && nodes.get(asking.id)
+    if (!n) return
+    const { w, h } = G.boardBox(n.entry)
+    Object.assign(askEl.style, { left: `${n.x}px`, top: `${n.y}px`, width: `${w}px`, height: `${h}px` })
+    shapes()
+  }
+  // Kept (ok: removed, its widgets back in the capsule).
+  function endAsk(ok) {
+    const a = asking
+    if (!a) return
+    asking = null
+    askEl.hidden = true
+    if (askEl.contains(document.activeElement)) document.activeElement.blur()
+    invoke('desk_type', { on: false }).catch(() => {})
+    shapes()
+    if (ok) keepLayout(layout.filter(o => o.id !== a.id))
+  }
+  askEl.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-ask]')
+    if (b) endAsk(b.dataset.ask === 'yes')
+  })
+  askEl.addEventListener('contextmenu', ev => ev.preventDefault())
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape' || !asking) return
+    ev.preventDefault()
+    endAsk(false)
+  })
 
   // --- Its Add: the widgets there are, each where it is now; a press puts it in -----------------
   const libEl = document.createElement('div')
@@ -1301,10 +1373,12 @@
         hoverTile(n, n.el === under ? el.closest('.tile') : null)
       }
     }),
-    // A press elsewhere (on the desktop, another window): the menu goes.
+    // A press elsewhere (on the desktop, another window): the menu goes,
+    // and a board's 移除 asked is not.
     on('desk:outside', () => {
       closeMenu()
       closeLib()
+      endAsk(false)
     }),
   ])
     .then(() => invoke('desk_ready'))
@@ -1335,6 +1409,8 @@
       if (n && b) openLib(n, b.getBoundingClientRect())
     },
     rename: id => nodes.get(id) && startRename(nodes.get(id)),
+    askRemove: id => nodes.get(id) && askRemove(nodes.get(id)),
+    asking: () => asking?.id || null,
     shake: id => shake(nodes.get(id)),
     toast: (id, text) => nodes.get(id) && toast(nodes.get(id), text),
     paperAgain: () => lastPaper && setPaper(lastPaper),
