@@ -445,6 +445,11 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "taskbarLayout" => v.is_null() || is_taskbar_layout(v),
         // The desktop's widgets (desk.rs, deskgrid.js).
         "deskLayout" => is_desk_layout(v),
+        // Phase 2: "boardSets", boards kept as combos (the picker's 组合),
+        // checked as deskgrid.js isBoardSets checks them: up to 20 of { id
+        // (s + up to 15 of a-z0-9), name (1 to 16 chars, trimmed, each once),
+        // items (1 to 16 tiles { type, of, size, at } as a board's, none
+        // over another, each widget once), saved (ms) }. Dropped until then.
         // The programs' buttons in the order dragged: their keys (paths).
         "taskbarOrder" => v.as_array().is_some_and(|keys| keys.len() <= 200 && keys.iter().all(|k| k.as_str().is_some_and(|s| s.len() <= 1024))),
         "hold" => v.as_str() == Some("seen") || matches!(v.as_u64(), Some(8 | 30 | 120)),

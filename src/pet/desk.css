@@ -955,6 +955,18 @@ body.lw .sdots button.on {
   -webkit-user-select: text;
 }
 
+/* 存为组合…: the combo's name typed in its place, said so before it. */
+.bsave {
+  flex: none;
+  color: var(--w-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bname-in.save {
+  outline-color: var(--w-accent);
+}
+
 /* Its tiles: flat, a hairline, the glow a little fainter (55%). */
 .wd.tile {
   position: absolute;

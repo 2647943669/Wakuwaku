@@ -20,7 +20,8 @@
 // its widgets' glyphs. Its name: a double-click, Enter or Esc.
 // Right-click: its menu, as the taskbar's and the capsule's. Ctrl and a
 // press (or a rectangle dragged over the desktop) picks several, which
-// their menu makes one board.
+// their menu makes one board; a board's menu keeps it as a combo (存为组合…)
+// for the picker to put up again (desk-drop.js).
 //
 // The window lets clicks through but where a widget is (desk.rs polls the
 // pointer against the shapes this page sends, desk_shapes); while a press is
@@ -853,26 +854,33 @@
 
   // Its name typed in its title bar (a double-click, or its menu): Enter
   // keeps it, Esc leaves it as it was, a press elsewhere keeps it. The
-  // window takes the keyboard for it alone (desk.rs desk_type).
-  function startRename(n) {
+  // window takes the keyboard for it alone (desk.rs desk_type). save: its
+  // menu's 存为组合…, the combo's name typed there the same way (its own
+  // name to start with), Enter keeping the combo, Esc or a press elsewhere not.
+  function startRename(n, save = false) {
     if (renaming || !isBoard(n)) return
     const name = n.el.querySelector('.bname')
     if (!name) return
     closeMenu()
     const input = document.createElement('input')
-    input.className = 'bname-in'
+    input.className = save ? 'bname-in save' : 'bname-in'
     input.maxLength = G.BOARD_NAME
     input.spellcheck = false
     input.value = boardLabel(n.entry)
-    name.replaceWith(input)
-    renaming = { n, input }
+    if (save) {
+      const label = document.createElement('span')
+      label.className = 'bsave'
+      label.textContent = t('desk.saveAs')
+      name.replaceWith(label, input)
+    } else name.replaceWith(input)
+    renaming = { n, input, save }
     input.addEventListener('keydown', ev => {
       if (ev.key === 'Enter') endRename(true)
       else if (ev.key === 'Escape') endRename(false)
       else return
       ev.preventDefault()
     })
-    input.addEventListener('blur', () => endRename(true))
+    input.addEventListener('blur', () => endRename(!save))
     keys().then(() => {
       if (renaming?.input !== input) return
       input.focus()
@@ -886,11 +894,33 @@
     keys()
     const b = r.n.entry
     const name = r.input.value.trim()
-    const named = ok && G.isBoardName(name) && name !== boardLabel(b)
     r.n.key = ''
+    if (r.save) {
+      draw()
+      return ok && G.isBoardName(name) && name && keepSet(b, name)
+    }
+    const named = ok && G.isBoardName(name) && name !== boardLabel(b)
     if (!named) return draw()
     const { name: _, ...rest } = b
     keepLayout(layout.map(o => (o.id === b.id ? (name ? { ...rest, name } : rest) : o)))
+  }
+
+  // --- A board kept as a combo (存为组合…; settings boardSets, deskgrid.js) ------------------------
+  // Its tiles' widgets, sizes and places under the name typed: one of that
+  // name replaced, else added (twenty at most, the oldest going); said on
+  // the board. Read and written as the settings are (settings_get,
+  // settings_set: settings.rs keeps boardSets from phase 2).
+  async function keepSet(b, name) {
+    let got = null
+    try {
+      got = await invoke('settings_get')
+    } catch {}
+    const id = `s${Date.now().toString(36).slice(-6)}${Math.random().toString(36).slice(2, 6)}`
+    const r = G.saveSet(G.setsOf(got?.settings?.boardSets), G.setOf(b, { id, name, saved: Date.now() }))
+    invoke('settings_set', { patch: { boardSets: r.list } }).catch(() => {})
+    const said = t(r.replaced ? 'desk.setUpdated' : 'desk.setSaved', { name })
+    const n = nodes.get(b.id)
+    if (n) toast(n, r.dropped ? `${said} · ${t('desk.setDropped', { n: G.MAX_SETS, name: r.dropped.name })}` : said)
   }
 
   // --- A stack turned (§7, §9): the one on top up and away, the next rising --------------------
@@ -1063,13 +1093,15 @@
   }
 
   // A board's own (its More, or a right click on its pane): its name,
-  // folded or open, apart (each alone on the desktop), gone (its widgets
-  // back in the capsule; asked first, askRemove).
+  // folded or open, kept as a combo (for the picker's 组合), apart (each
+  // alone on the desktop), gone (its widgets back in the capsule; asked
+  // first, askRemove).
   function boardMenuHTML(b) {
     return [
       `<div class="wmh"><b>${esc(boardLabel(b))}${b.items.length ? ` · ${esc(t('desk.boardCount', { n: b.items.length }))}` : ''}</b></div>`,
       item('rename', t('desk.rename')),
       item('fold', t(b.folded ? 'desk.unfold' : 'desk.fold')),
+      item('saveSet', t('desk.saveSet'), b.items.length ? '' : t('desk.boardEmpty')),
       '<div class="wmsep"></div>',
       item('apart', t('desk.boardApart'), b.items.length ? '' : t('desk.boardEmpty'), '', t('desk.boardApartSub')),
       item('removeBoard', t('desk.boardRemove'), '', '', t('desk.boardRemoveSub')),
@@ -1239,6 +1271,8 @@
         return n && startRename(n)
       case 'fold':
         return n && fold(n)
+      case 'saveSet':
+        return n && startRename(n, true)
       case 'apart':
         return keepLayout(G.boardApart(layout, b.id, newId))
       // Its widgets back in the capsule, on the desktop no more: asked first.
@@ -1568,6 +1602,8 @@
       paintSelected()
     },
     selected: () => [...selected],
+    // Its name typed: as 改名 does, or (save) as 存为组合… does.
+    saveSet: id => nodes.get(id) && startRename(nodes.get(id), true),
     shake: id => shake(nodes.get(id)),
     toast: (id, text) => nodes.get(id) && toast(nodes.get(id), text),
     paperAgain: () => lastPaper && setPaper(lastPaper),

@@ -216,6 +216,34 @@
   // folded) and two more alone at the far side.
   DESK.full = [...DESK.scene, { id: 'wfm', type: 'widget', of: 'monitor', size: 'm', ...at(14, 0) }, { id: 'wfd', type: 'widget', of: 'deploy', size: 's', ...at(14, 2) }, { id: 'wfb', type: 'widget', of: 'build', size: 's', ...at(16, 2) }]
 
+  // --- Combos (settings boardSets: boards kept to put up again, the picker's 组合) ---------------
+  const day = 24 * 3600e3
+  const BOARD_SETS = [
+    {
+      id: 'scode',
+      name: '写代码',
+      items: [
+        { type: 'widget', of: 'today', size: 'm', at: [0, 0] },
+        { type: 'widget', of: 'tokens', size: 's', at: [4, 0] },
+        { type: 'widget', of: 'deploy', size: 's', at: [6, 0] },
+        { type: 'widget', of: 'monitor', size: 'm', at: [0, 2] },
+        { type: 'plugin', of: 'pomodoro', size: 's', at: [4, 2] },
+      ],
+      saved: T0 - 3 * day,
+    },
+    {
+      id: 'slazy',
+      name: '摸鱼',
+      items: [
+        { type: 'plugin', of: 'weather', size: 'm', at: [0, 0] },
+        { type: 'plugin', of: 'stock', size: 'm', at: [4, 0] },
+        { type: 'widget', of: 'inbox-a1', size: 's', at: [0, 2] },
+        { type: 'plugin', of: 'countdown', size: 's', at: [2, 2] },
+      ],
+      saved: T0 - day,
+    },
+  ]
+
   // --- The taskbar's layouts (taskbarLayout) -------------------------------------------------
   const PARTS = ['tray', 'keys', 'quick', 'clock']
   const TASKBAR = {
@@ -247,7 +275,7 @@
     },
   }
 
-  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, WIDGETS, widget, widgets, PLUGINS, SLEEPING, WINDOWS, TRAY, KEYS, DESK, TASKBAR }
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, WIDGETS, widget, widgets, PLUGINS, SLEEPING, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Fixtures = api
 })(typeof window !== 'undefined' ? window : globalThis)

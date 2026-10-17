@@ -9,10 +9,15 @@
 // open), or the edit bar's 添加小工具; in the island's home her menu's
 // 添加小工具… (the picker alone; island:picker).
 //
-// What it has: a search, the kinds (全部 系统 效率 信息 邮件 脚本), a card
-// for each widget (its icon, name and what it is, and "已放 N" where it is
-// put), 获取更多… (to come) and 管理… (Settings, 插件). One instance of each
-// for now: a card put again is the same widget moved.
+// What it has: a search, the kinds (全部 系统 效率 信息 邮件 脚本 组合), a
+// card for each widget (its icon, name and what it is, and "已放 N" where it
+// is put), 获取更多… (to come) and 管理… (Settings, 插件). One instance of each
+// for now: a card put again is the same widget moved. 组合: the boards kept
+// as combos (a board's 存为组合…, settings boardSets), each card its name,
+// how many and their icons; dragged onto the desktop its board is put up
+// again there (desk-drop.js), pressed on the main display's next free
+// place; its widgets come from wherever they are and are on; on the strip
+// or in her capsule, no. A right press (or its ⋯): 改名, 删除 (with 撤销).
 //
 // Where one goes, by where it is let go of (picker.js hit):
 //   the strip      a gap opens where it would go, the others make room
@@ -56,8 +61,9 @@
   const inRect = (x, y, r) => !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
   const rectOf = node => (node && node.isConnected && !node.hidden ? node.getBoundingClientRect() : null)
 
-  // Its kinds, and which a plugin she runs is (scripts.rs PLUGINS).
-  const CATS = ['all', 'system', 'work', 'info', 'mail', 'script']
+  // Its kinds, and which a plugin she runs is (scripts.rs PLUGINS); 组合:
+  // the boards kept as combos (settings boardSets, a board's 存为组合…).
+  const CATS = ['all', 'system', 'work', 'info', 'mail', 'script', 'sets']
   const PLUGIN_CAT = { weather: 'info', stock: 'info', pomodoro: 'work', countdown: 'work', stretch: 'work', ci: 'script', devserver: 'script' }
   const BUILT_IN_CAT = { monitor: 'system', today: 'work', tokens: 'work' }
   // The spacers' marks (the layout's own parts, on the strip alone).
@@ -66,6 +72,8 @@
     gap: '<path d="M5 7v10M19 7v10M8 12h8"/>',
     sep: '<path d="M12 4v16"/>',
   }
+  // A combo's mark: a board's pane, its tiles in it.
+  const SET_MARK = '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 8.5h18M7 12h4v4H7zM13 12h4v4h-4z"/>'
   // The gap a widget opens on the strip as it comes (its width, px).
   const GAP_W = { M: 112, S: 64, part: 96, flex: 40, gap: 20, sep: 14, side: 44 }
   // Dragged this far above the strip (across it), a widget from it goes.
@@ -157,12 +165,15 @@
     for (const w of all.filter(x => x.from === 'script' && !x.plugin)) out.push({ key: `widget:${w.id}`, kind: 'script', cat: 'script', w, name: Widgets.words(Isle.lang, w, detailed).label || T('taskbar.w.widget'), note: T('picker.d.script') })
     // The layout's spacers: the strip alone has them.
     if (home() === 'taskbar') for (const type of ['flex', 'gap', 'sep']) out.push({ key: `spacer:${type}`, kind: 'layout', cat: 'system', spacer: type, name: T(`taskbar.w.${type}`), note: T(`taskbar.lib.note.${type}`) })
+    // The combos: a board each, to put up on the desktop again.
+    for (const s of setsNow()) out.push({ key: `set:${s.id}`, kind: 'set', cat: 'sets', set: s, name: s.name, note: T('desk.boardCount', { n: s.items.length }) })
     return out
   }
 
-  // The icon in its colour's tint (a spacer's: the strip's grey).
+  // The icon in its colour's tint (a spacer's: the strip's grey; a combo's: a board's tiles).
   function markOf(card) {
     if (card.spacer) return `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SPACER_MARK[card.spacer]}</svg>`
+    if (card.set) return `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SET_MARK}</svg>`
     const w = card.w || { id: card.key.split(':')[1], icon: card.plugin?.icon, label: card.name }
     return Widgets.iconHTML(w, Isle.lang)
   }
@@ -201,22 +212,32 @@
     const q = query.trim().toLowerCase()
     const shown = cards.filter(c => (cat === 'all' || c.cat === cat) && (!q || `${c.name} ${c.note} ${c.key} ${t('en', c.plugin ? `w.ex.${c.plugin.id}` : 'none')}`.toLowerCase().includes(q)))
     if (!shown.length) {
-      grid.replaceChildren(el('p', 'pk-empty', q ? T('picker.none', { q: query.trim() }) : T('picker.noneHere')))
+      grid.replaceChildren(el('p', 'pk-empty', q ? T('picker.none', { q: query.trim() }) : T(cat === 'sets' ? 'picker.setsNone' : 'picker.noneHere')))
       return
     }
     const at = placesOf()
     grid.replaceChildren(
       ...shown.map(c => {
-        const b = el('button', 'pk-card')
+        const b = el('button', c.set ? 'pk-card pk-setcard' : 'pk-card')
         b.type = 'button'
         b.dataset.key = c.key
         b.style.setProperty('--c', colorOf(c))
-        b.innerHTML = `<span class="pk-wi">${markOf(c)}</span><span class="pk-n">${esc(c.name)}</span><span class="pk-d">${esc(c.note)}</span><span class="pk-bd" hidden></span>`
+        // A combo's: its name, how many, up to six of its widgets' icons, and a ⋯ (改名, 删除).
+        const more = c.set ? `<span class="pk-icons">${setIcons(c.set)}</span><span class="pk-more" role="button" data-cmore title="${esc(T('desk.more'))}">${FI('E712')}</span>` : ''
+        b.innerHTML = `<span class="pk-wi">${markOf(c)}</span><span class="pk-n">${esc(c.name)}</span><span class="pk-d">${esc(c.note)}</span>${more}<span class="pk-bd" hidden></span>`
         b.title = c.note
         return b
       }),
     )
     drawBadges(at)
+  }
+  // A combo's widgets as icons, each in its colour (one gone: its kind's glyph, grey).
+  function setIcons(set) {
+    const icons = set.items.slice(0, 6).map(t => {
+      const w = widgetOfKey(`${t.type}:${t.of}`)
+      return `<span class="pk-mi" style="--c:${w ? colorOf({ w }) : 'currentColor'}">${w ? Widgets.iconHTML(w, Isle.lang) : WCards.memberGlyph(t)}</span>`
+    })
+    return icons.join('') + (set.items.length > 6 ? `<span class="pk-mi pk-mn">+${set.items.length - 6}</span>` : '')
   }
   function drawBadges(at = placesOf()) {
     for (const b of grid.querySelectorAll('.pk-card')) {
@@ -228,6 +249,8 @@
     }
   }
 
+  // What a press and a drag do (the combos: the desktop alone).
+  const drawHint = () => ($('.pk-hint').textContent = T(cat === 'sets' ? 'picker.hintSets' : home() === 'taskbar' ? 'picker.hint' : 'picker.hintIsland'))
   function drawPicker() {
     theme()
     pk.setAttribute('aria-label', T('picker.title'))
@@ -240,7 +263,7 @@
     $('[data-pk="manage"]').textContent = T('picker.manage')
     search.placeholder = T('picker.search')
     search.setAttribute('aria-label', T('picker.search'))
-    $('.pk-hint').textContent = T(home() === 'taskbar' ? 'picker.hint' : 'picker.hintIsland')
+    drawHint()
     drawChips()
     drawGrid()
   }
@@ -268,6 +291,8 @@
     open = false
     pk.classList.remove('pk-open')
     menu.hidden = true
+    endRenameSet(true)
+    closeSetMenu()
     note.hidden = true
     query = ''
     search.value = ''
@@ -292,6 +317,7 @@
     if (b.classList.contains('pk-chip')) {
       cat = b.dataset.cat
       drawChips()
+      drawHint()
       return drawGrid()
     }
     const what = b.dataset.pk
@@ -319,12 +345,24 @@
     query = search.value
     drawGrid()
   })
-  // A card by the keyboard (Enter, Space): added as a press adds it.
+  // A card by the keyboard (Enter, Space): added as a press adds it. A
+  // combo's ⋯: its menu.
   grid.addEventListener('click', e => {
     const b = e.target.closest('.pk-card')
-    if (!b || e.detail !== 0) return
+    if (!b) return
+    if (e.target.closest('[data-cmore]')) {
+      e.stopPropagation()
+      const r = e.target.closest('[data-cmore]').getBoundingClientRect()
+      return openSetMenu(b.dataset.key, r.right, r.bottom + 4)
+    }
+    if (e.detail !== 0) return
     const c = cards.find(x => x.key === b.dataset.key)
     if (c) pressAdd(c, b)
+  })
+  // A combo's card, a right press: its menu there.
+  grid.addEventListener('contextmenu', e => {
+    const b = e.target.closest('.pk-setcard')
+    if (b) openSetMenu(b.dataset.key, e.clientX, e.clientY)
   })
 
   // --- Placing ---------------------------------------------------------------------------
@@ -487,9 +525,129 @@
     flash(home() === 'taskbar' ? Isle.herSlot : Isle.island)
   }
 
+  // --- Combos: boards kept to put up again (settings boardSets) ------------------------------
+  // Those kept (the settings as this page has them, else as settings_get
+  // said), each checked as settings.rs will check them (deskgrid.js).
+  const setsNow = () => G.setsOf(Array.isArray(Isle.config.boardSets) ? Isle.config.boardSets : snap?.settings?.boardSets)
+  // A member still there: a plugin she has (not yet asked: as if), a widget
+  // with something to say (a mailbox gone, a script's widget gone: not).
+  const known = m => (m.type === 'plugin' ? !snap?.plugins || snap.plugins.some(p => p.id === m.of) : allNow().some(w => w.id === m.of))
+  // What goes over to the desktop's page: the combo with those still there.
+  function setToSend(set) {
+    const items = set.items.filter(known)
+    return { set: { id: set.id, name: set.name, items }, skipped: set.items.length - items.length }
+  }
+  // Up on the desktop (its page put it there, or this one did): its widgets
+  // off the strip (one place each; out of her capsule as placement has it),
+  // on, and those left out said.
+  function setUp(items, skipped) {
+    const keys = items.map(t => `${t.type}:${t.of}`)
+    if (home() === 'taskbar') {
+      let layout = Isle.tbLayout()
+      for (const key of keys) layout = offStrip(layout, key)
+      if (JSON.stringify(layout) !== JSON.stringify(Isle.tbLayout())) Isle.keepLayout(layout)
+    }
+    for (const key of keys) Isle.placedAt.set(key, Date.now())
+    switchOn(keys)
+    Isle.askPlugins(true)
+    refresh()
+    if (skipped) note1(T('picker.setSkipped', { n: skipped }))
+    askFirst(keys)
+  }
+  // Pressed (or let go of over the desktop with no word from its page): up
+  // on the main display, where its page finds room (no place of its own:
+  // deskgrid.js settle, from the top right, the next free one).
+  function putSet(set) {
+    const { board, skipped } = G.boardFromSet(set, { known, newId: Isle.newId })
+    if (!board) return note1(T('picker.setGone'))
+    Isle.keepDeskLayout(G.withBoard(Isle.config.deskLayout, board, { newId: Isle.newId }))
+    setUp(board.items, skipped)
+  }
+
+  // Its menu (a right press on its card, or its ⋯): 改名, 删除.
+  const smenu = el('div', 'pk-menu pk-smenu')
+  smenu.hidden = true
+  smenu.innerHTML = '<button type="button" data-sm="rename"></button><button type="button" data-sm="delete"></button>'
+  pk.append(smenu)
+  let smenuFor = ''
+  function openSetMenu(key, x, y) {
+    smenuFor = key
+    smenu.querySelector('[data-sm="rename"]').textContent = T('desk.rename')
+    smenu.querySelector('[data-sm="delete"]').textContent = T('picker.setDelete')
+    smenu.hidden = false
+    const p = pk.getBoundingClientRect()
+    smenu.style.left = `${Math.round(Math.max(8, Math.min(x - p.left, p.width - smenu.offsetWidth - 8)))}px`
+    smenu.style.top = `${Math.round(Math.max(8, Math.min(y - p.top, p.height - smenu.offsetHeight - 8)))}px`
+    smenu.style.right = 'auto'
+  }
+  const closeSetMenu = () => {
+    smenu.hidden = true
+    smenuFor = ''
+  }
+  smenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-sm]')
+    const id = smenuFor.slice(4)
+    closeSetMenu()
+    if (!b || !id) return
+    if (b.dataset.sm === 'rename') return renameSetCard(id)
+    deleteSet(id)
+  })
+  // Gone, with a way back for 10 s.
+  function deleteSet(id) {
+    const { list, record } = G.removeSet(setsNow(), id)
+    if (!record) return
+    setConfig({ boardSets: list })
+    if (open) drawGrid()
+    undoToast(record.set.name, () => {
+      setConfig({ boardSets: G.restoreSet(setsNow(), record) })
+      if (open) drawGrid()
+    })
+  }
+  // Its name typed over its card's: Enter or a press elsewhere keeps it (not
+  // another's name), Esc leaves it.
+  let renaming = null
+  function renameSetCard(id) {
+    const card = grid.querySelector(`[data-key="set:${CSS.escape(id)}"]`)
+    const s = setsNow().find(x => x.id === id)
+    if (!card || !s) return
+    const r = card.querySelector('.pk-n').getBoundingClientRect()
+    const p = pk.getBoundingClientRect()
+    const input = el('input', 'pk-rename')
+    input.value = s.name
+    input.maxLength = G.BOARD_NAME
+    input.spellcheck = false
+    Object.assign(input.style, { left: `${Math.round(r.left - p.left - 4)}px`, top: `${Math.round(r.top - p.top - 3)}px`, width: `${Math.round(card.getBoundingClientRect().right - r.left - 8)}px` })
+    pk.append(input)
+    renaming = { id, input }
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') endRenameSet(true)
+      else if (e.key === 'Escape') endRenameSet(false)
+      else return
+      e.preventDefault()
+      e.stopPropagation()
+    })
+    input.addEventListener('blur', () => endRenameSet(true))
+    input.focus({ preventScroll: true })
+    input.select()
+  }
+  function endRenameSet(ok) {
+    const r = renaming
+    if (!r) return
+    renaming = null
+    r.input.remove()
+    const s = setsNow().find(x => x.id === r.id)
+    const name = r.input.value.trim()
+    if (!ok || !s || !name || name === s.name) return
+    const list = G.renameSet(setsNow(), r.id, name)
+    if (!list) return note1(T('picker.setNameTaken', { name }))
+    setConfig({ boardSets: list })
+    if (open) drawGrid()
+  }
+
   // A press on a card: just before the tray (the island's home: into the
-  // capsule). One on the strip already: shown where it is.
+  // capsule). One on the strip already: shown where it is. A combo: up on the desktop.
   function pressAdd(card, node) {
+    if (card.set) return putSet(card.set)
     if (home() !== 'taskbar') {
       if (card.spacer) return refuse(node, T('picker.onlyStrip'))
       if (Isle.members.some(m => m.key === card.key)) {
@@ -810,7 +968,7 @@
   grid.addEventListener('pointerdown', e => {
     lastPointer = e.pointerType
     const b = e.target.closest('.pk-card')
-    if (!b || e.button !== 0 || drag) return
+    if (!b || e.button !== 0 || drag || e.target.closest('[data-cmore]')) return
     e.preventDefault()
     menu.hidden = true
     press = { src: 'card', key: b.dataset.key, node: b, x: e.clientX, y: e.clientY, id: e.pointerId }
@@ -871,7 +1029,11 @@
     d.anywhere = !d.stays && !d.card?.spacer && !(d.entry && typeof d.entry === 'object' && !Widgets.isSource(d.entry) && !Widgets.isGroup(d.entry))
     d.desk = d.anywhere && !!d.key
     d.capsuleKeys = d.anywhere ? (d.keys?.length ? d.keys : d.key ? [d.key] : []) : []
-    if (d.desk) {
+    if (d.card?.set) {
+      // A combo: the desktop alone (its board there again).
+      d.set = d.card.set
+      d.capsuleKeys = []
+    } else if (d.desk) {
       const w = widgetOfKey(d.key)
       d.item = memberOf(d.key, d.card)
       d.size = !w || Widgets.sizesOf(w).includes('m') ? 'm' : 's'
@@ -950,6 +1112,8 @@
         return d.src === 'strip' ? (d.stays ? [T('taskbar.edit.fixed'), 'no'] : [T('picker.dropRemove'), 'rm']) : [T('picker.backIn'), 'no']
       case 'bare':
         return [T('picker.dropRemove'), 'rm']
+      case 'setNo':
+        return [T('picker.setOnlyDesk'), 'no']
       case 'desk': {
         if (!d.desk) return [T(noDeskWhy(d)), 'no']
         const said = deskSaid
@@ -964,7 +1128,9 @@
 
   function moveTo(x, y) {
     const d = drag
-    const tg = hit(x, y)
+    let tg = hit(x, y)
+    // A combo over the strip or her capsule: not there (no gap opens).
+    if (d.set && (tg.kind === 'strip' || tg.kind === 'capsule')) tg = { kind: 'setNo' }
     d.tgt = tg
     const sig = tg.kind === 'strip' ? `strip:${tg.at.run}:${tg.at.index}:${tg.fit.ok}` : tg.kind
     if (sig !== d.sig) {
@@ -983,7 +1149,9 @@
       const last = d.sent
       if (!last || Math.hypot(x - last.x, y - last.y) > 6 || Date.now() - last.at > 120) {
         d.sent = { x, y, at: Date.now() }
-        window.pet.deskPreview({ x: Math.round(x), y: Math.round(y), item: d.item, size: d.size })
+        // A combo as desk-drop.js takes one: those of its widgets still there.
+        if (d.set) window.pet.deskPreview({ x: Math.round(x), y: Math.round(y), set: setToSend(d.set).set })
+        else window.pet.deskPreview({ x: Math.round(x), y: Math.round(y), item: d.item, size: d.size })
       }
     } else if (d.sent) {
       d.sent = null
@@ -1083,6 +1251,9 @@
           landed = true
         } else if (d.stays && d.src === 'strip') note1(T('taskbar.edit.fixed'))
         break
+      case 'setNo':
+        note1(T('picker.setOnlyDesk'))
+        break
       case 'desk':
         if (!d.desk) {
           note1(T(noDeskWhy(d)))
@@ -1120,14 +1291,17 @@
   // where the desktop's page finds room (top right).
   function dropOnDesk(d, x, y) {
     const ticket = `t${++tickets}`
-    const was = { key: d.key, strip: d.src === 'strip' ? d.strip : d.strip || null, item: d.item, keys: d.capsuleKeys, fresh: d.src === 'card' }
+    const sent = d.set ? setToSend(d.set) : null
+    const was = { key: d.key, strip: d.src === 'strip' ? d.strip : d.strip || null, item: d.item, keys: d.capsuleKeys, fresh: d.src === 'card', set: d.set || null, sent }
     clearTimeout(pending?.timer)
     pending = { ticket, was, timer: setTimeout(() => pending?.ticket === ticket && deskFallback(), 700) }
-    window.pet.deskDrop({ x: Math.round(x), y: Math.round(y), item: d.item, size: d.size, ticket })
+    if (sent) window.pet.deskDrop({ x: Math.round(x), y: Math.round(y), set: sent.set, ticket })
+    else window.pet.deskDrop({ x: Math.round(x), y: Math.round(y), item: d.item, size: d.size, ticket })
   }
   function deskFallback() {
     const { was } = pending
     pending = null
+    if (was.set) return putSet(was.set)
     if (was.strip) Isle.keepLayout(P.without(Isle.tbLayout(), was.strip))
     Isle.placeWidget(P.itemOf(was.key), 'desk')
     switchOn([was.key])
@@ -1149,7 +1323,9 @@
     clearTimeout(pending.timer)
     const { was } = pending
     pending = null
-    if (!a.ok) return note1(T(a.why === 'boardFull' ? 'desk.boardFull' : 'picker.deskFull'))
+    if (!a.ok) return note1(T(a.why === 'boardFull' ? 'desk.boardFull' : a.why === 'none' && was.set ? 'picker.setGone' : 'picker.deskFull'))
+    // A combo up there (the desktop's page put its board there): its widgets on.
+    if (was.set) return setUp(was.sent.set.items, was.sent.skipped)
     // There now (the desktop's page kept it): off the strip and the capsule (one place), on.
     if (was.strip) Isle.keepLayout(P.without(Isle.tbLayout(), was.strip))
     else if (home() === 'taskbar' && stripEntryOf(was.key) == null) {
@@ -1222,6 +1398,15 @@
       end(false)
       return true
     }
+    // A combo's name being typed, its menu.
+    if (renaming) {
+      endRenameSet(false)
+      return true
+    }
+    if (!smenu.hidden) {
+      closeSetMenu()
+      return true
+    }
     if (!pop.hidden) {
       closePop()
       return true
@@ -1263,6 +1448,7 @@
     'pointerdown',
     e => {
       if (!menu.hidden && !menu.contains(e.target) && !e.target.closest('[data-pk="menu"]')) menu.hidden = true
+      if (!smenu.hidden && !smenu.contains(e.target) && !e.target.closest('[data-cmore]')) closeSetMenu()
       if (popFor && !pop.contains(e.target) && !popFor.contains(e.target) && !Isle.barRest.contains(e.target)) closePop()
     },
     true,
@@ -1304,6 +1490,8 @@
     heal()
     if (open) {
       theme()
+      // The combos changed (one kept from a board on the desktop): their cards anew.
+      if (cards.filter(c => c.set).map(c => JSON.stringify(c.set)).join() !== setsNow().map(s => JSON.stringify(s)).join()) return drawGrid()
       drawBadges()
     }
   })

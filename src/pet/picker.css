@@ -401,6 +401,86 @@
   display: none;
 }
 
+/* A combo (组合): its widgets' icons in a row under its name, small, each
+   in its colour; its ⋯ at the corner while the pointer is on it. */
+.pk-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+}
+
+.pk-mi {
+  display: flex;
+  color: var(--c, var(--pk-2));
+}
+
+.pk-mi .wicon {
+  width: 15px;
+  height: 15px;
+}
+
+.pk-mi .wgl,
+.pk-mi .wglyph {
+  font-size: 14px;
+}
+
+.pk-mi.pk-mn {
+  color: var(--pk-2);
+  font-size: 11px;
+}
+
+.pk-setcard .pk-n {
+  max-width: calc(100% - 24px);
+}
+
+.pk-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--pk-2);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pk-card:hover .pk-more,
+.pk-card:focus-visible .pk-more {
+  opacity: 1;
+}
+
+.pk-more:hover {
+  background: var(--pk-hover);
+  color: var(--pk-fg);
+}
+
+/* Its menu (改名, 删除) where it was asked for; its name typed over its card's. */
+.pk-menu.pk-smenu {
+  top: auto;
+  right: auto;
+  min-width: 132px;
+}
+
+.pk-rename {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  outline: 2px solid var(--pk-accent);
+  background: var(--pk-input);
+  color: var(--pk-fg);
+  font: 600 13px var(--pk-font);
+  user-select: text;
+}
+
 .pk-empty {
   grid-column: 1 / -1;
   margin: 24px 0;

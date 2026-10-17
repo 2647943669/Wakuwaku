@@ -96,7 +96,8 @@
     deskLayout: F.DESK.everyday,
     edge: 'bottom',
     material: 'mica',
-    config: {},
+    // Two boards kept as combos (the picker's 组合): 写代码, 摸鱼.
+    config: { boardSets: F.BOARD_SETS },
     connected: true,
     quiet: false,
   })
@@ -246,6 +247,7 @@
         sessions: [],
         deskLayout: F.DESK.everyday.filter(e => e.id === 'wd1' || e.id === 'wd2'),
         config: {
+          boardSets: F.BOARD_SETS,
           capsule: {
             members: [
               { key: 'plugin:weather', mode: 'pin' },
@@ -264,6 +266,19 @@
         p.emit('taskbar:edit', null)
         await p.wait(300)
         p.emit('island:picker', { open: 'capsule' })
+      },
+    },
+    {
+      id: 'combos',
+      title: '组合',
+      note: '小工具库的「组合」：存好的工作台（写代码、摸鱼）。拖到桌面上就在那儿按原样搭起来，单击放到主屏的下一个空位；里面的小工具从原来的地方搬过来并打开。拖到任务栏或胶囊上不行。右键卡片（或卡片上的 ⋯）能改名、删除（能撤销）。存一个新的：工作台的 ⋯ →「存为组合…」。',
+      world: F => ({ ...desktop(F), sessions: [F.session('working')] }),
+      // As her menu's 添加小工具…, then its 组合.
+      play: async p => {
+        await p.wait(200)
+        p.emit('taskbar:edit', { picker: true })
+        await p.wait(400)
+        p.click('.pk-chip[data-cat="sets"]')
       },
     },
     {
@@ -359,6 +374,7 @@
     { id: 'scene-edit-layout', section: 'scenes', scene: 'edit-layout', title: '编辑任务栏布局中', page: 'island', view: [0, above(200), 1600, 200], settle: 700 },
     { id: 'scene-add-widgets', section: 'scenes', scene: 'add-widgets', title: '添加小工具 · 编辑任务栏，右边是小工具库', page: 'screen', view: WHOLE, budget: 4000, settle: 700 },
     { id: 'scene-edit-capsule', section: 'scenes', scene: 'edit-capsule', title: '编辑胶囊 · 她的胶囊上方的面板', page: 'island', view: [0, above(440), 720, 440], settle: 700 },
+    { id: 'scene-combos', section: 'scenes', scene: 'combos', title: '组合 · 小工具库里存好的工作台', page: 'screen', view: WHOLE, budget: 4000, settle: 700 },
     { id: 'scene-multi-select', section: 'scenes', scene: 'multi-select', title: 'Ctrl 多选 · 选中四个，右键的菜单', page: 'screen', view: WHOLE, budget: 4000 },
 
     // --- The taskbar's strip ---------------------------------------------------------------
@@ -607,6 +623,20 @@
         await p.wait(400)
       },
     })),
+    {
+      id: 'desktop-board-save',
+      section: 'desktop',
+      title: '工作台的「存为组合…」：组合的名字就在标题处输入',
+      page: 'desk',
+      view: [400, 0, 840, 420],
+      budget: 4000,
+      world: F => ({ widgets: F.WIDGETS, deskLayout: F.DESK.scene }),
+      steps: async p => {
+        await p.wait(400)
+        window.Desk.saveSet?.('wbw')
+        await p.wait(200)
+      },
+    },
     {
       id: 'desktop-ctrl-marquee',
       section: 'desktop',

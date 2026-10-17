@@ -13,6 +13,14 @@
 // found goes back to her home's page (desk_drag_answer → island:desk-answer:
 // { ticket, ok, where, why, name }; ticket null for a preview's), for the
 // ghost's words there and, once let go, for the strip to let it go (a move).
+//
+// A combo (the picker's 组合, settings boardSets) comes as { x, y, set:
+// { id, name, items }, ticket? } in place of item and size: the board it
+// was, put up again with its middle under the pointer (or the next free
+// place for its box), never into another board; its widgets out of
+// wherever else they stand here first (one place each), those alone here
+// not in its way. The answer's name is the combo's. desk.rs forwards the
+// payload as it is (phase 2: set as well as item).
 ;(function () {
   const D = window.Desk?.inner
   if (!D) return
@@ -42,6 +50,19 @@
     return sizes.includes('s') ? 's' : sizes[0] || 's'
   }
 
+  // A combo's board: its box landed as one alone is, over none of those here
+  // but the ones that go into it (alone here, every member of theirs in it).
+  function setLanding(p) {
+    const grid = D.grid()
+    const { board } = G.boardFromSet(p.set, { newId: D.newId })
+    if (!board) return null
+    const keys = new Set(board.items.map(keyOf))
+    const goes = e => !G.isBoard(e) && G.membersOf(e).every(m => keys.has(keyOf(m)))
+    const blocks = [...D.nodes.values()].filter(n => !goes(n.entry)).map(n => n.rect)
+    const box = G.boardBox(board)
+    return { grid, board, box, land: G.landing({ grid, x: p.x, y: p.y, size: box, blocks, icons: D.icons }) }
+  }
+
   function landingAt(p) {
     if (!D.here || !p?.item) return null
     const grid = D.grid()
@@ -68,7 +89,46 @@
     invoke('desk_drag_answer', { said }).catch(() => {})
   }
 
+  // Where a combo's board would stand: dashed as one alone's place.
+  function previewSet(p) {
+    const r = D.here ? setLanding(p) : null
+    if (lit) clear()
+    if (!r) {
+      clear()
+      return
+    }
+    const { grid, box, land: l } = r
+    const at = G.rectAt(grid, l.cell || l.want, box)
+    Object.assign(land.style, { left: `${at.x}px`, top: `${at.y}px`, width: `${at.w}px`, height: `${at.h}px` })
+    land.classList.toggle('no', !l.ok)
+    land.hidden = false
+    Object.assign(cells.style, { left: `${grid.x0}px`, top: `${grid.y0}px`, width: `${Math.max(0, grid.cols * G.PITCH - G.GAP)}px`, height: `${Math.max(0, grid.rows * G.PITCH - G.GAP)}px` })
+    cells.hidden = false
+    const said = { ticket: null, ok: l.ok, where: 'desk', why: l.why || '', name: p.set.name || '' }
+    const was = saidLast
+    saidLast = JSON.stringify(said)
+    if (saidLast !== was) answer(said)
+  }
+  function dropSet(p) {
+    const r = D.here ? setLanding(p) : null
+    clear()
+    saidLast = ''
+    iconsAsked = false
+    const ticket = p?.ticket ?? ''
+    if (!r) return answer({ ticket, ok: false, where: 'desk', why: 'none' })
+    if (!r.land.ok) return answer({ ticket, ok: false, where: 'desk', why: r.land.why || '' })
+    D.keepLayout(G.withBoard(D.layout, r.board, { key: D.here.key, cell: r.land.cell, newId: D.newId }))
+    answer({ ticket, ok: true, where: 'desk', why: '', name: p.set.name || '', board: r.board.id })
+  }
+
   function preview(p) {
+    if (p?.set) {
+      if (!iconsAsked) {
+        iconsAsked = true
+        D.loadIcons()
+      }
+      return previewSet(p)
+    }
     const r = p ? landingAt(p) : null
     if (!r) {
       clear()
@@ -112,6 +172,7 @@
   }
 
   function drop(p) {
+    if (p?.set) return dropSet(p)
     const r = landingAt(p)
     clear()
     saidLast = ''
