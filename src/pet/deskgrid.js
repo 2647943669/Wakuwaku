@@ -336,6 +336,150 @@
     return layout.flatMap(e => (e.id === boardId ? alone : [e]))
   }
 
+  // --- Several made one board (Ctrl-selected on the desktop, desk.js; the user's call of 2026-10-17) ---
+  // What may be selected: one alone or a stack, never a board.
+  const isSelectable = e => !!e && !isBoard(e) && (isStack(e) || e.type === 'widget' || e.type === 'plugin')
+  // Those a rectangle dragged over the desktop meets (each { id, rect, entry }), boards left out.
+  const selectIn = (box, list) => list.filter(x => isSelectable(x.entry) && overlaps(box, x.rect)).map(x => x.id)
+
+  // In reading order of where they stand (at: Map id -> [col, row]): top to
+  // bottom, then left to right.
+  function readingOrder(entries, at) {
+    const cell = e => at.get(e.id) || [Infinity, Infinity]
+    return [...entries].sort((a, b) => cell(a)[1] - cell(b)[1] || cell(a)[0] - cell(b)[0])
+  }
+
+  // Their tiles: each one alone, and each member of a stack, in reading
+  // order, each at the size it had where the board has room for it (its
+  // first free cell), else small, the later ones made small first. { items },
+  // or { why: 'tooMany' } past what a board holds (16).
+  function tilesOf(entries, at) {
+    const seen = new Set()
+    const list = []
+    for (const e of readingOrder(entries.filter(isSelectable), at))
+      for (const m of membersOf(e)) {
+        if (seen.has(keyOf(m))) continue
+        seen.add(keyOf(m))
+        list.push({ m: isStack(e) ? memberOf(m) : memberOf(e), size: e.size })
+      }
+    if (!list.length) return { why: 'none' }
+    if (list.length > MAX_TILES) return { why: 'tooMany' }
+    const sizes = list.map(x => x.size)
+    for (;;) {
+      const b = { type: 'board', items: [] }
+      let ok = true
+      for (const [i, x] of list.entries()) {
+        const spot = boardFirst(b, sizes[i])
+        if (!spot) {
+          ok = false
+          break
+        }
+        b.items.push({ ...x.m, size: sizes[i], at: spot })
+      }
+      if (ok) return { items: b.items }
+      const last = sizes.map((z, i) => (z !== 's' ? i : -1)).filter(i => i >= 0).pop()
+      if (last === undefined) return { why: 'tooMany' }
+      sizes[last] = 's'
+    }
+  }
+
+  // The layout with those (ids) made one board (name: its own) where the
+  // top-left-most stood, or the nearest place there its box fits, over none
+  // of the others here (clear of the icons where it can be). { layout,
+  // board }, or { why } as tilesOf says.
+  function boardOf(layout, ids, { at, grid, key, icons = [], newId, name } = {}) {
+    const chosen = layout.filter(e => ids.includes(e.id) && isSelectable(e))
+    const tiles = tilesOf(chosen, at)
+    if (tiles.why) return { why: tiles.why }
+    const first = readingOrder(chosen, at)[0]
+    const board = { id: newId(), type: 'board', ...(name ? { name } : {}), items: tiles.items }
+    const box = boardBox(board)
+    const rest = layout.filter(e => !chosen.includes(e))
+    const blocks = rest.filter(e => at.has(e.id)).map(e => rectAt(grid, at.get(e.id), boxOf(e)))
+    const want = at.get(first.id) || firstSpot(grid, box)
+    const cell = isFree(grid, want, box, blocks) ? want : nearestFree(grid, want, box, [...blocks, ...icons]) || nearestFree(grid, want, box, blocks) || want
+    const out = placed(board, key, cell)
+    return { layout: [...rest, out], board: out }
+  }
+
+  // --- Combos: boards kept to put up again (settings "boardSets", the user's call of 2026-10-17) ---
+  // A combo: { id, name, items: [{ type, of, size, at }], saved } (saved:
+  // when, ms); twenty at most, each name once. Its tiles as a board's, with
+  // neither names nor icons (those are its widgets' own, read as it goes up).
+  const MAX_SETS = 20
+  const isSetId = id => typeof id === 'string' && /^s[a-z0-9]{1,15}$/.test(id)
+  const isSetName = n => isBoardName(n) && n.trim() !== '' && n.trim() === n
+  const isSetItem = t => !!t && typeof t === 'object' && Object.keys(t).every(k => ['type', 'of', 'size', 'at'].includes(k)) && isTile(t)
+  function isBoardSet(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return false
+    if (!Object.keys(s).every(k => ['id', 'name', 'items', 'saved'].includes(k))) return false
+    if (!isSetId(s.id) || !isSetName(s.name) || !Number.isSafeInteger(s.saved) || s.saved < 0) return false
+    return Array.isArray(s.items) && s.items.length >= 1 && s.items.every(isSetItem) && isBoardEntry({ id: 'wx', type: 'board', items: s.items })
+  }
+  function isBoardSets(list) {
+    if (!Array.isArray(list) || list.length > MAX_SETS || !list.every(isBoardSet)) return false
+    return new Set(list.map(s => s.id)).size === list.length && new Set(list.map(s => s.name)).size === list.length
+  }
+  // Those kept that hold (one written by hand left out).
+  const setsOf = list => (Array.isArray(list) ? list.filter(isBoardSet) : [])
+
+  // A board as a combo: its tiles' widgets, sizes and places.
+  const setOf = (b, { id, name, saved }) => ({ id, name, items: (b?.items || []).map(t => ({ type: t.type, of: t.of, size: t.size, at: [t.at[0], t.at[1]] })), saved })
+
+  // Kept: one of its name replaced (its id kept), else added at the end;
+  // past twenty the oldest goes. { list, replaced, dropped: the one gone or null }.
+  function saveSet(list, set) {
+    const now = setsOf(list)
+    const at = now.findIndex(s => s.name === set.name)
+    if (at >= 0) return { list: now.map((s, i) => (i === at ? { ...set, id: s.id } : s)), replaced: true, dropped: null }
+    let out = [...now, set]
+    let dropped = null
+    if (out.length > MAX_SETS) {
+      dropped = out.filter(s => s !== set).reduce((a, b) => (b.saved < a.saved ? b : a))
+      out = out.filter(s => s !== dropped)
+    }
+    return { list: out, replaced: false, dropped }
+  }
+  // Named anew: null when the name is not one, or another has it.
+  function renameSet(list, id, name) {
+    const now = setsOf(list)
+    const n = String(name ?? '').trim()
+    if (!isSetName(n) || now.some(s => s.name === n && s.id !== id) || !now.some(s => s.id === id)) return null
+    return now.map(s => (s.id === id ? { ...s, name: n } : s))
+  }
+  // Gone, and what puts it back (undo): it, where it stood.
+  function removeSet(list, id) {
+    const now = setsOf(list)
+    const index = now.findIndex(s => s.id === id)
+    if (index < 0) return { list: now, record: null }
+    return { list: now.filter(s => s.id !== id), record: { set: now[index], index } }
+  }
+  function restoreSet(list, record) {
+    const now = setsOf(list)
+    if (!record?.set || now.some(s => s.id === record.set.id || s.name === record.set.name)) return now
+    const out = [...now]
+    out.splice(Math.min(Math.max(0, record.index), out.length), 0, record.set)
+    return out.slice(0, MAX_SETS)
+  }
+
+  // Put up again: its board (its name, its tiles where they were), those
+  // whose widget or plugin is not there any more (known(member): false)
+  // left out. { board, skipped }; board null when none is left.
+  function boardFromSet(set, { known = () => true, newId } = {}) {
+    const items = (set?.items || []).filter(isSetItem)
+    const kept = items.filter(t => known({ type: t.type, of: t.of }))
+    const board = kept.length ? { id: newId(), type: 'board', ...(isBoardName(set.name) && set.name ? { name: set.name } : {}), items: kept.map(t => ({ type: t.type, of: t.of, size: t.size, at: [t.at[0], t.at[1]] })) } : null
+    return { board, skipped: items.length - kept.length }
+  }
+  // The layout with it there: its widgets out of wherever else they were on
+  // the desktop first (one place each), then the board on that cell of this
+  // display (key); with no cell, where the display finds room for it (settle).
+  function withBoard(layout, board, { key, cell, newId } = {}) {
+    let out = Array.isArray(layout) ? layout : []
+    for (const t of board.items) out = without(out, itemOf(t), newId)
+    return [...out, key && cell ? placed(board, key, cell) : board]
+  }
+
   // --- Kept as settings.rs checks it ------------------------------------------------------
   const isKey = k => typeof k === 'string' && /^[a-z0-9]{1,40}$/.test(k)
   const isCell = v => Array.isArray(v) && v.length === 2 && v.every(n => Number.isInteger(n) && n >= 0 && n <= 255)
@@ -522,6 +666,22 @@
     outOfBoard,
     newBoard,
     boardApart,
+    isSelectable,
+    selectIn,
+    readingOrder,
+    tilesOf,
+    boardOf,
+    MAX_SETS,
+    isBoardSet,
+    isBoardSets,
+    setsOf,
+    setOf,
+    saveSet,
+    renameSet,
+    removeSet,
+    restoreSet,
+    boardFromSet,
+    withBoard,
     isBoardName,
     isEntry,
     isLayout,

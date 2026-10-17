@@ -170,3 +170,151 @@ test('boards in a layout: as settings.rs checks them; what they show; off the de
   assert.ok(G.isBoardName('工作'))
   assert.ok(!G.isBoardName('x'.repeat(17)))
 })
+
+// Several Ctrl-selected on the desktop made one board (desk.js, the user's call of 2026-10-17).
+test('selected: ones alone and stacks, never a board; a rectangle meets those it overlaps', () => {
+  const g = G.gridOf(WORK)
+  assert.equal(G.isSelectable(w('wa', 's')), true)
+  assert.equal(G.isSelectable({ id: 'ws', type: 'stack', size: 's', items: [{ type: 'widget', of: 'a' }, { type: 'widget', of: 'b' }] }), true)
+  assert.equal(G.isSelectable(board('wb')), false)
+  const list = [
+    { id: 'wa', entry: w('wa', 's'), rect: G.rectAt(g, [0, 0], 's') },
+    { id: 'wc', entry: w('wc', 'm'), rect: G.rectAt(g, [6, 0], 'm') },
+    { id: 'wb', entry: board('wb'), rect: G.rectAt(g, [2, 0], G.boardBox(board('wb'))) },
+  ]
+  // From the first cell's middle to the third column: the first, and the board left out.
+  assert.deepEqual(G.selectIn({ x: 60, y: 60, w: 160, h: 40 }, list), ['wa'])
+  assert.deepEqual(G.selectIn({ x: 0, y: 0, w: 2000, h: 200 }, list), ['wa', 'wc'])
+})
+
+test("made one board: tiles in reading order (a stack's members each one), sizes kept where it has room, else the later ones small", () => {
+  const at = new Map([['wb', [6, 0]], ['wa', [0, 3]], ['ws', [0, 0]]])
+  const stack = { id: 'ws', type: 'stack', size: 's', items: [{ type: 'widget', of: 'x' }, { type: 'plugin', of: 'p', icon: 'stock' }] }
+  const r = G.tilesOf([w('wa', 'm'), w('wb', 'l'), stack], at)
+  // Reading order: the stack (row 0, col 0), wb (row 0, col 6), wa (row 3).
+  assert.deepEqual(
+    r.items.map(t => [t.of, t.size, t.at]),
+    [
+      ['x', 's', [0, 0]],
+      ['p', 's', [2, 0]],
+      ['b', 'l', [4, 0]],
+      ['a', 'm', [0, 2]],
+    ],
+  )
+  assert.equal(r.items[1].icon, 'stock')
+  // Three large ones: a board holds two; with the third small there is no
+  // room still, so the second is made small too.
+  const big = G.tilesOf([w('wa', 'l'), w('wb', 'l'), w('wc', 'l')], new Map([['wa', [0, 0]], ['wb', [4, 0]], ['wc', [8, 0]]]))
+  assert.deepEqual(big.items.map(t => t.size), ['l', 's', 's'])
+  assert.ok(G.isEntry(board('wq', big.items)))
+  // Seventeen: more than a board holds.
+  const many = Array.from({ length: 17 }, (_, i) => w(`w${i}`, 's'))
+  assert.deepEqual(G.tilesOf(many, new Map(many.map((e, i) => [e.id, [i, 0]]))), { why: 'tooMany' })
+  assert.deepEqual(G.tilesOf([board('wb')], new Map()), { why: 'none' })
+})
+
+test('made one board: where the top-left-most stood, else the nearest place its box fits, over none of the others', () => {
+  const g = G.gridOf(WORK)
+  const layout = [w('wa', 's', { d: 'd1', at: { d1: [2, 0] } }), w('wb', 's', { d: 'd1', at: { d1: [0, 3] } }), w('wc', 'm', { d: 'd1', at: { d1: [12, 0] } })]
+  const at = new Map([['wa', [2, 0]], ['wb', [0, 3]], ['wc', [12, 0]]])
+  const r = G.boardOf(layout, ['wa', 'wb'], { at, grid: g, key: 'd1', newId: () => 'wnb', name: '工作台 2' })
+  assert.deepEqual(r.board.items.map(t => [t.of, t.at]), [['a', [0, 0]], ['b', [2, 0]]])
+  assert.equal(r.board.name, '工作台 2')
+  // At wa's cell (2, 0): its box (9 x 3 cells) clear of wc at column 12.
+  assert.deepEqual(r.board.at, { d1: [2, 0] })
+  assert.deepEqual(r.layout.map(e => e.id), ['wc', 'wnb'])
+  assert.ok(G.isLayout(r.layout))
+  // wc in the way there: the nearest place clear of it.
+  const r2 = G.boardOf(layout, ['wa', 'wb'], { at: new Map([...at, ['wc', [6, 0]]]), grid: g, key: 'd1', newId: () => 'wnb' })
+  const box = G.rectAt(g, r2.board.at.d1, G.boardBox(r2.board))
+  assert.equal(G.overlaps(box, G.rectAt(g, [6, 0], 'm')), false)
+  // A board among those chosen is left out: nothing to make one of.
+  assert.deepEqual(G.boardOf([board('wq')], ['wq'], { at: new Map(), grid: g, key: 'd1', newId }), { why: 'none' })
+})
+
+// Combos: boards kept to put up again (settings "boardSets").
+const set = (id, name, items, saved = 1) => ({ id, name, items, saved })
+const T1 = [
+  { type: 'widget', of: 'today', size: 'm', at: [0, 0] },
+  { type: 'plugin', of: 'weather', size: 's', at: [4, 0] },
+]
+
+test('combos are checked as settings.rs will check them: twenty at most, ids and names once, their tiles as a board has them', () => {
+  assert.equal(G.isBoardSets([set('s1', '写代码', T1), set('s2', '摸鱼', T1.slice(1))]), true)
+  assert.equal(G.isBoardSets([]), true)
+  const bad = [
+    [set('s1', '写代码', T1), set('s1', '摸鱼', T1)],
+    [set('s1', '写代码', T1), set('s2', '写代码', T1)],
+    [set('x1', '写代码', T1)],
+    [set('s1', '', T1)],
+    [set('s1', ' 前后有空格 ', T1)],
+    [set('s1', '一二三四五六七八九十一二三四五六七', T1)],
+    [set('s1', '写代码', [])],
+    [set('s1', '写代码', [{ ...T1[0], name: '今天' }])],
+    [set('s1', '写代码', [T1[0], { ...T1[1], at: [2, 0] }])],
+    [{ ...set('s1', '写代码', T1), extra: 1 }],
+    [set('s1', '写代码', T1, -1)],
+    Array.from({ length: 21 }, (_, i) => set(`s${i}`, `组合 ${i}`, T1)),
+  ]
+  for (const list of bad) assert.equal(G.isBoardSets(list), false, JSON.stringify(list).slice(0, 90))
+  // Kept from a board: its tiles' widgets, sizes and places, no names or icons.
+  const b = board('wb', [{ ...T1[0], name: '今天' }, { ...T1[1], icon: 'weather' }], { name: '写代码' })
+  assert.deepEqual(G.setOf(b, { id: 's9', name: '写代码', saved: 5 }), set('s9', '写代码', T1, 5))
+})
+
+test('a combo saved: one of its name replaced, else added; past twenty the oldest goes; renamed, removed, put back', () => {
+  const two = [set('s1', '写代码', T1, 10), set('s2', '摸鱼', T1, 20)]
+  const again = G.saveSet(two, set('s3', '写代码', T1.slice(1), 30))
+  assert.equal(again.replaced, true)
+  assert.deepEqual(
+    again.list.map(s => [s.id, s.name, s.items.length, s.saved]),
+    [
+      ['s1', '写代码', 1, 30],
+      ['s2', '摸鱼', 2, 20],
+    ],
+  )
+  const added = G.saveSet(two, set('s3', '看行情', T1, 30))
+  assert.deepEqual([added.replaced, added.dropped, added.list.length], [false, null, 3])
+  const full = Array.from({ length: 20 }, (_, i) => set(`s${i}`, `组合 ${i}`, T1, 100 - i))
+  const over = G.saveSet(full, set('sn', '新的', T1, 200))
+  assert.equal(over.list.length, 20)
+  assert.equal(over.dropped.name, '组合 19')
+  assert.ok(G.isBoardSets(over.list))
+  // Renamed: not to another's name, nor to nothing.
+  assert.deepEqual(G.renameSet(two, 's2', ' 摸会儿鱼 ').map(s => s.name), ['写代码', '摸会儿鱼'])
+  assert.equal(G.renameSet(two, 's2', '写代码'), null)
+  assert.equal(G.renameSet(two, 's2', '  '), null)
+  assert.equal(G.renameSet(two, 'sx', '新'), null)
+  // Removed, and put back where it stood (undo); there again already: as it is.
+  const { list, record } = G.removeSet(two, 's1')
+  assert.deepEqual(list.map(s => s.id), ['s2'])
+  assert.deepEqual(G.restoreSet(list, record).map(s => s.id), ['s1', 's2'])
+  assert.deepEqual(G.restoreSet(two, record).map(s => s.id), ['s1', 's2'])
+})
+
+test('a combo put up again: its board, those no longer there left out; its widgets out of anywhere else on the desktop first', () => {
+  const s = set('s1', '写代码', [...T1, { type: 'plugin', of: 'gone', size: 's', at: [6, 0] }])
+  const { board: b, skipped } = G.boardFromSet(s, { known: m => m.of !== 'gone', newId: () => 'wnb' })
+  assert.equal(skipped, 1)
+  assert.deepEqual(b, { id: 'wnb', type: 'board', name: '写代码', items: T1 })
+  assert.deepEqual(G.boardFromSet(s, { known: () => false, newId }), { board: null, skipped: 3 })
+  const layout = [
+    { id: 'wst', type: 'stack', size: 's', items: [{ type: 'widget', of: 'today' }, { type: 'widget', of: 'deploy' }] },
+    { id: 'wbo', type: 'board', items: [{ type: 'plugin', of: 'weather', size: 's', at: [0, 0] }] },
+  ]
+  let k = 0
+  const out = G.withBoard(layout, b, { key: 'd1', cell: [3, 2], newId: () => `wk${++k}` })
+  assert.deepEqual(
+    out.map(e => [e.id, e.type]),
+    [
+      ['wk1', 'widget'],
+      ['wbo', 'board'],
+      ['wnb', 'board'],
+    ],
+  )
+  assert.deepEqual(out[1].items, [])
+  assert.deepEqual(out[2].at, { d1: [3, 2] })
+  assert.ok(G.isLayout(out))
+  // No cell: where the display finds room (settle).
+  assert.equal(G.withBoard([], b, { newId }).at(-1).at, undefined)
+})
