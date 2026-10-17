@@ -1346,6 +1346,21 @@
     selEl.hidden = true
     hold(false)
   }
+  // Ctrl and the wheel over the bare desktop: Explorer's, as without her
+  // (its icons made larger or smaller). The window takes the mouse there
+  // while Ctrl is held (desk.rs poll), so the wheel comes here: handed on
+  // to the desktop's icon view where the pointer is (desk_wheel), its turn
+  // as Windows counts it (120 a notch). Over a widget, a board, a menu: ours.
+  document.addEventListener(
+    'wheel',
+    ev => {
+      if (!ev.ctrlKey || !(ev.target === desk || ev.target === document.body || ev.target === document.documentElement)) return
+      ev.preventDefault()
+      const delta = ev.wheelDeltaY || Math.round(-ev.deltaY * 1.2)
+      if (delta) invoke('desk_wheel', { x: ev.clientX, y: ev.clientY, delta }).catch(() => {})
+    },
+    { passive: false },
+  )
   // Ctrl and a press on the bare desktop: the rectangle; without Ctrl, they go.
   document.addEventListener('pointerdown', ev => {
     if (ev.button !== 0 || ev.target.closest?.('.dw, .wmenu, .bask, input')) return

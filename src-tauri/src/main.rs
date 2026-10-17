@@ -1577,6 +1577,7 @@ fn main() {
             desk::desk_drop,
             desk::desk_drag_answer,
             desk::desk_picked,
+            desk::desk_wheel,
             bars::bar_asks,
             bars::bar_pop,
             bars::bar_pop_over,

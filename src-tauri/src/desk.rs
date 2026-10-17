@@ -829,6 +829,21 @@ pub async fn desk_icons(app: tauri::AppHandle, window: WebviewWindow) -> Option<
     icons
 }
 
+// Ctrl and the wheel over its bare desktop (desk.js): the window takes the
+// mouse there while Ctrl is held (poll), so Explorer heard nothing of it.
+// Handed on to the desktop's icon view as Windows would have sent it
+// (WM_MOUSEWHEEL, Ctrl among its keys, the same turn, where the pointer is,
+// the screen's px): its icons larger or smaller, as without her.
+#[tauri::command]
+pub fn desk_wheel(window: WebviewWindow, x: f64, y: f64, delta: i32) {
+    count(&COMMANDS);
+    let Some((mon, sf)) = DESKS.lock().unwrap().iter().find(|d| d.label == window.label()).map(|d| (d.mon, d.sf)) else { return };
+    if !(x.is_finite() && y.is_finite()) || delta == 0 {
+        return;
+    }
+    imp::wheel_to_icons(mon.0 + (x * sf).round() as i32, mon.1 + (y * sf).round() as i32, delta.clamp(-1200, 1200));
+}
+
 // Some of its widgets picked with Ctrl, or none any more (desk.js): a press
 // off them is looked for (poll), and told (desk:outside).
 #[tauri::command]
@@ -1732,6 +1747,31 @@ mod imp {
         });
     }
 
+    // A turn of the wheel with Ctrl, to the desktop's icon view (the list in
+    // SHELLDLL_DefView, in the window with the icons): posted, as a wheel's
+    // message comes (its turn in the high word of wparam, the keys held in
+    // the low; the point the screen's, a signed 16-bit pair in lparam).
+    pub fn wheel_to_icons(x: i32, y: i32, delta: i32) -> bool {
+        const WM_MOUSEWHEEL: u32 = 0x020A;
+        const MK_CONTROL: usize = 0x0008;
+        let host = host();
+        if host.is_null() {
+            return false;
+        }
+        // SAFETY: plain lookups by class; a posted message carrying no pointers.
+        unsafe {
+            let view = FindWindowExW(host, std::ptr::null_mut(), wide("SHELLDLL_DefView").as_ptr(), std::ptr::null());
+            if view.is_null() {
+                return false;
+            }
+            let list = FindWindowExW(view, std::ptr::null_mut(), wide("SysListView32").as_ptr(), std::ptr::null());
+            let to = if list.is_null() { view } else { list };
+            let wparam = ((delta as i16 as u16 as usize) << 16) | MK_CONTROL;
+            let lparam = (((y as i16 as u16 as u32) << 16) | (x as i16 as u16 as u32)) as isize;
+            PostMessageW(to, WM_MOUSEWHEEL, wparam, lparam) != 0
+        }
+    }
+
     // How long ago Ctrl's key last went down or up (ms; the trace's).
     pub fn ctrl_age() -> u32 {
         // SAFETY: a plain query.
@@ -1946,6 +1986,9 @@ mod imp {
     }
     pub fn ctrl_age() -> u32 {
         0
+    }
+    pub fn wheel_to_icons(_x: i32, _y: i32, _delta: i32) -> bool {
+        false
     }
     pub fn keep_all_low() {}
     pub fn set_through(_hwnd: isize, _through: bool) {}
