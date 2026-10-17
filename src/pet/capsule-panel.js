@@ -7,7 +7,7 @@
 // It lists the capsule's members (capsule.js), in their order: each with a
 // grip to drag it up or down (that order is their turns' and the open
 // island's), its icon, name and what it says now, how it shows (轮播 its
-// turn in the closed capsule, 固定 always at its right end, two at most,
+// turn in the closed capsule, 固定 always at its right end, five at most,
 // 展开时 in the open island only), and × (移出胶囊: off, with a way back).
 // At its foot how long a turn lasts (widgetSpin; the Plugins page has it
 // too for now). A widget dragged from the picker may be let go of over it.

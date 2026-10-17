@@ -41,27 +41,29 @@ test('the members as they are: the list order, those on and not listed at the en
   assert.equal(modes(C.effective({ capsule, all, home: 'island', pin: false, inCapsule }))['widget:monitor'], 'turn')
   const open = { members: [{ key: 'widget:monitor', mode: 'open' }] }
   assert.equal(modes(C.effective({ capsule: open, all, home: 'island' }))['widget:monitor'], 'open')
-  // A list written by hand with three pinned: the third takes turns.
-  const three = { members: ['today', 'tokens', 'off'].map(id => ({ key: `widget:${id}`, mode: 'pin' })) }
-  const m3 = C.effective({ capsule: three, all: all.map(w => ({ ...w, on: true })), home: 'taskbar' })
-  assert.deepEqual(m3.filter(x => x.mode === 'pin').map(x => x.key), ['widget:today', 'widget:tokens'])
+  // A list written by hand with six pinned: the sixth takes turns.
+  const six = { members: ['today', 'tokens', 'off', 'monitor', 'weather', 'stock-aapl'].map(id => ({ key: id === 'weather' ? 'plugin:weather' : id === 'stock-aapl' ? 'plugin:stock' : `widget:${id}`, mode: 'pin' })) }
+  const m6 = C.effective({ capsule: six, all: all.map(w => ({ ...w, on: true })), home: 'taskbar' })
+  assert.deepEqual(m6.filter(x => x.mode === 'pin').map(x => x.key), ['widget:today', 'widget:tokens', 'widget:off', 'widget:monitor', 'plugin:weather'])
+  assert.equal(modes(m6)['plugin:stock'], 'turn')
   // Junk kept out: unknown modes, keys, twice the same.
   assert.deepEqual(C.storedOf({ members: [{ key: 'widget:a', mode: 'x' }, { key: 'bad', mode: 'turn' }, { key: 'widget:b', mode: 'turn' }, { key: 'widget:b', mode: 'pin' }] }), [{ key: 'widget:b', mode: 'turn' }])
   assert.equal(C.storedOf(undefined), null)
 })
 
-test('two pinned at most: a third refused; turns and open always', () => {
-  let list = [{ key: 'widget:a', mode: 'turn' }, { key: 'widget:b', mode: 'turn' }, { key: 'widget:c', mode: 'turn' }]
-  list = C.setMode(list, 'widget:a', 'pin')
-  list = C.setMode(list, 'widget:b', 'pin')
-  assert.equal(C.canPin(list, 'widget:c'), false)
+test("five pinned at most (the user's call of 2026-10-17; it was two): a sixth refused; turns and open always", () => {
+  assert.equal(C.MAX_PINS, 5)
+  let list = ['a', 'b', 'c', 'd', 'e', 'f'].map(k => ({ key: `widget:${k}`, mode: 'turn' }))
+  for (const k of ['a', 'b', 'c', 'd', 'e']) list = C.setMode(list, `widget:${k}`, 'pin')
+  assert.deepEqual(list.filter(m => m.mode === 'pin').length, 5)
+  assert.equal(C.canPin(list, 'widget:f'), false)
   assert.equal(C.canPin(list, 'widget:a'), true)
-  assert.deepEqual(modes(C.setMode(list, 'widget:c', 'pin')), { 'widget:a': 'pin', 'widget:b': 'pin', 'widget:c': 'turn' })
-  assert.deepEqual(modes(C.setMode(list, 'widget:c', 'open')), { 'widget:a': 'pin', 'widget:b': 'pin', 'widget:c': 'open' })
-  // One of the two let go: the third may.
-  assert.equal(C.canPin(C.setMode(list, 'widget:a', 'turn'), 'widget:c'), true)
-  // Added pinned with two there: takes turns.
-  assert.equal(modes(C.add(list, 'widget:d', -1, 'pin'))['widget:d'], 'turn')
+  assert.equal(modes(C.setMode(list, 'widget:f', 'pin'))['widget:f'], 'turn')
+  assert.equal(modes(C.setMode(list, 'widget:f', 'open'))['widget:f'], 'open')
+  // One of the five let go: the sixth may.
+  assert.equal(C.canPin(C.setMode(list, 'widget:a', 'turn'), 'widget:f'), true)
+  // Added pinned with five there: takes turns.
+  assert.equal(modes(C.add(list, 'widget:g', -1, 'pin'))['widget:g'], 'turn')
   // Nothing for a key not there, or a mode not known.
   assert.deepEqual(C.setMode(list, 'widget:z', 'pin'), list)
   assert.deepEqual(C.setMode(list, 'widget:c', 'big'), list)
@@ -144,4 +146,13 @@ test("an old config: a plugin on and put nowhere is her capsule's member, listed
   const q = G.placement({ all: old, home: 'taskbar', taskbar: bar })
   assert.equal(keys(q.members).includes('plugin:ci'), false)
   assert.equal(ids(q.listed).includes('ci-main'), false)
+})
+
+test("a new script's widget joins her capsule taking turns (轮播), at its end, the setting or none", () => {
+  const script = { id: 'deploy', from: 'script', on: true }
+  for (const capsule of [undefined, { members: [{ key: 'widget:today', mode: 'pin' }] }]) {
+    const m = C.effective({ capsule, all: [...all, script], home: 'taskbar' })
+    assert.equal(m.at(-1).key, 'widget:deploy')
+    assert.equal(m.at(-1).mode, 'turn')
+  }
 })

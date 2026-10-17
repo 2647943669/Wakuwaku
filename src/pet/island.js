@@ -593,7 +593,7 @@
     const turning = el('span', 'turning')
     turning.append(words, ...(more ? [more] : []), value)
     const isBare = !words.textContent && !value.textContent && !more
-    // picker.js: the members pinned at its end (two at most, capsule.js): the
+    // picker.js: the members pinned at its end (five at most, capsule.js): the
     // monitor's readings as they were, another its glyph and value.
     const pinned = pinsNow.length ? el('span', 'pinned') : null
     if (pinned) pinned.innerHTML = pinsNow.map(w => (Widgets.partsOf(w) ? Widgets.partsHTML(w) : `<span class="wpin" style="color:${ink(w.color) || hue().idle}">${Widgets.iconHTML(w, lang)}<b>${WCards.esc(WCards.briefOf(w, { lang, light: inkLight, detailed: isDetailed() }).value)}</b></span>`)).join('')

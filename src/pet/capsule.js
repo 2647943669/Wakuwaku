@@ -7,7 +7,8 @@
 //   { members: [{ key, mode }], spin? }
 //   key   'widget:<id>' or 'plugin:<id>' (a plugin's widgets all in its place)
 //   mode  'turn'  takes its turn in the closed capsule (轮播, the default)
-//         'pin'   always in sight at the capsule's right end (固定), two at most
+//         'pin'   always in sight at the capsule's right end (固定), five at most
+//                 (the user's call of 2026-10-17; it was two)
 //         'open'  only in the open island's list (展开时)
 //   spin  seconds a turn lasts (0 / 5 / 8 / 15), as widgetSpin
 //
@@ -27,7 +28,7 @@
 // takes its turns, #53).
 ;(function (root) {
   const MODES = ['turn', 'pin', 'open']
-  const MAX_PINS = 2
+  const MAX_PINS = 5
   const MAX_MEMBERS = 64
   const SPINS = [0, 5, 8, 15]
 
@@ -77,7 +78,7 @@
   // that are in the capsule (on, not put elsewhere), in its order; then
   // those on and not listed, in the widgets' order. inCapsule(w): whether a
   // widget is (placement decides: on, not on the taskbar or the desktop).
-  // Two pinned at most: a third (a list written by hand) takes turns.
+  // Five pinned at most: a sixth (a list written by hand) takes turns.
   function effective({ capsule, all = [], home = 'island', pin, inCapsule = w => w.on !== false } = {}) {
     const stored = storedOf(capsule)
     const list = stored || derive(all, { home, pin })
@@ -108,10 +109,10 @@
   const plain = list => list.map(m => ({ key: m.key, mode: m.mode }))
   const pinsIn = (list, but) => list.filter(m => m.mode === 'pin' && m.key !== but).length
 
-  // Whether one may be pinned: two others pinned already, not.
+  // Whether one may be pinned: five others pinned already, not.
   const canPin = (list, key) => pinsIn(list, key) < MAX_PINS
 
-  // Its mode set; a third pinned refused (the list as it was).
+  // Its mode set; a sixth pinned refused (the list as it was).
   function setMode(list, key, mode) {
     if (!MODES.includes(mode) || !list.some(m => m.key === key)) return plain(list)
     if (mode === 'pin' && !canPin(list, key)) return plain(list)

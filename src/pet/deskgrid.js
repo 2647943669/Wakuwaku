@@ -549,7 +549,7 @@
   // nor pinned at its end. The rest that are on are her capsule's members
   // (capsule.js: the capsule setting's order and modes, or, without it,
   // the widgets' order and the monitor's pin): those taking turns, those
-  // pinned at its end (two at most), those only in the open island. The
+  // pinned at its end (five at most), those only in the open island. The
   // taskbar her home, the monitor's readings are the strip's monitor part
   // while it has one and its pin is on (#53: taken off it, it is a member
   // as any other). The open island lists the members alone, in their order
