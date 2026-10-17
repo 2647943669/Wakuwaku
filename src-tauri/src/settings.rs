@@ -374,6 +374,68 @@ pub fn is_desk_layout(v: &Value) -> bool {
     ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id)) && members.iter().enumerate().all(|(i, m)| !members[..i].contains(m))
 }
 
+// Boards kept as combos (the picker's 组合, a board's 存为组合…), checked as
+// deskgrid.js isBoardSets checks them: up to 20, each { id, name, items,
+// saved } and nothing else, ids and names each once. id: "s" and 1 to 15 of
+// a-z 0-9; name: 1 to 16 characters, none a control character, no space at
+// either end (as JavaScript's trim() has them); items: 1 to 16 tiles {
+// type, of, size, at } as a board's (is_board_tiles), with no names or
+// icons (those are the widgets' own, read as it goes up again); saved: when,
+// ms since 1970 (a whole number JavaScript holds exactly).
+pub fn is_board_sets(v: &Value) -> bool {
+    let Some(list) = v.as_array() else { return false };
+    if list.len() > 20 || !list.iter().all(is_board_set) {
+        return false;
+    }
+    list.iter().enumerate().all(|(i, s)| !list[..i].iter().any(|o| o["id"] == s["id"] || o["name"] == s["name"]))
+}
+
+fn is_board_set(v: &Value) -> bool {
+    const MAX_SAFE: u64 = (1 << 53) - 1;
+    let Some(s) = v.as_object() else { return false };
+    let id = s.get("id").and_then(Value::as_str).is_some_and(|id| (2..=16).contains(&id.len()) && id.starts_with('s') && id[1..].bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()));
+    let name = s.get("name").and_then(Value::as_str).is_some_and(is_set_name);
+    let saved = s.get("saved").and_then(Value::as_u64).is_some_and(|ms| ms <= MAX_SAFE);
+    let tiles = s.get("items").and_then(Value::as_array).is_some_and(|tiles| !tiles.is_empty() && tiles.iter().all(|t| t.as_object().is_some_and(|t| t.keys().all(|k| matches!(k.as_str(), "type" | "of" | "size" | "at")))));
+    let keys = s.keys().all(|k| matches!(k.as_str(), "id" | "name" | "items" | "saved"));
+    id && name && saved && tiles && keys && s.get("items").is_some_and(is_board_tiles)
+}
+
+// A combo's name (deskgrid.js isSetName): a board's (16 characters at most,
+// no control character: U+0000 to U+001F, U+007F), not blank, and with no
+// space at either end, the spaces being those JavaScript's trim() takes off
+// (Rust's White_Space less U+0085, and U+FEFF).
+fn is_set_name(n: &str) -> bool {
+    let space = |c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}';
+    !n.is_empty() && n.chars().count() <= 16 && !n.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}') && n.trim_matches(space) == n
+}
+
+// Her capsule as a container of widgets (capsule.js: storedOf and the
+// patches it writes): { members, spin }, each of them optional (a turn's
+// length is kept on its own before any member is ordered: capsule.js
+// spinPatch). members: up to 64 of { key, mode } and nothing else, each key
+// once; key "widget:" or "plugin:" and 1 to 40 of a-z 0-9 _ -; mode turn
+// (takes its turn in the closed capsule, 轮播), pin (always at its right end,
+// 固定) or open (only in the open island, 展开时). spin: the seconds a turn
+// lasts, as widgetSpin (0, 5, 8, 15). The order and the monitor's pin are
+// written to widgetOrder and monitor.pin as well, which the widgets read.
+pub fn is_capsule(v: &Value) -> bool {
+    let Some(c) = v.as_object() else { return false };
+    c.iter().all(|(key, v)| match key.as_str() {
+        "members" => v.as_array().is_some_and(|list| list.len() <= 64 && list.iter().all(is_capsule_member) && list.iter().enumerate().all(|(i, m)| !list[..i].iter().any(|o| o["key"] == m["key"]))),
+        "spin" => matches!(v.as_u64(), Some(0 | 5 | 8 | 15)),
+        _ => false,
+    })
+}
+
+fn is_capsule_member(v: &Value) -> bool {
+    let Some(m) = v.as_object() else { return false };
+    let key = m.get("key").and_then(Value::as_str).and_then(|k| k.strip_prefix("widget:").or_else(|| k.strip_prefix("plugin:")));
+    let key = key.is_some_and(|id| (1..=40).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-'));
+    let mode = matches!(m.get("mode").and_then(Value::as_str), Some("turn" | "pin" | "open"));
+    key && mode && m.len() == 2
+}
+
 // Whether the desktop shows this widget: put there by itself, or its
 // plugin's; alone or in a stack.
 pub fn is_on_desk(layout: &Value, widget: &str) -> bool {
@@ -445,11 +507,10 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         "taskbarLayout" => v.is_null() || is_taskbar_layout(v),
         // The desktop's widgets (desk.rs, deskgrid.js).
         "deskLayout" => is_desk_layout(v),
-        // Phase 2: "boardSets", boards kept as combos (the picker's 组合),
-        // checked as deskgrid.js isBoardSets checks them: up to 20 of { id
-        // (s + up to 15 of a-z0-9), name (1 to 16 chars, trimmed, each once),
-        // items (1 to 16 tiles { type, of, size, at } as a board's, none
-        // over another, each widget once), saved (ms) }. Dropped until then.
+        // Boards kept as combos, to be put up again from the picker's 组合.
+        "boardSets" => is_board_sets(v),
+        // Her capsule's members, their order and how each shows there.
+        "capsule" => is_capsule(v),
         // The programs' buttons in the order dragged: their keys (paths).
         "taskbarOrder" => v.as_array().is_some_and(|keys| keys.len() <= 200 && keys.iter().all(|k| k.as_str().is_some_and(|s| s.len() <= 1024))),
         "hold" => v.as_str() == Some("seen") || matches!(v.as_u64(), Some(8 | 30 | 120)),
@@ -1064,6 +1125,95 @@ mod layout_tests {
         assert!(!super::is_on_desk(&json!(null), "monitor"));
         // In a board.
         assert!(super::is_on_desk(&json!([{ "id": "wb", "type": "board", "items": [{ "type": "widget", "of": "weather", "size": "s", "at": [0, 0] }] }]), "weather"));
+    }
+
+    // Boards kept as combos, as deskgrid.js isBoardSets has them (the same
+    // edges as test/deskboard.test.js).
+    #[test]
+    fn board_sets() {
+        let ok = |v: serde_json::Value| super::is_board_sets(&v);
+        let t1 = json!([{ "type": "widget", "of": "today", "size": "m", "at": [0, 0] }, { "type": "plugin", "of": "weather", "size": "s", "at": [4, 0] }]);
+        let set = |id: &str, name: &str, items: &serde_json::Value| json!({ "id": id, "name": name, "items": items, "saved": 1 });
+        let one = json!([t1[1].clone()]);
+        assert!(ok(json!([set("s1", "写代码", &t1), set("s2", "摸鱼", &one)])));
+        assert!(ok(json!([])));
+        assert!(ok(json!([{ "id": "s0a1b2c3d4e5f6g7", "name": "一二三四五六七八九十一二三四五六", "items": t1, "saved": 9_007_199_254_740_991u64 }])));
+        let named = |name: &str| ok(json!([set("s1", name, &t1)]));
+        assert!(named("行 情"));
+        for bad in ["", " 前后有空格 ", "前有\u{3000}", "\u{feff}前", "一二三四五六七八九十一二三四五六七", "换\n行", "删\u{7f}"] {
+            assert!(!named(bad), "{bad:?}");
+        }
+        let with = |f: &dyn Fn(&mut serde_json::Value)| {
+            let mut s = set("s1", "写代码", &t1);
+            f(&mut s);
+            ok(json!([s]))
+        };
+        let bad: [&dyn Fn(&mut serde_json::Value); 13] = [
+            &|s| s["id"] = json!("x1"),
+            &|s| s["id"] = json!("s"),
+            &|s| s["id"] = json!("sA1"),
+            &|s| s["id"] = json!("s0123456789abcdef"),
+            &|s| s["items"] = json!([]),
+            &|s| s["items"][0]["name"] = json!("今天"),
+            &|s| s["items"][1]["icon"] = json!("weather"),
+            &|s| s["items"][1]["at"] = json!([2, 0]),
+            &|s| s["items"][1]["of"] = json!("today"),
+            &|s| s["extra"] = json!(1),
+            &|s| s["saved"] = json!(-1),
+            &|s| s["saved"] = json!(1.5),
+            &|s| s["saved"] = json!(9_007_199_254_740_992u64),
+        ];
+        for (i, f) in bad.iter().enumerate() {
+            assert!(!with(*f), "case {i}");
+        }
+        assert!(!with(&|s| {
+            s.as_object_mut().unwrap().remove("saved");
+        }));
+        // Ids and names once; twenty at most.
+        assert!(!ok(json!([set("s1", "写代码", &t1), set("s1", "摸鱼", &t1)])));
+        assert!(!ok(json!([set("s1", "写代码", &t1), set("s2", "写代码", &t1)])));
+        let many = |n: usize| serde_json::Value::Array((0..n).map(|i| set(&format!("s{i}"), &format!("组合 {i}"), &t1)).collect());
+        assert!(ok(many(20)));
+        assert!(!ok(many(21)));
+        assert!(!ok(json!({})));
+        assert!(!ok(json!([null])));
+    }
+
+    // Her capsule, as capsule.js storedOf and its patches have it.
+    #[test]
+    fn capsules() {
+        let ok = |v: serde_json::Value| super::is_capsule(&v);
+        assert!(ok(json!({ "members": [{ "key": "widget:monitor", "mode": "pin" }, { "key": "plugin:weather", "mode": "turn" }, { "key": "widget:mail-a_1", "mode": "open" }], "spin": 8 })));
+        assert!(ok(json!({ "members": [] })));
+        // A turn's length alone (capsule.js spinPatch before any order), or nothing.
+        assert!(ok(json!({ "spin": 0 })));
+        assert!(ok(json!({})));
+        let long = "a".repeat(40);
+        assert!(ok(json!({ "members": [{ "key": format!("widget:{long}"), "mode": "turn" }] })));
+        let bad = [
+            json!(null),
+            json!([]),
+            json!({ "members": [{ "key": "widget:a", "mode": "x" }] }),
+            json!({ "members": [{ "key": "bad", "mode": "turn" }] }),
+            json!({ "members": [{ "key": "widget:", "mode": "turn" }] }),
+            json!({ "members": [{ "key": "script:a", "mode": "turn" }] }),
+            json!({ "members": [{ "key": "widget:A", "mode": "turn" }] }),
+            json!({ "members": [{ "key": "widget:a.b", "mode": "turn" }] }),
+            json!({ "members": [{ "key": format!("widget:{long}a"), "mode": "turn" }] }),
+            json!({ "members": [{ "key": "widget:b", "mode": "turn" }, { "key": "widget:b", "mode": "pin" }] }),
+            json!({ "members": [{ "key": "widget:a", "mode": "turn", "x": 1 }] }),
+            json!({ "members": [{ "key": "widget:a" }] }),
+            json!({ "members": "widget:a" }),
+            json!({ "spin": 7 }),
+            json!({ "spin": "8" }),
+            json!({ "spin": 8, "order": [] }),
+        ];
+        for b in bad {
+            assert!(!ok(b.clone()), "{b}");
+        }
+        let many = |n: usize| json!({ "members": (0..n).map(|i| json!({ "key": format!("widget:w{i}"), "mode": "turn" })).collect::<Vec<_>>() });
+        assert!(ok(many(64)));
+        assert!(!ok(many(65)));
     }
 
     // A widget in one place: on the desktop, or on the taskbar while that is
