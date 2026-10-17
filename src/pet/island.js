@@ -4653,6 +4653,11 @@
     editLayout = null
     window.Picker?.ended()
     body.classList.remove('tb-editing')
+    // The pointer on the bar as it goes (its 完成 pressed): taken out, it
+    // hears no leave, and the window kept the mouse over the room above the
+    // strip until the pointer left the window (the desktop there not to be
+    // pressed). Left here.
+    if (editBar.matches(':hover')) window.pet.hover(false)
     editBar.remove()
     sendSolid()
     if (editKeys) {
