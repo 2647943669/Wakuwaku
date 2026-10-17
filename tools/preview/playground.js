@@ -385,7 +385,7 @@
     }
     const doc = f.win.document
     // Ctrl down over the desktop: its page takes the pointer there too (a
-    // rectangle to pick widgets with), as desk.rs will (desk.js, phase 2).
+    // rectangle to pick widgets with), as desk.rs does (poll; off the icons).
     if (f === frames.desk && ctrlDown) return true
     if (!el || el === doc.documentElement || el === doc.body) return false
     return f === frames.desk ? el.id !== 'desk' : !THROUGH.has(el.id)
@@ -601,7 +601,7 @@
     },
     // A widget dragged from her home over the desktop (picker.js): where it
     // is, in the desktop's page's px, to that page (desk-drop.js), as desk.rs
-    // will forward it (phase 2); and what that page said, back.
+    // forwards it; and what that page said, back.
     desk_drag_preview(from, { at }) {
       frames.desk.win?.Fake.emit('desk:drag-preview', at ? toDesk(from, at) : null)
       return { value: null }

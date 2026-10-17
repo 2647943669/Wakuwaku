@@ -17,9 +17,10 @@
 // on": put somewhere, it runs; taken from its last place, it is off). The
 // list gives their order and their modes; one on and not listed (a script's
 // new widget, one turned on on the Plugins page) comes at its end. So the
-// capsule reads the same with or without the setting, and the Rust side,
-// which keeps no "capsule" yet (phase 2), still shows what the page meant:
-// the order is written to widgetOrder too, the monitor's pin to monitor.pin.
+// capsule reads the same with or without the setting. The Rust side keeps
+// "capsule" (settings.rs is_capsule) but reads the widgets' order and the
+// monitor's pin from their own settings, so it shows what the page meant
+// with the order written to widgetOrder too, the monitor's pin to monitor.pin.
 //
 // Without the setting (a config of before): the members in the widgets'
 // order (widgets.rs sorts them by widgetOrder), each taking turns; the
@@ -152,10 +153,11 @@
     return add(without, record.key, Math.min(Math.max(0, record.index), without.length), record.mode)
   }
 
-  // The settings that say it: the capsule's own, and for the Rust side of
-  // now, which keeps no capsule (phase 2), the order as widgetOrder (each
-  // member's widget or plugin id) and, in the island's home, the monitor's
-  // pin as monitor.pin. spin: kept, or as widgetSpin says.
+  // The settings that say it: the capsule's own, and for the Rust side,
+  // which reads the order and the pin from their own settings (widgets.rs,
+  // the monitor), the order as widgetOrder (each member's widget or plugin
+  // id) and, in the island's home, the monitor's pin as monitor.pin. spin:
+  // kept, or as widgetSpin says.
   function patchFor(config = {}, list, home = 'island') {
     const members = plain(list).slice(0, MAX_MEMBERS)
     const spinWas = config.capsule?.spin
