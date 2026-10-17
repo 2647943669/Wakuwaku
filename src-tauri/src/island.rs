@@ -106,9 +106,10 @@ pub struct Island {
     // At the top of the screen, up out of the way of a window under it.
     stow: Stow,
     // The taskbar's layout being edited (island.js editTaskbar): her menu
-    // offers to stop, and the window takes the mouse over its bar, its
-    // library and its tools (solid, page px: x, y, w, h; pointer.rs look)
-    // whatever the page says of the pointer (zhoupengjie/Wakuwaku#53).
+    // offers to stop. And where the window takes the mouse whatever the
+    // page says of the pointer (solid, page px: x, y, w, h; pointer.rs
+    // look): the edit bar (zhoupengjie/Wakuwaku#53), the widget picker, its
+    // popover, her capsule's panel and the toasts (set_editing).
     pub editing: bool,
     solid: Vec<[f64; 4]>,
 }
@@ -1032,10 +1033,11 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             if isl.ct.calmed() {
                 sh.log(&format!("island: mouse mode bouncing, calmed: cursor {cursor:?}, window {pos:?} {size:?}, scale {sf}"));
             }
-            // Editing the taskbar's layout: looked at often wherever the
-            // pointer is, so its bar takes the mouse soon after the pointer
-            // comes onto it from afar (a press at once went under it, #53).
-            let wait = if held || isl.ct.over { 50 } else if seen.forward || isl.editing { 30 } else if seen.near { 80 } else { 200 };
+            // Editing the taskbar's layout, or the picker or a panel open:
+            // looked at often wherever the pointer is, so they take the
+            // mouse soon after the pointer comes onto them from afar (a
+            // press at once went under the edit bar, #53).
+            let wait = if held || isl.ct.over { 50 } else if seen.forward || isl.editing || !isl.solid.is_empty() { 30 } else if seen.near { 80 } else { 200 };
             // Out of the way of a window: the pointer calling it down. And
             // the pointer just come near it: a window come under it since
             // the last look is looked for now, before a press reaches it.
@@ -1103,18 +1105,25 @@ pub fn set_room(sh: &Shared, measured: &Value) {
 }
 
 // The button is held on her in her home (a pull, or carrying her out).
-// The taskbar's layout being edited, or not any more, and where its parts
-// over the strip are (page px). Logged as it starts and ends only: the
-// rects come again as they change (the library opened, the tools).
+// The taskbar's layout being edited, or not any more, and where the window
+// takes the mouse whatever the page says of the pointer (page px): the edit
+// bar while editing; the widget picker, its popover over a widget, her
+// capsule's panel and a toast with 撤销 (picker.js solids) whenever they
+// are open, editing or not, on the taskbar and at the top of the screen
+// alike; none, the mouse as ever. Logged as each starts and ends only: the
+// rects come again as they change (the picker opened, a toast gone).
 pub fn set_editing(sh: &Shared, on: bool, rects: Vec<[f64; 4]>) {
-    let rects: Vec<[f64; 4]> = if on { rects.into_iter().filter(|r| r.iter().all(|v| v.is_finite()) && r[2] > 0.0 && r[3] > 0.0).take(8).collect() } else { Vec::new() };
-    let was = {
+    let rects: Vec<[f64; 4]> = rects.into_iter().filter(|r| r.iter().all(|v| v.is_finite()) && r[2] > 0.0 && r[3] > 0.0).take(8).collect();
+    let solid = !rects.is_empty();
+    let (was, had) = {
         let mut isl = sh.island.lock().unwrap();
-        isl.solid = rects;
-        std::mem::replace(&mut isl.editing, on)
+        let had = !std::mem::replace(&mut isl.solid, rects).is_empty();
+        (std::mem::replace(&mut isl.editing, on), had)
     };
     if was != on {
         sh.log(&format!("island: taskbar layout {}", if on { "being edited: the window takes the mouse over its bar" } else { "edited no more" }));
+    } else if had != solid && !on {
+        sh.log(&format!("island: {}", if solid { "the window takes the mouse over the picker or a panel" } else { "nothing of the picker's open: the mouse as ever" }));
     }
 }
 

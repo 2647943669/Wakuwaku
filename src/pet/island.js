@@ -4561,19 +4561,18 @@
   // window under it and only its release coming here, so 完成 and 取消 did
   // nothing (zhoupengjie/Wakuwaku#53). A couple of px more all round.
   // picker.js: the picker, its popover, the capsule's panel and a toast
-  // with 撤销 too, editing or not.
+  // with 撤销 too, editing or not, in either home (on: the layout being
+  // edited, for her menu's 退出编辑; the rects whatever it is).
   let solidSent = ''
   function sendSolid() {
     if (!isOn()) return
     const extra = window.Picker?.solids() || []
-    const on = !!editLayout || extra.length > 0
-    const rects = on
-      ? [...(editLayout ? [editBar] : []), ...extra]
-          .filter(n => n.isConnected)
-          .map(n => n.getBoundingClientRect())
-          .filter(r => r.width && r.height)
-          .map(r => [Math.floor(r.left) - 2, Math.floor(r.top) - 2, Math.ceil(r.width) + 4, Math.ceil(r.height) + 4])
-      : []
+    const on = !!editLayout
+    const rects = [...(editLayout ? [editBar] : []), ...extra]
+      .filter(n => n.isConnected)
+      .map(n => n.getBoundingClientRect())
+      .filter(r => r.width && r.height)
+      .map(r => [Math.floor(r.left) - 2, Math.floor(r.top) - 2, Math.ceil(r.width) + 4, Math.ceil(r.height) + 4])
     const sent = JSON.stringify([on, rects])
     if (sent === solidSent) return
     solidSent = sent
