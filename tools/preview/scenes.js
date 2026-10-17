@@ -187,7 +187,7 @@
     {
       id: 'hold-ring',
       title: '提醒停留',
-      note: '「停留多久」是 30 秒：一轮刚做完，流光转完三圈后光环静静亮着，到 30 秒才变成小点；鼠标停到胶囊上就算看过。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（含自定义秒数）。',
+      note: '「停留多久」是 30 秒：一轮刚做完，流光转完三圈后接着慢慢流动，到 30 秒才减速淡出、变成小点；鼠标移到胶囊上就算看过。「其他」里的「没人在电脑前」打开时它停在原地。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（含自定义秒数）。',
       world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'ring', hold: 30 } }),
       play: turnEnds,
     },
@@ -423,8 +423,19 @@
     },
     // Past its hold (8 s from the event, the default) and its fade.
     { id: 'scene-error', section: 'scenes', scene: 'error', title: '出错了 · 流光播完留下的红点', page: 'island', view: CLOSED, budget: 12000, steps: p => p.wait(9200) },
-    // Past the turns (2.55 s), held lit and still (hold 30 s).
-    { id: 'scene-hold-ring', section: 'scenes', scene: 'hold-ring', title: '提醒停留 · 流光转完，光环静止亮着（停 30 秒）', page: 'island', view: CLOSED, budget: 8000, steps: p => p.wait(4500) },
+    // Past its turns (2.55 s), flowing on (hold 30 s): held there, 4 s in.
+    {
+      id: 'scene-hold-ring',
+      section: 'scenes',
+      scene: 'hold-ring',
+      title: '提醒停留 · 流光转完三圈后接着流动（停 30 秒）',
+      page: 'island',
+      view: CLOSED,
+      steps: async p => {
+        await p.wait(50)
+        p.freeze({ flow: 4000 })
+      },
+    },
     // Past the few seconds it used to stay open (6.5 s with Claude's words), open still.
     { id: 'scene-hold-open', section: 'scenes', scene: 'hold-open', title: '展开停留 · 做完自己展开，7 秒时还开着（停 30 秒）', page: 'island', view: [0, above(420), 520, 420], budget: 10000, steps: p => p.wait(7000) },
     { id: 'scene-taskbar-full', section: 'scenes', scene: 'taskbar-full', title: '放满小工具的任务栏', page: 'island', view: STRIP_VIEW },
@@ -566,8 +577,8 @@
         p.freeze({ flow: 1100 })
       },
     },
-    // Held (停留多久 30 s, zhoupengjie/Wakuwaku#65): its turns over, lit and
-    // still, nothing of it animated; on the taskbar, at the top, at a corner.
+    // Held (停留多久 30 s, zhoupengjie/Wakuwaku#65): its turns over, flowing
+    // on (held 4 s in); on the taskbar, at the top, at a corner.
     ...[
       ['flow-held', '任务栏上', 'taskbar', 'center', CLOSED],
       ['flow-held-island', '顶部灵动岛上', 'island', 'center', [480, 0, 640, 60]],
@@ -575,18 +586,18 @@
     ].map(([id, name, home_, islandPos, view]) => ({
       id,
       section: 'flow',
-      title: `停留 · 转完后光环静止亮着 · ${name}`,
+      title: `停留 · 转完三圈后接着流动 · ${name}`,
       page: 'island',
       home: home_,
       islandPos,
       view,
-      budget: 8000,
       world: F => ({ ...home(F), home: home_, sessions: [F.session('working')], config: { hold: 30 } }),
       steps: async p => {
         await p.wait(300)
         p.set({ sessions: [p.F.session('done')] })
         p.push()
-        await p.wait(4000)
+        await p.wait(50)
+        p.freeze({ flow: 4000 })
       },
     })),
 

@@ -1159,6 +1159,21 @@
         a.currentTime = 1100
       }))
     }
+    // What the ring flowing costs (zhoupengjie/Wakuwaku#65): a turn ended,
+    // the ring flowing until seen (flow); the same with the dot alone
+    // (noflow); flowing, then nobody about, still (flowquiet).
+    if (what === 'flow' || what === 'noflow' || what === 'flowquiet') {
+      after(200, () => {
+        Object.assign(world.config, { endCue: what === 'noflow' ? 'none' : 'ring', hold: 'seen' })
+        endTurn('done')
+      })
+      if (what === 'flowquiet')
+        after(4000, () => {
+          world.quiet = true
+          toIsland('pet:quiet', { on: true })
+          pushAll()
+        })
+    }
     // A prompt waiting, its card's buttons armed (0.6 s): ?demo=ask; then answered: ?demo=answer.
     if (what === 'ask' || what === 'answer') {
       after(200, () => {
