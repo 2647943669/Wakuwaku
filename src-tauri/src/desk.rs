@@ -17,7 +17,13 @@
 // are (desk_shapes: rounded rects, and an open menu); the pointer's own
 // loop (main.rs) asks poll() where the pointer is, and the window takes the
 // mouse while it is on one, lets it through elsewhere; held during a press
-// (desk_hold), so a drag keeps it anywhere.
+// (desk_hold), so a drag keeps it anywhere. With Ctrl held, its bare desktop
+// too (off Explorer's icons), for widgets to be picked with a rectangle.
+//
+// A widget dragged from her home's widget picker over a display: told to
+// that display's page, its window made for it if there was none, and the
+// desktop's windows raised over the others meanwhile ("A widget dragged
+// from her home" below).
 //
 // Its glass: each display's own wallpaper (wallpaper.rs, as the strip's
 // Mica takes it), told to its page when it changes (desk:paper; looked at
@@ -55,6 +61,13 @@ struct Desk {
     // The window takes the mouse.
     catching: bool,
     was_down: bool,
+    // Some of its widgets picked with Ctrl (desk_picked): a press off them
+    // goes on to Explorer, and the page hears of it (desk:outside).
+    picked: bool,
+    // The desktop's icons on its display as its page last had them read
+    // (desk_icons; its px), and when: Ctrl over one of them is Explorer's.
+    icons: Vec<[f64; 4]>,
+    icons_at: Option<std::time::Instant>,
     // The entries it shows (refresh), and words not sent it while its
     // desktop was not seen (push_widgets).
     entries: Vec<Value>,
@@ -118,7 +131,7 @@ pub fn sync(sh: &Arc<Shared>) {
         for (a, key, _) in &want {
             if !desks.iter().any(|d| d.key == *key) {
                 let label = format!("desk-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, entries: Vec::new(), stale: false, work: (a.x, a.y, a.w, a.h) });
+                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, picked: false, icons: Vec::new(), icons_at: None, entries: Vec::new(), stale: false, work: (a.x, a.y, a.w, a.h) });
                 made.push((label, *a));
             }
         }
@@ -158,7 +171,7 @@ pub fn refresh(sh: &Shared) {
     let screens = sh.screens();
     let keys: Vec<String> = screens.areas.iter().map(|a| key_of(sh, a.mon)).collect();
     let layout = sh.setting("deskLayout");
-    let light = look_light();
+    let (light, accent) = look_now();
     let sprite = sprite_url(sh);
     for (label, key, mon, sf) in ready {
         let area = screens.areas.iter().find(|a| a.mon == mon).copied();
@@ -172,6 +185,9 @@ pub fn refresh(sh: &Shared) {
             "work": work,
             "lang": sh.lang(),
             "light": light,
+            // Windows' accent, as taskbar:look has it (what is picked with
+            // Ctrl, the rectangle: desk.js).
+            "accent": accent,
             "detailed": sh.setting("details") != false,
             "home": sh.home(),
             // What the taskbar shows while it is her home (a board's Add says where each one is).
@@ -209,11 +225,15 @@ fn sprite_url(sh: &Shared) -> Value {
     crate::data::pets(&sh.dir).iter().find(|p| p.id == id).map_or(Value::Null, |p| json!(crate::data::asset_url(&p.sheet)))
 }
 
-// Windows' mode, as last read (refreshed as Windows says it changed).
-static LIGHT: Mutex<Option<bool>> = Mutex::new(None);
-fn look_light() -> bool {
-    let mut light = LIGHT.lock().unwrap();
-    *light.get_or_insert_with(|| crate::wallpaper::look().0)
+// Windows' mode and accent ({ base, light, dark }, or null), as last read
+// (read again as Windows says its colours changed).
+static LOOK: Mutex<Option<(bool, Value)>> = Mutex::new(None);
+fn look_now() -> (bool, Value) {
+    LOOK.lock().unwrap().get_or_insert_with(look_read).clone()
+}
+fn look_read() -> (bool, Value) {
+    let (light, accent) = crate::wallpaper::look();
+    (light, accent.map_or(Value::Null, |a| json!({ "base": a.base, "light": a.light, "dark": a.dark })))
 }
 
 // The widgets' words, to the pages (with the island's, main.rs redraw_widgets):
@@ -258,9 +278,10 @@ pub fn catch_up(sh: &Shared) {
     }
 }
 
-// The pages' open menus closed (another window came to the front).
+// The pages' open menus closed, those picked with Ctrl let go (another
+// window came to the front: a press on it, or on the desktop's own).
 fn close_menus(sh: &Shared) {
-    let open: Vec<String> = DESKS.lock().unwrap().iter().filter(|d| d.menu).map(|d| d.label.clone()).collect();
+    let open: Vec<String> = DESKS.lock().unwrap().iter().filter(|d| d.menu || d.picked).map(|d| d.label.clone()).collect();
     for label in open {
         emit(sh, &label, "desk:outside", Value::Null);
     }
@@ -418,13 +439,24 @@ pub fn in_shape(x: f64, y: f64, s: &[f64; 5], margin: f64) -> bool {
 // full screen over it). On a display with widgets every 250 ms; within 40 px
 // of one, or in the taskbar's strip (the display less its work area), every
 // 100 ms, so that a quick move onto one is caught (the VM, 2026-10-16: from
-// the taskbar 1 in 4 at 250 ms, 6 in 6 at 100 ms).
-pub fn pace(on_widgets: bool, seen: bool, quiet: bool, near: bool, in_strip: bool) -> Option<u64> {
+// the taskbar 1 in 4 at 250 ms, 6 in 6 at 100 ms). Some picked with Ctrl,
+// as near one (a press off them is looked for). Ctrl held over that desktop,
+// every 40 ms (CTRL_MS): Ctrl let go, the mouse let go soon after; the Ctrl
+// going down is caught at once by its key (imp: a keyboard hook wakes the
+// pointer's loop), so with Ctrl up nothing is looked at more than before.
+pub fn pace(on_widgets: bool, seen: bool, quiet: bool, near: bool, in_strip: bool, ctrl: bool) -> Option<u64> {
     if quiet || !on_widgets || !seen {
         return None;
     }
-    Some(if near || in_strip { 100 } else { 250 })
+    Some(if ctrl {
+        CTRL_MS
+    } else if near || in_strip {
+        100
+    } else {
+        250
+    })
 }
+const CTRL_MS: u64 = 40;
 
 // Whether the pointer is looked at at all: someone about, and a desktop
 // window there.
@@ -443,15 +475,19 @@ fn contains(r: Mon, (x, y): (i32, i32)) -> bool {
 // it is on one of its widgets (or held, or a menu open there), lets it
 // through elsewhere. How long until the next look (ms; IDLE_MS: none wanted).
 //
-// Phase 2, for the widgets picked with Ctrl (desk.js, "Several picked with
-// Ctrl"): while Ctrl is down (GetAsyncKeyState(VK_CONTROL) & 0x8000) and the
-// pointer is over a display's desktop, seen and off its icons, that window
-// catches as over a widget, and lets go as Ctrl is let go (a drag begun is
-// held, desk_hold); looked at every 30 to 50 ms while Ctrl is down there
-// (250 ms lets a quick Ctrl-press through to Explorer). While some are
-// picked, a press off its widgets goes on to Explorer and is told as
-// desk:outside. desk:state carries Windows' accent ({ base, light, dark },
-// as taskbar:look) for them.
+// Several widgets picked with Ctrl (desk.js, the user's call of 2026-10-17:
+// Ctrl and a drag over the bare desktop draws a rectangle, Ctrl and a press
+// on one picks it): while Ctrl is down (GetAsyncKeyState) and the pointer is
+// over a display's desktop that has widgets, seen, in its work area and off
+// Explorer's icons there (the rects its page had read, desk_icons: Ctrl and
+// a press on an icon is still Explorer's), that window takes the mouse as
+// over a widget, and lets it go as Ctrl is let go (a rectangle begun is
+// held, desk_hold). Without Ctrl the desktop is Windows' own (its icons'
+// rectangle, its menu). Ctrl's going down wakes this look at once (imp's
+// keyboard hook), so a press right after it reaches the page; then every
+// 40 ms while it is held there. While some are picked (desk_picked), a
+// press off them goes on to Explorer and the page is told (desk:outside),
+// as a press elsewhere with a menu open is.
 pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     // Nobody about: the pointer rests; each window keeps what it does.
     if !looks_wanted(sh.is_quiet(), 1) {
@@ -468,8 +504,11 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     count(&POLLS);
     let seen = under.is_some_and(|mon| seen_now(sh, mon));
     let down = crate::pet::any_down().unwrap_or(false);
+    let ctrl = under.is_some() && imp::ctrl_down();
+    let ctrl_came = CTRL_WAS.swap(ctrl, Ordering::Relaxed) != ctrl && ctrl;
     let mut changes: Vec<(String, isize, Option<bool>, bool, (f64, f64))> = Vec::new();
-    let (mut near, mut in_strip) = (false, false);
+    let (mut near, mut in_strip, mut ctrl_over) = (false, false, false);
+    let mut stale_icons = None;
     {
         let mut desks = DESKS.lock().unwrap();
         for d in desks.iter_mut().filter(|d| d.ready) {
@@ -479,14 +518,23 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             let visible = on_display && seen;
             let inside = visible && d.shapes.iter().any(|s| in_shape(x, y, s, 0.0));
             if visible {
-                near |= d.shapes.iter().any(|s| in_shape(x, y, s, NEAR_PX));
+                near |= d.picked || d.shapes.iter().any(|s| in_shape(x, y, s, NEAR_PX));
                 in_strip |= !contains(d.work, cursor);
             }
+            // Ctrl held over its bare desktop: taken there too, but on an icon.
+            let ctrl_here = ctrl && visible && !d.shapes.is_empty() && contains(d.work, cursor);
+            ctrl_over |= ctrl_here;
+            if ctrl_here && ctrl_came && d.icons_at.is_none_or(|at| at.elapsed() > ICONS_FRESH) {
+                stale_icons = Some((d.label.clone(), d.mon, d.sf));
+            }
+            let ctrl_here = ctrl_here && !on_icon(&d.icons, x, y);
             // A menu open: the whole display's desktop, for a press off it
             // to close it (the page), as Windows' own menus take that press.
-            let catch = d.held || inside || (d.menu && on_display);
-            // A press off its widgets with a menu open: the menu goes.
-            let outside = d.menu && down && !d.was_down && !inside && !d.held;
+            let catch = d.held || inside || (d.menu && on_display) || ctrl_here;
+            // A press off its widgets with a menu open: the menu goes. Some
+            // picked: they are let go of (not with Ctrl on the bare desktop,
+            // a rectangle to pick more with).
+            let outside = (d.menu || (d.picked && !ctrl_here)) && down && !d.was_down && !inside && !d.held;
             d.was_down = down;
             if catch != d.catching || outside {
                 let changed = (catch != d.catching).then_some(catch);
@@ -506,7 +554,44 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             emit(sh, &label, "desk:outside", Value::Null);
         }
     }
-    pace(under.is_some(), seen, false, near, in_strip).unwrap_or(IDLE_MS)
+    // Ctrl down over a desktop whose icons were read a while ago: read
+    // again (the person may have moved them), off this thread.
+    if let Some((label, mon, sf)) = stale_icons {
+        read_icons(label, mon, sf);
+    }
+    pace(under.is_some(), seen, false, near, in_strip, ctrl_over).unwrap_or(IDLE_MS)
+}
+
+// Ctrl as the last look had it (its going down: the icons read again).
+static CTRL_WAS: AtomicBool = AtomicBool::new(false);
+// The icons as read this long ago are read again as Ctrl goes down.
+const ICONS_FRESH: std::time::Duration = std::time::Duration::from_secs(3);
+
+// Whether a point of a desktop's page is on one of its icons (their rects).
+fn on_icon(icons: &[[f64; 4]], x: f64, y: f64) -> bool {
+    icons.iter().any(|r| x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3])
+}
+
+// A display's icons read again for its window, on a thread of their own
+// (Explorer answers), one at a time.
+fn read_icons(label: String, mon: Mon, sf: f64) {
+    static READING: AtomicBool = AtomicBool::new(false);
+    if READING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        if let Some(icons) = imp::icons(mon, sf) {
+            keep_icons(&label, icons);
+        }
+        READING.store(false, Ordering::SeqCst);
+    });
+}
+
+fn keep_icons(label: &str, icons: Vec<[f64; 4]>) {
+    if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == label) {
+        d.icons = icons;
+        d.icons_at = Some(std::time::Instant::now());
+    }
 }
 
 // --- What it does, counted --------------------------------------------------------------------
@@ -709,7 +794,22 @@ pub async fn desk_icons(app: tauri::AppHandle, window: WebviewWindow) -> Option<
     count(&COMMANDS);
     let (mon, sf) = DESKS.lock().unwrap().iter().find(|d| d.label == window.label()).map(|d| (d.mon, d.sf))?;
     let _ = app;
-    tauri::async_runtime::spawn_blocking(move || imp::icons(mon, sf)).await.ok().flatten()
+    let icons = tauri::async_runtime::spawn_blocking(move || imp::icons(mon, sf)).await.ok().flatten();
+    // Kept for the pointer's look too: Ctrl over an icon is Explorer's.
+    if let Some(icons) = &icons {
+        keep_icons(window.label(), icons.clone());
+    }
+    icons
+}
+
+// Some of its widgets picked with Ctrl, or none any more (desk.js): a press
+// off them is looked for (poll), and told (desk:outside).
+#[tauri::command]
+pub fn desk_picked(window: WebviewWindow, on: bool) {
+    count(&COMMANDS);
+    if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == window.label()) {
+        d.picked = on;
+    }
 }
 
 // The icons' rects (x, y, w, h: the screen's px) that lie on a display, in
@@ -1033,9 +1133,9 @@ pub fn read_papers(sh: &Shared) {
 // half minute is up: looked at again.
 fn look_again() {
     let Some(sh) = SHARED.get() else { return };
-    let light = crate::wallpaper::look().0;
-    let was = LIGHT.lock().unwrap().replace(light);
-    if was != Some(light) {
+    let look = look_read();
+    let was = LOOK.lock().unwrap().replace(look.clone());
+    if was != Some(look) {
         refresh(sh);
     }
     read_papers(sh);
@@ -1154,6 +1254,9 @@ mod imp {
         fn PostQuitMessage(code: i32);
         fn DestroyWindow(hwnd: Hwnd) -> i32;
         fn IsIconic(hwnd: Hwnd) -> i32;
+        fn GetAsyncKeyState(key: i32) -> i16;
+        fn UnhookWindowsHookEx(hook: isize) -> i32;
+        fn PostThreadMessageW(thread: u32, msg: u32, wparam: usize, lparam: isize) -> i32;
     }
 
     #[link(name = "kernel32")]
@@ -1580,11 +1683,13 @@ mod imp {
                     SetTimer(hwnd, STALE, 10_000, std::ptr::null());
                 }
                 keep_all_low();
+                keys_start();
                 let mut msg: Msg = std::mem::zeroed();
                 while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                 }
+                keys_stop();
                 for h in hooks {
                     UnhookWinEvent(h);
                 }
@@ -1596,6 +1701,80 @@ mod imp {
                 sh.log("desk: its thread gone with the last desktop window");
             }
         });
+    }
+
+    // Ctrl held, either of them, now.
+    pub fn ctrl_down() -> bool {
+        const VK_CONTROL: i32 = 0x11;
+        // SAFETY: a plain query; the high bit is the key's state now.
+        unsafe { GetAsyncKeyState(VK_CONTROL) as u16 & 0x8000 != 0 }
+    }
+
+    // Ctrl's keys going down and up anywhere: the pointer's look woken at
+    // once (main.rs wake_pointer), not at its pace, so a press right after
+    // Ctrl reaches the desktop's page (poll). A low-level keyboard hook
+    // (WH_KEYBOARD_LL) on a thread of its own that does nothing else:
+    // Windows hands it every key on the machine and waits for its answer,
+    // and drops one that answers late (winkeys.rs has the same); it looks at
+    // Ctrl's keys alone, and wakes the loop as Ctrl changes. Nothing of it
+    // runs while no key is touched. In with the desk thread, out with it.
+    #[repr(C)]
+    struct KbdLl {
+        vk: u32,
+        scan: u32,
+        flags: u32,
+        time: u32,
+        extra: usize,
+    }
+    static CTRL_HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static KEYS_THREAD: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    extern "system" fn on_key(code: i32, wparam: usize, lparam: isize) -> isize {
+        const LLKHF_UP: u32 = 0x80;
+        if code == 0 && lparam != 0 {
+            // SAFETY: Windows hands a KBDLLHOOKSTRUCT with HC_ACTION.
+            let k = unsafe { &*(lparam as *const KbdLl) };
+            // VK_CONTROL, VK_LCONTROL, VK_RCONTROL; held down, it repeats.
+            if matches!(k.vk, 0x11 | 0xA2 | 0xA3) {
+                let held = k.flags & LLKHF_UP == 0;
+                if CTRL_HELD.swap(held, std::sync::atomic::Ordering::Relaxed) != held {
+                    crate::wake_pointer();
+                }
+            }
+        }
+        // SAFETY: passed on, as every hook must.
+        unsafe { CallNextHookEx(0, code, wparam, lparam) }
+    }
+
+    fn keys_start() {
+        const WH_KEYBOARD_LL: i32 = 13;
+        let (tx, rx) = std::sync::mpsc::channel();
+        crate::spawn_named("desk ctrl", move || {
+            // SAFETY: a hook of our own, on this thread, which runs its loop.
+            unsafe {
+                let hook = SetWindowsHookExW(WH_KEYBOARD_LL, on_key, GetModuleHandleW(std::ptr::null()), 0);
+                KEYS_THREAD.store(GetCurrentThreadId(), std::sync::atomic::Ordering::SeqCst);
+                let _ = tx.send(hook != 0);
+                let mut msg: Msg = std::mem::zeroed();
+                while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {}
+                if hook != 0 {
+                    UnhookWindowsHookEx(hook);
+                }
+            }
+        });
+        let put_in = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(false);
+        if let Some(sh) = super::SHARED.get() {
+            sh.log(&format!("desk: Ctrl watched for widgets picked on the desktop: hook {}", if put_in { "in" } else { "could not be put in" }));
+        }
+    }
+
+    fn keys_stop() {
+        const WM_QUIT: u32 = 0x12;
+        let id = KEYS_THREAD.swap(0, std::sync::atomic::Ordering::SeqCst);
+        if id != 0 {
+            // SAFETY: a posted message, no pointers.
+            unsafe { PostThreadMessageW(id, WM_QUIT, 0, 0) };
+        }
     }
 
     // The last desktop window gone: its thread, hooks and timers with it.
@@ -1684,6 +1863,9 @@ mod imp {
         None
     }
     pub fn start(_sh: &Arc<Shared>) {}
+    pub fn ctrl_down() -> bool {
+        false
+    }
     pub fn keep_all_low() {}
     pub fn set_through(_hwnd: isize, _through: bool) {}
     pub fn desktop_shown(_own: &[isize]) -> bool {
@@ -1704,13 +1886,17 @@ mod tests {
     #[test]
     fn the_pointers_look_stops_where_nothing_can_be_caught() {
         // Nobody about, no widget on the pointer's display, that desktop covered: none.
-        assert_eq!(pace(true, true, true, true, true), None);
-        assert_eq!(pace(false, true, false, true, true), None);
-        assert_eq!(pace(true, false, false, true, true), None);
+        assert_eq!(pace(true, true, true, true, true, false), None);
+        assert_eq!(pace(false, true, false, true, true, false), None);
+        assert_eq!(pace(true, false, false, true, true, false), None);
         // On a display with widgets: 250 ms; near one or in the taskbar's strip: 100 ms.
-        assert_eq!(pace(true, true, false, false, false), Some(250));
-        assert_eq!(pace(true, true, false, true, false), Some(100));
-        assert_eq!(pace(true, true, false, false, true), Some(100));
+        assert_eq!(pace(true, true, false, false, false, false), Some(250));
+        assert_eq!(pace(true, true, false, true, false, false), Some(100));
+        assert_eq!(pace(true, true, false, false, true, false), Some(100));
+        // Ctrl held over it: 40 ms (a press picks widgets); Ctrl or not, none where none is wanted.
+        assert_eq!(pace(true, true, false, false, false, true), Some(40));
+        assert_eq!(pace(true, false, false, false, false, true), None);
+        assert_eq!(pace(true, true, true, false, false, true), None);
         assert!(IDLE_MS > 1000);
         assert!(contains((0, 0, 10, 10), (9, 0)) && !contains((0, 0, 10, 10), (10, 0)) && !contains((-1920, 0, 1920, 1080), (0, 5)));
     }
@@ -1760,6 +1946,16 @@ mod tests {
         let alone = json!({ "id": "wa", "type": "widget", "of": "monitor", "size": "s" });
         assert!(entry_shows_at(&alone, "monitor", None, false));
         assert!(!entry_shows_at(&alone, "monitor", None, true));
+    }
+
+    // Ctrl over an icon is Explorer's: a point on one of their rects (the
+    // page's px, as desk_icons reads them), its right and lower edges out.
+    #[test]
+    fn a_point_on_an_icon() {
+        let icons = [[10.0, 20.0, 74.0, 84.0], [10.0, 110.0, 74.0, 84.0]];
+        assert!(on_icon(&icons, 10.0, 20.0) && on_icon(&icons, 83.9, 103.9) && on_icon(&icons, 40.0, 150.0));
+        assert!(!on_icon(&icons, 84.0, 50.0) && !on_icon(&icons, 40.0, 105.0) && !on_icon(&icons, 9.0, 50.0));
+        assert!(!on_icon(&[], 40.0, 50.0));
     }
 
     #[test]

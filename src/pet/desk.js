@@ -909,7 +909,7 @@
   // Its tiles' widgets, sizes and places under the name typed: one of that
   // name replaced, else added (twenty at most, the oldest going); said on
   // the board. Read and written as the settings are (settings_get,
-  // settings_set: settings.rs keeps boardSets from phase 2).
+  // settings_set: settings.rs is_board_sets checks them as isBoardSets does).
   async function keepSet(b, name) {
     let got = null
     try {
@@ -1289,26 +1289,28 @@
   // of them (selMenuHTML).
   //
   // The real app: desk.rs lets the pointer through but over the widgets,
-  // so Ctrl and a press on the bare desktop reach this page only once its
-  // poll takes the mouse there too (phase 2): while Ctrl is down
-  // (GetAsyncKeyState(VK_CONTROL) & 0x8000, read in poll) and the pointer
-  // is over this display's desktop, seen (seen_now) and off Explorer's
-  // icons (desk_icons' rects, so a Ctrl-click on an icon is still
-  // Explorer's), catch as over a widget; let go again as Ctrl is let go
-  // (a drag begun is held, desk_hold). Ctrl comes a moment before the
-  // press: poll at 30 to 50 ms while Ctrl is down over such a display
-  // (pace's 250 ms would let a quick Ctrl-press through to Explorer), or a
-  // low-level keyboard hook's Ctrl edge to look at once. And while some are
-  // picked a press off them should go on to Explorer and come here as
-  // desk:outside (as a menu's press off it does, but without catching it).
+  // so Ctrl and a press on the bare desktop reach this page because its
+  // poll takes the mouse there too: while Ctrl is down and the pointer is
+  // over this display's desktop, seen (seen_now), in its work area and off
+  // Explorer's icons (the rects desk_icons read, so a Ctrl-click on an icon
+  // is still Explorer's), it catches as over a widget, and lets go as Ctrl
+  // is let go (a drag begun is held, desk_hold). Ctrl comes a moment
+  // before the press: its key wakes the poll at once (a keyboard hook in
+  // desk.rs), then 40 ms while it is held. While some are picked (told:
+  // desk_picked) a press off them goes on to Explorer and comes here as
+  // desk:outside, as a menu's press off it does, but without catching it.
   const selEl = document.createElement('div')
   selEl.className = 'dsel'
   selEl.hidden = true
   document.body.append(selEl)
 
+  let pickedSent = false
   function paintSelected() {
     for (const n of nodes.values()) n.el.classList.toggle('sel', selected.has(n.entry.id))
     keys()
+    if (pickedSent === selected.size > 0) return
+    pickedSent = selected.size > 0
+    invoke('desk_picked', { on: pickedSent }).catch(() => {})
   }
   function toggleSelected(id) {
     if (!selected.delete(id)) selected.add(id)
@@ -1529,9 +1531,9 @@
       here = s
       layout = Array.isArray(s.layout) ? s.layout : []
       document.body.classList.toggle('lw', !!s.light)
-      // Windows' accent (what is picked, the rectangle): its light shade on
-      // dark, its dark one on light; none said (desk.rs adds it in phase 2,
-      // as taskbar:look has it), Windows' own blue (desk.css).
+      // Windows' accent (what is picked, the rectangle; desk.rs sends it as
+      // taskbar:look has it): its light shade on dark, its dark one on
+      // light; none said, Windows' own blue (desk.css).
       const accent = s.accent && (s.light ? s.accent.dark : s.accent.light)
       if (accent) document.body.style.setProperty('--w-accent', accent)
       else document.body.style.removeProperty('--w-accent')

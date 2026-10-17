@@ -1078,6 +1078,17 @@ pub(crate) fn wake_monitor() {
     cv.notify_one();
 }
 
+// The pointer's loop woken from its wait (setup): Ctrl pressed or let go
+// (desk.rs, its keyboard hook), so the desktop takes or lets go of the
+// mouse at once. Called from that hook: no more than an unpark.
+static POINTER_LOOP: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
+
+pub(crate) fn wake_pointer() {
+    if let Some(t) = POINTER_LOOP.get() {
+        t.unpark();
+    }
+}
+
 // Nobody at the keyboard or mouse this long: quiet (Shared::check_quiet).
 // WAKUWAKU_QUIET_AFTER_MS, for a test that cannot wait; 0 never.
 pub const QUIET_AFTER_MS: u64 = 90_000;
@@ -1565,6 +1576,7 @@ fn main() {
             desk::desk_drag_preview,
             desk::desk_drop,
             desk::desk_drag_answer,
+            desk::desk_picked,
             bars::bar_asks,
             bars::bar_pop,
             bars::bar_pop_over,
@@ -1709,9 +1721,11 @@ fn main() {
             crash::start(&sh);
 
             // The mouse: click-through, her eyes, drags; for both windows.
-            // Quiet (nobody touching it), looked at once a second.
+            // Quiet (nobody touching it), looked at once a second. Woken
+            // before its time by wake_pointer (desk.rs: Ctrl pressed or let go).
             let pointer = sh.clone();
             spawn_named("pointer", move || loop {
+                let _ = POINTER_LOOP.set(std::thread::current());
                 // Each window's pointer in its own display's scale on a Mac
                 // (screen::cursor); elsewhere the one pointer, read once.
                 #[cfg(target_os = "macos")]
@@ -1726,7 +1740,7 @@ fn main() {
                     _ => 200,
                 };
                 let wait = if pointer.check_quiet() { wait.max(1000) } else { wait };
-                std::thread::sleep(Duration::from_millis(wait));
+                std::thread::park_timeout(Duration::from_millis(wait));
             });
 
             // The widgets: today's from the start; the tokens' each minute
