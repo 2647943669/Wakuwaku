@@ -753,6 +753,24 @@
         await p.wait(1800)
       },
     },
+    // Mail, as a user with two accounts has it (fixtures.js MAIL): in two
+    // panes (the screen has the room), every account's inbox as one on the
+    // left, the accounts (unread, kept offline, through a proxy) and who
+    // letters go to on the right.
+    {
+      id: 'settings-mail',
+      section: 'settings',
+      title: '设置 · 邮件：两个账号和收件箱',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(680), 1000, 680],
+      world: busy,
+      steps: async p => {
+        p.emit('island:settings', { tab: 'mail' })
+        // The inbox comes in once the page is drawn (mail_letters).
+        await p.wait(1000)
+      },
+    },
 
     // --- Controls, from the settings ---------------------------------------------------------
     {

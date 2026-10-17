@@ -88,6 +88,41 @@ test('the scenes say what they are about', () => {
   assert.ok(Scenes.sceneById('island-right').play, 'island-right opens it')
 })
 
+test('the sample mail: two accounts on the example domains, each as its widget says it', () => {
+  const { accounts, letters, talks } = F.MAIL
+  assert.deepEqual(accounts.map(a => a.id), ['a1', 'a2'])
+  const people = []
+  for (const a of accounts) {
+    const kept = letters[a.id]
+    const all = [...kept.inbox, ...kept.sent]
+    assert.ok(kept.inbox.length >= 12, `${a.id}: a dozen letters or so`)
+    // Its line in the settings, and its widget (mail.rs show): the unread,
+    // the newest six of them (by UID, as they came), the newest its label.
+    const unread = kept.inbox.filter(l => !l.seen)
+    assert.equal(a.status.unread, unread.length, `${a.id}: its unread`)
+    const w = F.widget(`inbox-${a.id}`)
+    assert.equal(w.value.vars.n, String(unread.length), `${a.id}: its widget's unread`)
+    const newest = [...unread].sort((x, y) => y.uid - x.uid).slice(0, 6)
+    assert.deepEqual(w.detail.rows.map(r => [r.from, r.subject, r.at]), newest.map(l => [l.from.name, l.subject, l.date]), `${a.id}: its widget's letters`)
+    assert.equal(w.label, `${newest[0].from.name}：${newest[0].subject}`)
+    // Each folder's UIDs once, in the order the letters came.
+    for (const folder of ['inbox', 'sent']) {
+      const list = [...kept[folder]].sort((x, y) => x.uid - y.uid)
+      assert.equal(new Set(list.map(l => l.uid)).size, list.length, `${a.id} ${folder}: each UID once`)
+      for (let i = 1; i < list.length; i++) assert.ok(list[i].date > list[i - 1].date, `${a.id} ${folder}: ${list[i].uid} came after ${list[i - 1].uid}`)
+    }
+    // What a letter answers is there; some starred, some with files, some conversations.
+    const ids = new Set(all.map(l => l.id))
+    assert.equal(ids.size, all.length, `${a.id}: Message-IDs once`)
+    for (const l of all) for (const id of [l.parent, ...l.refs].filter(Boolean)) assert.ok(ids.has(id), `${a.id} ${l.uid}: answers ${id}, which is there`)
+    assert.ok(kept.inbox.some(l => l.flagged) && kept.inbox.some(l => l.files.length) && kept.inbox.some(l => l.parent) && kept.sent.length, `${a.id}: starred, files, conversations`)
+    people.push(a.address, a.username.includes('@') ? a.username : `${a.username}@${a.address.split('@')[1]}`, ...all.flatMap(l => [l.from, ...l.to, ...l.cc].map(p => p.address)))
+  }
+  // Made-up people at the example domains only (the repo is public).
+  for (const address of people) assert.match(address, /^[^@\s]+@example\.(com|org)$/)
+  for (const [key, talk] of Object.entries(talks)) assert.ok(letters[talk.account].inbox.some(l => l.id === key && l.uid === talk.uid), `talk ${key}: about a letter there`)
+})
+
 test("the island's window where it sits, as island.rs will put it (anchor.js windowLeft)", () => {
   const A = require('../src/pet/anchor')
   const area = [0, 0, ...Scenes.SCREEN]
