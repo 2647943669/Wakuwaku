@@ -153,7 +153,7 @@ test('the live playground: a stylesheet swapped, a script its frames reloaded, i
   for (const f of ['playground.html', 'playground.js', 'fake-tauri.js', 'fixtures.js', 'scenes.js']) assert.deepEqual(at(`tools/preview/${f}`), { page: true }, f)
   assert.deepEqual(at('tools/preview/assets/wall.jpg'), { page: true })
   // Not the playground's: nothing to do.
-  for (const f of ['src/pet/bar.js', 'tools/preview/render.ps1', 'tools/preview/compare.js', 'src-tauri/src/main.rs', 'docs/workflow.md']) assert.equal(at(f), null, f)
+  for (const f of ['src/pet/bar.js', 'tools/preview/render.ps1', 'tools/preview/compare.js', 'src-tauri/src/main.rs', 'docs/DEVELOPMENT.md']) assert.equal(at(f), null, f)
   // A burst of saves, one message.
   const msg = publish.mergeChanges([{ rel: 'src/pet/style.css', change: at('src/pet/style.css') }, { rel: 'src/pet/island.js', change: at('src/pet/island.js') }, { rel: 'x', change: null }])
   assert.deepEqual(msg, { page: false, frames: ['island'], css: { island: ['pet/style.css'] }, files: ['src/pet/style.css', 'src/pet/island.js'] })
