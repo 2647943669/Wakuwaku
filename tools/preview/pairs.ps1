@@ -7,19 +7,21 @@
 #
 # pairs.json: { before, after, status: { same: '相同', ... }, items: [{ id, mode,
 # title, before, after (PNG paths or null), out, k (each side drawn at this
-# much of its pixels), status, changed, box: [x, y, w, h] or null }] }
+# much of its pixels), density (its pixels to a screen px: the words drawn as
+# large), status, changed, box: [x, y, w, h] or null }] }
 param([Parameter(Mandatory)][string]$List)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $plan = Get-Content -LiteralPath $List -Raw -Encoding UTF8 | ConvertFrom-Json
 
 $font = 'Microsoft YaHei UI'
-$fTitle = [System.Drawing.Font]::new($font, 20, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-$fLabel = [System.Drawing.Font]::new($font, 15, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-$pad = 24; $gap = 24; $titleH = 34; $labelH = 26
 $hit = [System.Drawing.Color]::FromArgb(255, 45, 149)
 
 foreach ($it in $plan.items) {
+    $d = [Math]::Max(1, [double]$it.density)
+    $fTitle = [System.Drawing.Font]::new($font, 18 * $d, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    $fLabel = [System.Drawing.Font]::new($font, 14 * $d, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+    $pad = [int](16 * $d); $gap = [int](16 * $d); $titleH = [int](30 * $d); $labelH = [int](24 * $d)
     $dark = $it.mode -eq 'dark'
     $bg = if ($dark) { [System.Drawing.Color]::FromArgb(28, 28, 31) } else { [System.Drawing.Color]::FromArgb(243, 243, 243) }
     $ink = if ($dark) { [System.Drawing.Color]::FromArgb(235, 235, 240) } else { [System.Drawing.Color]::FromArgb(28, 28, 32) }
@@ -40,13 +42,13 @@ foreach ($it in $plan.items) {
         $g.InterpolationMode = 'HighQualityBicubic'; $g.PixelOffsetMode = 'HighQuality'; $g.TextRenderingHint = 'AntiAliasGridFit'
         $g.Clear($bg)
         $inkB = [System.Drawing.SolidBrush]::new($ink); $softB = [System.Drawing.SolidBrush]::new($soft); $hitB = [System.Drawing.SolidBrush]::new($hit)
-        $pen = [System.Drawing.Pen]::new($line); $hitPen = [System.Drawing.Pen]::new($hit, 3)
+        $pen = [System.Drawing.Pen]::new($line); $hitPen = [System.Drawing.Pen]::new($hit, [float](2 * $d))
 
         $verdict = $plan.status.($it.status)
         if ($it.status -eq 'changed') { $verdict = "$verdict · $($it.changed) 像素" }
         $g.DrawString("$($it.title)", $fTitle, $inkB, $pad - 2, $pad - 4)
         $tw = $g.MeasureString("$($it.title)", $fTitle).Width
-        $g.DrawString("$($it.id) · $($it.mode) · $verdict", $fLabel, $(if ($it.status -eq 'same') { $softB } else { $hitB }), $pad + $tw + 8, $pad + 1)
+        $g.DrawString("$($it.id) · $($it.mode) · $verdict", $fLabel, $(if ($it.status -eq 'same') { $softB } else { $hitB }), $pad + $tw + 8 * $d, $pad + 3 * $d)
 
         $labels = @($plan.before, $plan.after)
         for ($i = 0; $i -lt 2; $i++) {
@@ -62,11 +64,11 @@ foreach ($it in $plan.items) {
             $g.DrawRectangle($pen, $x - 1, $y - 1, $w + 1, $h + 1)
             if ($it.box -and $img) {
                 $b = $it.box
-                $g.DrawRectangle($hitPen, [float]($x + $b[0] * $k - 3), [float]($y + $b[1] * $k - 3), [float]($b[2] * $k + 6), [float]($b[3] * $k + 6))
+                $g.DrawRectangle($hitPen, [float]($x + $b[0] * $k - 2 * $d), [float]($y + $b[1] * $k - 2 * $d), [float]($b[2] * $k + 4 * $d), [float]($b[3] * $k + 4 * $d))
             }
         }
         $sheet.Save($it.out, [System.Drawing.Imaging.ImageFormat]::Png)
-        $g.Dispose(); $sheet.Dispose(); $inkB.Dispose(); $softB.Dispose(); $hitB.Dispose(); $pen.Dispose(); $hitPen.Dispose()
+        $g.Dispose(); $sheet.Dispose(); $inkB.Dispose(); $softB.Dispose(); $hitB.Dispose(); $pen.Dispose(); $hitPen.Dispose(); $fTitle.Dispose(); $fLabel.Dispose()
     } finally {
         foreach ($img in $imgs) { if ($img) { $img.Dispose() } }
     }

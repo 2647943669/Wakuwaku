@@ -301,7 +301,7 @@ function main() {
         const v = judge(before, after)
         // Each side at most 1600 px wide in the pair, else as shot.
         const k = Math.min(1, 1600 / (s.view[2] * o.scale))
-        pairs.push({ id: s.id, mode, title: s.title, before, after, file: `${s.id}-${mode}.png`, out: path.join(out, `${s.id}-${mode}.png`), k, ...v })
+        pairs.push({ id: s.id, mode, title: s.title, before, after, file: `${s.id}-${mode}.png`, out: path.join(out, `${s.id}-${mode}.png`), k, density: o.scale * k, ...v })
       }
     }
     const listFile = path.join(temp, 'pairs.json')
