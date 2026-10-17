@@ -39,6 +39,9 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.taskManager" => if zh { "任务管理器" } else { "Task Manager" },
         "menu.editTaskbar" => if zh { "编辑任务栏布局" } else { "Edit the taskbar layout" },
         "menu.endEdit" => if zh { "退出编辑" } else { "Stop editing the taskbar" },
+        // The widget picker and her capsule's panel (picker.js, capsule-panel.js).
+        "menu.addWidgets" => if zh { "添加小工具…" } else { "Add widgets…" },
+        "menu.editCapsule" => if zh { "编辑胶囊" } else { "Edit capsule" },
         "menu.deviceManager" => if zh { "设备管理器" } else { "Device Manager" },
         // Shift and a right press on a program's button with several windows (tasks.rs window_menu), in Windows' words.
         "taskbar.restoreAll" => if zh { "还原所有窗口" } else { "Restore all windows" },

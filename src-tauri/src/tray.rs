@@ -53,7 +53,13 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
+    // The widgets (picker.js): 添加小工具… opens the picker, with the taskbar's
+    // layout being edited while the taskbar is her home; 编辑胶囊 (her island
+    // at the top of the screen) her capsule's panel. Greyed while her island
+    // is not up to show them (she hidden, do not disturb).
+    let isle_up = home == "taskbar" || crate::island::is_shown(sh);
     if over == Over::Home && home == "taskbar" {
+        menu.append(&MenuItem::with_id(app, "addWidgets", t("menu.addWidgets"), true, None::<&str>)?)?;
         menu.append(&CheckMenuItem::with_id(app, "dnd", t("menu.dnd"), true, flag("dnd"), None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "settings", t("menu.settings"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "editTaskbar", t("menu.editTaskbar"), true, None::<&str>)?)?;
@@ -70,6 +76,11 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     if is_tray {
         let label = if sh.is_visible() { t("menu.hide") } else { t("menu.show") };
         menu.append(&MenuItem::with_id(app, "toggle", label, !flag("dnd"), None::<&str>)?)?;
+    }
+    if home != "taskbar" {
+        menu.append(&MenuItem::with_id(app, "addWidgets", t("menu.addWidgets"), isle_up, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(app, "editCapsule", t("menu.editCapsule"), isle_up, None::<&str>)?)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
     let pets = Submenu::new(app, t("menu.pet"), true)?;
@@ -109,6 +120,7 @@ pub fn menu(sh: &Shared, over: Over) -> tauri::Result<Menu<Wry>> {
     menu.append(&MenuItem::with_id(app, "settings", t("menu.settings"), true, None::<&str>)?)?;
     // In place of Windows' taskbar, the way to Windows' own settings too.
     if home == "taskbar" {
+        menu.append(&MenuItem::with_id(app, "addWidgets", t("menu.addWidgets"), isle_up, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "editTaskbar", t("menu.editTaskbar"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "taskManager", t("menu.taskManager"), true, None::<&str>)?)?;
         menu.append(&MenuItem::with_id(app, "winSettings", t("menu.winSettings"), true, None::<&str>)?)?;
@@ -159,9 +171,20 @@ pub fn on_menu(sh: &Arc<Shared>, id: &str) {
         "editTaskbar" => {
             let _ = sh.app.emit_to("island", "taskbar:edit", ());
         }
-        // Out of editing it, as its 取消 (the layout as it was).
+        // Out of editing it, as its 完成: what was changed is kept as it
+        // went (picker.js), there is no 取消; the picker and the panels close.
         "endEdit" => {
             let _ = sh.app.emit_to("island", "taskbar:edit", json!({ "end": true }));
+        }
+        // The picker (picker.js fromMenu): on the taskbar with its layout
+        // being edited, at the top of the screen on its own.
+        "addWidgets" => {
+            let _ = if sh.home() == "taskbar" { sh.app.emit_to("island", "taskbar:edit", json!({ "picker": true })) } else { sh.app.emit_to("island", "island:picker", json!({ "open": "picker" })) };
+        }
+        // Her capsule's panel (capsule-panel.js): its members, their order
+        // and how each shows there.
+        "editCapsule" => {
+            let _ = sh.app.emit_to("island", "island:picker", json!({ "open": "capsule" }));
         }
         "winSettings" => {
             crate::tasks::launch("ms-settings:");
