@@ -9,25 +9,52 @@
 // where each is put), the monitor's readings, the desktop's layout, the
 // settings. A scene changes it (Fake.set) and sends it to the page
 // (Fake.push), or emits any event itself (Fake.emit). What the page asks
-// (invoke) is answered from the world, or by a handler a scene sets
-// (Fake.handle); every call is kept in Fake.calls.
+// (invoke) is answered from the world, as main would (settings kept and
+// sent back, a prompt answered, the desktop's layout kept), or by a
+// handler a scene sets (Fake.handle); every call is kept in Fake.calls.
 //
-// The clock: Date starts at a fixed moment (Fake.T0, 14:42 on a Saturday)
-// and runs with the page's own clock, so the taskbar's time, the sessions'
-// clocks and her frames are the same each run. ?clock=real keeps the real one.
+// Three ways it runs:
+//   alone         in page.html for the gallery (scenes.js), its own world;
+//   a host page   the playground's own page (window.WAKU_HOST_PAGE): the
+//                 world and what is built from it, nothing of Tauri's;
+//   in its frame  a page in the playground: the playground's world, and
+//                 what is asked goes to the playground first (WakuHost),
+//                 which plays the Rust side for all its frames.
+//
+// The clock: alone, Date starts at a fixed moment (Fake.T0, 14:42 on a
+// Saturday) and runs with the page's own clock, so the taskbar's time, the
+// sessions' clocks and her frames are the same each run; ?clock=real, and
+// in the playground, the real one.
+//
+// Where things are: in the repo (tools/preview beside src/ and pets/), or as
+// the playground is published (preview/ beside pet/, shared/, pets/, assets/).
 ;(function () {
   const HERE = new URL('.', document.currentScript.src).href
-  const ROOT = new URL('../../', HERE).href
+  const IN_REPO = /\/tools\/preview\/$/.test(new URL(HERE).pathname)
+  const ROOT = new URL(IN_REPO ? '../../' : '../', HERE).href
+  const PAGES = new URL(IN_REPO ? 'src/pet/' : 'pet/', ROOT).href
+  const ASSETS = IN_REPO ? new URL('assets/', HERE).href : new URL('assets/', ROOT).href
   const Q = new URLSearchParams(location.search)
-  const role = Q.get('role') || 'island'
+  const HOST_PAGE = window.WAKU_HOST_PAGE === true
+  const host = (() => {
+    if (HOST_PAGE || window.parent === window) return null
+    try {
+      return window.parent.WakuHost && window.parent.Fake ? { api: window.parent.WakuHost, fake: window.parent.Fake } : null
+    } catch {
+      return null
+    }
+  })()
+  const role = HOST_PAGE ? 'host' : Q.get('role') || 'island'
   // Each window's label, as main names them (bridge.js listens for its own).
   const LABELS = { island: 'island', pet: 'pet', desk: 'desk-1', bar: 'bar-1', barpop: 'barpop' }
   const label = LABELS[role] || role
+  const clone = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)))
 
   // --- The clock ------------------------------------------------------------------------
-  // 14:42 on 17 October 2026, in this computer's time zone.
-  const T0 = new Date(2026, 9, 17, 14, 42, 0).getTime()
-  if (Q.get('clock') !== 'real') {
+  const realClock = HOST_PAGE || !!host || Q.get('clock') === 'real'
+  // Alone: 14:42 on 17 October 2026, in this computer's time zone.
+  const T0 = realClock ? Date.now() : new Date(2026, 9, 17, 14, 42, 0).getTime()
+  if (!realClock) {
     const Real = Date
     const start = performance.now()
     const nowMs = () => T0 + Math.floor(performance.now() - start)
@@ -58,11 +85,15 @@
     return Promise.resolve(() => listeners.get(channel)?.delete(fn))
   }
 
-  // An event to the page, as Tauri delivers it ({ event, id, payload }).
+  // An event to the page, as Tauri delivers it ({ event, id, payload }): a
+  // copy, made here (the page may change what it is given; the world stays).
   function emit(channel, payload) {
-    for (const fn of [...(listeners.get(channel) || [])]) {
+    const fns = [...(listeners.get(channel) || [])]
+    if (!fns.length) return
+    const data = clone(payload)
+    for (const fn of fns) {
       try {
-        fn({ event: channel, id: 0, payload })
+        fn({ event: channel, id: 0, payload: data })
       } catch (err) {
         report(err)
       }
@@ -71,9 +102,12 @@
 
   function invoke(cmd, args = {}) {
     calls.push({ cmd, args })
-    const answer = handlers.get(cmd) || ANSWERS[cmd]
     try {
-      return Promise.resolve(answer ? answer(args) : null)
+      // In the playground, its answer first ({ value }), or none (undefined): then ours.
+      const got = host ? host.api.invoke(label, cmd, clone(args ?? {})) : undefined
+      if (got !== undefined) return Promise.resolve(clone(got.value))
+      const answer = handlers.get(cmd) || ANSWERS[cmd]
+      return Promise.resolve(answer ? answer(args ?? {}) : null)
     } catch (err) {
       return Promise.reject(err)
     }
@@ -85,11 +119,13 @@
     if (window.parent !== window) window.parent.postMessage({ wk: true, ...message }, '*')
   }
 
-  window.__TAURI_INTERNALS__ = { metadata: { currentWebview: { label }, currentWindow: { label } } }
-  window.__TAURI__ = {
-    core: { invoke },
-    event: { listen, emit: () => Promise.resolve() },
-    webviewWindow: { getCurrentWebviewWindow: () => ({ label }) },
+  if (!HOST_PAGE) {
+    window.__TAURI_INTERNALS__ = { metadata: { currentWebview: { label }, currentWindow: { label } } }
+    window.__TAURI__ = {
+      core: { invoke },
+      event: { listen, emit: () => Promise.resolve() },
+      webviewWindow: { getCurrentWebviewWindow: () => ({ label }) },
+    }
   }
 
   // --- The world ------------------------------------------------------------------------
@@ -134,7 +170,7 @@
     lookDefaults: 2,
   }
 
-  const world = {
+  const makeWorld = () => ({
     lang: 'zh',
     // Windows' mode and accent colour (taskbar.rs look).
     mode: 'dark',
@@ -146,7 +182,7 @@
     // The display, in px, and the strip's thickness.
     screen: [1600, 900],
     strip: 48,
-    wallpaper: HERE + 'assets/wall.jpg',
+    wallpaper: ASSETS + 'wall.jpg',
     sprite: ROOT + 'pets/claude-chan/spritesheet.webp',
     // The sessions as state.rs views them; the first is the one shown.
     sessions: [],
@@ -165,21 +201,46 @@
     config: {},
     connected: true,
     quiet: false,
+    // Windows' animations off (prefers-reduced-motion), as the pages read it; unset, the browser's.
+    reducedMotion: undefined,
     version: '0.3.2',
     displayCount: 1,
+  })
+  const world = host ? host.fake.world : makeWorld()
+
+  if (!HOST_PAGE) {
+    // The screen is the world's (headless Edge's is its window, or 800 x 600):
+    // what is laid out by it (the open island's most, the settings') as on hers.
+    const SCREEN = {
+      width: () => world.screen[0],
+      height: () => world.screen[1],
+      availWidth: () => world.screen[0],
+      availHeight: () => world.screen[1] - (world.home === 'taskbar' ? 0 : world.strip),
+      availLeft: () => 0,
+      availTop: () => 0,
+    }
+    for (const [key, get] of Object.entries(SCREEN)) Object.defineProperty(window.screen, key, { get, configurable: true })
+
+    // Windows' animations off or on, as the world says (the pages ask
+    // matchMedia; their stylesheets' reduced-motion rules made to apply, or not).
+    const realMatch = window.matchMedia.bind(window)
+    const REDUCED = /prefers-reduced-motion:\s*reduce/
+    window.matchMedia = query =>
+      REDUCED.test(query) && typeof world.reducedMotion === 'boolean'
+        ? { matches: world.reducedMotion, media: query, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }
+        : realMatch(query)
+    window.addEventListener('load', () => world.reducedMotion === true && stillStyles())
   }
 
-  // The screen is the world's (headless Edge's is its window, or 800 x 600):
-  // what is laid out by it (the open island's most, the settings') as on hers.
-  const SCREEN = {
-    width: () => world.screen[0],
-    height: () => world.screen[1],
-    availWidth: () => world.screen[0],
-    availHeight: () => world.screen[1] - (world.home === 'taskbar' ? 0 : world.strip),
-    availLeft: () => 0,
-    availTop: () => 0,
+  function stillStyles() {
+    for (const sheet of document.styleSheets) {
+      let rules = []
+      try {
+        rules = [...sheet.cssRules]
+      } catch {}
+      for (const rule of rules) if (rule instanceof CSSMediaRule && /prefers-reduced-motion:\s*reduce/.test(rule.conditionText)) rule.media.mediaText = 'all'
+    }
   }
-  for (const [key, get] of Object.entries(SCREEN)) Object.defineProperty(window.screen, key, { get, configurable: true })
 
   const config = () => ({
     ...DEFAULTS,
@@ -290,7 +351,7 @@
   // area the display less the strip.
   function deskState() {
     const [w, h] = world.screen
-    const s = world.strip
+    const s = world.home === 'taskbar' ? world.strip : 0
     const work = { bottom: [0, 0, w, h - s], top: [0, s, w, h - s], left: [s, 0, w - s, h], right: [0, 0, w - s, h] }[world.edge] || [0, 0, w, h - s]
     return { key: 'd1', primary: true, keys: ['d1'], sf: 1, size: [w, h], work, lang: world.lang, light: world.mode === 'light', detailed: config().details !== false, home: world.home, sprite: world.sprite, layout: world.deskLayout }
   }
@@ -354,19 +415,57 @@
     return world
   }
 
+  // The desktop's layout as desk.rs keeps it: entries put there or changed, ids gone.
+  function keepDesk(entries = [], gone = []) {
+    const given = new Map(entries.map(e => [e.id, e]))
+    const out = []
+    for (const e of world.deskLayout) {
+      if (gone.includes(e.id)) continue
+      out.push(given.get(e.id) || e)
+      given.delete(e.id)
+    }
+    world.deskLayout = [...out, ...given.values()]
+  }
+
+  // A prompt answered (pet_answer) or handed to the terminal (pet_dismiss):
+  // gone, its session at work again.
+  function answered(id, back = true) {
+    const ask = world.asks.find(a => a.id === id)
+    world.asks = world.asks.filter(a => a.id !== id)
+    const s = ask && world.sessions.find(x => x.id === ask.session)
+    if (s && back && !world.asks.some(a => a.session === s.id)) Object.assign(s, { mood: 'working', detail: null, step: { key: 'step.thinking', vars: {} }, stepSince: Date.now() })
+    return !!ask
+  }
+
   // --- What the page asks ---------------------------------------------------------------
+  const later = fn => setTimeout(fn, 0)
   const ANSWERS = {
     settings_get: () => snapshot(),
+    // Kept, then sent back as main does: the settings anew, the island drawn anew.
     settings_set: ({ patch }) => {
       Object.assign(world.config, patch || {})
+      later(() => {
+        emit('settings:changed', snapshot())
+        if (role === 'island') emit('pet:update', payload())
+      })
       return snapshot()
     },
+    settings_open: ({ tab }) => later(() => emit('island:settings', { tab: tab || null })),
     settings_gallery: () => ({ ok: true, items: [], page: 1, totalPages: 1, total: 0 }),
     session_jump: () => true,
     pet_walk: () => false,
+    pet_answer: ({ id }) => {
+      const ok = answered(id)
+      later(push)
+      return ok
+    },
+    pet_dismiss: ({ id }) => {
+      answered(id, false)
+      later(push)
+    },
     taskbar_open: () => true,
     taskbar_volume: () => true,
-    taskbar_clock_tip: () => '2026年10月17日 星期六',
+    taskbar_clock_tip: () => new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }),
     taskbar_end_task: () => false,
     taskbar_inputs: () => [],
     taskbar_battery_font: () => null,
@@ -377,7 +476,10 @@
     taskbar_app: () => true,
     desk_icons: () => [],
     desk_where: () => null,
-    desk_keep: () => true,
+    desk_keep: ({ entries, gone }) => {
+      keepDesk(entries || [], gone || [])
+      return true
+    },
     mail_draft: () => null,
     island_plate: ({ rect, fade }) => tellOuter({ plate: rect || null, fade: fade || 0 }),
     // Her own menu is Windows' (tray.rs menu), not the page's: said, not drawn.
@@ -388,9 +490,13 @@
     T0,
     HERE,
     ROOT,
+    PAGES,
+    ASSETS,
+    IN_REPO,
     role,
     label,
     world,
+    makeWorld,
     DEFAULTS,
     calls,
     errors,
@@ -404,8 +510,12 @@
     deskState,
     stripPaper,
     barState,
+    keepDesk,
+    answered,
+    stillStyles,
     handle: (cmd, fn) => handlers.set(cmd, fn),
     heard: channel => (listeners.get(channel)?.size || 0) > 0,
     called: cmd => calls.filter(c => c.cmd === cmd),
   }
+  if (host) host.api.attach(label, window)
 })()

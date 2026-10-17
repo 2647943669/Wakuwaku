@@ -54,3 +54,20 @@ pwsh tools/preview/render.ps1 -Open                                 # 在 Edge �
 然后 `render.ps1 -Only capsule-review` 看一眼。要停在动画中间就在步骤里 `p.freeze({ flow: 1100 })`（流光转到 1.1 秒）；没调就在步骤后 0.5 秒自动冻住。新数据放进 `fixtures.js`，新的「Rust 会发的东西」放进 `fake-tauri.js`。
 
 以后做回归测试：时间、动画、计时器都固定了，同一台机器上两次截图几乎一样（2026-10-17 试过：62 张里 56 张逐字节相同，其余 6 张各有 1–6 个像素差 1，是模糊和抗锯齿的噪声）。拿 `render.ps1` 的输出跟一份基准比的时候，给每个像素留一点容差就行。时钟按本机时区走，换了时区的机器要重新截基准。
+
+# 手感试玩（playground）
+
+同一个替身，换成能上手玩的样子：一张假桌面（壁纸、桌面小工具、她的家），她的页面照常处理悬停、点击、右键、拖动；旁边的控制台替 Rust 发消息。发布成 claude.ai 的 Artifact（一个页面加旁边的文件），在哪台设备上都能打开。
+
+```powershell
+node tools/preview/publish.js serve 8765            # 本地试：http://127.0.0.1:8765/
+node tools/preview/publish.js build <文件夹>         # 要发布的文件 + files.json，打出总大小
+```
+
+- `playground.html` 只有页面内容（title、meta、一个 style、标记和脚本），托管方会套上 html/head/body；`publish.js serve` 也照这样套。仓库里这一份只能通过 `publish.js` 打开（文件按发布时的路径排：`preview/`、`pet/`、`shared/`、`pets/`、`assets/`）。
+- `playground.js` 替 Rust 回答两个页面（`window.WakuHost`）：设置的保存和回送、询问的回答、桌面布局、程序按钮的前后台和固定、音量、任务栏布局编辑时的键盘。它还代画 Windows 画的东西：她的右键菜单（原生菜单）、窗口的实时预览、岛下面的亚克力。
+- 指针按她的窗口那样「穿过」：哪个页面的元素在指针下面，哪个 iframe 才接住指针，其余透到下面（桌面小工具、壁纸）。任意地方的按下会告诉需要知道的页面（`taskbar:press`、`desk:outside`、`island:blur`）。
+- 需要 Windows 的事（开始菜单、打开程序、跳到会话窗口、连接 agent）不做，在左下角说一声。
+- 起始状态可以用参数改：`?home=island`、`?mode=light`、`?material=clear`、`?edge=left`。
+- 截图用的钩子：`?demo=open|card|done|ring|ask|answer|edit|menu|thumbs|settings|probe|check`，加 `&still=1` 让过渡停在终点（无头 Edge 不跑过渡）。`probe` 写出几个点上谁接住指针，`check` 跑一遍设置、询问、布局编辑、换家，再写出错误。
+- 无头 Edge 的窗口最窄 500 px；要看 400 px 宽，用 `http://127.0.0.1:8765/__frame?w=400&h=860`（只在本地服务里有）。

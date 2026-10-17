@@ -1,5 +1,8 @@
 // Her real page, run with the stand-in for Tauri, set to a scene and shot
-// (page.html?role=island|desk&scene=<id>&mode=dark|light). In the head of
+// (page.html?role=island|desk&scene=<id>&mode=dark|light), or, without a
+// scene, played with in the playground (page.html?role=island&play=1: its
+// world the playground's, nothing held still or frozen; ?still=1 holds the
+// transitions at their end there too, for headless shots). In the head of
 // page.html, after fake-tauri.js, fixtures.js and scenes.js:
 //
 // 1. The page's own file (src/pet/index.html, desk.html) is read and written
@@ -18,7 +21,9 @@
   const mode = Q.get('mode') === 'light' ? 'light' : 'dark'
   const scene = window.Scenes.byId(Q.get('scene') || '') || null
   const FILES = { island: 'index.html', desk: 'desk.html', bar: 'bar.html' }
-  const src = new URL(`src/pet/${FILES[role] || FILES.island}`, window.Fake.ROOT).href
+  const src = new URL(FILES[role] || FILES.island, window.Fake.PAGES).href
+  // Transitions held at their end: in the gallery's shots, or when asked.
+  const holdStill = !!scene || Q.get('still') === '1'
   const errors = []
   const tell = message => window.parent !== window && window.parent.postMessage({ wk: true, ...message }, '*')
 
@@ -40,7 +45,7 @@
       for (const node of doc.querySelectorAll(sel)) node.setAttribute(attr, new URL(node.getAttribute(attr), src).href)
     }
     const head = [...doc.head.children].filter(n => n.tagName !== 'META').map(n => n.outerHTML).join('\n')
-    const still = '<style id="preview-still">*, *::before, *::after { transition: none !important; caret-color: transparent !important; }</style>'
+    const still = holdStill ? '<style id="preview-still">*, *::before, *::after { transition: none !important; caret-color: transparent !important; }</style>' : ''
     const attrs = [...doc.body.attributes].map(a => ` ${a.name}="${a.value.replace(/"/g, '&quot;')}"`).join('')
     return `${head}\n${still}\n</head><body${attrs}>${doc.body.innerHTML}`
   }
@@ -174,14 +179,16 @@
   }
 
   // --- Running ---------------------------------------------------------------------------
-  // The scene's world, Windows' mode, and its home over what the world may say.
-  window.Fake.set({ mode, ...(scene?.world ? scene.world(window.Fixtures) : {}), ...(scene?.home ? { home: scene.home } : {}) })
+  // The scene's world, Windows' mode, and its home over what the world may
+  // say. Played with (no scene), the world is the playground's as it is.
+  if (scene) window.Fake.set({ mode, ...(scene.world ? scene.world(window.Fixtures) : {}), ...(scene.home ? { home: scene.home } : {}) })
 
   window.addEventListener('load', async () => {
     await wait(60)
     // No handover with Windows' own strip here (handoff.js): hers in sight at once.
     document.documentElement.classList.remove('handoff-wait')
     window.Fake.push()
+    if (!scene) return tell({ ready: true, role })
     try {
       if (scene?.steps) await scene.steps(P)
     } catch (err) {
