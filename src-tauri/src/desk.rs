@@ -404,7 +404,12 @@ fn create(sh: &Arc<Shared>, label: String, area: Area) {
             let _ = win.destroy();
             return;
         }
-        // Shown as her other windows are (open settings keep the keyboard), then put low.
+        // Shown without taking the focus from anything (imp::show_quiet), on
+        // its own thread after what tao was asked above (set there in turn:
+        // shown before, tao's style for the clicks hid it again), then put low.
+        #[cfg(windows)]
+        let _ = sh.app.run_on_main_thread(move || imp::show_quiet(hwnd));
+        #[cfg(not(windows))]
         sh.show_window(&win);
         imp::start(&sh);
         imp::keep_all_low();
@@ -443,7 +448,9 @@ pub fn in_shape(x: f64, y: f64, s: &[f64; 5], margin: f64) -> bool {
 // as near one (a press off them is looked for). Ctrl held over that desktop,
 // every 40 ms (CTRL_MS): Ctrl let go, the mouse let go soon after; the Ctrl
 // going down is caught at once by its key (imp: a keyboard hook wakes the
-// pointer's loop), so with Ctrl up nothing is looked at more than before.
+// pointer's loop), so with Ctrl up nothing is looked at more than before,
+// but while one of her own windows has the keyboard, when the hook hears
+// nothing (poll): then 40 ms too.
 pub fn pace(on_widgets: bool, seen: bool, quiet: bool, near: bool, in_strip: bool, ctrl: bool) -> Option<u64> {
     if quiet || !on_widgets || !seen {
         return None;
@@ -505,7 +512,11 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     let seen = under.is_some_and(|mon| seen_now(sh, mon));
     let down = crate::pet::any_down().unwrap_or(false);
     let ctrl = under.is_some() && imp::ctrl_down();
-    let ctrl_came = CTRL_WAS.swap(ctrl, Ordering::Relaxed) != ctrl && ctrl;
+    let ctrl_turned = CTRL_WAS.swap(ctrl, Ordering::Relaxed) != ctrl;
+    let ctrl_came = ctrl_turned && ctrl;
+    if ctrl_turned && tracing() {
+        sh.log(&format!("desk: Ctrl {} for the look, {} ms after its key", if ctrl { "down" } else { "up" }, imp::ctrl_age()));
+    }
     let mut changes: Vec<(String, isize, Option<bool>, bool, (f64, f64))> = Vec::new();
     let (mut near, mut in_strip, mut ctrl_over) = (false, false, false);
     let mut stale_icons = None;
@@ -527,7 +538,11 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
             if ctrl_here && ctrl_came && d.icons_at.is_none_or(|at| at.elapsed() > ICONS_FRESH) {
                 stale_icons = Some((d.label.clone(), d.mon, d.sf));
             }
-            let ctrl_here = ctrl_here && !on_icon(&d.icons, x, y);
+            let ctrl_on_icon = ctrl_here && on_icon(&d.icons, x, y);
+            if ctrl_came && on_display && tracing() {
+                sh.log(&format!("desk: Ctrl over {} at ({x:.0}, {y:.0}): seen {seen}, {} icons read {:?} ago, on one {ctrl_on_icon}", d.label, d.icons.len(), d.icons_at.map(|at| at.elapsed())));
+            }
+            let ctrl_here = ctrl_here && !ctrl_on_icon;
             // A menu open: the whole display's desktop, for a press off it
             // to close it (the page), as Windows' own menus take that press.
             let catch = d.held || inside || (d.menu && on_display) || ctrl_here;
@@ -559,11 +574,23 @@ pub fn poll(sh: &Shared, cursor: (i32, i32)) -> u64 {
     if let Some((label, mon, sf)) = stale_icons {
         read_icons(label, mon, sf);
     }
-    pace(under.is_some(), seen, false, near, in_strip, ctrl_over).unwrap_or(IDLE_MS)
+    // One of her windows has the keyboard (the picker or the settings open,
+    // widgets picked, a name typed): the keyboard hook hears nothing then
+    // (WebView2 in this process has the focus, DEVELOPMENT.md's Win keys;
+    // seen again here, 2026-10-17), so Ctrl is looked for at its own pace
+    // over a desktop with widgets.
+    let keys_ours = under.is_some() && seen && !ctrl_over && sh.own.lock().unwrap().contains(&crate::focus::foreground());
+    pace(under.is_some(), seen, false, near, in_strip, ctrl_over || keys_ours).unwrap_or(IDLE_MS)
 }
 
 // Ctrl as the last look had it (its going down: the icons read again).
 static CTRL_WAS: AtomicBool = AtomicBool::new(false);
+
+// WAKUWAKU_DESK_TRACE=1: what the look made of Ctrl, logged.
+fn tracing() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("WAKUWAKU_DESK_TRACE").is_some())
+}
 // The icons as read this long ago are read again as Ctrl goes down.
 const ICONS_FRESH: std::time::Duration = std::time::Duration::from_secs(3);
 
@@ -1255,6 +1282,7 @@ mod imp {
         fn DestroyWindow(hwnd: Hwnd) -> i32;
         fn IsIconic(hwnd: Hwnd) -> i32;
         fn GetAsyncKeyState(key: i32) -> i16;
+        fn ShowWindow(hwnd: Hwnd, cmd: i32) -> i32;
         fn UnhookWindowsHookEx(hook: isize) -> i32;
         fn PostThreadMessageW(thread: u32, msg: u32, wparam: usize, lparam: isize) -> i32;
     }
@@ -1263,6 +1291,7 @@ mod imp {
     extern "system" {
         fn GetModuleHandleW(name: *const u16) -> isize;
         fn GetCurrentThreadId() -> u32;
+        fn GetTickCount() -> u32;
     }
 
     const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 1;
@@ -1703,11 +1732,42 @@ mod imp {
         });
     }
 
-    // Ctrl held, either of them, now.
+    // How long ago Ctrl's key last went down or up (ms; the trace's).
+    pub fn ctrl_age() -> u32 {
+        // SAFETY: a plain query.
+        unsafe { GetTickCount() }.wrapping_sub(CTRL_AT.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    // Shown, not made the active window (SW_SHOWNOACTIVATE). Tao's show
+    // (SW_SHOW) made a new desktop window the active one, the foreground
+    // one too while her home's window had it: a widget being dragged from
+    // her home's picker was let go of there, as her home's page lost the
+    // keyboard (tried, 2026-10-17). Tao is not told: nothing of tao's sets
+    // these windows' styles once they are up (set_through, take_keys are
+    // our own), which would hide one again.
+    pub fn show_quiet(hwnd: isize) {
+        const SW_SHOWNOACTIVATE: i32 = 4;
+        // SAFETY: our own window.
+        unsafe { ShowWindow(hwnd as Hwnd, SW_SHOWNOACTIVATE) };
+    }
+
+    // Ctrl held, either of them, now. Its key just pressed or let go (the
+    // hook's word, CTRL_FRESH_MS at most): as the hook has it, for the look
+    // it woke runs before Windows' own key state has changed (a Ctrl and a
+    // press 30 ms after it went to Explorer, tried 2026-10-17); else
+    // Windows' (should the hook have missed a key: one let go over a window
+    // run as administrator).
     pub fn ctrl_down() -> bool {
         const VK_CONTROL: i32 = 0x11;
-        // SAFETY: a plain query; the high bit is the key's state now.
-        unsafe { GetAsyncKeyState(VK_CONTROL) as u16 & 0x8000 != 0 }
+        const CTRL_FRESH_MS: u32 = 150;
+        use std::sync::atomic::Ordering::Relaxed;
+        // SAFETY: plain queries; the high bit is the key's state now.
+        unsafe {
+            if GetTickCount().wrapping_sub(CTRL_AT.load(Relaxed)) < CTRL_FRESH_MS {
+                return CTRL_HELD.load(Relaxed);
+            }
+            GetAsyncKeyState(VK_CONTROL) as u16 & 0x8000 != 0
+        }
     }
 
     // Ctrl's keys going down and up anywhere: the pointer's look woken at
@@ -1718,6 +1778,9 @@ mod imp {
     // and drops one that answers late (winkeys.rs has the same); it looks at
     // Ctrl's keys alone, and wakes the loop as Ctrl changes. Nothing of it
     // runs while no key is touched. In with the desk thread, out with it.
+    // Deaf while one of her own windows has the keyboard (WebView2 in this
+    // process focused: Windows calls none of its low-level hooks), when the
+    // look comes every 40 ms over a desktop with widgets instead (poll).
     #[repr(C)]
     struct KbdLl {
         vk: u32,
@@ -1727,6 +1790,8 @@ mod imp {
         extra: usize,
     }
     static CTRL_HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    // When Ctrl last went down or up (the key's own time, GetTickCount's).
+    static CTRL_AT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     static KEYS_THREAD: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
     extern "system" fn on_key(code: i32, wparam: usize, lparam: isize) -> isize {
@@ -1734,10 +1799,23 @@ mod imp {
         if code == 0 && lparam != 0 {
             // SAFETY: Windows hands a KBDLLHOOKSTRUCT with HC_ACTION.
             let k = unsafe { &*(lparam as *const KbdLl) };
-            // VK_CONTROL, VK_LCONTROL, VK_RCONTROL; held down, it repeats.
+            // VK_CONTROL, VK_LCONTROL, VK_RCONTROL. Windows' key state is
+            // still as it was before this key: held down, a key repeats (no
+            // change); let go, the other Ctrl may still be held. Read so,
+            // not from what this hook last heard, which misses keys while
+            // her window has the keyboard.
             if matches!(k.vk, 0x11 | 0xA2 | 0xA3) {
-                let held = k.flags & LLKHF_UP == 0;
-                if CTRL_HELD.swap(held, std::sync::atomic::Ordering::Relaxed) != held {
+                let other = match k.vk {
+                    0xA2 => 0xA3,
+                    0xA3 => 0xA2,
+                    _ => 0,
+                };
+                // SAFETY: plain queries.
+                let (was, other_held) = unsafe { (GetAsyncKeyState(0x11) as u16 & 0x8000 != 0, other != 0 && GetAsyncKeyState(other) as u16 & 0x8000 != 0) };
+                let held = k.flags & LLKHF_UP == 0 || other_held;
+                if held != was {
+                    CTRL_HELD.store(held, std::sync::atomic::Ordering::Relaxed);
+                    CTRL_AT.store(k.time, std::sync::atomic::Ordering::Relaxed);
                     crate::wake_pointer();
                 }
             }
@@ -1865,6 +1943,9 @@ mod imp {
     pub fn start(_sh: &Arc<Shared>) {}
     pub fn ctrl_down() -> bool {
         false
+    }
+    pub fn ctrl_age() -> u32 {
+        0
     }
     pub fn keep_all_low() {}
     pub fn set_through(_hwnd: isize, _through: bool) {}
