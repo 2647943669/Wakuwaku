@@ -1285,16 +1285,17 @@
     }, 240)
   }
 
-  // Over the desktop: its page puts it there (desk-drop.js), and says so;
-  // from the strip, it is off it then (a move). No word back (a Rust side
-  // that does not forward it yet): put on the desktop the island's own way,
-  // where the desktop's page finds room (top right).
+  // Over the desktop: its page puts it there (desk-drop.js, through desk.rs),
+  // and says so; from the strip, it is off it then (a move). No word back
+  // in 2.5 s (a display's window made as the drag reached it still coming
+  // up, its page gone): put on the desktop the island's own way, where the
+  // desktop's page finds room (top right).
   function dropOnDesk(d, x, y) {
     const ticket = `t${++tickets}`
     const sent = d.set ? setToSend(d.set) : null
     const was = { key: d.key, strip: d.src === 'strip' ? d.strip : d.strip || null, item: d.item, keys: d.capsuleKeys, fresh: d.src === 'card', set: d.set || null, sent }
     clearTimeout(pending?.timer)
-    pending = { ticket, was, timer: setTimeout(() => pending?.ticket === ticket && deskFallback(), 700) }
+    pending = { ticket, was, timer: setTimeout(() => pending?.ticket === ticket && deskFallback(), 2500) }
     if (sent) window.pet.deskDrop({ x: Math.round(x), y: Math.round(y), set: sent.set, ticket })
     else window.pet.deskDrop({ x: Math.round(x), y: Math.round(y), item: d.item, size: d.size, ticket })
   }

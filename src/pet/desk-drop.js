@@ -1,7 +1,8 @@
 // A widget dragged from her home over this display's desktop (the picker of
 // 2026-10-17): picker.js, in her home's window, says where the pointer is
 // and when it is let go of; the host forwards it here, in this page's px
-// (desk.rs in the app, phase 2; the playground's page in the simulator):
+// (desk.rs in the app, to the display under the pointer alone; the
+// playground's page in the simulator):
 //   desk:drag-preview  { x, y, item, size } | null   where it would land
 //   desk:drop          { x, y, item, size, ticket }  let go of
 // item: the member to put here ({ type, of, name?, icon? }); size: its size
@@ -20,7 +21,11 @@
 // place for its box), never into another board; its widgets out of
 // wherever else they stand here first (one place each), those alone here
 // not in its way. The answer's name is the combo's. desk.rs forwards the
-// payload as it is (phase 2: set as well as item).
+// payload as it is (set as well as item).
+//
+// A display with nothing on it has its window made as the drag reaches it
+// (desk.rs): what comes before this page knows its display (desk:state,
+// its icons read first) waits for it, the last preview and the drop.
 ;(function () {
   const D = window.Desk?.inner
   if (!D) return
@@ -188,6 +193,26 @@
     answer({ ticket, ok: true, where: l.where, why: '', name: board ? D.boardLabel(board.entry) : '' })
   }
 
-  listen('desk:drag-preview', e => preview(e.payload), { target })
-  listen('desk:drop', e => drop(e.payload), { target })
+  // Before this page knows its display: the last preview and a drop kept,
+  // looked at again every 50 ms for 3 s (a drop then says none).
+  let waiting = null
+  function whenHere(kind, p) {
+    if (D.here) return kind === 'drop' ? drop(p) : preview(p)
+    if (!waiting) waiting = { preview: null, drop: null, tries: 0 }
+    waiting[kind] = p
+    if (waiting.timer) return
+    const look = () => {
+      const w = waiting
+      if (D.here || ++w.tries > 60) {
+        waiting = null
+        if (w.drop) return drop(w.drop)
+        return D.here && w.preview && preview(w.preview)
+      }
+      w.timer = setTimeout(look, 50)
+    }
+    waiting.timer = setTimeout(look, 50)
+  }
+
+  listen('desk:drag-preview', e => whenHere('preview', e.payload), { target })
+  listen('desk:drop', e => whenHere('drop', e.payload), { target })
 })()
