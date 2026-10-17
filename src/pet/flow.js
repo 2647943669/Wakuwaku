@@ -339,8 +339,8 @@
   //            end without fading (the dot alone); seen again (resume), it
   //            ramps back up to the flow's speed and flows on
   // Its turnings, one after another (kind): its three turns (turns), a
-  // ramp from one speed to another (ramp), the flow (w: its speed, until t1,
-  // Infinity until seen). Without a hold (hold 0, as before it was one): its
+  // ramp up to the flow's speed (ramp), the flow (w: its speed, until t1,
+  // Infinity until seen), slowing to a stop as it fades (slow). Without a hold (hold 0, as before it was one): its
   // turns, its light going down over their end, fadeAt 0.31 s before it.
   //
   // Not held: its light from the points given (coming up), lit after them
@@ -357,7 +357,7 @@
     const flow = { t0: from.t, t1: fadeAt, a0: from.a, w: FLOW_W, kind: 'flow' }
     const base = { ...ring, turnings: [...turnings, flow], stillAt: null, fadeAt, dotAt: fadeAt, paused: null }
     if (!Number.isFinite(fadeAt)) return { ...base, fade: [...up, [Infinity, 1], [Infinity, 0]], until: Infinity }
-    const slow = ramp(fadeAt, from.a + FLOW_W * (fadeAt - from.t), FLOW_W, 0, FADE_OUT_MS)
+    const slow = { ...ramp(fadeAt, from.a + FLOW_W * (fadeAt - from.t), FLOW_W, 0, FADE_OUT_MS), kind: 'slow' }
     return { ...base, turnings: [...base.turnings, slow], fade: [...up, [fadeAt, 1], [fadeAt + FADE_OUT_MS, 0]], until: fadeAt + FADE_OUT_MS }
   }
 
@@ -479,7 +479,7 @@
       const until = fadeAt + STILL_FADE_MS
       return { ring: { ...ring, fade: [...ring.fade.slice(0, -2), [fadeAt, 1], [until, 0]], fadeAt, dotAt: fadeAt, until }, until }
     }
-    const slow = ramp(t, angleAt(ring, t), speedAt(ring, t), 0, FADE_OUT_MS)
+    const slow = { ...ramp(t, angleAt(ring, t), speedAt(ring, t), 0, FADE_OUT_MS), kind: 'slow' }
     const up = ring.fade.slice(0, -2).filter(([ti]) => ti < t)
     const next = { ...ring, turnings: [...ring.turnings.filter(s => s.t0 <= t), slow], fade: [...up, [t, lightAt(ring, t)], [t + FADE_OUT_MS, 0]], fadeAt: t, dotAt: t, until: t + FADE_OUT_MS }
     return { ring: next, until: next.until }

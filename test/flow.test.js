@@ -262,6 +262,11 @@ function smooth(ring, a, b, what) {
     const [v0, v1] = [Flow.speedAt(ring, t), Flow.speedAt(ring, t + 1)]
     assert.ok(Math.abs(v1 - v0) < 0.01, `${what}: speed jumps at ${t}: ${v0} to ${v1}`)
   }
+  // Where one turning hands over to the next, above all.
+  for (const s of ring.turnings.filter(x => x.t0 > a && x.t0 < b)) {
+    const [v0, v1] = [Flow.speedAt(ring, s.t0 - 0.01), Flow.speedAt(ring, s.t0 + 0.01)]
+    assert.ok(Math.abs(v1 - v0) < 0.005, `${what}: speed jumps into its ${s.kind} at ${s.t0}: ${v0} to ${v1}`)
+  }
 }
 
 test('held: its three turns into a calm flow (a turn each 2.25 s) until the hold from the event is over, then slowing as it fades, the dot as it starts to (#65)', () => {
