@@ -85,8 +85,10 @@
   const NUDGE_CLIP = { waiting: 'waiting', done: 'waving', review: 'review', error: 'failed' }
 
   // How long the island stays open when something happens (longer with
-  // Claude's words to read), and how long the pointer has to rest on it
-  // before it opens (so passing by does not).
+  // Claude's words to read): a prompt, a new version; what the 「她有事告诉
+  // 你时」 setting governs (a turn's end, a hello, a plugin's nudge) as long
+  // as the hold says (Flow.openFor), these its time once seen. And how long
+  // the pointer has to rest on it before it opens (so passing by does not).
   const NUDGE_MS = 3600
   const NUDGE_READ_MS = 6500
   const HOVER_OPEN_MS = 140
@@ -4865,17 +4867,36 @@
     if (resized) update()
   }
 
-  function nudgeFor(clip, text, ms = NUDGE_MS, widget = null) {
+  // Open by itself for ms: what the 「她有事告诉你时」 setting governs as
+  // long as the hold says (Flow.openFor, zhoupengjie/Wakuwaku#65), Infinity
+  // until seen: open until the pointer has been over it (seenNudge), its own
+  // time (after: NUDGE_MS, NUDGE_READ_MS) from then on. kind: what opened it
+  // (an ending's goes as its session is at work again: movedOn).
+  function nudgeFor(clip, text, ms = NUDGE_MS, widget = null, { kind = null, after = ms } = {}) {
     // In the notch nothing opens by itself (done, failed, a hello, a widget):
     // only a prompt, which Claude waits on (the user's call, 2026-10-14).
     if (screenTop?.notch) return update()
-    nudge = { until: Date.now() + ms, clip, text, widget }
+    nudge = { until: Date.now() + ms, clip, text, widget, kind, after: Number.isFinite(after) ? after : NUDGE_MS }
     clearTimeout(nudgeTimer)
-    nudgeTimer = setTimeout(() => {
-      nudge = null
-      update()
-    }, ms)
+    if (Number.isFinite(ms)) nudgeTimer = setTimeout(endNudgeLater, ms)
     update()
+  }
+
+  // Its time up.
+  function endNudgeLater() {
+    nudge = null
+    update()
+  }
+
+  // Held until seen, and the pointer has come over it: open by itself from
+  // now on as any other, its own time from here and the pointer resting on
+  // it and leaving closing it (mouseleave, below). A pointer only passing
+  // across has seen it too (main counts it so: island.rs hover).
+  function seenNudge() {
+    if (!nudge || Number.isFinite(nudge.until)) return
+    nudge.until = Date.now() + nudge.after
+    clearTimeout(nudgeTimer)
+    nudgeTimer = setTimeout(endNudgeLater, nudge.after)
   }
 
   // Open by itself no more: what opened it has been seen.
@@ -4915,7 +4936,9 @@
   // What opened the island by itself (a turn done, changes to review, an
   // error, a hello, a plugin's nudge) keeps it closed now: a ring of colour
   // runs round her capsule (round her portrait on the black strip, where
-  // she has none) about three times and fades, and a dot stays on her
+  // she has none) about three times, stays lit and still until the hold
+  // setting's time from the event is over (until seen: until the island
+  // opens; zhoupengjie/Wakuwaku#65) and fades, and a dot stays on her
   // portrait until the island has been open for any reason (seen). What it
   // would have shown is there as it opens next (pending): an ending's own
   // words are its session's anyway. Only a session waiting on the person
@@ -4931,7 +4954,8 @@
   // drawn again (the widgets' words every few seconds, the clock) neither
   // starts it over nor makes it flicker. Animated by the page (Web
   // Animations), only its turning (transform) and its light (opacity);
-  // gone (display: none, will-change with it) once it has played.
+  // held still, nothing animated (holdRing); gone (display: none,
+  // will-change with it) once it has played.
   // The ring's colours by Windows' mode (the strip's, or the screen's at
   // the top): deeper in the light, where the dark set's pale ones are lost.
   const flowLight = () => modeNow() === 'light'
@@ -4952,7 +4976,10 @@
     // ending's words are its session's: the open island has them), or none
     // when it shows now; a prompt leaves it for after.
     if (kind !== 'waiting') pending = how && how !== 'open' && how !== 'show' && !Flow.isEnding(kind) ? { ...show, until: Date.now() + Flow.keepFor(kind, config.hold) } : null
-    if (how === 'open' || how === 'show') return nudgeFor(show.clip, show.text, show.ms, show.widget)
+    // Opened by itself: as long as the hold says (it stayed its few seconds
+    // whatever was chosen, zhoupengjie/Wakuwaku#65). Already open (show):
+    // it is being looked at, its own few seconds.
+    if (how === 'open' || how === 'show') return nudgeFor(show.clip, show.text, how === 'open' ? Flow.openFor(kind, config.hold, show.ms) : show.ms, show.widget, { kind, after: show.ms })
     if (!how || how === 'later') return update()
     news = { kind, colour: show.widget?.color, shown: news?.shown === true }
     if (how === 'dot') showNews('in')
@@ -4983,7 +5010,9 @@
   const flowStops = kind => Flow.gradient(Flow.palette(kind, flowLight(), news?.colour, hintAccent()))
 
   function ring(kind) {
-    const step = Flow.play(flowState, kind, performance.now(), { still: stillMotionNow() })
+    // Held lit after its turns for as long as the hold says (until seen: until
+    // the island opens), zhoupengjie/Wakuwaku#65.
+    const step = Flow.play(flowState, kind, performance.now(), { still: stillMotionNow(), hold: Flow.holdMs(config.hold) })
     flowState = step.state
     if (step.act === 'start') {
       // A dot from before goes, and comes again in the new colour as it fades.
@@ -5005,21 +5034,66 @@
   }
 
   // Its turning and its light from where they are now (Flow.frames), its
-  // dot as it fades and its end, timed anew.
+  // dot as it fades and its end, timed anew. Held (the hold setting,
+  // zhoupengjie/Wakuwaku#65): animated only until it is held still
+  // (holdRing), down again at the hold's end (fadeRing); until seen, no end
+  // of its own (the island opening ends it: stopRing).
   function animateRing(r) {
     for (const a of flowAnims) a.cancel()
     for (const t of flowTimers) clearTimeout(t)
+    flowAnims = []
+    flowTimers = []
+    unholdRing()
     const f = Flow.frames(r, performance.now())
-    flowAnims = [flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' })]
-    const glow = flow.classList.contains('glow')
-    if (f.turn) {
-      for (const s of spins) {
-        if (!glow && s.closest('.flow-glow')) continue
-        const turn = [{ transform: `rotate(${f.turn.from}deg)` }, { transform: `rotate(${f.turn.to}deg)` }]
-        flowAnims.push(s.animate(turn, { delay: f.turn.delay, duration: f.turn.duration, easing: f.turn.easing, fill: 'both' }))
+    const later = (fn, ms) => Number.isFinite(ms) && flowTimers.push(setTimeout(fn, Math.max(0, ms)))
+    if (f.still == null || f.still > 0) {
+      flowAnims.push(flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' }))
+      const glow = flow.classList.contains('glow')
+      if (f.turn) {
+        for (const s of spins) {
+          if (!glow && s.closest('.flow-glow')) continue
+          const turn = [{ transform: `rotate(${f.turn.from}deg)` }, { transform: `rotate(${f.turn.to}deg)` }]
+          flowAnims.push(s.animate(turn, { delay: f.turn.delay, duration: f.turn.duration, easing: f.turn.easing, fill: 'both' }))
+        }
       }
     }
-    flowTimers = [setTimeout(() => showNews('in'), Math.max(0, f.dotIn)), setTimeout(endRing, Math.max(0, f.end))]
+    if (f.still != null) {
+      if (f.still > 0) later(() => holdRing(f.rest), f.still)
+      else holdRing(f.rest)
+    }
+    if (f.out) later(() => fadeRing(r), f.out.delay)
+    later(() => showNews('in'), f.dotIn)
+    later(endRing, f.end)
+  }
+
+  // Held still (its turns over, its hold not yet): nothing of it running,
+  // not even a light held at full (an animation filling forwards still
+  // costs its frames): the ring left lit, its gradient where it stopped,
+  // the glow under it the same, no will-change (held).
+  function holdRing(rest) {
+    for (const a of flowAnims) a.cancel()
+    flowAnims = []
+    flow.classList.add('held')
+    flow.style.opacity = '1'
+    for (const s of spins) s.style.transform = `rotate(${rest}deg)`
+  }
+
+  // Not held still: as the animations have it.
+  function unholdRing() {
+    flow.classList.remove('held')
+    flow.style.opacity = ''
+    for (const s of spins) s.style.transform = ''
+  }
+
+  // The hold over: its light down from lit (as Flow.frames has it now),
+  // the gradient resting where it was held.
+  function fadeRing(r) {
+    const o = Flow.frames(r, performance.now()).out
+    if (!o) return
+    for (const a of flowAnims) a.cancel()
+    flow.classList.remove('held')
+    flow.style.opacity = ''
+    flowAnims = [flow.animate(o.keyframes, { delay: o.delay, duration: o.duration, fill: 'both' })]
   }
 
   // Into another kind's colours over BLEND_MS: the upper of each square's
@@ -5051,6 +5125,7 @@
     flowAnims = []
     blends = []
     flowTimers = []
+    unholdRing()
     flow.classList.remove('on', 'glow')
     if (news && !news.shown) showNews('in')
     // Back up out of the way, if a window under it had it there.
@@ -5503,8 +5578,28 @@
     // nudge the same (onReact, onNudge).
     const isReading = isDetailed() && Status.isEnding(now) && !!now.reply
     if (isOn() && before !== now.mood && NUDGE_CLIP[now.mood]) cue(now.mood, { clip: NUDGE_CLIP[now.mood], text: null, ms: isReading ? NUDGE_READ_MS : NUDGE_MS })
-    else update()
+    else {
+      if (isOn() && before !== now.mood && now.mood === 'working') movedOn()
+      update()
+    }
   })
+
+  // A turn begun again (the one shown at work once more, from an ending):
+  // what said how the last one ended has said it. Held long (the hold
+  // setting, zhoupengjie/Wakuwaku#65: up to 10 minutes, or until seen), the
+  // island open by itself for it would stay open over her at work, its ring
+  // lit round it: the one closes, the other goes down into its dot as at
+  // its time. Not as it settles back to rest (main's hold over, as theirs
+  // is, or the pointer having passed: their own rules), nor for a hello or
+  // a plugin's nudge, which no session's turn ends.
+  function movedOn() {
+    if (nudge && Flow.isEnding(nudge.kind)) endNudge()
+    if (!isRinging() || !Flow.isEnding(flowState.ring?.kind)) return
+    const next = Flow.release(flowState, performance.now())
+    if (next === flowState) return
+    flowState = next
+    animateRing(next.ring)
+  }
 
   // Only the widgets' words changed (the monitor's readings every couple
   // of seconds, main.rs redraw_widgets): on the strip, the readings' node
@@ -5585,6 +5680,8 @@
   for (const target of [island]) {
     target.addEventListener('mouseenter', () => {
       window.pet.hover(true)
+      // Open by itself until seen: seen now.
+      seenNudge()
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
         // Closed by a press under this pointer (dismiss): not opened by it again.
