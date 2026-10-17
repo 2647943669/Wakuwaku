@@ -1,8 +1,8 @@
 // Her home: by display, a black pill at the top centre after the iPhone's
-// Dynamic Island (island; or at a top corner, anchor.js), or a strip along the bottom of the screen in
-// place of Windows' taskbar (taskbar): its left end hers, the other sessions
-// as tags along the rest, with the Start button, the tray's icons
-// (taskbar.rs) and the clock besides. The same element in each, which
+// Dynamic Island (island; or at a top corner, anchor.js), or a strip along
+// the bottom of the screen in place of Windows' taskbar (taskbar): its left
+// end hers, the other sessions as tags along the rest, with the Start
+// button, the tray's icons (taskbar.rs) and the clock besides. The same element in each, which
 // springs between three shapes (below the island; in the taskbar, growing
 // up from it):
 //   compact   her round portrait, where the session is (or whose ending it
