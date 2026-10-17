@@ -400,6 +400,9 @@ test('held, and seen or its session at work again: slowing to a stop from its sp
   assert.equal(early.ring.fadeAt, 1000)
   near(Flow.speedAt(early.ring, 1000.5), Flow.speedAt(held.ring, 1000), 0.01, 'from its speed then')
   smooth(early.ring, 0, 1560, 'released in its turns')
+  // Seen as it begins: nothing of its light to bring up, down from none.
+  const atOnce = Flow.frames(Flow.release(held, 0).ring, 0)
+  assert.deepEqual([atOnce.light, atOnce.out.keyframes[0].opacity], [null, 0])
   // Reduced motion: down over its 0.2 s.
   const still = Flow.play(Flow.idle(), 'done', 0, { still: true, hold: 30000 }).state
   assert.equal(Flow.release(still, 5000).ring.until, 5200)

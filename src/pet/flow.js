@@ -555,8 +555,7 @@
     }
     // Flowing: its light coming up, its turnings in turn, down at its end.
     const up = ring.fade.slice(0, -2)
-    const f0 = up[0][0]
-    const fN = up[up.length - 1][0]
+    const [f0, fN] = up.length ? [up[0][0], up[up.length - 1][0]] : [0, 0]
     const light = up.length > 1 && fN > f0 ? { keyframes: keys(up, f0, fN), delay: f0 - now, duration: fN - f0 } : null
     return { turn, turns, light, still: null, rest: null, out, paused: false, ...at }
   }
