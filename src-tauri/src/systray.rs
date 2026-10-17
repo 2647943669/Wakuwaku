@@ -136,13 +136,35 @@ fn holds(answer: usize) -> Holds {
     }
 }
 
+// Explorer's own battery icon (uID 1225, named by a guid, its tip 电池指示器,
+// Battery Meter), which Explorer adds to its tray itself on 22621 (Windows
+// 11 22H2 and 23H2). On explorer.exe 10.0.22621.2792 (zhoupengjie/Wakuwaku#62)
+// Explorer failed fast (0xc0000409 in ucrtbase.dll) seconds after ours took
+// it, and started again, its taskbar shown and put away again: the screen
+// flickered every three seconds. The reporter's build that left Explorer's
+// own icons to its tray (every message handed on, its answer given back)
+// ran without a crash. On 26100 its battery is no tray icon at all (its
+// taskbar draws it), and its other icons (1226, safe removal; the
+// Bluetooth one; a headset's battery; a microphone in use) pass through
+// ours without harm, so this one alone is left to it. Hers draws the
+// battery itself (widgets.rs battery).
+#[cfg_attr(not(windows), allow(dead_code))]
+const EXPLORERS_BATTERY: u32 = 1225;
+
+// Whether an icon is Explorer's battery: its uID, from a window of a
+// process by that name (exe: as exe_of names it).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn explorers_battery(id: u32, exe: &str) -> bool {
+    id == EXPLORERS_BATTERY && exe.eq_ignore_ascii_case("explorer.exe")
+}
+
 #[cfg(windows)]
 mod imp {
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicIsize, AtomicU32, AtomicU64, Ordering};
     use std::sync::Mutex;
 
-    use super::{file_name, guid_bytes, holds, icon_name, path_in, Holds, Press, Shown};
+    use super::{explorers_battery, file_name, guid_bytes, holds, icon_name, path_in, Holds, Press, Shown, EXPLORERS_BATTERY};
 
     type Hwnd = *mut c_void;
     type Handle = isize;
@@ -352,6 +374,8 @@ mod imp {
     // What came, for the log: (kind, count).
     static SEEN: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
     static NOTES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    // The Explorer whose battery icon was last noted as left to it.
+    static BATTERY_NOTED: AtomicU32 = AtomicU32::new(0);
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -470,6 +494,18 @@ mod imp {
         // SAFETY: Explorer's window; a WM_COPYDATA's struct is ours for the call and is copied across.
         let ok = unsafe { SendMessageTimeoutW(explorer, msg, wparam, lparam, SMTO_ABORTIFHUNG, 3000, &mut result) };
         (ok != 0).then_some(result)
+    }
+
+    // Explorer's process, when an icon is its battery (EXPLORERS_BATTERY):
+    // the window's process looked at for that uID alone.
+    fn explorers_battery_of(nid: &IconData) -> Option<u32> {
+        if nid.id != EXPLORERS_BATTERY || nid.hwnd == 0 {
+            return None;
+        }
+        let mut pid = 0;
+        // SAFETY: our own out-parameter; a gone window leaves it 0.
+        unsafe { GetWindowThreadProcessId(hwnd_of(nid.hwnd), &mut pid) };
+        (pid != 0 && explorers_battery(nid.id, &exe_of(pid))).then_some(pid)
     }
 
     fn same(icon: &Icon, nid: &IconData) -> bool {
@@ -661,6 +697,16 @@ mod imp {
                 data
             });
             let tray = tray.filter(|d| d.signature == SIGNATURE);
+            // Explorer's own battery icon: each message of it, an add in
+            // answer to ask_again too, handed on to Explorer's tray alone and
+            // its answer given back; ours never holds it (EXPLORERS_BATTERY).
+            if let Some(pid) = tray.and_then(|d| explorers_battery_of(&d.nid)) {
+                count("Explorer's battery, handed on");
+                if BATTERY_NOTED.swap(pid, Ordering::SeqCst) != pid {
+                    note(format!("tray: Explorer's own battery icon (id {EXPLORERS_BATTERY}) left to Windows' taskbar, not taken (zhoupengjie/Wakuwaku#62)"));
+                }
+                return hand_on(msg, wparam, lparam).unwrap_or(0) as isize;
+            }
             // An icon added again: Explorer has it already (an icon ours has,
             // or one coming in answer to ask_again), and an add it refuses can
             // make it show the taskbar, and come first. An icon new to both
@@ -1247,6 +1293,31 @@ mod imp {
             assert!(!HELD.lock().unwrap().iter().any(|h| h.key == 9_000_002));
         }
 
+        #[test]
+        fn explorers_battery_is_known_by_its_window_and_uid() {
+            #[link(name = "user32")]
+            extern "system" {
+                fn GetDesktopWindow() -> Hwnd;
+            }
+            // No window named, or one gone: not Explorer's.
+            assert_eq!(explorers_battery_of(&nid(0, 1225, NIF_GUID, "")), None);
+            assert_eq!(explorers_battery_of(&nid(0x7a05, 1225, NIF_GUID, "")), None);
+            // A window of another process's (the desktop's, csrss.exe's).
+            // SAFETY: a plain query.
+            let desktop = unsafe { GetDesktopWindow() } as isize as u32;
+            assert_eq!(explorers_battery_of(&nid(desktop, 1225, NIF_GUID, "")), None);
+            // A window of Explorer's, where it runs: its battery's uID, and no other.
+            let explorer = explorers();
+            if !explorer.is_null() {
+                let window = explorer as isize as u32;
+                let mut pid = 0;
+                // SAFETY: our own out-parameter.
+                unsafe { GetWindowThreadProcessId(explorer, &mut pid) };
+                assert_eq!(explorers_battery_of(&nid(window, 1225, NIF_GUID | NIF_TIP, "电池指示器")), Some(pid));
+                assert_eq!(explorers_battery_of(&nid(window, 1226, NIF_GUID, "安全删除硬件并弹出媒体")), None);
+            }
+        }
+
         // What only Explorer's tray holds on this computer, as she would
         // look (her own icons left out: there are none here). By hand:
         // cargo test only_explorers -- --ignored --nocapture
@@ -1347,5 +1418,20 @@ mod tests {
         assert_eq!(holds(0xFFFF_FFFF), Holds::Hidden);
         assert_eq!(holds(2159 | (1380 << 16)), Holds::Shown);
         assert_eq!(file_name("C:/x/y.exe"), "y.exe");
+    }
+
+    #[test]
+    fn explorers_battery_alone_is_left_to_explorer() {
+        // As #62's log has it: explorer.exe, id 1225, by guid.
+        assert!(explorers_battery(1225, "explorer.exe"));
+        assert!(explorers_battery(1225, "Explorer.EXE"));
+        // Its other icons, which pass through ours on 26100 without harm
+        // (safe removal, a headset's battery, a microphone in use, Bluetooth).
+        for id in [1226, 100, 101, 0] {
+            assert!(!explorers_battery(id, "explorer.exe"), "{id}");
+        }
+        // Another program's icon of that uID, or one whose process is gone.
+        assert!(!explorers_battery(1225, "QQ.exe"));
+        assert!(!explorers_battery(1225, "pid 0"));
     }
 }
