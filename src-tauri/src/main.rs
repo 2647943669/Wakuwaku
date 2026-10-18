@@ -76,6 +76,7 @@ mod notify;
 mod paper;
 mod pet;
 mod pins;
+mod plugins;
 mod pointer;
 mod power;
 mod proxy;
