@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 mod ci;
 pub mod countdown;
+mod devserver;
 pub mod fmt;
 mod pomodoro;
 mod stock;
