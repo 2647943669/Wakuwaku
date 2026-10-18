@@ -1565,14 +1565,12 @@ fn row_disabled(text: &str, id: &str) -> bool {
     is_row && off
 }
 
-// Whether a profile's own patch file turns our row off.
+// Whether the home-level patch file turns our row off, past our own rows:
+// only a patch applied after our insert finds it (a profile's own patch
+// file is applied before the home one, and a row of it naming ours finds
+// none yet).
 fn dsh_turned_off() -> bool {
-    fs::read_dir(dsh_home().join("profiles"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| fs::read_to_string(entry.path().join("cordis.patch.yml")).ok())
-        .any(|text| row_disabled(&text, "wakuwaku"))
+    fs::read_to_string(dsh_patch_file()).is_ok_and(|text| row_disabled(&dsh_strip(&text).0, "wakuwaku"))
 }
 
 fn ms_of(time: std::time::SystemTime) -> u64 {
@@ -2975,6 +2973,10 @@ mod tests {
         assert!(!row_disabled("- id: other\n  disabled: true\n- id: wakuwaku\n", "wakuwaku"));
         // One inside another's insert is not a row of this list.
         assert!(!row_disabled("- insert:\n    - id: wakuwaku\n      disabled: true\n", "wakuwaku"));
+        // In the home patch file, after our rows (dsh_turned_off reads it past them).
+        let home = format!("{}- id: wakuwaku\n  disabled: true\n", dsh_install(None, 47213).unwrap());
+        assert!(row_disabled(&dsh_strip(&home).0, "wakuwaku"));
+        assert!(!row_disabled(&dsh_strip(&dsh_install(None, 47213).unwrap()).0, "wakuwaku"));
     }
 
     // A file she made, left empty by a remove, goes again, with no backup
