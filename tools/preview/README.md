@@ -45,6 +45,7 @@ pwsh tools/preview/render.ps1 -Open                                 # 在 Edge �
 
 - 每张图出 `<id>-dark.png`、`<id>-light.png`（默认 2 倍像素），再拼成 `overview-dark.png`、`overview-light.png`。需要 node 和 Edge；6 个 Edge 并行，不在屏幕上画东西，也不碰正在跑的她。
 - 截早了（页面还没冻住）的图左上角有个品红方块，页面出错的图底部有一条红色说明；脚本最后会列出来，退出码是 1。
+- 世界里 `quiet` 为真（没人在电脑前，「没人在」那一组图）的，冻住前查页面里有没有一直在播放的动画，有一个就算出错（`docs/PERFORMANCE.md` 第 2 节最后一行），`compare.js` 也一样。
 - 只看一张：`shot.html?scene=<图的 id>&mode=dark`；看页面本身并打出调试信息：`page.html?role=island&scene=<id>&mode=dark&debug=1&probe=%23island`。用 file:// 打开时 Edge 要带 `--allow-file-access-from-files`（`-Open` 会带上）。
 - 时间、动画、计时器都固定（时钟从 14:42 开始走），同一台机器上两次截图几乎一样，只有模糊和抗锯齿的个别像素差 1。要停在动画中间，在图的 `steps` 里 `p.freeze({ flow: 1100 })`。
 

@@ -136,6 +136,17 @@
   function freeze({ flow } = {}) {
     if (frozen) return
     frozen = true
+    // Nobody there (the world quiet: docs/PERFORMANCE.md, section 2's last
+    // row): nothing may be playing endlessly; each that is, an error on the shot.
+    if (window.Fake.world.quiet) {
+      for (const a of document.getAnimations()) {
+        if (a.playState !== 'running' || a.effect?.getComputedTiming?.().iterations !== Infinity) continue
+        const el = a.effect.target
+        const cls = el && typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter(Boolean).join('.') : ''
+        const what = el ? `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls ? `.${cls}` : ''}` : '?'
+        errors.push(`endless animation while quiet: ${a.animationName || a.constructor.name} on ${what}`)
+      }
+    }
     const ring = document.getElementById('flow')
     const ringAnims = flow != null && ring ? document.getAnimations().filter(a => ring.contains(a.effect?.target)) : []
     // When it began turning, on the timeline: a turning's start and its delay (≤ 0).
