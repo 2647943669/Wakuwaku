@@ -2040,7 +2040,7 @@ pub fn dsh_at_start(port: u16, setting: &Value) -> Vec<String> {
                 let _ = fs::copy(&file, &backup);
             }
             match write_dsh_hooks("install", "plugin", port, None, &mut log) {
-                Ok(()) => log.push(format!("dsh: 0.3.2's hook bridge rows, its packages not there: her plugin in their place (the patch file as it was: {})", backup.display())),
+                Ok(()) => log.push(format!("dsh: 0.3.2's hook bridge rows, its packages not there: her plugin in their place (backup beside it: {})", backup.display())),
                 Err(e) => log.push(format!("dsh: 0.3.2's hook bridge rows not replaced: {e}")),
             }
         }

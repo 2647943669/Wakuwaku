@@ -170,7 +170,9 @@ ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwak
 
 支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 和 0.2.1-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；她带着自己的一个小插件（`integrations/dsh/wakuwaku.js`，不依赖任何 npm 包，不联网）。在「Agent」页 DeepSeek Harness 那一行点「连接」：她把插件写进 DSH 的文件夹 `~/.dsh/wakuwaku/`，再在 `~/.dsh/cordis.patch.yml` 里按路径插入它（`./wakuwaku/wakuwaku.js`，所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着）。按路径插入，不进 profile 的 `node_modules`，DSH 的插件管理器跑 pnpm 时也不会把它清掉。开着的 DSH 一般会马上加载它（它监视这个文件），不用重开；插件更新以后要重开一次 DSH。
 
-插件在 DSH 自己的进程里跑，把事件直接 POST 到她的端口：不启动任何程序，DSH 从不等她（每个事件最多 2 秒，她没开就先不发）。「连接」后「Agent」页如实说插件有没有被加载：加载了写着时间和 profile；DSH 没开时写「DeepSeek Harness 启动时加载」；DSH 在装之前就开着、没有加载时写「重开后生效」；DSH 已经开了一会儿却没加载，是黄色的「DSH 插件没生效」，写着原因和「修复」。0.3.2 及以前借用 DSH 的 Claude Code 兼容桥（`@deepseek-ai/dsh-hooks-claude-code`），DSH 0.2.1 起不再自带它，于是收不到任何事件（zhoupengjie/Wakuwaku#61）：那种旧的接法会显示「需要修复：还是旧的接法」，点「修复」就换成插件。
+插件在 DSH 自己的进程里跑，把事件直接 POST 到她的端口：不启动任何程序，DSH 从不等她（每个事件最多 2 秒，她没开就先不发）。「连接」后「Agent」页如实说插件有没有被加载：加载了写着时间和 profile；DSH 没开时写「DeepSeek Harness 启动时加载」；DSH 在装之前就开着、没有加载时写「重开后生效」；DSH 已经开了一会儿却没加载，是黄色的「DSH 插件没生效」，写着原因和「修复」。0.3.2 及以前借用 DSH 的 Claude Code 兼容桥（`@deepseek-ai/dsh-hooks-claude-code`），DSH 0.2.1 起不再自带它，于是收不到任何事件（zhoupengjie/Wakuwaku#61）：升级到这一版后她一启动就把那种旧的接法换成插件（原文件备份在旁边）；桥的包还在、还能用的保持原样。
+
+也可以在 DeepSeek Harness 那一行展开后的「接入方式」里改用 DSH 官方的钩子桥：她用 DSH 自带的 Node 和 pnpm，按 DSH 的版本把 `@deepseek-ai/dsh-hooks-claude-code` 和 `@deepseek-ai/dsh-hook-protocol` 装进每个 profile（要联网，从 pnpm 配好的源下载，几秒到一两分钟；连不上时可以点「改用 npmmirror 再试」；装不上时 profile 恢复原样，仍用插件）。桥的每个事件由 DSH 用 PowerShell 跑一次她的程序，约 1 秒，只挂了几处，每一步的工具不显示，以后也不能在岛上批准。换回插件时，这两个包和装它们时改动的文件都恢复原样。两种方式随时切换，开着的 DSH 当场换上，不用重开。
 
 能做的：会话开始、干活、每一步的工具、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、它最后说的话、改了哪些文件、任务清单，它向你提问时显示「在等你」；你在 DSH 里停下的一轮回到空闲，出错的一轮显示出错；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。DSH 启动的子代理（它的 subagent 工具，或者插件启动的，比如 dsh-mnemon 的空闲评审）不单独占一行，也不拿它的任务当名字：它改的文件算进启动它的会话正在做的那一轮，那个会话空闲时什么都不显示。做不到的：
 
@@ -264,7 +266,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「通用」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「Agent」页点开 Claude Code，点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在「Agent」页点开 Codex，点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：点开 OpenCode，点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：点开 omp，点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：点开 ZCode，点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：点开它，点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），`~/.dsh/wakuwaku/` 里的插件也删掉，原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「Agent」页点开 Claude Code，点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在「Agent」页点开 Codex，点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：点开 OpenCode，点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：点开 omp，点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：点开 ZCode，点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：点开它，点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），`~/.dsh/wakuwaku/` 里的插件也删掉，原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`；用官方钩子桥的，它的两个包也从 profile 里拿掉。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
