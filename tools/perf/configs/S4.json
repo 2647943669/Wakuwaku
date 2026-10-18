@@ -1,0 +1,117 @@
+{
+  "scene": "S4",
+  "title": "desktop widgets",
+  "quiet": true,
+  "notes": "Taskbar home (no monitor on the strip); on each display two cards and a board: today, the monitor and a board with tokens on the primary; weather, stock and a board with the countdown on the other. The desktop in sight; quiet.",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "taskbar",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [],
+    "monitor": {
+      "cpu": true,
+      "mem": true,
+      "net": true,
+      "battery": false,
+      "every": 2,
+      "pin": true
+    },
+    "plugins": {
+      "weather": {
+        "on": true
+      },
+      "stock": {
+        "on": true
+      },
+      "countdown": {
+        "on": true,
+        "At": "2026-12-31 18:00"
+      }
+    },
+    "taskbarLayout": {
+      "left": [
+        "her"
+      ],
+      "center": [
+        "start",
+        "apps"
+      ],
+      "right": [
+        "tray",
+        "keys",
+        "quick",
+        "clock"
+      ]
+    },
+    "deskLayout": [
+      {
+        "id": "wp1",
+        "type": "widget",
+        "of": "today",
+        "size": "m",
+        "d": "{primary}"
+      },
+      {
+        "id": "wp2",
+        "type": "widget",
+        "of": "monitor",
+        "size": "m",
+        "d": "{primary}"
+      },
+      {
+        "id": "wp3",
+        "type": "board",
+        "name": "perf 1",
+        "d": "{primary}",
+        "items": [
+          {
+            "type": "widget",
+            "of": "tokens",
+            "size": "m",
+            "at": [
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wo1",
+        "type": "plugin",
+        "of": "weather",
+        "size": "m",
+        "d": "{other}"
+      },
+      {
+        "id": "wo2",
+        "type": "plugin",
+        "of": "stock",
+        "size": "m",
+        "d": "{other}"
+      },
+      {
+        "id": "wo3",
+        "type": "board",
+        "name": "perf 2",
+        "d": "{other}",
+        "items": [
+          {
+            "type": "plugin",
+            "of": "countdown",
+            "size": "m",
+            "at": [
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

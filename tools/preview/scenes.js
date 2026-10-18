@@ -84,6 +84,7 @@
     ['controls', '控件'],
     ['widgets', '小工具'],
     ['desktop', '桌面'],
+    ['quiet', '没人在（不该有一直播放的动画）'],
   ]
 
   // The strip's foot is the screen's: a view's top this far above it.
@@ -438,6 +439,11 @@
     { id: 'scene-edit-capsule', section: 'scenes', scene: 'edit-capsule', title: '编辑胶囊 · 她的胶囊上方的面板', page: 'island', view: [0, above(440), 720, 440], settle: 700 },
     { id: 'scene-combos', section: 'scenes', scene: 'combos', title: '组合 · 小工具库里存好的工作台', page: 'screen', view: WHOLE, budget: 4000, settle: 700 },
     { id: 'scene-multi-select', section: 'scenes', scene: 'multi-select', title: 'Ctrl 多选 · 选中四个，右键的菜单', page: 'screen', view: WHOLE, budget: 4000 },
+
+    // --- Nobody there: quiet, and nothing playing endlessly (boot.js fails the shot) --------
+    { id: 'quiet-taskbar', section: 'quiet', scene: 'taskbar-full', play: false, title: '没人在 · 放满小工具的任务栏', page: 'island', view: STRIP_VIEW, world: () => ({ sessions: [], quiet: true }) },
+    { id: 'quiet-island', section: 'quiet', scene: 'island-home', play: false, title: '没人在 · 灵动岛', page: 'island', view: [400, 0, 800, 120], world: () => ({ sessions: [], quiet: true }) },
+    { id: 'quiet-desktop', section: 'quiet', scene: 'desktop', play: false, title: '没人在 · 桌面', page: 'screen', view: WHOLE, budget: 4000, world: () => ({ sessions: [], quiet: true }) },
 
     // --- The taskbar's strip ---------------------------------------------------------------
     ...[

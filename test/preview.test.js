@@ -183,6 +183,17 @@ test("a shot's world is its scene's, its own home over it; the play its scene's 
   assert.throws(() => Scenes.worldFor({ id: 'z', scene: 'nowhere' }, F), /no scene/)
 })
 
+test('the quiet shots are of nobody there, in each home and on the desktop: boot.js fails one with an endless animation', () => {
+  const quiet = Scenes.LIST.filter(s => s.section === 'quiet')
+  assert.deepEqual(quiet.map(s => [Scenes.homeOf(s), s.page]), [['taskbar', 'island'], ['island', 'island'], ['taskbar', 'screen']])
+  for (const s of quiet) {
+    const w = Scenes.worldFor(s, F)
+    assert.equal(w.quiet, true, `${s.id}: quiet`)
+    assert.deepEqual(w.sessions, [], `${s.id}: no session at work`)
+    assert.equal(Scenes.playOf(s), null, `${s.id}: nothing played`)
+  }
+})
+
 test("a build's label says the branch and commit, main as 主线, and unsaved work", () => {
   assert.equal(gitinfo.labelOf({ branch: 'main', sha: '3ec87d9' }), '主线 · 3ec87d9')
   assert.equal(gitinfo.labelOf({ branch: 'master', sha: '3ec87d9' }), '主线 · 3ec87d9')

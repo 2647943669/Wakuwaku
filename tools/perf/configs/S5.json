@@ -1,0 +1,46 @@
+{
+  "scene": "S5",
+  "title": "island, a session working",
+  "quiet": false,
+  "env": {
+    "WAKUWAKU_QUIET_AFTER_MS": "0"
+  },
+  "hooks": [
+    {
+      "hook_event_name": "UserPromptSubmit",
+      "session_id": "perf-1",
+      "cwd": "C:\\perf\\demo",
+      "prompt": "Run the perf scene",
+      "session_title": "perf"
+    },
+    {
+      "hook_event_name": "PreToolUse",
+      "session_id": "perf-1",
+      "cwd": "C:\\perf\\demo",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm test",
+        "description": "Run the tests"
+      },
+      "tool_use_id": "perf-t1"
+    }
+  ],
+  "notes": "As S1, with one Claude Code session working (a prompt and a Bash step posted to /hook once she is ready): its timer ticks every second. Never quiet (WAKUWAKU_QUIET_AFTER_MS=0).",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "island",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [
+      "today",
+      "tokens",
+      "monitor"
+    ],
+    "plugins": {}
+  }
+}

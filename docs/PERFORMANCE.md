@@ -80,17 +80,21 @@
 - **任务栏闪烁的按钮**：别的程序在任务栏上闪烁时，按钮动画也算在她头上（以前测到过一个核的 40%）。测量前确认没有窗口在闪。
 - **第一次启动**：新 exe 第一次启动时，杀毒软件可能先扫一遍，冷启动要多测几次取中位数。
 
-## 7. 工具（`tools/perf/`，待写）
+## 7. 工具（`tools/perf/`）
 
 | 脚本 | 做什么 |
 |---|---|
-| `run.ps1 -A <exe> -B <exe> -Scenes S1,S2 -Runs 3` | 在测试机上按第 4 节的步骤跑完，产出 JSON 和对比表 |
+| `run.ps1 -A <exe> -B <exe> -Scenes S1,S2 -Runs 3` | 在测试机上按第 4 节的步骤跑完，产出 JSON 和对比表；加 `-Threads` 每次都按线程拆分 |
+| `run.ps1 … -Vm <名字> -VmHelpers <脚本>` | 从宿主机跑：把两个 exe 和这些脚本放进测试虚拟机，在那里自己跑，宿主机跟着进度，跑完取回结果、出表。`-VmHelpers`（或环境变量 `WAKU_PERF_VM_HELPERS`）是点进来就有 `Use-WakuVM`、`VM`、`VMPut`、`VMGet` 的那个脚本；`-Collect` 重新跟上一次还在跑的 |
 | `measure.ps1 -Root <pid> -Seconds 60` | 测一棵进程树：周期、时间、唤醒、内存、GPU；加 `-Threads` 按线程拆分 |
-| `animations.ps1 -Port <n>` | 用 `/debug/eval` 列出各页面正在播放的无限动画 |
+| `animations.ps1 -Port <n>` | 用 `/debug/eval` 列出各页面正在播放的无限动画（`pet`、`island`、`desk-N`；副屏任务栏和弹出层不回答 eval，查不到） |
+| `nudge.ps1` | S3 用：每 10 秒真的挪一下鼠标（SendInput，不点击） |
 | `report.js <a.json> <b.json>` | 出对比表，标出不通过的项 |
-| `configs/*.json` | 各场景的设置 |
+| `configs/*.json` | 各场景的设置（写进副本的 `config.json`）、发给 `/hook` 的事件、环境变量；`{primary}`、`{other}` 由 run.ps1 换成两块屏在她桌面上的键 |
 
-脚本只依赖 Windows 自带的 PowerShell 和 Node，在测试机上运行。
+脚本只依赖 Windows 自带的 PowerShell（5.1 即可）和 Node，在测试机上运行。副本带 `--wakuwaku-out-of-job` 启动，省得她从测试脚本的作业里重新启动自己、换了进程号。
+
+和旧版比时，场景尽量一样，做不到的取最接近的：0.3.2 的插件是 PowerShell 脚本（每个插件一个 pwsh 子进程，算在进程树里，S4、S8 的差别大半在这）；0.3.2 的流光转 3 圈、2.8 秒后消失，不管停留设置，所以 S6 的「停留」在 0.3.2 上是光环已经消失的岛。
 
 ## 8. 基线
 
