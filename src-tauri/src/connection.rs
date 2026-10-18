@@ -1358,11 +1358,42 @@ fn dsh_content(text: &str) -> Vec<&str> {
     text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).collect()
 }
 
+// The text without a row that only turns ours off (`id: wakuwaku` and
+// `disabled: true`, nothing else): Repair puts her plugin back to work.
+fn without_off_rows(text: &str) -> String {
+    let mut out = String::new();
+    let mut item = String::new();
+    let flush = |item: &mut String, out: &mut String| {
+        let fields: Vec<&str> = item.lines().map(|l| l.trim().trim_start_matches("- ").trim()).filter(|l| !l.is_empty() && !l.starts_with('#')).collect();
+        let only_off = fields.len() == 2 && row_disabled(item, "wakuwaku");
+        if !only_off {
+            out.push_str(item);
+        }
+        item.clear();
+    };
+    for line in text.split_inclusive('\n') {
+        let top = line.starts_with("- ");
+        let under = line.starts_with(' ') && !item.is_empty();
+        if top {
+            flush(&mut item, &mut out);
+            item.push_str(line);
+        } else if under {
+            item.push_str(line);
+        } else {
+            flush(&mut item, &mut out);
+            out.push_str(line);
+        }
+    }
+    flush(&mut item, &mut out);
+    out
+}
+
 // The patch file with our rows (in place of ours before, the old bridge's
-// too): added after the list's last row, or in place of an empty list ([]);
-// the list as a YAML flow sequence of rows ([ ... ]) is not one to add to.
+// too, and of a row that turned ours off): added after the list's last
+// row, or in place of an empty list ([]); the list as a YAML flow sequence
+// of rows ([ ... ]) is not one to add to.
 pub fn dsh_install(text: Option<&str>, port: u16) -> Result<String, String> {
-    let (rest, _) = dsh_strip(text.unwrap_or(""));
+    let rest = without_off_rows(&dsh_strip(text.unwrap_or("")).0);
     let block = dsh_block(port);
     let content = dsh_content(&rest);
     if content.is_empty() {
@@ -2974,9 +3005,17 @@ mod tests {
         // One inside another's insert is not a row of this list.
         assert!(!row_disabled("- insert:\n    - id: wakuwaku\n      disabled: true\n", "wakuwaku"));
         // In the home patch file, after our rows (dsh_turned_off reads it past them).
-        let home = format!("{}- id: wakuwaku\n  disabled: true\n", dsh_install(None, 47213).unwrap());
+        let ours = dsh_install(None, 47213).unwrap();
+        let home = format!("{ours}- id: wakuwaku\n  disabled: true\n");
         assert!(row_disabled(&dsh_strip(&home).0, "wakuwaku"));
-        assert!(!row_disabled(&dsh_strip(&dsh_install(None, 47213).unwrap()).0, "wakuwaku"));
+        assert!(!row_disabled(&dsh_strip(&ours).0, "wakuwaku"));
+        // Repair takes a row that only turns ours off away; the person's rows stay.
+        let theirs = "# mine\n- id: ui-chat\n  config:\n    transcriptView: standard\n";
+        assert_eq!(dsh_install(Some(&home), 47213).unwrap(), ours);
+        assert_eq!(dsh_install(Some(&format!("{theirs}{home}")), 47213).unwrap(), format!("{theirs}{ours}"));
+        // One that says more is the person's: kept.
+        let more = "- id: wakuwaku\n  disabled: true\n  config:\n    port: 1\n";
+        assert!(dsh_install(Some(&format!("{theirs}{more}")), 47213).unwrap().contains(more));
     }
 
     // A file she made, left empty by a remove, goes again, with no backup

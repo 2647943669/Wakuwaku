@@ -196,7 +196,11 @@
         const d = snap.dsh || {}
         const load = d.load || {}
         const status = b.status === 'stale' && d.why === 'bridge' ? 'bridge' : b.status
-        return { ...b, status, why: d.why || '', load, seen: b.seen || ['loaded', 'older'].includes(load.state), list: d.listShown || '', listKey: 'ag.pluginFile' }
+        // Connected: DSH runs her plugin; or it came since she started and
+        // DSH is not running now. DSH running without it (to be restarted)
+        // is not, whatever came before.
+        const seen = ['loaded', 'older'].includes(load.state) || (b.seen && load.state !== 'restart')
+        return { ...b, status, why: d.why || '', load, seen, list: d.listShown || '', listKey: 'ag.pluginFile' }
       },
       in: ['ok', 'stale', 'bridge', 'notLoaded'],
       good: ['ok'],

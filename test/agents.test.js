@@ -173,6 +173,10 @@ test('DeepSeek Harness: written is not loaded', () => {
   assert.equal(Agents.setLineOf(dsh('ok', { load: { state: 'waiting' } }), 'dsh'), 'ag.st.set.dshWaiting')
   assert.equal(Agents.setLineOf(dsh('ok', { load: { state: 'restart' } }), 'dsh'), 'ag.st.set.dsh')
   assert.equal(Agents.setLineOf(dsh('ok', { load: { state: 'restart' } }), 'zcode'), 'ag.st.set.zcode')
+  // DSH running without it (turned off and back, written while it ran): not
+  // connected, whatever came before; DSH closed since an event: connected.
+  assert.equal(state(dsh('ok', { seen: true, load: { state: 'restart' } })), 'set')
+  assert.equal(state(dsh('ok', { seen: true, load: { state: 'waiting' } })), 'on')
   // Loaded (an older version too): connected, before any session.
   const loaded = dsh('ok', { load: { state: 'loaded', at: 1792200000000, version: 1, profile: 'desktop', pid: 4321 } })
   assert.equal(state(loaded), 'on')
