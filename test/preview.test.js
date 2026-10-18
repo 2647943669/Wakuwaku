@@ -17,7 +17,7 @@ const REPO = path.join(__dirname, '..')
 
 // The playground's one-click scenes, as agreed (2026-10-17; the hold and the
 // island at a corner, zhoupengjie/Wakuwaku#59 and #65, 2026-10-18), in order.
-const WANTED = ['新用户第一次打开', '平常', '三个会话在忙', '等你批准', '做完了（流光）', '出错了', '提醒停留', '展开停留', '放满小工具的任务栏', '桌面', '空桌面', '灵动岛模式', '岛在右上', '浅色 + 透明任务栏', '编辑任务栏布局中', '添加小工具', '编辑胶囊', '组合', 'Ctrl 多选']
+const WANTED = ['新用户第一次打开', '平常', '三个会话在忙', '等你批准', '做完了（流光）', '出错了', '提醒停留', '流动帧率', '展开停留', '放满小工具的任务栏', '桌面', '空桌面', '灵动岛模式', '岛在右上', '浅色 + 透明任务栏', '编辑任务栏布局中', '添加小工具', '编辑胶囊', '组合', 'Ctrl 多选']
 
 test('the playground has each agreed scene, in order, with a note on what to try', () => {
   assert.deepEqual(
@@ -79,8 +79,11 @@ test('the scenes say what they are about', () => {
   assert.equal(w('light-clear').mode, 'light')
   assert.equal(w('light-clear').material, 'clear')
   assert.ok(Scenes.sceneById('edit-layout').play, 'edit-layout starts editing')
-  // The hold (停留多久 30 s) with a ring, and open; a turn ending as each opens.
-  assert.deepEqual([w('hold-ring').config.endCue, w('hold-ring').config.hold, w('hold-ring').sessions[0].mood], ['ring', 30, 'done'])
+  // The hold (停留多久) with a ring, until seen, and open; a turn ending as each opens.
+  assert.deepEqual([w('hold-ring').config.endCue, w('hold-ring').config.hold, w('hold-ring').sessions[0].mood], ['ring', 'seen', 'done'])
+  // 流动帧率: the flow until seen, at 30 new angles a second to start with.
+  assert.deepEqual([w('flow-fps').config.endCue, w('flow-fps').config.hold, Scenes.sceneById('flow-fps').flowFps], ['ring', 'seen', 30])
+  assert.ok(Scenes.sceneById('flow-fps').play)
   assert.deepEqual([w('hold-open').config.endCue, w('hold-open').config.hold, w('hold-open').sessions[0].mood], ['open', 30, 'done'])
   assert.ok(Scenes.sceneById('hold-ring').play && Scenes.sceneById('hold-open').play)
   // The island at the top right, opened.

@@ -78,6 +78,14 @@
   // Windows' mode as the viewer picked it (the panel), or ?mode=, or their
   // system's: a scene about one mode (light-clear) has its own.
   let viewerMode = ['light', 'dark'].includes(Q.get('mode')) ? Q.get('mode') : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  // 流动帧率, an experiment (zhoupengjie/Wakuwaku#65): how many new angles a
+  // second the ring's flowing part takes in her home's page (island.js
+  // stepFlow), as a native ring capped to that many would show it; 0 every
+  // frame, as the app does. The panel, ?fps=, or a scene that says one;
+  // kept from scene to scene, as the viewer's mode is.
+  const FPS_CHOICES = [60, 30, 15]
+  let flowFps = FPS_CHOICES.includes(Number(Q.get('fps'))) ? Number(Q.get('fps')) : 0
+  const tellFlowFps = () => frames.island.win?.Island?.flowFps?.(flowFps)
   let current = 'everyday'
   const DEFAULT_SCENE = 'everyday'
 
@@ -102,6 +110,9 @@
   // its play. ?home=, ?material=, ?edge= over the first one (a link to a look).
   function applyScene(id, { play = true, overrides = false } = {}) {
     const scene = Scenes.sceneById(id) || Scenes.sceneById(DEFAULT_SCENE)
+    // A scene's own rate as it is picked (not on going back to its start),
+    // unless ?fps= said one for the first.
+    if (FPS_CHOICES.includes(scene.flowFps) && scene.id !== current && !(overrides && Q.get('fps'))) flowFps = scene.flowFps
     current = scene.id
     const reduced = world.reducedMotion
     const fresh = { ...Fake.makeWorld(), ...retime(clone(Scenes.sceneWorld(scene, F))) }
@@ -293,6 +304,7 @@
   window.addEventListener('message', e => {
     if (!e.data?.wk || !e.data.ready) return
     ready.add(e.data.role)
+    if (e.data.role === 'island') tellFlowFps()
     if (!bothUp()) return
     const run = waiting
     waiting = []
@@ -365,7 +377,7 @@
   const CARRY = 'wk-playground-carry'
   function carryAndReload() {
     try {
-      sessionStorage.setItem(CARRY, JSON.stringify({ at: Date.now(), scene: current, viewerMode, world, ui: captureUi(), folded: panel.classList.contains('folded'), y: scrollY }))
+      sessionStorage.setItem(CARRY, JSON.stringify({ at: Date.now(), scene: current, viewerMode, flowFps, world, ui: captureUi(), folded: panel.classList.contains('folded'), y: scrollY }))
     } catch {}
     location.reload()
   }
@@ -381,6 +393,7 @@
   function restore(c) {
     current = Scenes.sceneById(c.scene) ? c.scene : DEFAULT_SCENE
     viewerMode = c.viewerMode === 'light' ? 'light' : 'dark'
+    flowFps = FPS_CHOICES.includes(c.flowFps) ? c.flowFps : 0
     for (const k of Object.keys(world)) delete world[k]
     Object.assign(world, Fake.makeWorld(), c.world)
     countFrom(world)
@@ -947,6 +960,13 @@
       ['seen', '看到为止'],
       ['custom', '自定义'],
     ],
+    // 流动帧率 (flowFps above): the flow every frame, or capped.
+    flowFps: [
+      ['0', '满帧'],
+      ['60', '60'],
+      ['30', '30'],
+      ['15', '15'],
+    ],
   }
   const QUICK_HOLDS = [8, 30, 120]
   const holdNow = () => Fake.config().hold
@@ -962,6 +982,7 @@
     islandPos: () => Fake.config().islandPos || 'center',
     endCue: () => world.config.endCue || 'ring',
     hold: holdChoice,
+    flowFps: () => String(flowFps),
   }
 
   // A setting changed here, as the settings page would: kept, the page
@@ -1033,6 +1054,9 @@
         world.config.islandPos = v
         moveHome()
         setConfig({})
+      } else if (seg === 'flowFps') {
+        flowFps = Number(v) || 0
+        tellFlowFps()
       } else if (seg === 'hold') {
         // Custom: the seconds kept if it is one already, else 45 to start from, its box to type in.
         if (v === 'custom') {

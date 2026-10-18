@@ -5051,6 +5051,38 @@
     // hold: the ring keeps its colour; the dot has the new one as it comes.
   }
 
+  // The simulator's 流动帧率 (tools/preview's playground, to see the flow at
+  // the rates a native ring capped to them would show; the app never sets
+  // it): new angles that many times a second for the flowing part alone
+  // (after its three turns, before it slows), each on the frame after its
+  // moment, as one timed to the display would; 0, every frame, as ever.
+  let flowFps = 0
+  let stepping = 0
+  function stopStepping() {
+    cancelAnimationFrame(stepping)
+    stepping = 0
+  }
+  // Those turnings' animations paused and moved on only by whole steps of
+  // 1/fps from the start of their turning (a re-timing keeps the grid).
+  function stepFlow(groups, fps) {
+    const made = performance.now()
+    for (const g of groups) {
+      for (const a of g.anims) a.pause()
+      g.last = null
+    }
+    const tick = now => {
+      stepping = requestAnimationFrame(tick)
+      for (const g of groups) {
+        const into = now - made - g.delay
+        const n = into < 0 ? -1 : Math.floor((into * fps) / 1000)
+        if (n === g.last) continue
+        g.last = n
+        for (const a of g.anims) a.currentTime = n < 0 ? 0 : g.delay + (n * 1000) / fps
+      }
+    }
+    stepping = requestAnimationFrame(tick)
+  }
+
   // Its turning and its light from where they are now (Flow.frames), its
   // dot as it fades and its end, timed anew. Held (the hold setting,
   // zhoupengjie/Wakuwaku#65), it flows for as long as it stays: each of its
@@ -5065,6 +5097,7 @@
     for (const t of flowTimers) clearTimeout(t)
     flowAnims = []
     flowTimers = []
+    stopStepping()
     unholdRing()
     const f = Flow.frames(r, performance.now())
     const later = (fn, ms) => Number.isFinite(ms) && flowTimers.push(setTimeout(fn, Math.max(0, ms)))
@@ -5072,13 +5105,19 @@
     else {
       if (f.light && (f.still == null || f.still > 0)) flowAnims.push(flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' }))
       const glow = flow.classList.contains('glow')
+      const stepped = []
       f.turns.forEach((turn, i) => {
+        const group = []
         for (const s of spins) {
           if (!glow && s.closest('.flow-glow')) continue
           const keys = [{ transform: `rotate(${turn.from}deg)` }, { transform: `rotate(${turn.to}deg)` }]
-          flowAnims.push(s.animate(keys, { delay: turn.delay, duration: turn.duration, easing: turn.easing, iterations: turn.iterations, fill: i ? 'forwards' : 'both' }))
+          const a = s.animate(keys, { delay: turn.delay, duration: turn.duration, easing: turn.easing, iterations: turn.iterations, fill: i ? 'forwards' : 'both' })
+          flowAnims.push(a)
+          group.push(a)
         }
+        if (flowFps && turn.kind === 'flow') stepped.push({ anims: group, delay: turn.delay })
       })
+      if (stepped.length) stepFlow(stepped, flowFps)
       if (f.still != null) {
         // Reduced motion: lit, then still until its hold is over.
         if (f.still > 0) later(() => holdRing(f.rest), f.still)
@@ -5097,6 +5136,7 @@
   function holdRing(rest, lit = 1) {
     for (const a of flowAnims) a.cancel()
     flowAnims = []
+    stopStepping()
     flow.classList.add('held')
     flow.style.opacity = String(lit)
     for (const s of spins) s.style.transform = `rotate(${rest}deg)`
@@ -5115,6 +5155,7 @@
     const o = Flow.frames(r, performance.now()).out
     if (!o) return
     for (const a of flowAnims) a.cancel()
+    stopStepping()
     flow.classList.remove('held')
     flow.style.opacity = ''
     flowAnims = [flow.animate(o.keyframes, { delay: o.delay, duration: o.duration, fill: 'both' })]
@@ -5149,6 +5190,7 @@
     flowAnims = []
     blends = []
     flowTimers = []
+    stopStepping()
     unholdRing()
     flow.classList.remove('on', 'glow')
     if (news && !news.shown) showNews('in')
@@ -5973,5 +6015,10 @@
     compact,
     expanded,
   }
-  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch }
+  // The simulator's 流动帧率 (stepFlow): a ring flowing now goes on at it.
+  const setFlowFps = n => {
+    flowFps = Number.isFinite(n) && n > 0 ? n : 0
+    if (isRinging() && flowState.ring) animateRing(flowState.ring)
+  }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch, flowFps: setFlowFps }
 })()

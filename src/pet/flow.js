@@ -560,12 +560,13 @@
     return { turn, turns, light, still: null, rest: null, out, paused: false, ...at }
   }
 
-  // A turning as the page animates it, from now.
+  // A turning as the page animates it, from now (its kind: turns, ramp, flow, slow).
   function turnOf(s, now) {
     const delay = s.t0 - now
-    if (s.w == null) return { from: s.a0, to: s.a1, delay, duration: s.t1 - s.t0, easing: cssEase(s.ease), iterations: 1 }
-    if (Number.isFinite(s.t1)) return { from: s.a0, to: s.a0 + s.w * (s.t1 - s.t0), delay, duration: s.t1 - s.t0, easing: 'linear', iterations: 1 }
-    return { from: s.a0, to: s.a0 + 360, delay, duration: 360 / s.w, easing: 'linear', iterations: Infinity }
+    const kind = s.kind
+    if (s.w == null) return { kind, from: s.a0, to: s.a1, delay, duration: s.t1 - s.t0, easing: cssEase(s.ease), iterations: 1 }
+    if (Number.isFinite(s.t1)) return { kind, from: s.a0, to: s.a0 + s.w * (s.t1 - s.t0), delay, duration: s.t1 - s.t0, easing: 'linear', iterations: 1 }
+    return { kind, from: s.a0, to: s.a0 + 360, delay, duration: 360 / s.w, easing: 'linear', iterations: Infinity }
   }
 
   const api = {
