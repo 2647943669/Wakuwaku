@@ -463,8 +463,9 @@ pub fn local_hour() -> usize {
     ((local_now().3 / 3_600_000) as usize).min(23)
 }
 
-// The local year, month, day, and ms since midnight.
-fn local_now() -> (u16, u16, u16, u64) {
+// The local year, month, day, and ms since midnight (a deadline's countdown
+// too: plugins/countdown.rs).
+pub(crate) fn local_now() -> (u16, u16, u16, u64) {
     #[cfg(windows)]
     {
         #[repr(C)]

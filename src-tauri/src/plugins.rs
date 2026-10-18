@@ -4,7 +4,10 @@
 // (a turn, what it shows, how long until the next) and the helpers they
 // share; they replace the scripts once all of them are here.
 #![allow(dead_code)]
+pub mod countdown;
 pub mod fmt;
+mod pomodoro;
+mod stretch;
 pub mod web;
 
 use std::time::Duration;
