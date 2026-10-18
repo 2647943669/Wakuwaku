@@ -4432,8 +4432,9 @@ body.hinting #island[data-view='compact'] .hint-dot {
    gradient as wide as 1.5 times the frame's longer side (cqmax: its corners
    always covered) that alone turns; two layers of it, the upper coming up
    in a new colour (a blend). Under it on a dark ground the same blurred
-   (glow). The page animates its turning and its light alone; nothing of it
-   drawn, nor will-change, once it has played (on). Then the dot: as the
+   (glow). The page turns it in steps (a new angle 15 times a second, set
+   as a style) and animates its light alone; nothing of it drawn, nor
+   will-change, once it has played (on) or while it is held still (held). Then the dot: as the
    hint's, in the newest event's colour (--news), until seen. */
 #island {
   anchor-name: --island;

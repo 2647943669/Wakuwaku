@@ -4947,12 +4947,12 @@
   // What opened the island by itself (a turn done, changes to review, an
   // error, a hello, a plugin's nudge) keeps it closed now: a ring of colour
   // runs round her capsule (round her portrait on the black strip, where
-  // she has none) about three times, stays lit and still until the hold
-  // setting's time from the event is over (until seen: until the island
-  // opens; zhoupengjie/Wakuwaku#65) and fades, and a dot stays on her
-  // portrait until the island has been open for any reason (seen). What it
-  // would have shown is there as it opens next (pending): an ending's own
-  // words are its session's anyway. Only a session waiting on the person
+  // she has none) twice, in steps (15 a second), stays lit and still
+  // until the hold setting's time from the event is over (until seen: until
+  // the island opens; zhoupengjie/Wakuwaku#65) and fades, and a dot
+  // stays on her portrait until the island has been open for any reason
+  // (seen). What it would have shown is there as it opens next (pending):
+  // an ending's own words are its session's anyway. Only a session waiting on the person
   // opens it, or all of them with endCue open (all as before). What
   // happens inside a turn (a tool failed, an item of its list done) only
   // plays her clip (playReaction): no ring, no dot.
@@ -5037,6 +5037,13 @@
       animateRing(step.ring)
     } else if (step.act === 'blend') {
       blendTo(kind)
+      // Taken on as it faded (its dot come already, its session at work
+      // again a moment before): the dot goes again, and comes as it fades
+      // this time.
+      if (step.retimed && news?.shown && step.ring.hold > 0 && step.ring.dotAt > performance.now()) {
+        news.shown = false
+        drawNews()
+      }
       if (step.retimed) animateRing(step.ring)
     } else if (step.act === 'hop' || step.act === 'swap') {
       showNews(step.act)
@@ -5045,7 +5052,9 @@
   }
 
   // Its turning and its light from where they are now (Flow.frames), its
-  // dot as it fades and its end, timed anew. Held (the hold setting,
+  // dot as it fades and its end, timed anew. Its turning in steps (15 a
+  // second, Flow.stepsOf: each a new angle set, nothing animated between
+  // them; the user, 2026-10-18), its light smoothly. Held (the hold setting,
   // zhoupengjie/Wakuwaku#65): animated only until it is held still
   // (holdRing), down again at the hold's end (fadeRing); until seen, no end
   // of its own (the island opening ends it: stopRing).
@@ -5054,19 +5063,13 @@
     for (const t of flowTimers) clearTimeout(t)
     flowAnims = []
     flowTimers = []
+    stopStepping()
     unholdRing()
     const f = Flow.frames(r, performance.now())
     const later = (fn, ms) => Number.isFinite(ms) && flowTimers.push(setTimeout(fn, Math.max(0, ms)))
     if (f.still == null || f.still > 0) {
       flowAnims.push(flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' }))
-      const glow = flow.classList.contains('glow')
-      if (f.turn) {
-        for (const s of spins) {
-          if (!glow && s.closest('.flow-glow')) continue
-          const turn = [{ transform: `rotate(${f.turn.from}deg)` }, { transform: `rotate(${f.turn.to}deg)` }]
-          flowAnims.push(s.animate(turn, { delay: f.turn.delay, duration: f.turn.duration, easing: f.turn.easing, fill: 'both' }))
-        }
-      }
+      if (f.steps.length) stepRing(f.steps)
     }
     if (f.still != null) {
       if (f.still > 0) later(() => holdRing(f.rest), f.still)
@@ -5077,6 +5080,30 @@
     later(endRing, f.end)
   }
 
+  // Its turning in steps: the one showing now set at once, each after it at
+  // its time (a timer for the next alone, so nothing wakes between them),
+  // on both squares (the glow's too, when it glows).
+  let stepping = 0
+  function stopStepping() {
+    clearTimeout(stepping)
+    stepping = 0
+  }
+  function stepRing(steps) {
+    const made = performance.now()
+    const glow = flow.classList.contains('glow')
+    const turning = spins.filter(s => glow || !s.closest('.flow-glow'))
+    let i = 0
+    const show = () => {
+      stepping = 0
+      // Late (a busy page, a hidden one): the step due now, those passed skipped.
+      const now = performance.now() - made
+      while (i + 1 < steps.length && steps[i + 1].delay <= now) i++
+      for (const s of turning) s.style.transform = `rotate(${steps[i].angle}deg)`
+      if (++i < steps.length) stepping = setTimeout(show, Math.max(0, steps[i].delay - (performance.now() - made)))
+    }
+    show()
+  }
+
   // Held still (its turns over, its hold not yet): nothing of it running,
   // not even a light held at full (an animation filling forwards still
   // costs its frames): the ring left lit, its gradient where it stopped,
@@ -5084,6 +5111,7 @@
   function holdRing(rest) {
     for (const a of flowAnims) a.cancel()
     flowAnims = []
+    stopStepping()
     flow.classList.add('held')
     flow.style.opacity = '1'
     for (const s of spins) s.style.transform = `rotate(${rest}deg)`
@@ -5136,6 +5164,7 @@
     flowAnims = []
     blends = []
     flowTimers = []
+    stopStepping()
     unholdRing()
     flow.classList.remove('on', 'glow')
     if (news && !news.shown) showNews('in')
@@ -5926,5 +5955,15 @@
     compact,
     expanded,
   }
-  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch }
+  // The preview's gallery (tools/preview boot.js freeze): the ring drawn as
+  // it is ms into its turning (the step showing then), its steps stopped.
+  function ringAt(ms) {
+    const r = flowState.ring
+    const s = r?.turnings?.[r.turnings.length - 1]
+    if (!s || !isRinging()) return
+    stopStepping()
+    const angle = Flow.stepsOf(r, s.t0 + ms)[0]?.angle ?? Flow.angleAt(r, s.t0 + ms)
+    for (const sp of spins) sp.style.transform = `rotate(${angle}deg)`
+  }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch, ringAt }
 })()

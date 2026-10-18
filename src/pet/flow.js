@@ -2,9 +2,9 @@
 // happens on her closed capsule when something happens that does not need
 // the person at once. A turn done, changes to review, an error, a hello, a
 // plugin's nudge: the island no longer opens by itself (unless set to, as
-// before); a thin ring of colour runs round the capsule three times, stays
-// lit and still for as long as the hold setting says (or until seen), and
-// fades, and a small dot on her portrait stays until it has been seen. Only
+// before); a thin ring of colour runs round the capsule twice, in steps
+// (15 a second), stays lit and still for as long as the hold setting says
+// (or until seen), and fades, and a small dot on her portrait stays until it has been seen. Only
 // a session waiting on the person (to approve, answer or choose) always
 // opens it; what happens inside a turn (a tool failed) only plays her clip.
 // What to do for an
@@ -19,17 +19,24 @@
   const ENDINGS = ['done', 'review', 'error']
   const isEnding = kind => ENDINGS.includes(kind)
 
-  // A turn at the ring's average speed (three in 2.55 s), the turns of one
-  // ring, the least a newer colour turns once it takes over, and the most
-  // one ring turns however much comes on its heels (4.5: about 3.8 s).
-  const TURN_MS = 850
-  const TURNS = 3
-  const MIN_NEW_TURNS = 1.5
-  const MAX_TURNS = 4.5
-  // Its curve: faster from the start, steady, the last turn slowing.
-  const EASE = [0.45, 0.05, 0.55, 0.95]
+  // Its turns (the user, 2026-10-18: two, in steps of 15 a second, then
+  // still; they were three, smooth, 2.55 s): a turn at their average speed,
+  // two in 2 s.
+  const TURN_MS = 1000
+  const TURNS = 2
+  // Its curve: easing in and out, gently enough that no step turns it more
+  // than 34° (the fastest, mid-way: 1.43 times the average).
+  const EASE = [0.3, 0, 0.7, 1]
+  // Its turning is drawn in steps, a new angle 15 times a second (each a
+  // frame; nothing animated between them), as the user chose over every
+  // frame: a frame of her window costs the same whatever it shows, and her
+  // screen may show 280 of them a second (docs/PERFORMANCE.md). Its light
+  // comes up and goes down smoothly (opacity alone, on the compositor).
+  const SPIN_FPS = 15
+  const STEP_MS = 1000 / SPIN_FPS
   // Its light: 0.28 s up, held, and down over 0.56 s from 0.31 s before the
-  // turning ends to 0.25 s after it (2.24 s to 2.8 s of a ring's 2.8).
+  // turning ends to 0.25 s after it (held by nothing: as before there was a
+  // hold).
   const FADE_IN_MS = 280
   const FADE_LEAD_MS = 310
   const TAIL_MS = 250
@@ -241,16 +248,10 @@
   }
   const cssEase = p => `cubic-bezier(${p.map(v => +v.toFixed(4)).join(', ')})`
 
-  // A turning goes from a0° to a1° between t0 and t1 (ms) on its curve. The
-  // first is the ring's own; one taken on from a turning at speed w (°/ms)
-  // starts at that speed and slows to a stop at its end: a cubic in time,
-  // which CSS says as cubic-bezier(1/3, y1, 2/3, 1), y1 = w T / 3Δ.
-  function onFrom(t0, a0, w, t1, a1) {
-    const T = t1 - t0
-    const y1 = Math.min(1, Math.max(0, (w * T) / (3 * (a1 - a0))))
-    return { t0, t1, a0, a1, ease: [1 / 3, y1, 2 / 3, 1] }
-  }
-
+  // A turning goes from a0° to a1° between t0 and t1 (ms) on its curve:
+  // the ring's two turns, and two again from where it rests when another
+  // comes while it is held still.
+  //
   // The turning a ring is in at t: its last one begun by then.
   function turningAt(ring, t) {
     let seg = ring.turnings[0]
@@ -323,9 +324,10 @@
     return { ...ring, fade: [...up, [fadeAt, 1], [fadeAt + STILL_FADE_MS, 0]], stillAt: lit, fadeAt, dotAt: fadeAt, until: fadeAt + STILL_FADE_MS }
   }
 
-  // A ring begun at t: three turns over 2.55 s inside 2.8 s of light; still,
-  // 1.4 s lit. Its dot comes as it starts to fade. Held (hold, ms), lit
-  // still after its turns until the hold after t is over.
+  // A ring begun at t: two turns over 2 s, its light up over the first
+  // 0.28 s; still (reduced motion), 1.4 s lit. Held (hold, ms), lit still
+  // after its turns until the hold after t is over, then down, the dot
+  // coming as it starts to; held by nothing, down over the turns' end.
   function begin(kind, t, still, hold = 0) {
     if (still) {
       if (hold > 0) return timedStill({ kind, still: true, t0: t, turns: 0, base: 0, hold, turnings: [] }, t, [[t, 0], [t + STILL_FADE_MS, 1]])
@@ -343,17 +345,18 @@
   // An event that rings, at t, on what plays already: what to do, and the
   // rings' state after. act is
   //   start   a new ring
-  //   blend   the ring playing takes the new colour (BLEND_MS), and, when it
-  //           had too few turns left for it, turns on: retimed then, its
-  //           turning and its light carried on from where they are
+  //   blend   the ring playing takes the new colour (BLEND_MS), its
+  //           turning as it is (the user, 2026-10-18: no turning begun
+  //           again while it turns); retimed when its hold is counted anew
+  //           or it turns again (held still), carried on from where it is
   //   hold    a lower one: the ring keeps its colour, the dot takes the new
   //   hop     within AGAIN_MS of a ring's end: no ring, the dot takes the new
   //           colour and hops (with reduced motion only its colour: swap)
   // hold: how long it is held lit (ms; Infinity until seen; 0 none, as
   // before there was one). Held, each event that takes the ring counts the
   // hold anew from itself; one while it is held still (or fading after)
-  // turns it again in its colour, three turns from where it rests, carried
-  // on by those after it as any (a blend, 4.5 turns at most from there).
+  // turns it again in its colour, two turns from where it rests; one while
+  // it turns only gives it its colour.
   function play(state, kind, t, { still = false, hold = 0 } = {}) {
     const ring = state.ring && t < state.ring.until ? state.ring : null
     if (ring) {
@@ -369,23 +372,15 @@
         return { state: { ...state, ring: next }, act: 'blend', retimed: false, ring: next }
       }
       const last = ring.turnings[ring.turnings.length - 1]
-      // Turning yet (or, held by nothing, in its last fade): on as ever.
+      // Turning yet (or, held by nothing, in its last fade): its colour, its
+      // turning as it is; held, its hold from this one.
       if (t < last.t1 || !(hold > 0)) {
-        const at = (angleAt(ring, t) - ring.base) / 360
-        const want = Math.min(MAX_TURNS, Math.max(ring.turns, at + MIN_NEW_TURNS))
-        if (want <= ring.turns + 1e-9) {
-          // Its turning as it is; held, its hold from this one.
-          if (hold > 0) return retimed(timed(held, t, up, last.t1))
-          const next = { ...ring, kind }
-          return { state: { ...state, ring: next }, act: 'blend', retimed: false, ring: next }
-        }
-        // On from where it is, at the average speed for what is left.
-        const t1 = t + (want - at) * TURN_MS
-        const turning = onFrom(t, angleAt(ring, t), speedAt(ring, t), t1, ring.base + want * 360)
-        return retimed(timed({ ...held, turns: want, turnings: [...ring.turnings, turning] }, t, up, t1))
+        if (hold > 0) return retimed(timed(held, t, up, last.t1))
+        const next = { ...ring, kind }
+        return { state: { ...state, ring: next }, act: 'blend', retimed: false, ring: next }
       }
-      // Held still, or fading after: its turns again, in the new colour,
-      // from where it rests (its glow and its blend as ever).
+      // Held still, or fading after: its two turns again, in the new
+      // colour, from where it rests (its glow and its blend as ever).
       const a0 = last.a1
       const t1 = t + TURNS * TURN_MS
       return retimed(timed({ ...held, turns: TURNS, base: a0, turnings: [...ring.turnings, { t0: t, t1, a0, a1: a0 + TURNS * 360, ease: EASE }] }, t, up, t1))
@@ -420,21 +415,24 @@
   //   rest   its angle there (°, within a turn), the gradient left so
   //   out    its light going down, as keyframes begun delay ms from now
   //          (none while held until seen)
+  //   steps  its turning in steps (stepsOf), from the one showing now
   // dotIn and end are Infinity while held until seen.
   function frames(ring, now) {
     const s = ring.still ? null : turningAt(ring, now)
     const turn = s && { from: s.a0, to: s.a1, delay: s.t0 - now, duration: s.t1 - s.t0, easing: cssEase(s.ease) }
+    const steps = stepsOf(ring, now)
     const keys = (points, f0, fN) => points.map(([ti, o]) => ({ offset: fN > f0 ? (ti - f0) / (fN - f0) : 1, opacity: o }))
     const at = { dotIn: ring.dotAt - now, end: ring.until - now }
     if (ring.stillAt == null) {
       const f0 = ring.fade[0][0]
       const fN = ring.fade[ring.fade.length - 1][0]
-      return { turn, light: { keyframes: keys(ring.fade, f0, fN), delay: f0 - now, duration: fN - f0 }, still: null, rest: null, out: null, ...at }
+      return { turn, steps, light: { keyframes: keys(ring.fade, f0, fN), delay: f0 - now, duration: fN - f0 }, still: null, rest: null, out: null, ...at }
     }
     const up = [...ring.fade.slice(0, -2).filter(([ti]) => ti < ring.stillAt), [ring.stillAt, 1]]
     const f0 = up[0][0]
     return {
       turn,
+      steps,
       light: { keyframes: keys(up, f0, ring.stillAt), delay: f0 - now, duration: ring.stillAt - f0 },
       still: ring.stillAt - now,
       rest: ((angleAt(ring, ring.stillAt) % 360) + 360) % 360,
@@ -452,12 +450,32 @@
     }
   }
 
+  // Its turning as the page draws it, in steps of STEP_MS from the turning's
+  // start (a grid a ring drawn again keeps): the one showing at `now`, then
+  // each after it, the last at the turning's end, at its angle there.
+  // { delay: ms from now (0 or less for the one showing), angle: ° }. None
+  // once it has turned (or still, with reduced motion).
+  function stepsOf(ring, now) {
+    if (ring.still || !ring.turnings.length) return []
+    const s = turningAt(ring, now)
+    if (now >= s.t1) return []
+    const n = Math.ceil((s.t1 - s.t0) / STEP_MS - 1e-9)
+    const from = Math.max(0, Math.floor((now - s.t0) / STEP_MS + 1e-9))
+    const out = []
+    for (let k = from; k <= n; k++) {
+      const at = Math.min(s.t1, s.t0 + k * STEP_MS)
+      out.push({ delay: at - now, angle: at >= s.t1 ? s.a1 : angleAt(ring, at) })
+    }
+    return out
+  }
+
   const api = {
     PRIORITY,
     TURN_MS,
     TURNS,
-    MIN_NEW_TURNS,
-    MAX_TURNS,
+    SPIN_FPS,
+    STEP_MS,
+    EASE,
     BLEND_MS,
     AGAIN_MS,
     STILL_MS,
@@ -488,6 +506,7 @@
     release,
     angleAt,
     speedAt,
+    stepsOf,
     lightAt,
     frames,
   }

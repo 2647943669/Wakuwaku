@@ -172,7 +172,7 @@
     {
       id: 'done-flow',
       title: '做完了（流光）',
-      note: '一轮刚做完：胶囊转三圈彩色流光，留下一个绿点。再点一次这个场景就重播。',
+      note: '一轮刚做完：胶囊外的彩色光环一步一步地转两圈，静静亮一会儿，变成一个绿点。再点一次这个场景就重播。',
       world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { endCue: 'ring' } }),
       play: turnEnds,
     },
@@ -187,7 +187,7 @@
     {
       id: 'hold-ring',
       title: '提醒停留',
-      note: '「停留多久」是 30 秒：一轮刚做完，流光转完三圈后光环静静亮着，到 30 秒才变成小点；鼠标停到胶囊上就算看过。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（含自定义秒数）。',
+      note: '「停留多久」是 30 秒：一轮刚做完，光环转两圈后静静亮着，到 30 秒才变成小点；鼠标停到胶囊上就算看过。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（含自定义秒数）。',
       world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'ring', hold: 30 } }),
       play: turnEnds,
     },
@@ -423,7 +423,7 @@
     },
     // Past its hold (8 s from the event, the default) and its fade.
     { id: 'scene-error', section: 'scenes', scene: 'error', title: '出错了 · 流光播完留下的红点', page: 'island', view: CLOSED, budget: 12000, steps: p => p.wait(9200) },
-    // Past the turns (2.55 s), held lit and still (hold 30 s).
+    // Past the turns (2 s), held lit and still (hold 30 s).
     { id: 'scene-hold-ring', section: 'scenes', scene: 'hold-ring', title: '提醒停留 · 流光转完，光环静止亮着（停 30 秒）', page: 'island', view: CLOSED, budget: 8000, steps: p => p.wait(4500) },
     // Past the few seconds it used to stay open (6.5 s with Claude's words), open still.
     { id: 'scene-hold-open', section: 'scenes', scene: 'hold-open', title: '展开停留 · 做完自己展开，7 秒时还开着（停 30 秒）', page: 'island', view: [0, above(420), 520, 420], budget: 10000, steps: p => p.wait(7000) },

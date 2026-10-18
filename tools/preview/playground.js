@@ -1154,6 +1154,7 @@
         moodOf(world.sessions[0], 'done')
         pushAll()
       })
+      after(350, () => frames.island.win.Island?.ringAt?.(1100))
       after(350, () => frames.island.win.document.getElementById('flow')?.getAnimations({ subtree: true }).forEach(a => {
         a.pause()
         a.currentTime = 1100

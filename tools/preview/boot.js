@@ -130,7 +130,9 @@
   // --- Freezing --------------------------------------------------------------------------
   // flow: the flow light's ring held this many ms into its play, from when
   // it began turning: its animations drawn anew since (a blend, the hold's
-  // retimings, island.js animateRing) begin later, their own time less.
+  // retimings, island.js animateRing) begin later, their own time less; its
+  // turning, drawn in steps by timers, set to the step showing then
+  // (Island.ringAt).
   function freeze({ flow } = {}) {
     if (frozen) return
     frozen = true
@@ -139,6 +141,7 @@
     // When it began turning, on the timeline: a turning's start and its delay (≤ 0).
     const started = new Map(ringAnims.map(a => [a, a.startTime]))
     const begun = Math.min(...ringAnims.filter(a => a.startTime != null && a.effect?.getKeyframes?.().some(k => k.transform)).map(a => a.startTime + a.effect.getTiming().delay))
+    if (flow != null) window.Island?.ringAt?.(flow)
     for (const a of document.getAnimations()) {
       try {
         if (ringAnims.includes(a)) {

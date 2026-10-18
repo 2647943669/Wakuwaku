@@ -117,74 +117,74 @@ test('which hold choice is on: until seen, a quick one, or Custom for any other 
   assert.equal(Flow.HOLD_MAX, 600)
 })
 
-test('a ring: three turns over 2.55 s on its curve, lit 2.8 s, the dot as it fades', () => {
+test('a ring: two turns over 2 s on its curve, lit 2.25 s, the dot as it fades', () => {
   const { act, ring } = Flow.play(Flow.idle(), 'done', 1000)
   assert.equal(act, 'start')
-  assert.equal(ring.turns, 3)
+  assert.equal(ring.turns, 2)
   assert.equal(Flow.angleAt(ring, 1000), 0)
-  assert.equal(Flow.angleAt(ring, 1000 + 2550), 1080)
+  assert.equal(Flow.angleAt(ring, 3000), 720)
   // Symmetric: half way round at half time; slow at the ends, fast between.
-  near(Flow.angleAt(ring, 1000 + 1275), 540, 0.5, 'half way')
-  assert.ok(Flow.speedAt(ring, 1100) < Flow.speedAt(ring, 2275) / 3)
-  assert.ok(Flow.speedAt(ring, 3500) < Flow.speedAt(ring, 2275) / 3)
-  assert.equal(Flow.lightAt(ring, 1000), 0)
-  assert.equal(Flow.lightAt(ring, 1000 + 280), 1)
-  assert.equal(Flow.lightAt(ring, 1000 + 2240), 1)
-  near(Flow.lightAt(ring, 1000 + 2520), 0.5, 1e-9, 'half faded')
-  assert.equal(Flow.lightAt(ring, 1000 + 2800), 0)
-  assert.equal(ring.dotAt, 1000 + 2240)
-  assert.equal(ring.until, 1000 + 2800)
-  // As the page animates it: the turning begun, the light as keyframes.
+  near(Flow.angleAt(ring, 2000), 360, 0.5, 'half way')
+  assert.ok(Flow.speedAt(ring, 1100) < Flow.speedAt(ring, 2000) / 3)
+  assert.ok(Flow.speedAt(ring, 2900) < Flow.speedAt(ring, 2000) / 3)
+  assert.deepEqual(
+    [1000, 1280, 2690, 2970, 3250].map(t => Flow.lightAt(ring, t)),
+    [0, 1, 1, 0.5, 0],
+  )
+  assert.deepEqual([ring.dotAt, ring.until], [2690, 3250])
+  // As the page draws it: the turning begun, the light as keyframes.
   const f = Flow.frames(ring, 1500)
-  assert.deepEqual([f.turn.from, f.turn.to, f.turn.delay, f.turn.duration, f.turn.easing], [0, 1080, -500, 2550, 'cubic-bezier(0.45, 0.05, 0.55, 0.95)'])
+  assert.deepEqual([f.turn.from, f.turn.to, f.turn.delay, f.turn.duration, f.turn.easing], [0, 720, -500, 2000, 'cubic-bezier(0.3, 0, 0.7, 1)'])
   assert.deepEqual(
     f.light.keyframes.map(k => [+k.offset.toFixed(3), k.opacity]),
     [
       [0, 0],
-      [0.1, 1],
-      [0.8, 1],
+      [0.124, 1],
+      [0.751, 1],
       [1, 0],
     ],
   )
-  assert.deepEqual([f.light.delay, f.light.duration, f.dotIn, f.end], [-500, 2800, 1740, 2300])
+  assert.deepEqual([f.light.delay, f.light.duration, f.dotIn, f.end], [-500, 2250, 1190, 1750])
 })
 
-test('another while it plays takes its colour and turns on to 1.5 turns of it, never past 4.5', () => {
-  const first = Flow.play(Flow.idle(), 'done', 0)
-  // Early on, there are turns enough left: only the colour changes.
-  const early = Flow.play(first.state, 'error', 600)
-  assert.deepEqual([early.act, early.retimed, early.ring.kind, early.ring.turns, early.ring.until], ['blend', false, 'error', 3, 2800])
-  // Late, it turns on: 1.5 turns more from where it is, carried on at the
-  // speed it had, no jump in the angle.
-  const late = Flow.play(first.state, 'review', 2000)
-  assert.deepEqual([late.act, late.retimed, late.ring.kind], ['blend', true, 'review'])
-  const at = Flow.angleAt(first.ring, 2000)
-  near(late.ring.turns, at / 360 + 1.5, 1e-9, 'turns')
-  near(Flow.angleAt(late.ring, 2000), at, 1e-6, 'angle carried on')
-  near(Flow.speedAt(late.ring, 2000.01), Flow.speedAt(first.ring, 2000), 0.01, 'speed carried on')
-  assert.equal(Flow.angleAt(late.ring, late.ring.until), late.ring.turns * 360)
-  // Its light held until the new end, the dot later with it.
-  assert.equal(Flow.lightAt(late.ring, 2600), 1)
-  assert.equal(late.ring.dotAt, late.ring.until - 250 - 310)
-  // It never turns backwards.
-  let was = -1
-  for (let t = 0; t <= late.ring.until; t += 10) {
-    const a = Flow.angleAt(late.ring, t)
-    assert.ok(a >= was - 1e-6, `backwards at ${t}`)
-    was = a
+test('its turning in steps: 15 a second from its start, the last at its end, never back, no step past 35° (the user, 2026-10-18)', () => {
+  const { ring } = Flow.play(Flow.idle(), 'done', 1000, { hold: 8000 })
+  assert.equal(Flow.SPIN_FPS, 15)
+  const steps = Flow.stepsOf(ring, 1000)
+  assert.equal(steps.length, 31)
+  steps.forEach((st, k) => near(st.delay, (k * 1000) / 15, 1e-9, `step ${k}`))
+  assert.deepEqual([steps[0].angle, steps[30].angle, steps[30].delay], [0, 720, 2000])
+  for (let k = 1; k < steps.length; k++) {
+    const d = steps[k].angle - steps[k - 1].angle
+    assert.ok(d >= 0 && d <= 35, `step ${k}: ${d}°`)
   }
-  // Come while it fades: lit again over 0.3 s, then on.
-  const fading = Flow.play(first.state, 'error', 2600)
-  assert.ok(Flow.lightAt(fading.ring, 2600) < 1)
-  assert.equal(Flow.lightAt(fading.ring, 2900), 1)
-  assert.equal(fading.ring.turns, 4.5)
-  // Once at 4.5, a third only changes the colour; never more than 4.5 turns
-  // (about 3.8 s of turning).
-  const third = Flow.play(fading.state, 'error', 3200)
-  assert.deepEqual([third.act, third.retimed, third.ring.turns], ['blend', false, 4.5])
-  const capped = Flow.play(late.state, 'error', 3300)
-  assert.ok(capped.ring.turns <= 4.5)
-  assert.ok(capped.ring.turnings.at(-1).t1 - capped.ring.t0 <= 4500)
+  // Drawn again part way: the step showing now first, on the same grid.
+  const mid = Flow.stepsOf(ring, 1500)
+  assert.equal(mid.length, 24)
+  near(mid[0].delay, (7 * 1000) / 15 - 500, 1e-9, 'the step showing now')
+  near(mid[0].angle, steps[7].angle, 1e-9, 'its angle')
+  assert.equal(Flow.frames(ring, 1500).steps.length, 24)
+  // Turned: none; with reduced motion: none.
+  assert.deepEqual(Flow.stepsOf(ring, 3000), [])
+  assert.deepEqual(Flow.stepsOf(Flow.play(Flow.idle(), 'done', 0, { still: true }).ring, 0), [])
+  // Turning again from where it rests (another while held still): its own grid.
+  const again = Flow.play({ ring, until: ring.until }, 'error', 5000, { hold: 8000 }).ring
+  const twice = Flow.stepsOf(again, 5000)
+  assert.deepEqual([twice.length, twice[0].delay, twice[0].angle, twice[30].angle], [31, 0, 720, 1440])
+})
+
+test('another while it turns takes its colour, its turning as it is: no turns begun again (the user, 2026-10-18)', () => {
+  const first = Flow.play(Flow.idle(), 'done', 0)
+  for (const t of [600, 1800, 2000]) {
+    const next = Flow.play(first.state, 'error', t)
+    assert.deepEqual([next.act, next.retimed, next.ring.kind, next.ring.turns, next.ring.turnings.length, next.ring.until], ['blend', false, 'error', 2, 1, 2250], `at ${t}`)
+  }
+  // Held: its hold counted from it, its turning the same.
+  const held = Flow.play(Flow.idle(), 'done', 0, { hold: 8000 })
+  const next = Flow.play(held.state, 'error', 1500, { hold: 8000 })
+  assert.deepEqual([next.act, next.retimed, next.ring.kind, next.ring.turnings.length, next.ring.stillAt, next.ring.fadeAt], ['blend', true, 'error', 1, 2000, 9500])
+  near(Flow.angleAt(next.ring, 1500), Flow.angleAt(held.ring, 1500), 1e-9, 'its angle as it was')
+  assert.deepEqual(Flow.stepsOf(next.ring, 1500), Flow.stepsOf(held.ring, 1500))
 })
 
 test('a lower one does not take the colour of a higher one playing; the dot has it', () => {
@@ -201,11 +201,11 @@ test('a lower one does not take the colour of a higher one playing; the dot has 
 
 test('within 8 s of a ring the next does not turn: the dot hops; after, a ring again', () => {
   const first = Flow.play(Flow.idle(), 'done', 0)
-  const soon = Flow.play(first.state, 'hello', 2800 + 7999)
+  const soon = Flow.play(first.state, 'hello', 2250 + 7999)
   assert.equal(soon.act, 'hop')
   // The 8 s are from the last ring's end, not from the hop.
-  assert.equal(Flow.play(soon.state, 'error', 2800 + 7999.5).act, 'hop')
-  assert.equal(Flow.play(soon.state, 'error', 2800 + 8000).act, 'start')
+  assert.equal(Flow.play(soon.state, 'error', 2250 + 7999.5).act, 'hop')
+  assert.equal(Flow.play(soon.state, 'error', 2250 + 8000).act, 'start')
   // Cut short because the island opened: the next rings anew.
   assert.equal(Flow.play(Flow.stop(first.state), 'hello', 3000).act, 'start')
 })
@@ -250,32 +250,32 @@ test('open by itself, what endCue governs stays as long as the hold says; the re
   assert.equal(Flow.openFor('process', 120, 3600), 3600)
 })
 
-test('held: the same three turns, then lit and still until the hold from the event is over, then down and the dot (#65)', () => {
+test('held: the same two turns, then lit and still until the hold from the event is over, then down and the dot (#65)', () => {
   const { act, ring } = Flow.play(Flow.idle(), 'done', 1000, { hold: 8000 })
   assert.equal(act, 'start')
-  assert.equal(ring.turns, 3)
-  assert.equal(Flow.angleAt(ring, 1000 + 2550), 1080)
-  assert.deepEqual([ring.stillAt, ring.fadeAt, ring.dotAt, ring.until], [3550, 9000, 9000, 9560])
+  assert.equal(ring.turns, 2)
+  assert.equal(Flow.angleAt(ring, 3000), 720)
+  assert.deepEqual([ring.stillAt, ring.fadeAt, ring.dotAt, ring.until], [3000, 9000, 9000, 9560])
   // Still: not turning, lit.
-  assert.equal(Flow.angleAt(ring, 6000), 1080)
+  assert.equal(Flow.angleAt(ring, 6000), 720)
   assert.equal(Flow.speedAt(ring, 6000), 0)
   assert.deepEqual(
-    [1000, 1280, 3550, 6000, 9000, 9280, 9560].map(t => Flow.lightAt(ring, t)),
+    [1000, 1280, 3000, 6000, 9000, 9280, 9560].map(t => Flow.lightAt(ring, t)),
     [0, 1, 1, 1, 1, 0.5, 0],
   )
-  // As the page animates it: the turning and the light coming up until it
-  // is held still, nothing from then; down once the hold is over.
+  // As the page draws it: its steps and its light coming up until it is
+  // held still, nothing from then; down once the hold is over.
   const f = Flow.frames(ring, 1500)
-  assert.deepEqual([f.turn.from, f.turn.to, f.turn.delay, f.turn.duration], [0, 1080, -500, 2550])
+  assert.deepEqual([f.turn.from, f.turn.to, f.turn.delay, f.turn.duration], [0, 720, -500, 2000])
   assert.deepEqual(
     f.light.keyframes.map(k => [+k.offset.toFixed(3), k.opacity]),
     [
       [0, 0],
-      [0.11, 1],
+      [0.14, 1],
       [1, 1],
     ],
   )
-  assert.deepEqual([f.light.delay, f.light.duration, f.still, f.rest], [-500, 2550, 2050, 0])
+  assert.deepEqual([f.light.delay, f.light.duration, f.still, f.rest], [-500, 2000, 1500, 0])
   assert.deepEqual([f.out.delay, f.out.duration, f.dotIn, f.end], [7500, 560, 7500, 8060])
   assert.deepEqual(
     f.out.keyframes.map(k => [k.offset, k.opacity]),
@@ -284,16 +284,16 @@ test('held: the same three turns, then lit and still until the hold from the eve
       [1, 0],
     ],
   )
-  // Drawn again while held: held already, down later.
+  // Drawn again while held: held already, no steps, down later.
   const g = Flow.frames(ring, 6000)
-  assert.deepEqual([g.still, g.out.delay], [-2450, 3000])
+  assert.deepEqual([g.still, g.steps.length, g.out.delay], [-3000, 0, 3000])
   // The least hold (3 s) still holds it a moment after its turns.
   const least = Flow.play(Flow.idle(), 'done', 0, { hold: 3000 }).ring
-  assert.deepEqual([least.stillAt, least.fadeAt, least.until], [2550, 3000, 3560])
+  assert.deepEqual([least.stillAt, least.fadeAt, least.until], [2000, 3000, 3560])
   // Until seen: lit and still with no end of its own (island.js: until the
   // island opens, or its session is at work again: release).
   const seen = Flow.play(Flow.idle(), 'error', 0, { hold: Infinity }).ring
-  assert.deepEqual([seen.stillAt, seen.fadeAt, seen.until], [2550, Infinity, Infinity])
+  assert.deepEqual([seen.stillAt, seen.fadeAt, seen.until], [2000, Infinity, Infinity])
   assert.equal(Flow.lightAt(seen, 1e7), 1)
   const h = Flow.frames(seen, 5000)
   assert.deepEqual([h.out, h.dotIn, h.end], [null, Infinity, Infinity])
@@ -303,29 +303,26 @@ test('held still, another turns it again in its colour from where it rests, its 
   const hold = 30000
   const first = Flow.play(Flow.idle(), 'done', 0, { hold })
   const again = Flow.play(first.state, 'error', 10000, { hold })
-  assert.deepEqual([again.act, again.retimed, again.ring.kind, again.ring.turns], ['blend', true, 'error', 3])
-  // From where it rests, no jump, three turns on; lit all along.
-  assert.equal(Flow.angleAt(again.ring, 10000), 1080)
-  assert.equal(Flow.angleAt(again.ring, 12550), 2160)
-  assert.deepEqual([again.ring.stillAt, again.ring.fadeAt, again.ring.until], [12550, 40000, 40560])
-  for (const t of [10000, 11000, 12550, 39000]) assert.equal(Flow.lightAt(again.ring, t), 1, `lit at ${t}`)
+  assert.deepEqual([again.act, again.retimed, again.ring.kind, again.ring.turns], ['blend', true, 'error', 2])
+  // From where it rests, no jump, two turns on; lit all along.
+  assert.equal(Flow.angleAt(again.ring, 10000), 720)
+  assert.equal(Flow.angleAt(again.ring, 12000), 1440)
+  assert.deepEqual([again.ring.stillAt, again.ring.fadeAt, again.ring.until], [12000, 40000, 40560])
+  for (const t of [10000, 11000, 12000, 39000]) assert.equal(Flow.lightAt(again.ring, t), 1, `lit at ${t}`)
   assert.equal(Flow.frames(again.ring, 10000).rest, 0)
-  // Turning again, the rules of a ring: one more takes 1.5 turns of its
-  // colour, never past 4.5 from where it rested.
-  const more = Flow.play(again.state, 'error', 12000, { hold })
-  assert.ok(more.ring.turns <= 4.5 && more.ring.turns > 3)
-  const end = more.ring.turnings[more.ring.turnings.length - 1]
-  assert.ok(end.a1 - 1080 <= 4.5 * 360 + 1e-6)
-  assert.equal(more.ring.fadeAt, 42000)
+  // Turning again, the rules of a ring: one more only takes its colour, its
+  // hold from it.
+  const more = Flow.play(again.state, 'error', 11000, { hold })
+  assert.deepEqual([more.ring.turnings.length, more.ring.stillAt, more.ring.fadeAt], [2, 12000, 41000])
   // A lower one keeps its colour (the dot has it), its hold as it was.
   const lower = Flow.play(again.state, 'hello', 20000, { hold })
   assert.deepEqual([lower.act, lower.ring.fadeAt], ['hold', 40000])
-  // Come as it fades after its hold: lit again over 0.3 s, the turns again.
+  // Come as it fades after its hold: lit again over 0.3 s, its turns again.
   const fading = Flow.play(first.state, 'review', 30280, { hold })
   assert.equal(Flow.lightAt(first.ring, 30280), 0.5)
   assert.equal(Flow.lightAt(fading.ring, 30280), 0.5)
   assert.equal(Flow.lightAt(fading.ring, 30580), 1)
-  assert.equal(fading.ring.turns, 3)
+  assert.deepEqual([fading.ring.turns, fading.ring.turnings.length, fading.ring.stillAt], [2, 2, 32280])
   // Gone: within 8 s the dot hops, as ever; after, a ring again.
   assert.equal(Flow.play(first.state, 'hello', 30560 + 7999, { hold }).act, 'hop')
   assert.equal(Flow.play(first.state, 'hello', 30560 + 8000, { hold }).act, 'start')
@@ -351,9 +348,9 @@ test('held, and its session at work again: down now, as at its time, after its t
   assert.deepEqual([now.ring.fadeAt, now.ring.dotAt, now.ring.until, now.until], [10000, 10000, 10560, 10560])
   assert.equal(Flow.lightAt(now.ring, 9000), 1)
   assert.equal(Flow.lightAt(now.ring, 10280), 0.5)
-  assert.deepEqual([Flow.frames(now.ring, 10000).still, Flow.frames(now.ring, 10000).out.delay], [-7450, 0])
+  assert.deepEqual([Flow.frames(now.ring, 10000).still, Flow.frames(now.ring, 10000).out.delay], [-8000, 0])
   // Still turning: its turns played out first.
-  assert.equal(Flow.release(held, 1000).ring.fadeAt, 2550)
+  assert.equal(Flow.release(held, 1000).ring.fadeAt, 2000)
   // Reduced motion: down over its 0.2 s.
   const still = Flow.play(Flow.idle(), 'done', 0, { still: true, hold: 30000 }).state
   assert.equal(Flow.release(still, 5000).ring.until, 5200)
