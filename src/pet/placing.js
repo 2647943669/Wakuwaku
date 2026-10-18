@@ -171,7 +171,7 @@
     return { at: on ? 'isle' : null }
   }
 
-  // A plugin's first parameter it needs and has not been given (scripts.rs
+  // A plugin's first parameter it needs and has not been given (plugins.rs
   // missing, as the settings' snapshot says it; else from its parameters),
   // or null: put somewhere, it shows nothing until that is filled in.
   function missingParam(plugin) {

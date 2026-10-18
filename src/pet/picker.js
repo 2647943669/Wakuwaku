@@ -61,7 +61,7 @@
   const inRect = (x, y, r) => !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
   const rectOf = node => (node && node.isConnected && !node.hidden ? node.getBoundingClientRect() : null)
 
-  // Its kinds, and which a plugin she runs is (scripts.rs PLUGINS); 组合:
+  // Its kinds, and which a plugin she runs is (plugins.rs PLUGINS); 组合:
   // the boards kept as combos (settings boardSets, a board's 存为组合…).
   const CATS = ['all', 'system', 'work', 'info', 'mail', 'script', 'sets']
   const PLUGIN_CAT = { weather: 'info', stock: 'info', pomodoro: 'work', countdown: 'work', stretch: 'work', ci: 'script', devserver: 'script' }
@@ -805,7 +805,7 @@
   const note1 = text => toast(text)
 
   // A plugin just put somewhere that wants a parameter first (the CI's
-  // repo, the countdown's day: scripts.rs runs it only then, and until then
+  // repo, the countdown's day: plugins.rs runs it only then, and until then
   // it shows nothing there): it says so, with the way to it, its row on the
   // Plugins page with its settings folded out.
   function askFirst(keys) {

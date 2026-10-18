@@ -1,6 +1,6 @@
 // Sample data for the scenes, as the Rust side would send it: sessions in
 // each mood (state.rs view), a prompt (asks.rs view), widgets with their
-// details and sizes (widgets.rs), the plugins (scripts.rs view), the
+// details and sizes (widgets.rs), the plugins (plugins.rs view), the
 // taskbar's programs, tray and keyboard (taskbar.rs), and desktop layouts
 // (desk.rs). Loaded after fake-tauri.js (its clock, Fake.T0). Node reads it
 // too (the tests of scenes.js): there the icons are a placeholder.

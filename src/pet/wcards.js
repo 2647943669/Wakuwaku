@@ -53,8 +53,8 @@
   // Which colour its rise or fall takes: the colour its script gave it, the
   // one place that decides, for every place it is drawn (the taskbar's faces,
   // carousels and stacks, the capsule's rows and cards; the desktop's to
-  // come), as the compact island's value always took it. stock.ps1 sends red
-  // up or green up as the stock plugin's colours setting says (scripts.rs:
+  // come), as the compact island's value always took it. The stock plugin
+  // (plugins/stock.rs) sends red up or green up as its colours setting says (plugins.rs:
   // until chosen, red up in Chinese as Chinese markets show them, green up
   // in any other language). Drawn in the design's two: its green UP's, its
   // red DOWN's.
@@ -390,7 +390,7 @@
 
   // A stock's card: its price and change, the day's curve, its high and
   // low; the others of its plugin, a line each. Only the day's prices come
-  // (stock.ps1): the week, month and year greyed.
+  // (plugins/stock.rs): the week, month and year greyed.
   function stockCard(w, ctx, all = []) {
     const b = briefOf(w, ctx)
     const d = Widgets.detailOf(w)

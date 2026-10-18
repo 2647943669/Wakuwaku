@@ -2,7 +2,7 @@
 
 任何程序往 `http://127.0.0.1:47213/widget` 发一条 JSON，它就会出现在灵动岛上。没有会话需要你时，插件在岛上轮流显示；会话永远优先。隔一会儿再发一次，它就一直在；停了，过了 `ttl` 秒它就消失。宠物只显示这些文字，不运行任何东西。
 
-**不用自己运行**：天气、股票、番茄钟、倒计时、久坐提醒、CI、开发服务器这几个，在设置的「插件」页打开开关，宠物就在后台替你跑，参数在那一行的「设置」里填；她开机启动，它们也就开机就跑。下面是自己在终端里跑的用法，写新插件时可以参考。
+**不用自己运行**：天气、股票、番茄钟、倒计时、久坐提醒、CI、开发服务器这几个，在设置的「插件」页打开开关，宠物就替你跑，参数在那一行的「设置」里填；她开机启动，它们也就开机就跑。她跑的是自己里面的同样功能（在她自己的进程里，不用 PowerShell，也不开别的进程），岛上显示的和这些脚本发的一模一样，参数名也一样。这里的同名脚本她不再运行，留作样例：写自己的插件时照着改，或者在终端里手动跑。
 
 用 PowerShell 7（`pwsh`）或 Windows 自带的 PowerShell 都能跑；大多数加 `-Once` 只发一次。从 cmd 或 Git Bash 传好几个值时用逗号连起来、不加空格：`-Symbol USDCNY=X,BTC-USD`。
 
@@ -87,6 +87,6 @@
 
 ---
 
-**Widgets in the island, from scripts.** POST that JSON to `http://127.0.0.1:47213/widget` and it shows in the island while no session needs you; send it again within `ttl` seconds to keep it there. The fields are in the table above. The scripts here: `waku` (tell me when a command is done), CI and pull requests, a pomodoro, deadlines, dev servers, stocks/rates/coins, weather, a stretch reminder, and mail over IMAP, Microsoft Graph, or Thunderbird.
+**Widgets in the island, from scripts.** POST that JSON to `http://127.0.0.1:47213/widget` and it shows in the island while no session needs you; send it again within `ttl` seconds to keep it there. The fields are in the table above. The scripts here: `waku` (tell me when a command is done), CI and pull requests, a pomodoro, deadlines, dev servers, stocks/rates/coins, weather, a stretch reminder, and mail over IMAP, Microsoft Graph, or Thunderbird. The weather, stocks, pomodoro, countdown, stretch, CI and dev-server ones she also runs for you when switched on in the Plugins page, but as part of herself (in her own process: no PowerShell, no process of their own), showing exactly what these scripts send, with the same parameters; she no longer runs these scripts, which stay as samples to start your own from, or to run by hand.
 
 A widget is small at least (its icon and value). Its `detail`, as an object, says which sizes it has (`sizes`: `s`, `m`, `l`) and gives the larger ones more to show: `extra` (a few words, 24 characters: its second line), `series` (`points`, 120 at most, with `unit`, `hi`, `lo`) and `rows` (12 at most, each of `from code name when price change value unit kind icon`, 16 characters each, `subject text`, 60, `at` and `points`). Longer words are cut with "…"; anything else is dropped. A string `detail`, as before, is its extra.

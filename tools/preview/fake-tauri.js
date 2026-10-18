@@ -211,7 +211,7 @@
     sessions: [],
     // The prompts waiting (asks.rs views).
     asks: [],
-    // Every widget with something to say (widgets.rs), and the plugins she runs (scripts.rs).
+    // Every widget with something to say (widgets.rs), and the plugins she runs (plugins.rs).
     widgets: [],
     plugins: [],
     taskbarLayout: null,
@@ -273,12 +273,12 @@
     taskbarMaterial: world.material,
     ...(world.taskbarLayout ? { taskbarLayout: world.taskbarLayout } : {}),
     deskLayout: world.deskLayout,
-    // The plugins running as the settings say it (scripts.rs: plugins[id].on).
+    // The plugins running as the settings say it (plugins.rs: plugins[id].on).
     plugins: Object.fromEntries(world.plugins.filter(p => p.on).map(p => [p.id, { on: true }])),
     ...world.config,
   })
 
-  // A plugin she runs on or off (scripts.rs: plugins[id].on, the world's
+  // A plugin she runs on or off (plugins.rs: plugins[id].on, the world's
   // own until the settings say).
   function pluginOn(id) {
     const c = config().plugins?.[id]
@@ -286,7 +286,7 @@
     return !!world.plugins.find(p => p.id === id)?.on
   }
   // The widgets as main sends them (widgets_view): each on as widgetsOff
-  // says; a plugin's gone once it is off (scripts.rs stops it), and one
+  // says; a plugin's gone once it is off (plugins.rs stops it), and one
   // turned on that had none says what the fixtures have for it
   // (Fixtures.SLEEPING: the picker's plugins, put somewhere).
   function widgetsNow() {
@@ -296,7 +296,7 @@
     for (const p of world.plugins) if (pluginOn(p.id) && !list.some(w => w.plugin === p.id) && sleeping[p.id]) list.push({ ...sleeping[p.id], on: !off.includes(sleeping[p.id].id) })
     return list
   }
-  // The plugins as scripts.rs views them: on and running, or off.
+  // The plugins as plugins.rs views them: on and running, or off.
   const pluginsNow = () => world.plugins.map(p => (pluginOn(p.id) ? { ...p, on: true, state: p.state === 'off' ? 'running' : p.state } : { ...p, on: false, state: 'off' }))
 
   const IDLE = { id: '', project: '', agent: 'claude', jump: false, mood: 'idle', detail: null, since: null, took: null, name: '', step: null, stepSince: null, todo: null, files: 0, reply: '', error: null }
