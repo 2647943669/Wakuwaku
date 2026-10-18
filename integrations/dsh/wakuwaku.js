@@ -98,10 +98,11 @@ function hereDir() {
   }
 }
 
-// This file's digest as DSH imported it: SHA-256, its first 16 hex digits.
+// This file's digest as DSH imported it: SHA-256 of its text with CRLF made
+// LF (a checkout may have either), its first 16 hex digits.
 function ownSha() {
   try {
-    return createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex').slice(0, 16)
+    return createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url), 'utf8').replace(/\r\n/g, '\n')).digest('hex').slice(0, 16)
   } catch {
     return ''
   }

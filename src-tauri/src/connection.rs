@@ -1645,12 +1645,16 @@ pub struct DshLoaded {
 }
 
 // The plugin's code as this version writes it, as the plugin tells its own
-// (SHA-256 of the file, its first 16 hex digits): DSH keeps a module it
-// imported until it restarts, so the same name written again is not what
-// runs until then.
+// (SHA-256 of the file's text with CRLF made LF, as a checkout may have
+// either, its first 16 hex digits): DSH keeps a module it imported until it
+// restarts, so the same name written again is not what runs until then.
 pub fn dsh_plugin_sha() -> String {
+    sha_of_text(DSH_PLUGIN)
+}
+
+fn sha_of_text(text: &str) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(DSH_PLUGIN.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(text.replace("\r\n", "\n").as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn dsh_markers(dir: &Path) -> Vec<DshLoaded> {
@@ -3417,8 +3421,14 @@ mod tests {
         assert_eq!(dsh_load_of(&[], started, &[now - 61_000], written, now, new, 1), DshLoad::NotLoaded);
         assert_eq!(dsh_load_of(&[], started, &[now - 10_000], written, now, new, 1), DshLoad::Waiting);
         assert_eq!(DshLoad::NotLoaded.word(), "notLoaded");
-        // The digest as the plugin takes its own: 16 hex digits of the file's SHA-256.
+        // The digest as the plugin takes its own: 16 hex digits of the file's SHA-256,
+        // the same whether this checkout has its lines ending CRLF or LF.
         assert!(dsh_plugin_sha().len() == 16 && dsh_plugin_sha().chars().all(|c| c.is_ascii_hexdigit()));
+        let lf = DSH_PLUGIN.replace("\r\n", "\n");
+        assert_eq!(sha_of_text(&lf), dsh_plugin_sha());
+        assert_eq!(sha_of_text(&lf.replace('\n', "\r\n")), dsh_plugin_sha());
+        // As node's crypto has it (test/dsh.test.js takes the plugin's own the same way).
+        assert_eq!(sha_of_text("a\r\nb\r\n"), "911169ddaaf146af");
     }
 
     #[test]

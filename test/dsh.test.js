@@ -176,6 +176,29 @@ test('its word as DSH loads it, and as it is let go', async () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
+test('its own digest, the same with its lines ending LF or CRLF', async () => {
+  const { pathToFileURL } = require('node:url')
+  const { createHash } = require('node:crypto')
+  const lf = SOURCE.replace(/\r\n/g, '\n')
+  const want = createHash('sha256').update(lf).digest('hex').slice(0, 16)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wakuwaku-dsh-'))
+  const shas = []
+  for (const [name, text] of [['lf', lf], ['crlf', lf.replace(/\n/g, '\r\n')]]) {
+    fs.mkdirSync(path.join(dir, name))
+    const file = path.join(dir, name, 'wakuwaku.js')
+    fs.writeFileSync(file, text)
+    const { make } = await import(pathToFileURL(file).href)
+    const plugin = make(fakeDsh({ profileContext: { name: 'desktop' } }).ctx, { port: 9 })
+    const letGo = plugin.hello()
+    const marker = path.join(dir, name, 'loaded-desktop.json')
+    for (let i = 0; i < 50 && !fs.existsSync(marker); i++) await new Promise(done => setTimeout(done, 10))
+    shas.push(JSON.parse(fs.readFileSync(marker, 'utf8')).sha)
+    letGo()
+  }
+  assert.deepEqual(shas, [want, want])
+  fs.rmSync(dir, { recursive: true, force: true })
+})
+
 test('nothing of hers reaches DSH: she not there, odd input, errors', async () => {
   const { make, apply } = await load()
   // A port no one listens on.
