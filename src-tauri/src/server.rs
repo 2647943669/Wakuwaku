@@ -83,8 +83,11 @@ fn brings_chain(agent: Option<&str>) -> bool {
 // Whether an agent's PermissionRequest is told only, not held for her answer:
 // Reasonix's hook hands it on and leaves at once, so nobody waits on the
 // reply; the person answers in Reasonix, and she shows the session waiting.
-fn answers_none(agent: Option<&str>) -> bool {
-    agent == Some("reasonix")
+// DeepSeek Harness's, unless her plugin says it can take her answer
+// (answerable: it could make the request withdraw DSH's own dialog as she
+// answers first; integrations/dsh/wakuwaku.js).
+fn answers_none(agent: Option<&str>, event: &Value) -> bool {
+    agent == Some("reasonix") || (agent == Some("dsh") && event.get("answerable") != Some(&Value::Bool(true)))
 }
 
 // True the first time a line comes; a few kinds are kept, and past them
@@ -205,6 +208,16 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
             }
             let is_codex = agent == Some("codex");
+            // A prompt held for the person's answer on her (below): known
+            // before its message, which for DSH's says where it is answered.
+            // Out of sight (her taskbar on another display counts: main.rs
+            // asks_seen), it is the terminal's at once. Reasonix's is not one
+            // to answer yet: its hook hands it on and is gone (main.rs
+            // reasonix_hook), so she only waits with it
+            // (zhoupengjie/Wakuwaku#60, phase 1); nor is one of DSH's her
+            // plugin cannot take an answer to.
+            let is_prompt = event["hook_event_name"] == "PermissionRequest" && !answers_none(agent, &event);
+            let holds = is_prompt && sh.asks_seen();
             let msg = match agent {
                 Some("codex") => events_codex::to_message(&event),
                 Some("agy") => {
@@ -222,6 +235,10 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 _ => events::to_message(&event),
             };
             if let Some(mut msg) = msg {
+                // DSH's prompt she does not hold: to be approved in DSH.
+                if agent == Some("dsh") && event["hook_event_name"] == "PermissionRequest" && !holds {
+                    events_dsh::answered_in_dsh(&mut msg);
+                }
                 // Where the session runs, for going to its window (jump.rs);
                 // none for one going (a DSH subagent's too: events_dsh.rs whose).
                 let chain = if msg["event"] == "session-end" { None } else { chain_for(sh, &req, &event, agent) };
@@ -243,16 +260,11 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 }
             }
             // A prompt holds the answer until the person picks on the pet, the
-            // terminal settles it, or time runs out; out of sight (her
-            // taskbar on another display counts: main.rs asks_seen), it is
-            // the terminal's at once. Reasonix's is not one to answer yet:
-            // its hook hands it on and is gone (main.rs reasonix_hook), so
-            // she only waits with it (zhoupengjie/Wakuwaku#60, phase 1).
-            let is_prompt = event["hook_event_name"] == "PermissionRequest" && !answers_none(agent);
-            if is_prompt && !sh.asks_seen() {
+            // terminal settles it, or time runs out.
+            if is_prompt && !holds {
                 sh.log("a prompt handed to the terminal: out of sight");
             }
-            if is_prompt && sh.asks_seen() {
+            if holds {
                 let respond: Responder = Box::new(move |out: Option<Value>| match out {
                     Some(out) => reply(req, 200, if out.is_object() { out } else { json!({}) }),
                     None => drop(req),
@@ -261,6 +273,8 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 if is_codex {
                     wait = wait.min(CODEX_ASK_MS);
                 }
+                // DSH's in Claude Code's words, as the panel shows them.
+                let event = if agent == Some("dsh") { events_dsh::for_ask(&event) } else { event };
                 let added = sh.asks.lock().unwrap().add(event, respond, now_ms(), wait);
                 match added {
                     Ok(id) => {
@@ -403,8 +417,13 @@ mod tests {
         assert!(brings_chain(Some("codex")) && brings_chain(Some("agy")) && brings_chain(Some("zcode")) && brings_chain(Some("reasonix")));
         assert!(!brings_chain(Some("omp")) && !brings_chain(Some("opencode")) && !brings_chain(Some("dsh")) && !brings_chain(None));
         // Reasonix's PermissionRequest is told, not held: its hook waits on no answer.
-        assert!(answers_none(Some("reasonix")));
-        assert!(!answers_none(None) && !answers_none(Some("codex")) && !answers_none(Some("zcode")) && !answers_none(Some("opencode")));
+        let asked = json!({ "hook_event_name": "PermissionRequest" });
+        assert!(answers_none(Some("reasonix"), &asked));
+        assert!(!answers_none(None, &asked) && !answers_none(Some("codex"), &asked) && !answers_none(Some("zcode"), &asked) && !answers_none(Some("opencode"), &asked));
+        // DSH's is held only when her plugin can take her answer to it.
+        assert!(!answers_none(Some("dsh"), &json!({ "hook_event_name": "PermissionRequest", "answerable": true })));
+        assert!(answers_none(Some("dsh"), &json!({ "hook_event_name": "PermissionRequest", "answerable": false })));
+        assert!(answers_none(Some("dsh"), &asked));
     }
 
     // POST /quit is a quit by choice (the hooks then start her no more)

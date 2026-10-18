@@ -20,8 +20,13 @@
 // parent_session, top_session: else from its log, whose), whether a tool
 // failed (is_error), and a turn that ended without finishing (Stop with
 // stop_reason "aborted" or "blocked": stopped, not done; StopFailure for
-// one that failed). Still no prompt waiting on the person (its approvals stay
-// in its own window). Its tools have names of their own (read, write, edit,
+// one that failed). Its approvals and questions come as PermissionRequest
+// (her plugin's version 2; never from the bridge): told as Claude Code's
+// (waiting, what for), and held for her answer where the plugin can take one
+// (answerable) and she is in sight (server.rs; for_ask makes them asks.rs's,
+// side by side, each closed by its own PermissionReplied); else told only,
+// answered in DSH (answered_in_dsh). PermissionReplied, what came of one,
+// lets the session work on. Its tools have names of their own (read, write, edit,
 // str_replace_editor, pwsh or bash, glob, grep, web_search, web_fetch,
 // todo_write, ask_user_question), told in Claude Code's words here
 // (claude_named). A subagent's session is told as any other's: it is no
@@ -61,6 +66,55 @@ fn claude_named(tool: &str, input: &Value) -> (String, Value) {
         }
         "ask_user_question" => ("AskUserQuestion".into(), input.clone()),
         _ => (tool.to_string(), input.clone()),
+    }
+}
+
+// A prompt of DSH's (her plugin's PermissionRequest: an approval, or
+// questions) as asks.rs reads one: the tool and its input in Claude Code's
+// words (the panel's summary: the command, the file), questions as
+// AskUserQuestion's, each keeping its id (DSH takes its answers back by
+// them): one with no options asks for a text, a plan's detail (its review,
+// exit_plan_mode's) is its description.
+pub fn for_ask(e: &Value) -> Value {
+    let mut out = e.clone();
+    let input = e.get("tool_input").unwrap_or(&Value::Null);
+    if s(e, "tool_name") == "ask_user_question" {
+        let questions: Vec<Value> = input
+            .get("questions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|q| {
+                let options: Vec<Value> = q.get("options").and_then(Value::as_array).into_iter().flatten().map(|o| json!({ "label": s(o, "label"), "description": s(o, "description") })).collect();
+                let mut view = json!({ "id": s(q, "id"), "question": s(q, "question"), "header": s(q, "header"), "multiSelect": q.get("multiSelect") == Some(&Value::Bool(true)) });
+                if !s(q, "detail").is_empty() {
+                    view["description"] = json!(crate::events::clip(s(q, "detail"), 400));
+                }
+                if options.is_empty() {
+                    view["kind"] = json!("text");
+                } else {
+                    view["options"] = Value::Array(options);
+                }
+                view
+            })
+            .collect();
+        out["tool_name"] = json!("AskUserQuestion");
+        out["tool_input"] = json!({ "questions": questions });
+    } else {
+        let (name, input) = claude_named(s(e, "tool_name"), input);
+        out["tool_name"] = json!(name);
+        out["tool_input"] = input;
+    }
+    out
+}
+
+// The message for a prompt of DSH's she does not hold (her plugin cannot
+// take her answer to it, or she is out of sight): waiting, to be approved
+// in DSH's own window.
+pub fn answered_in_dsh(message: &mut Value) {
+    if message["detail"]["key"] == "detail.approve" {
+        let what = message["detail"]["vars"]["what"].clone();
+        message["detail"] = json!({ "key": "detail.approveIn", "vars": { "app": "DeepSeek Harness", "what": what } });
     }
 }
 
@@ -451,6 +505,16 @@ fn message_of(e: &Value, home: &std::path::Path) -> Option<Value> {
             claude.insert("last_assistant_message".into(), json!(reply));
         }
     }
+    // A prompt answered (in DSH or on her island) or withdrawn: the session
+    // works on, its tool's end or its turn's to come; only into a turn
+    // still under way (within), never waking one.
+    if s(e, "hook_event_name") == "PermissionReplied" {
+        let mut message = json!({ "mood": "working", "agent": "dsh", "within": true });
+        if !s(e, "session_id").is_empty() {
+            message["session"] = json!(s(e, "session_id"));
+        }
+        return Some(message);
+    }
     // A turn stopped by the person, or refused before it began: not done,
     // nothing to say of it; she is there again.
     if s(e, "hook_event_name") == "Stop" && matches!(s(e, "stop_reason"), "aborted" | "blocked") {
@@ -506,6 +570,14 @@ pub fn log_line(e: &Value, found: Option<u32>, home: &Path) -> Option<String> {
     if name == LOADED {
         let profile = if s(e, "profile").is_empty() { String::new() } else { format!(", profile {}", s(e, "profile")) };
         return Some(format!("dsh: her plugin loaded (version {}{profile}, pid {})", e["version"].as_u64().unwrap_or(0), e["pid"].as_u64().unwrap_or(0)));
+    }
+    // A prompt: one she can only show, and what came of each.
+    if name == "PermissionRequest" && e.get("answerable") != Some(&Value::Bool(true)) {
+        return Some(format!("dsh {name} ({}): her plugin cannot take an answer to it, told only", short(s(e, "session_id"))));
+    }
+    if name == "PermissionReplied" {
+        let by = if s(e, "by") == "her" { "on her island" } else { "in DSH" };
+        return Some(format!("dsh {name} ({}): {}, {by}", short(s(e, "session_id")), s(e, "outcome")));
     }
     if !matches!(name, "SessionStart" | "UserPromptSubmit" | "Stop") {
         return None;
@@ -862,6 +934,27 @@ mod tests {
         parent_only["parent_session"] = json!("");
         assert_eq!(whose_of(&parent_only, &home), Whose::Sub(String::new()));
         assert_eq!(whose_of(&plugin("Stop", "session-not-there", json!({})), &home), Whose::Own);
+
+        // A prompt: waiting, what for (as Claude Code's), answered on her
+        // island when she holds it, else in DSH; what came of it lets the
+        // session work on, only within a turn under way.
+        let asked = plugin("PermissionRequest", PARENT, json!({ "tool_name": "pwsh", "tool_input": { "command": "Get-Content -Path C:\\Windows\\win.ini", "description": "" }, "tool_use_id": "c4", "permission_id": "9-1", "answerable": true }));
+        let mut m = to_message(&asked, &home).unwrap();
+        assert_eq!((m["mood"].as_str(), m["detail"]["key"].as_str(), m["detail"]["vars"]["what"]["vars"]["what"].as_str()), (Some("waiting"), Some("detail.approve"), Some("Get-Content -Path C:\\Windows\\win.ini")));
+        answered_in_dsh(&mut m);
+        assert_eq!((m["detail"]["key"].as_str(), m["detail"]["vars"]["app"].as_str()), (Some("detail.approveIn"), Some("DeepSeek Harness")));
+        assert_eq!(m["detail"]["vars"]["what"]["key"], "step.command");
+        let write = plugin("PermissionRequest", PARENT, json!({ "tool_name": "write", "tool_input": { "file_path": "C:\\waku\\note.txt" }, "answerable": false }));
+        assert_eq!(to_message(&write, &home).unwrap()["detail"]["vars"]["what"], json!({ "key": "step.write", "vars": { "file": "note.txt" } }));
+        assert_eq!(log_line(&write, None, &home).as_deref(), Some("dsh PermissionRequest (6aa5a96d): her plugin cannot take an answer to it, told only"));
+        // A question: waiting with it, said so whoever answers.
+        let question = plugin("PermissionRequest", PARENT, json!({ "tool_name": "ask_user_question", "tool_input": { "questions": [] }, "answerable": true }));
+        let mut m = to_message(&question, &home).unwrap();
+        answered_in_dsh(&mut m);
+        assert_eq!(m["detail"], json!({ "key": "detail.asksQuestion" }));
+        let replied = plugin("PermissionReplied", PARENT, json!({ "permission_id": "9-1", "tool_use_id": "c4", "outcome": "allowed-once", "by": "her" }));
+        assert_eq!(to_message(&replied, &home).unwrap(), json!({ "mood": "working", "agent": "dsh", "within": true, "session": PARENT }));
+        assert_eq!(log_line(&replied, None, &home).as_deref(), Some("dsh PermissionReplied (6aa5a96d): allowed-once, on her island"));
 
         // Its word as DSH loads it: nothing for the pet, a line for her log.
         let loaded = json!({ "session_id": "", "hook_event_name": "WakuwakuLoaded", "version": 1, "pid": 4321, "profile": "desktop" });

@@ -20,6 +20,15 @@
 // to OpenCode as its reply, { decision: once | always | reject }; "always"
 // allows what the permission's save patterns say, in this project. Answered
 // in OpenCode first, PermissionReplied with its id closes hers.
+//
+// DeepSeek Harness's too, from her plugin (events_dsh.rs for_ask, in
+// Claude Code's words): its approvals, allow or deny ({ decision: allow |
+// deny }: DSH has only one-shot grants, so never "always"), with DSH's own
+// reason for asking (reason: its words in both languages, or its audit
+// text); and its questions, answered as DSH takes them, one { id, selected,
+// custom? } for each question by its id. DSH shows its own dialog all the
+// while; answered there first, PermissionReplied with its id closes hers,
+// and hers first withdraws DSH's (the plugin does).
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
@@ -214,12 +223,39 @@ pub fn view_of(e: &Value) -> Option<Value> {
         view["kind"] = json!("permission");
         view["summary"] = json!(summarize(tool, &input));
         view["always"] = if always.is_empty() { Value::Null } else { describe_always(&always) };
+        // Why DSH asks (a sandbox to widen, and the model's words for it):
+        // in both languages, else its audit text.
+        if is_dsh(e) {
+            let shown = e.get("display_reason").filter(|r| r.is_object()).map(|r| json!({ "en": clip(s(r, "en"), MAX_SUMMARY), "zh": clip(s(r, "zh"), MAX_SUMMARY) }));
+            view["reason"] = shown.unwrap_or_else(|| if s(e, "reason").is_empty() { Value::Null } else { json!(clip(s(e, "reason"), MAX_SUMMARY)) });
+        }
     }
     Some(view)
 }
 
 fn is_opencode(e: &Value) -> bool {
     s(e, "agent") == "opencode"
+}
+
+fn is_dsh(e: &Value) -> bool {
+    s(e, "agent") == "dsh"
+}
+
+// Prompts that wait side by side, each open till answered or closed by its
+// own id: OpenCode's, DSH's (they ask for calls running together).
+fn is_side_by_side(e: &Value) -> bool {
+    is_opencode(e) || is_dsh(e)
+}
+
+// DSH's answer to one question, as it takes it back: the labels picked, or
+// a text typed in their place.
+fn dsh_answer(view: &Value, asked: &Value, picked: &Value) -> Option<Value> {
+    answer_text(view, picked)?;
+    let id = s(asked, "id");
+    Some(match picked.as_array() {
+        Some(labels) => json!({ "id": id, "selected": labels }),
+        None => json!({ "id": id, "selected": [], "custom": answer_text(view, picked)? }),
+    })
 }
 
 // The patterns an OpenCode permission's "always" saves.
@@ -283,6 +319,25 @@ pub fn reply_for(e: &Value, choice: &Value, lang: &str) -> Option<Value> {
             _ => return None,
         };
         return Some(json!({ "decision": decision }));
+    }
+    // DSH's, which her plugin hands it: allow once or deny; its questions'
+    // answers by their ids.
+    if is_dsh(e) {
+        return match s(choice, "action") {
+            "allow" if kind == "permission" => Some(json!({ "decision": "allow" })),
+            "deny" if kind == "permission" => Some(json!({ "decision": "deny" })),
+            "answer" if kind == "question" && view["canAnswer"] == Value::Bool(true) => {
+                let given = choice.get("answers")?.as_array()?;
+                let views = view["questions"].as_array()?;
+                let asked = input.get("questions")?.as_array()?;
+                if given.len() != views.len() || asked.len() != views.len() {
+                    return None;
+                }
+                let answers = views.iter().zip(asked).zip(given).map(|((v, q), picked)| dsh_answer(v, q, picked)).collect::<Option<Vec<_>>>()?;
+                Some(json!({ "answers": answers }))
+            }
+            _ => None,
+        };
     }
     match s(choice, "action") {
         "deny" => Some(output(json!({ "behavior": "deny", "message": i18n::t(lang, "deny.message") }))),
@@ -363,11 +418,11 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
 
     // A new ask, waiting wait_ms at most; Err(respond) when the event is not
     // one that can be shown (answer it yourself). A newer prompt from the
-    // same agent means the last one closed (but OpenCode's: it asks for
-    // calls side by side, each open till answered).
+    // same agent means the last one closed (but OpenCode's and DSH's: they
+    // ask for calls side by side, each open till answered).
     pub fn add(&mut self, event: Value, respond: R, now: u64, wait_ms: u64) -> Result<u64, R> {
         let Some(view) = view_of(&event) else { return Err(respond) };
-        while let Some(i) = self.list.iter().position(|a| !is_opencode(&event) && a.view["session"] == view["session"] && a.view["agent"] == view["agent"]) {
+        while let Some(i) = self.list.iter().position(|a| !is_side_by_side(&event) && a.view["session"] == view["session"] && a.view["agent"] == view["agent"]) {
             self.finish(i, Some(json!({})));
         }
         let id = self.next_id;
@@ -417,7 +472,8 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
                     && s(e, "agent_id") == s(&a.view, "agent")
                     && s(e, "tool_name") == s(&a.view, "tool")
                     && same_input(e.get("tool_input"), a.event.get("tool_input"));
-                // OpenCode's: its call by id, and the permission answered by id.
+                // OpenCode's and DSH's: its call by id, and the permission
+                // answered by id (DSH's question too).
                 let is_same_id = |key: &str| !s(e, key).is_empty() && s(e, key) == s(&a.event, key);
                 let is_answered = name == "PermissionReplied" && is_same_id("permission_id");
                 is_same_call || (is_done && is_same_id("tool_use_id")) || is_answered || MOVED_ON.contains(&name)
@@ -613,6 +669,102 @@ mod tests {
         done["agent"] = json!("opencode");
         assert_eq!(asks.seen(&done), vec![one]);
         assert_eq!(got.borrow().as_slice(), &[Some(json!({})), Some(json!({}))]);
+    }
+
+    // As her DSH plugin sends them (integrations/dsh/wakuwaku.js), tagged by
+    // the server and put in Claude Code's words (events_dsh.rs for_ask): a
+    // sandbox escalation of DSH 0.2.1-rc.2's, as the test machine had it.
+    fn dsh_permission(id: &str, call: &str) -> Value {
+        crate::events_dsh::for_ask(&json!({
+            "hook_event_name": "PermissionRequest", "session_id": "session-ed6a", "cwd": "C:\\w\\default-workspace", "agent": "dsh",
+            "tool_name": "write", "tool_input": { "file_path": "C:\\waku\\agents\\probe1.txt", "content": "hi", "sandbox_permissions": "danger-full-access", "justification": "outside the workspace" },
+            "tool_use_id": call, "permission_id": id, "answerable": true,
+            "reason": "escalate sandbox to danger-full-access: outside the workspace",
+            "display_reason": { "en": "Allow this operation with danger-full-access permissions: outside the workspace", "zh": "允许本次操作使用 danger-full-access 权限：outside the workspace" }
+        }))
+    }
+
+    fn dsh_question() -> Value {
+        crate::events_dsh::for_ask(&json!({
+            "hook_event_name": "PermissionRequest", "session_id": "session-q", "cwd": "C:\\w\\default-workspace", "agent": "dsh",
+            "tool_name": "ask_user_question", "tool_use_id": "call_q", "permission_id": "9-2", "answerable": true,
+            "tool_input": { "questions": [
+                { "id": "name", "header": "File Name", "question": "test1 or test2?", "options": [{ "label": "test1", "description": "one" }, { "label": "test2" }] },
+                { "id": "both", "question": "Which parts?", "multiSelect": true, "options": [{ "label": "a" }, { "label": "b" }] },
+                { "id": "why", "question": "Anything else?" }
+            ] }
+        }))
+    }
+
+    #[test]
+    fn a_dsh_approval_is_allow_or_deny_with_its_reason() {
+        let e = dsh_permission("9-1", "call_1");
+        let view = view_of(&e).unwrap();
+        assert_eq!((view["kind"].as_str(), view["from"].as_str(), view["tool"].as_str(), view["summary"].as_str()), (Some("permission"), Some("dsh"), Some("Write"), Some("C:\\waku\\agents\\probe1.txt")));
+        assert_eq!(view["always"], Value::Null);
+        assert_eq!(view["reason"]["zh"], "允许本次操作使用 danger-full-access 权限：outside the workspace");
+        assert_eq!(reply_for(&e, &json!({ "action": "allow" }), "en"), Some(json!({ "decision": "allow" })));
+        assert_eq!(reply_for(&e, &json!({ "action": "deny" }), "zh"), Some(json!({ "decision": "deny" })));
+        assert!(reply_for(&e, &json!({ "action": "always" }), "en").is_none());
+        assert!(reply_for(&e, &json!({ "action": "answer", "answers": [] }), "en").is_none());
+        // Its audit text when it gave no words to show; a command as the summary.
+        let mut cmd = e.clone();
+        cmd["tool_name"] = json!("Bash");
+        cmd["tool_input"] = json!({ "command": "Get-Content -Path C:\\Windows\\win.ini" });
+        cmd.as_object_mut().unwrap().remove("display_reason");
+        let view = view_of(&cmd).unwrap();
+        assert_eq!((view["summary"].as_str(), view["reason"].as_str()), (Some("Get-Content -Path C:\\Windows\\win.ini"), Some("escalate sandbox to danger-full-access: outside the workspace")));
+    }
+
+    #[test]
+    fn dsh_questions_are_answered_by_their_ids() {
+        let e = dsh_question();
+        let view = view_of(&e).unwrap();
+        assert_eq!((view["kind"].as_str(), view["canAnswer"].as_bool()), (Some("question"), Some(true)));
+        assert_eq!(view["questions"][0]["header"], "File Name");
+        assert_eq!(view["questions"][1]["multiSelect"], true);
+        // One with no options asks for a text.
+        assert_eq!(view["questions"][2]["kind"], "text");
+        let reply = reply_for(&e, &json!({ "action": "answer", "answers": [["test2"], ["a", "b"], { "text": " none " }] }), "en").unwrap();
+        assert_eq!(
+            reply,
+            json!({ "answers": [
+                { "id": "name", "selected": ["test2"] },
+                { "id": "both", "selected": ["a", "b"] },
+                { "id": "why", "selected": [], "custom": "none" }
+            ] })
+        );
+        // Typed in place of an option: its text, nothing picked.
+        let typed = reply_for(&e, &json!({ "action": "answer", "answers": [{ "text": "test3" }, ["a"], { "text": "x" }] }), "en").unwrap();
+        assert_eq!(typed["answers"][0], json!({ "id": "name", "selected": [], "custom": "test3" }));
+        // Not one of its options, two for a single choice, too few: none.
+        assert!(reply_for(&e, &json!({ "action": "answer", "answers": [["test9"], ["a"], { "text": "x" }] }), "en").is_none());
+        assert!(reply_for(&e, &json!({ "action": "answer", "answers": [["test1", "test2"], ["a"], { "text": "x" }] }), "en").is_none());
+        assert!(reply_for(&e, &json!({ "action": "answer", "answers": [["test1"]] }), "en").is_none());
+        assert!(reply_for(&e, &json!({ "action": "allow" }), "en").is_none());
+    }
+
+    #[test]
+    fn dsh_prompts_wait_side_by_side_and_close_by_their_ids() {
+        let got = Rc::new(RefCell::new(Vec::new()));
+        let mut asks: Asks<Box<dyn FnOnce(Option<Value>)>> = Asks::default();
+        let reply = |got: &Rc<RefCell<Vec<Option<Value>>>>| {
+            let got = got.clone();
+            Box::new(move |v: Option<Value>| got.borrow_mut().push(v)) as Box<dyn FnOnce(Option<Value>)>
+        };
+        let one = asks.add(dsh_permission("9-1", "call_1"), reply(&got), 0, 1000).ok().unwrap();
+        let two = asks.add(dsh_permission("9-2", "call_2"), reply(&got), 0, 1000).ok().unwrap();
+        assert_eq!(asks.views().as_array().unwrap().len(), 2);
+        // The second answered in DSH: that one goes (no decision of hers).
+        let replied = json!({ "hook_event_name": "PermissionReplied", "session_id": "session-ed6a", "agent": "dsh", "permission_id": "9-2", "tool_use_id": "call_2", "outcome": "rejected", "by": "dsh" });
+        assert_eq!(asks.seen(&replied), vec![two]);
+        // The first answered on her island.
+        assert!(asks.answer(one, &json!({ "action": "allow" }), "en"));
+        assert_eq!(got.borrow().as_slice(), &[Some(json!({})), Some(json!({ "decision": "allow" }))]);
+        // Its call done (DSH's own name for it): closed by its id.
+        let three = asks.add(dsh_permission("9-3", "call_3"), reply(&got), 0, 1000).ok().unwrap();
+        let done = json!({ "hook_event_name": "PostToolUse", "session_id": "session-ed6a", "agent": "dsh", "tool_name": "write", "tool_input": {}, "tool_use_id": "call_3" });
+        assert_eq!(asks.seen(&done), vec![three]);
     }
 
     #[test]
