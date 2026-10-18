@@ -1258,6 +1258,13 @@ const DSH_PLUGIN_FILE: &str = "wakuwaku.js";
 const DSH_ROW_NAME: &str = "./wakuwaku/wakuwaku.js";
 // The other way's rows insert DSH's own Claude Code hook bridge (and 0.3.2's did).
 const DSH_BRIDGE: &str = crate::dsh_bridge::HOOKS_PACKAGE;
+// The two ways' rows by ids of their own (the bridge's as 0.3.2 wrote it):
+// DSH's loader, as a running row of the same id changes its name, keeps the
+// plugin it has and only gives it the new config, so a switch while DSH runs
+// went on with the way left (seen on 0.2.1-rc.2); a row gone and another
+// come, it lets the one go and loads the other.
+const DSH_PLUGIN_ID: &str = "wakuwaku-plugin";
+const DSH_BRIDGE_ID: &str = "wakuwaku";
 // Our rows in the patch file, between these lines.
 const DSH_BEGIN: &str = "# wakuwaku begin";
 const DSH_END: &str = "# wakuwaku end";
@@ -1307,7 +1314,7 @@ pub fn dsh_plugin_version() -> u32 {
 fn dsh_block(port: u16) -> String {
     format!(
         "{DSH_BEGIN}: Wakuwaku follows DeepSeek Harness through her own plugin in ./wakuwaku (remove it from her settings)\n\
-         - insert:\n    - id: wakuwaku\n      name: '{DSH_ROW_NAME}'\n      config:\n        port: {port}\n{DSH_END}\n"
+         - insert:\n    - id: {DSH_PLUGIN_ID}\n      name: '{DSH_ROW_NAME}'\n      config:\n        port: {port}\n{DSH_END}\n"
     )
 }
 
@@ -1374,14 +1381,14 @@ fn dsh_content(text: &str) -> Vec<&str> {
     text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).collect()
 }
 
-// The text without a row that only turns ours off (`id: wakuwaku` and
-// `disabled: true`, nothing else): Repair puts her plugin back to work.
+// The text without a row that only turns ours off (`id:` either way's and
+// `disabled: true`, nothing else): Repair puts it back to work.
 fn without_off_rows(text: &str) -> String {
     let mut out = String::new();
     let mut item = String::new();
     let flush = |item: &mut String, out: &mut String| {
         let fields: Vec<&str> = item.lines().map(|l| l.trim().trim_start_matches("- ").trim()).filter(|l| !l.is_empty() && !l.starts_with('#')).collect();
-        let only_off = fields.len() == 2 && row_disabled(item, "wakuwaku");
+        let only_off = fields.len() == 2 && (row_disabled(item, DSH_PLUGIN_ID) || row_disabled(item, DSH_BRIDGE_ID));
         if !only_off {
             out.push_str(item);
         }
@@ -1541,7 +1548,7 @@ pub fn dsh_hooks(exe: &str) -> Value {
 fn dsh_bridge_block(config_path: &str) -> String {
     format!(
         "{DSH_BEGIN}: Wakuwaku follows DeepSeek Harness through its Claude Code hook bridge (remove it from her settings)\n\
-         - insert:\n    - id: wakuwaku\n      name: '{DSH_BRIDGE}'\n      config:\n        configPath: '{}'\n{DSH_END}\n",
+         - insert:\n    - id: {DSH_BRIDGE_ID}\n      name: '{DSH_BRIDGE}'\n      config:\n        configPath: '{}'\n{DSH_END}\n",
         config_path.replace('\'', "''")
     )
 }
@@ -1764,7 +1771,7 @@ fn row_disabled(text: &str, id: &str) -> bool {
 // file is applied before the home one, and a row of it naming ours finds
 // none yet).
 fn dsh_turned_off() -> bool {
-    fs::read_to_string(dsh_patch_file()).is_ok_and(|text| row_disabled(&dsh_strip(&text).0, "wakuwaku"))
+    fs::read_to_string(dsh_patch_file()).is_ok_and(|text| row_disabled(&dsh_strip(&text).0, DSH_PLUGIN_ID))
 }
 
 fn ms_of(time: std::time::SystemTime) -> u64 {
@@ -3231,7 +3238,7 @@ mod tests {
         let theirs = "# Your patch layer\n- id: ui-chat\n  name: \"@deepseek-ai/dsh-client-ui-chat\"\n  config:\n    transcriptView: standard\n";
         let with = dsh_install(Some(theirs), 47213).unwrap();
         assert!(with.starts_with(theirs), "{with}");
-        assert!(with.contains("\n- insert:\n    - id: wakuwaku\n      name: './wakuwaku/wakuwaku.js'\n      config:\n        port: 47213\n# wakuwaku end\n"), "{with}");
+        assert!(with.contains("\n- insert:\n    - id: wakuwaku-plugin\n      name: './wakuwaku/wakuwaku.js'\n      config:\n        port: 47213\n# wakuwaku end\n"), "{with}");
         assert_eq!(dsh_strip(&with).1, DshRows::Plugin { name: DSH_ROW_NAME.into(), port: Some(47213) });
         // Installing twice replaces, never doubles; removing gives theirs back.
         let again = dsh_install(Some(&with), 47299).unwrap();
@@ -3282,7 +3289,9 @@ mod tests {
         );
         assert_eq!(dsh_strip(&with).1, DshRows::Bridge { config_path: hooks.into() });
         // Switching: the plugin's rows in place of the bridge's, and back; theirs kept.
+        // Each way's row an id of its own, so DSH running lets the one go and loads the other.
         let plugin = dsh_install(Some(&with), 47213).unwrap();
+        assert!(plugin.contains("- id: wakuwaku-plugin\n") && !plugin.contains("- id: wakuwaku\n"), "{plugin}");
         assert_eq!(dsh_install_bridge(Some(&plugin), hooks).unwrap(), with);
         assert_eq!(dsh_uninstall(&with).as_deref(), Some(theirs));
         // A quote in the path.
@@ -3449,15 +3458,16 @@ mod tests {
         assert!(!row_disabled("- insert:\n    - id: wakuwaku\n      disabled: true\n", "wakuwaku"));
         // In the home patch file, after our rows (dsh_turned_off reads it past them).
         let ours = dsh_install(None, 47213).unwrap();
-        let home = format!("{ours}- id: wakuwaku\n  disabled: true\n");
-        assert!(row_disabled(&dsh_strip(&home).0, "wakuwaku"));
-        assert!(!row_disabled(&dsh_strip(&ours).0, "wakuwaku"));
-        // Repair takes a row that only turns ours off away; the person's rows stay.
+        let home = format!("{ours}- id: wakuwaku-plugin\n  disabled: true\n");
+        assert!(row_disabled(&dsh_strip(&home).0, DSH_PLUGIN_ID));
+        assert!(!row_disabled(&dsh_strip(&ours).0, DSH_PLUGIN_ID));
+        // Repair takes a row that only turns ours off away (either way's); the person's rows stay.
         let theirs = "# mine\n- id: ui-chat\n  config:\n    transcriptView: standard\n";
         assert_eq!(dsh_install(Some(&home), 47213).unwrap(), ours);
         assert_eq!(dsh_install(Some(&format!("{theirs}{home}")), 47213).unwrap(), format!("{theirs}{ours}"));
+        assert_eq!(dsh_install(Some(&format!("{ours}- id: wakuwaku\n  disabled: true\n")), 47213).unwrap(), ours);
         // One that says more is the person's: kept.
-        let more = "- id: wakuwaku\n  disabled: true\n  config:\n    port: 1\n";
+        let more = "- id: wakuwaku-plugin\n  disabled: true\n  config:\n    port: 1\n";
         assert!(dsh_install(Some(&format!("{theirs}{more}")), 47213).unwrap().contains(more));
     }
 
