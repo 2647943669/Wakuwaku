@@ -23,6 +23,21 @@ const AGENT_SITES: [(&str, &str); 8] = [
     ("reasonix", "https://github.com/esengine/DeepSeek-Reasonix"),
 ];
 
+// DeepSeek Harness's block: connection.rs dsh_view (hooks, why, load), its
+// patch file and the same as read, whether a copy of it was kept, the
+// plugin's file as read (the Agent page shows both), and whether any event
+// of it came since she started (the plugin's word on loading is one).
+fn dsh_block(sh: &Shared) -> Value {
+    let mut block = connection::dsh_view(sh.port);
+    let patch = connection::dsh_patch_file();
+    block["file"] = json!(patch.to_string_lossy());
+    block["fileShown"] = json!(connection::shown_path(&patch));
+    block["backup"] = json!(connection::backup_of(&patch).exists());
+    block["listShown"] = json!(connection::shown_path(&connection::dsh_plugin_file()));
+    block["seen"] = json!(sh.dsh_seen.load(Ordering::SeqCst) > 0);
+    block
+}
+
 // Everything the settings show.
 pub fn snapshot(sh: &Shared) -> Value {
     let pets: Vec<Value> = data::pets(&sh.dir)
@@ -115,17 +130,11 @@ pub fn snapshot(sh: &Shared) -> Value {
             "backup": connection::backup_of(&connection::zcode_config_file()).exists(),
             "seen": sh.zcode_seen.load(Ordering::SeqCst) > 0,
         },
-        // DeepSeek Harness's home-level patch file, where its hook bridge is
-        // inserted (connection.rs), the same; absent without its folder.
-        "dsh": {
-            "hooks": connection::dsh_hooks_status(),
-            "file": connection::dsh_patch_file().to_string_lossy(),
-            "fileShown": connection::shown_path(&connection::dsh_patch_file()),
-            "backup": connection::backup_of(&connection::dsh_patch_file()).exists(),
-            // The bridge's hook list, in her data folder (the Agent page shows both).
-            "listShown": connection::shown_path(&connection::dsh_hooks_file()),
-            "seen": sh.dsh_seen.load(Ordering::SeqCst) > 0,
-        },
+        // DeepSeek Harness's home-level patch file, where her plugin is
+        // inserted, and the plugin in its own folder beside it (connection.rs):
+        // how they stand, why not as written, whether DSH loaded it (dsh_view);
+        // absent without DSH's folder.
+        "dsh": dsh_block(sh),
         // Reasonix's global settings.json (connection.rs), the same; absent
         // without its home, unsupported for the Node 0.x alone (its line: "0.x",
         // "1.x", "2.x",
@@ -827,11 +836,12 @@ pub async fn settings_omp_hooks(app: AppHandle, action: String) -> Value {
     }
 }
 
-// install, remove: DeepSeek Harness's hook bridge (its home-level patch file).
+// install, remove: her plugin for DeepSeek Harness (its folder in DSH's
+// home, its row in the home-level patch file).
 #[tauri::command]
 pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
-    match connection::write_dsh_hooks(&action) {
+    match connection::write_dsh_hooks(&action, sh.port) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
         Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }

@@ -460,6 +460,20 @@ mod imp {
         started(pid) == Some(at)
     }
 
+    // When a process started, in ms since 1970 (a FILETIME counts 100 ns
+    // since 1601); None when gone or not ours to ask.
+    pub fn started_ms(pid: u32) -> Option<u64> {
+        started(pid).map(|at| (at / 10_000).saturating_sub(11_644_473_600_000))
+    }
+
+    // When each running process of this exe's name started (ms since 1970),
+    // those that may be asked: whether an app runs, and since when
+    // (connection.rs dsh_view).
+    pub fn started_named(exe: &str) -> Vec<u64> {
+        let exe = exe.to_lowercase();
+        processes().into_iter().filter(|(_, (_, name))| *name == exe).filter_map(|(pid, _)| started_ms(pid)).collect()
+    }
+
     // A window found before is still the one: there, shown, of the same process.
     pub fn still_there(hwnd: isize, pid: u32) -> bool {
         // SAFETY: plain queries.
@@ -657,6 +671,12 @@ mod imp {
     pub fn still_there(_hwnd: isize, _pid: u32) -> bool {
         false
     }
+    pub fn started_ms(_pid: u32) -> Option<u64> {
+        None
+    }
+    pub fn started_named(_exe: &str) -> Vec<u64> {
+        Vec::new()
+    }
     pub fn still_running(_pid: u32, _at: u64) -> bool {
         false
     }
@@ -671,7 +691,7 @@ mod imp {
     }
 }
 
-pub use imp::{chain_of, client_of, front_chain, hook_chain, is_listening, outermost_of, parent_names, still_running, still_there, windows_for};
+pub use imp::{chain_of, client_of, front_chain, hook_chain, is_listening, outermost_of, parent_names, started_ms, started_named, still_running, still_there, windows_for};
 
 // A window to the front, restored if minimized (the taskbar's buttons).
 pub fn bring_window(hwnd: isize) -> bool {
@@ -731,6 +751,19 @@ mod tests {
         let chain = chain_of(std::process::id());
         assert_eq!(chain.first().map(|c| c.0), Some(std::process::id()));
         assert!(chain.windows(2).all(|w| w[0].1 >= w[1].1), "a parent never starts after its child");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn when_a_process_started() {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        let at = started_ms(std::process::id()).unwrap();
+        assert!(at <= now && now - at < 3_600_000, "{at} {now}");
+        // This test's own exe, by its name, among them.
+        let exe = std::env::current_exe().unwrap();
+        assert!(started_named(&exe.file_name().unwrap().to_string_lossy().to_uppercase()).contains(&at));
+        assert!(started_named("no such app.exe").is_empty());
+        assert_eq!(started_ms(u32::MAX - 3), None);
     }
 
     #[cfg(windows)]
