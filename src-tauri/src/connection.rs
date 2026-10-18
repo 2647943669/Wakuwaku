@@ -1445,13 +1445,24 @@ pub fn is_dsh_connected(port: u16) -> bool {
 }
 
 // The plugin's word that DSH loaded it (loaded-<profile>.json beside it):
-// which process, when (ms since 1970), which version, in which profile.
+// which process, when (ms since 1970), which version, which code (its
+// file's digest as DSH imported it: dsh_plugin_sha), in which profile.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DshLoaded {
     pub pid: u32,
     pub at: u64,
     pub version: u32,
+    pub sha: String,
     pub profile: String,
+}
+
+// The plugin's code as this version writes it, as the plugin tells its own
+// (SHA-256 of the file, its first 16 hex digits): DSH keeps a module it
+// imported until it restarts, so the same name written again is not what
+// runs until then.
+pub fn dsh_plugin_sha() -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(DSH_PLUGIN.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn dsh_markers(dir: &Path) -> Vec<DshLoaded> {
@@ -1463,7 +1474,8 @@ pub fn dsh_markers(dir: &Path) -> Vec<DshLoaded> {
         }
         let Some(word) = fs::read_to_string(entry.path()).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { continue };
         let (Some(pid), Some(at)) = (word["pid"].as_u64(), word["at"].as_u64()) else { continue };
-        out.push(DshLoaded { pid: pid as u32, at, version: word["version"].as_u64().unwrap_or(0) as u32, profile: word["profile"].as_str().unwrap_or("").to_string() });
+        let text = |key: &str| word[key].as_str().unwrap_or("").to_string();
+        out.push(DshLoaded { pid: pid as u32, at, version: word["version"].as_u64().unwrap_or(0) as u32, sha: text("sha"), profile: text("profile") });
     }
     out
 }
@@ -1497,11 +1509,13 @@ impl DshLoad {
 
 // From the markers, when each marker's process started (None: gone; ms
 // since 1970), when DSH's app's processes started, when the plugin was
-// written, now, and the version written.
-pub fn dsh_load_of(markers: &[DshLoaded], started: impl Fn(u32) -> Option<u64>, apps: &[u64], written: u64, now: u64, version: u32) -> DshLoad {
+// written, now, and the code written (its digest; a word without one, by
+// its version).
+pub fn dsh_load_of(markers: &[DshLoaded], started: impl Fn(u32) -> Option<u64>, apps: &[u64], written: u64, now: u64, sha: &str, version: u32) -> DshLoad {
     // Of a process still running that was there before its word (its number not reused).
     let live: Vec<&DshLoaded> = markers.iter().filter(|m| started(m.pid).is_some_and(|at| at <= m.at + 1_000)).collect();
-    if let Some(m) = live.iter().filter(|m| m.version == version).max_by_key(|m| m.at) {
+    let current = |m: &&&DshLoaded| if m.sha.is_empty() { m.version == version } else { m.sha == sha };
+    if let Some(m) = live.iter().filter(current).max_by_key(|m| m.at) {
         return DshLoad::Loaded((*m).clone());
     }
     if let Some(m) = live.iter().max_by_key(|m| m.at) {
@@ -1577,7 +1591,7 @@ pub fn dsh_view(port: u16) -> Value {
     }
     let dir = dsh_plugin_dir();
     let written = fs::metadata(dir.join(DSH_PLUGIN_FILE)).and_then(|m| m.modified()).map_or(0, ms_of);
-    let load = dsh_load_of(&dsh_markers(&dir), crate::jump::started_ms, &crate::jump::started_named(DSH_APP), written, ms_of(std::time::SystemTime::now()), dsh_plugin_version());
+    let load = dsh_load_of(&dsh_markers(&dir), crate::jump::started_ms, &crate::jump::started_named(DSH_APP), written, ms_of(std::time::SystemTime::now()), &dsh_plugin_sha(), dsh_plugin_version());
     let mut view = json!({ "hooks": "ok", "why": "", "load": { "state": load.word() } });
     if let DshLoad::Loaded(m) | DshLoad::Older(m) = &load {
         view["load"] = json!({ "state": load.word(), "at": m.at, "version": m.version, "profile": m.profile, "pid": m.pid });
@@ -2903,9 +2917,9 @@ mod tests {
         write_dsh_files(&dir, false).unwrap();
         assert!(dsh_files_ok(&dir));
         // Its words that DSH loaded it, a broken one passed over.
-        fs::write(dir.join("loaded-desktop.json"), r#"{"pid":4321,"at":1792200000000,"version":1,"profile":"desktop","port":47213}"#).unwrap();
+        fs::write(dir.join("loaded-desktop.json"), r#"{"pid":4321,"at":1792200000000,"version":1,"sha":"0123456789abcdef","profile":"desktop","port":47213}"#).unwrap();
         fs::write(dir.join("loaded-default.json"), "{ half").unwrap();
-        assert_eq!(dsh_markers(&dir), vec![DshLoaded { pid: 4321, at: 1792200000000, version: 1, profile: "desktop".into() }]);
+        assert_eq!(dsh_markers(&dir), vec![DshLoaded { pid: 4321, at: 1792200000000, version: 1, sha: "0123456789abcdef".into(), profile: "desktop".into() }]);
         // Taken away: ours and the words; someone else's file and the folder kept.
         fs::write(dir.join("notes.txt"), "mine").unwrap();
         remove_dsh_files(&dir).unwrap();
@@ -2922,7 +2936,7 @@ mod tests {
     #[test]
     fn whether_dsh_loaded_the_plugin() {
         let at = 1_792_200_000_000u64;
-        let word = |pid: u32, when: u64, version: u32| DshLoaded { pid, at: when, version, profile: "desktop".into() };
+        let word = |pid: u32, when: u64, sha: &str| DshLoaded { pid, at: when, version: 1, sha: sha.into(), profile: "desktop".into() };
         // pid 10 runs since at-5s; 11 since at+60s (a number reused); 12 is gone.
         let started = |pid: u32| match pid {
             10 => Some(at - 5_000),
@@ -2931,17 +2945,24 @@ mod tests {
         };
         let written = at - 3_600_000;
         let now = at + 120_000;
-        assert_eq!(dsh_load_of(&[word(10, at, 1)], started, &[at - 6_000], written, now, 1), DshLoad::Loaded(word(10, at, 1)));
-        // An older version loaded: a restart takes the new one.
-        assert_eq!(dsh_load_of(&[word(10, at, 1)], started, &[at - 6_000], written, now, 2), DshLoad::Older(word(10, at, 1)));
+        let (new, old) = ("0123456789abcdef", "fedcba9876543210");
+        assert_eq!(dsh_load_of(&[word(10, at, new)], started, &[at - 6_000], written, now, new, 1), DshLoad::Loaded(word(10, at, new)));
+        // Other code loaded (an older plugin, or the file written again since
+        // under the same name: DSH keeps what it imported): a restart takes the new.
+        assert_eq!(dsh_load_of(&[word(10, at, old)], started, &[at - 6_000], written, now, new, 1), DshLoad::Older(word(10, at, old)));
+        // A word with no digest (none written by that one): by its version.
+        assert_eq!(dsh_load_of(&[word(10, at, "")], started, &[at - 6_000], written, now, new, 1), DshLoad::Loaded(word(10, at, "")));
+        assert_eq!(dsh_load_of(&[word(10, at, "")], started, &[at - 6_000], written, now, new, 2), DshLoad::Older(word(10, at, "")));
         // Its process gone, or the number another's: not loaded by anything running.
-        assert_eq!(dsh_load_of(&[word(12, at, 1), word(11, at, 1)], started, &[], written, now, 1), DshLoad::Waiting);
+        assert_eq!(dsh_load_of(&[word(12, at, new), word(11, at, new)], started, &[], written, now, new, 1), DshLoad::Waiting);
         // DSH up since before the plugin was written: a restart loads it.
-        assert_eq!(dsh_load_of(&[], started, &[written - 1_000, at], written, now, 1), DshLoad::Restart);
+        assert_eq!(dsh_load_of(&[], started, &[written - 1_000, at], written, now, new, 1), DshLoad::Restart);
         // Up a while since, and no word: not loaded; only starting: wait.
-        assert_eq!(dsh_load_of(&[], started, &[now - 61_000], written, now, 1), DshLoad::NotLoaded);
-        assert_eq!(dsh_load_of(&[], started, &[now - 10_000], written, now, 1), DshLoad::Waiting);
+        assert_eq!(dsh_load_of(&[], started, &[now - 61_000], written, now, new, 1), DshLoad::NotLoaded);
+        assert_eq!(dsh_load_of(&[], started, &[now - 10_000], written, now, new, 1), DshLoad::Waiting);
         assert_eq!(DshLoad::NotLoaded.word(), "notLoaded");
+        // The digest as the plugin takes its own: 16 hex digits of the file's SHA-256.
+        assert!(dsh_plugin_sha().len() == 16 && dsh_plugin_sha().chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]

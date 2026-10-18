@@ -30,18 +30,23 @@
 //
 // As it is loaded it says so twice: to her port (WakuwakuLoaded), and in a
 // small file beside itself (loaded-<profile>.json: this process, when, which
-// version), which her Connect page reads to tell whether DSH really loaded
-// it, she running or not; the file goes again as the plugin is let go.
+// version and code), which her Connect page reads to tell whether DSH really
+// loaded it, and this version of it, she running or not; the file goes
+// again as the plugin is let go.
 //
 // The row that loads it gives its config: { port }, her port.
 
-import http from 'node:http'
-import { unlinkSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { readFileSync, unlinkSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
+import http from 'node:http'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// This file's version: her Connect page compares it with the one loaded.
+// This file's version, for her log. Which code DSH runs is told by the
+// file's own digest (sha, in the marker): DSH keeps a module it imported
+// until it restarts, so a file written again under the same name is not
+// what runs, and her Connect page compares the two.
 export const VERSION = 1
 export const name = 'wakuwaku'
 
@@ -93,11 +98,21 @@ function hereDir() {
   }
 }
 
+// This file's digest as DSH imported it: SHA-256, its first 16 hex digits.
+function ownSha() {
+  try {
+    return createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex').slice(0, 16)
+  } catch {
+    return ''
+  }
+}
+
 // A profile's name as a file name's part.
 const fileSafe = text => String(text || 'default').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
 
 // The plugin for a context and its config. options: { dir } where its marker
-// goes (beside this file by default), for the tests.
+// goes (beside this file by default), { sha } this file's digest (its own by
+// default), for the tests.
 export function make(ctx, config = {}, options = {}) {
   const port = Number.isInteger(Number(config?.port)) && Number(config.port) > 0 ? Number(config.port) : DEFAULT_PORT
   const path = '/hook?from=wakuwaku&agent=dsh'
@@ -290,7 +305,8 @@ export function make(ctx, config = {}, options = {}) {
     const profile = String(service('profileContext')?.name || '')
     const dir = options.dir ?? hereDir()
     const marker = dir ? join(dir, `loaded-${fileSafe(profile)}.json`) : ''
-    if (marker) writeFile(marker, JSON.stringify({ pid: process.pid, at: Date.now(), version: VERSION, profile, port })).catch(() => {})
+    const sha = options.sha ?? ownSha()
+    if (marker) writeFile(marker, JSON.stringify({ pid: process.pid, at: Date.now(), version: VERSION, sha, profile, port })).catch(() => {})
     send({ session_id: '', hook_event_name: 'WakuwakuLoaded', version: VERSION, pid: process.pid, profile })
     return () => {
       closed = true
