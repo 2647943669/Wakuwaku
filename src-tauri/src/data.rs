@@ -34,7 +34,7 @@ pub fn folder() -> PathBuf {
 // Quit by the person's choice (her menu's Quit, from the tray or the
 // taskbar; POST /quit, zhoupengjie/Wakuwaku#57): marked in her data folder,
 // so that no session's hook (Claude Code's SessionStart, Codex's,
-// Antigravity's, ZCode's, omp's: starts.rs starts_her) starts her again (it
+// Antigravity's, ZCode's, Reasonix's, omp's: starts.rs starts_her) starts her again (it
 // did, at once: a resume, /clear and a compaction start a session too) until
 // she is started otherwise: opened by hand, at login, by an update, which
 // every start of hers clears. A crash leaves no mark: the hooks start her

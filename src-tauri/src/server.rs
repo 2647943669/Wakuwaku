@@ -4,8 +4,8 @@
 //                      WAKUWAKU_DEBUG=1, the windows and settings too
 //   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
 //                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook)
-//                      ?agent=agy, ?agent=zcode, ?agent=dsh: the same for Antigravity's, ZCode's
-//                      and DeepSeek Harness's (main.rs agy_hook)
+//                      ?agent=agy, ?agent=zcode, ?agent=dsh, ?agent=reasonix: the same for
+//                      Antigravity's, ZCode's, DeepSeek Harness's and Reasonix's (main.rs agy_hook)
 //                      ?agent=opencode: an OpenCode event, from her plugin in it (events_opencode.rs)
 //                      ?agent=omp: an oh-my-pi one, from her extension inside omp
 //                      (integrations/omp/wakuwaku.ts, events_omp.rs)
@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::{events, events_agy, events_codex, events_dsh, events_omp, events_opencode, events_zcode, island, jump, now_ms, pet, Responder, Shared};
+use crate::{events, events_agy, events_codex, events_dsh, events_omp, events_opencode, events_reasonix, events_zcode, island, jump, now_ms, pet, Responder, Shared};
 
 // Hook events carry whole files (an Edit's PostToolUse has the file before
 // the edit), so this is generous.
@@ -38,9 +38,9 @@ const MAX_BODY: u64 = 16 * 1024 * 1024;
 const CODEX_ASK_MS: u64 = 60 * 1000;
 
 // Which agent's hook the request comes from (?agent=codex, ?agent=agy,
-// ?agent=zcode, ?agent=dsh: handed on by this program, main.rs;
-// ?agent=opencode: her plugin in OpenCode; ?agent=omp: her extension in
-// omp); none for Claude Code's.
+// ?agent=zcode, ?agent=dsh, ?agent=reasonix: handed on by this program,
+// main.rs; ?agent=opencode: her plugin in OpenCode; ?agent=omp: her
+// extension in omp); none for Claude Code's.
 fn agent_of(url: &str) -> Option<&'static str> {
     let (_, query) = url.split_once('?')?;
     query.split('&').find_map(|p| match p {
@@ -50,6 +50,7 @@ fn agent_of(url: &str) -> Option<&'static str> {
         "agent=omp" => Some("omp"),
         "agent=zcode" => Some("zcode"),
         "agent=dsh" => Some("dsh"),
+        "agent=reasonix" => Some("reasonix"),
         _ => None,
     })
 }
@@ -66,13 +67,21 @@ fn quit_of(url: &str) -> (crate::data::Quit, &'static str) {
 }
 
 // Whether an agent's events bring the processes their session runs in:
-// Codex's, Antigravity's and ZCode's hook commands look them up (main.rs).
+// Codex's, Antigravity's, ZCode's and Reasonix's hook commands look them up
+// (main.rs).
 // Claude Code's come from its own process, omp's from her extension inside
 // omp.exe, OpenCode's from her plugin in its service and DeepSeek Harness's
 // from a hook in its sandbox: those she finds from the other end of the
 // connection (chain_for).
 fn brings_chain(agent: Option<&str>) -> bool {
-    matches!(agent, Some("codex" | "agy" | "zcode"))
+    matches!(agent, Some("codex" | "agy" | "zcode" | "reasonix"))
+}
+
+// Whether an agent's PermissionRequest is told only, not held for her answer:
+// Reasonix's hook hands it on and leaves at once, so nobody waits on the
+// reply; the person answers in Reasonix, and she shows the session waiting.
+fn answers_none(agent: Option<&str>) -> bool {
+    agent == Some("reasonix")
 }
 
 // True the first time a line comes; a few kinds are kept, and past them
@@ -182,6 +191,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 Some("opencode") => &sh.opencode_seen,
                 Some("omp") => &sh.omp_seen,
                 Some("zcode") => &sh.zcode_seen,
+                Some("reasonix") => &sh.reasonix_seen,
                 Some("dsh") => &sh.dsh_seen,
                 _ => &sh.claude_seen,
             };
@@ -199,6 +209,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 Some("opencode") => events_opencode::to_message(&event),
                 Some("omp") => events_omp::to_message(&event),
                 Some("zcode") => events_zcode::to_message(&event),
+                Some("reasonix") => events_reasonix::to_message(&event),
                 Some("dsh") => events_dsh::to_message(&event, &crate::connection::dsh_home()),
                 _ => events::to_message(&event),
             };
@@ -219,8 +230,10 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             // A prompt holds the answer until the person picks on the pet, the
             // terminal settles it, or time runs out; out of sight (her
             // taskbar on another display counts: main.rs asks_seen), it is
-            // the terminal's at once.
-            let is_prompt = event["hook_event_name"] == "PermissionRequest";
+            // the terminal's at once. Reasonix's is not one to answer yet:
+            // its hook hands it on and is gone (main.rs reasonix_hook), so
+            // she only waits with it (zhoupengjie/Wakuwaku#60, phase 1).
+            let is_prompt = event["hook_event_name"] == "PermissionRequest" && !answers_none(agent);
             if is_prompt && !sh.asks_seen() {
                 sh.log("a prompt handed to the terminal: out of sight");
             }
@@ -367,12 +380,16 @@ mod tests {
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=omp"), Some("omp"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=zcode"), Some("zcode"));
         assert_eq!(agent_of("/hook?from=wakuwaku&agent=dsh"), Some("dsh"));
+        assert_eq!(agent_of("/hook?from=wakuwaku&agent=reasonix"), Some("reasonix"));
         assert_eq!(agent_of("/hook?from=wakuwaku"), None);
         assert_eq!(agent_of("/hook?agent=codexx"), None);
         assert_eq!(agent_of("/hook"), None);
         // omp's come from inside omp.exe: she finds its process, as Claude Code's.
-        assert!(brings_chain(Some("codex")) && brings_chain(Some("agy")) && brings_chain(Some("zcode")));
+        assert!(brings_chain(Some("codex")) && brings_chain(Some("agy")) && brings_chain(Some("zcode")) && brings_chain(Some("reasonix")));
         assert!(!brings_chain(Some("omp")) && !brings_chain(Some("opencode")) && !brings_chain(Some("dsh")) && !brings_chain(None));
+        // Reasonix's PermissionRequest is told, not held: its hook waits on no answer.
+        assert!(answers_none(Some("reasonix")));
+        assert!(!answers_none(None) && !answers_none(Some("codex")) && !answers_none(Some("zcode")) && !answers_none(Some("opencode")));
     }
 
     // POST /quit is a quit by choice (the hooks then start her no more)

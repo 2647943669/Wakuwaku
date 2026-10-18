@@ -12,7 +12,7 @@ const REPO: &str = "https://github.com/zhoupengjie/wakuwaku";
 
 // Each agent's own page, by its id (src/pet/agents.js), for the Agent page's
 // other supported tools: the only pages it may open.
-const AGENT_SITES: [(&str, &str); 7] = [
+const AGENT_SITES: [(&str, &str); 8] = [
     ("claude", "https://claude.com/product/claude-code"),
     ("codex", "https://developers.openai.com/codex"),
     ("agy", "https://antigravity.google/"),
@@ -20,6 +20,7 @@ const AGENT_SITES: [(&str, &str); 7] = [
     ("omp", "https://github.com/can1357/oh-my-pi"),
     ("zcode", "https://zcode.z.ai/"),
     ("dsh", "https://github.com/deepseek-ai/deepseek-harness"),
+    ("reasonix", "https://github.com/esengine/DeepSeek-Reasonix"),
 ];
 
 // Everything the settings show.
@@ -124,6 +125,18 @@ pub fn snapshot(sh: &Shared) -> Value {
             // The bridge's hook list, in her data folder (the Agent page shows both).
             "listShown": connection::shown_path(&connection::dsh_hooks_file()),
             "seen": sh.dsh_seen.load(Ordering::SeqCst) > 0,
+        },
+        // Reasonix's global settings.json (connection.rs), the same; absent
+        // without its home, unsupported for the Node 0.x alone (its line: "0.x",
+        // "1.x", "2.x",
+        // or none where nothing says).
+        "reasonix": {
+            "hooks": connection::reasonix_hooks_status(),
+            "file": connection::reasonix_settings_file().to_string_lossy(),
+            "fileShown": connection::shown_path(&connection::reasonix_settings_file()),
+            "backup": connection::backup_of(&connection::reasonix_settings_file()).exists(),
+            "seen": sh.reasonix_seen.load(Ordering::SeqCst) > 0,
+            "line": connection::reasonix_line().map(|major| format!("{major}.x")),
         },
         // The agents' versions where a file of theirs says (connection.rs
         // versions; Codex's is its block's): the Agent page shows them.
@@ -795,6 +808,16 @@ pub async fn settings_omp_hooks(app: AppHandle, action: String) -> Value {
 pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
     match connection::write_dsh_hooks(&action) {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+    }
+}
+
+// install, remove: Reasonix's global settings.json (zhoupengjie/Wakuwaku#60).
+#[tauri::command]
+pub async fn settings_reasonix_hooks(app: AppHandle, action: String) -> Value {
+    let sh = shared(&app);
+    match connection::write_reasonix_hooks(&action) {
         Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
         Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
     }

@@ -57,6 +57,7 @@ mod events_codex;
 mod events_opencode;
 mod events_omp;
 mod events_dsh;
+mod events_reasonix;
 mod events_zcode;
 mod fetch;
 mod focus;
@@ -160,6 +161,8 @@ pub struct Shared {
     pub zcode_seen: std::sync::atomic::AtomicU64,
     // And DeepSeek Harness's.
     pub dsh_seen: std::sync::atomic::AtomicU64,
+    // And Reasonix's.
+    pub reasonix_seen: std::sync::atomic::AtomicU64,
     // When the last Claude Code event came (ms), 0 never: the settings tell
     // connected from installed, waiting for a session (settings.js).
     pub claude_seen: std::sync::atomic::AtomicU64,
@@ -459,8 +462,9 @@ impl Shared {
         let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
-            // Antigravity's and DeepSeek Harness's approvals never come to her.
-            let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh";
+            // Antigravity's, DeepSeek Harness's and Reasonix's approvals never
+            // come to her.
+            let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh" || msg["agent"] == "reasonix";
             self.count_today(|t| {
                 t.begun(out.turns);
                 if is_agy {
@@ -1384,6 +1388,33 @@ fn dsh_hook(port: u16, name: &str) {
     }
 }
 
+// Reasonix's hook (connection::REASONIX_FLAG and the event's name), run by
+// Reasonix through cmd.exe for each event of its sessions, its CLI's and
+// its Studio's alike: the event handed to her port and let go (post_and_go:
+// Reasonix waits on every hook, and one of its gating events that times out
+// is blocked), with where the session runs as it starts or a turn begins
+// (jump.rs, past cmd); its session starting with her not up starts her,
+// unless the person quit her, as Codex's does. Nothing printed, whatever
+// the event: Reasonix shows what a hook prints, and its PermissionRequest
+// stays its own (zhoupengjie/Wakuwaku#60, phase 1: server.rs answers_none).
+// Her not up, nothing tried but that; and always gone with 0.
+fn reasonix_hook(port: u16, name: &str) {
+    let Some(mut event) = read_event() else { return };
+    let name = event["event"].as_str().filter(|n| !n.is_empty()).unwrap_or(name).to_string();
+    if let Some(fields) = event.as_object_mut() {
+        fields.insert("event".into(), json!(name));
+        // The name her server reads every agent's events by.
+        fields.insert("hook_event_name".into(), json!(name));
+        if matches!(name.as_str(), "SessionStart" | "UserPromptSubmit") {
+            fields.insert(jump::CODEX_CHAIN.into(), jump::chain_json(&jump::hook_chain()));
+        }
+    }
+    if !post_and_go(port, "reasonix", &event) {
+        let source = event["source"].as_str().unwrap_or("").to_string();
+        start_or_say(starts::Hook::Reasonix, &name, || starts::hook_who("Reasonix", &name, &[&source], &hook_parents()));
+    }
+}
+
 fn main() {
     // Her exe again, as the taskbar's guard (shell.rs): it waits for her to
     // end, and gives Windows' taskbar back if she could not; and sees
@@ -1452,6 +1483,9 @@ fn main() {
     }
     if let Some(at) = args.iter().position(|a| a == connection::DSH_FLAG) {
         return dsh_hook(port, args.get(at + 1).map_or("", String::as_str));
+    }
+    if let Some(at) = args.iter().position(|a| a == connection::REASONIX_FLAG) {
+        return reasonix_hook(port, args.get(at + 1).map_or("", String::as_str));
     }
 
     // Started at login (connection.rs): by her logon task, or by the Run value.
@@ -1570,6 +1604,7 @@ fn main() {
             settings::settings_omp_hooks,
             settings::settings_zcode_hooks,
             settings::settings_dsh_hooks,
+            settings::settings_reasonix_hooks,
             settings::settings_cpu_sensors,
             bars::bar_ready,
             desk::desk_ready,
@@ -1680,6 +1715,7 @@ fn main() {
                 omp_seen: std::sync::atomic::AtomicU64::new(0),
                 zcode_seen: std::sync::atomic::AtomicU64::new(0),
                 dsh_seen: std::sync::atomic::AtomicU64::new(0),
+                reasonix_seen: std::sync::atomic::AtomicU64::new(0),
                 claude_seen: std::sync::atomic::AtomicU64::new(0),
                 own: Mutex::new(Vec::new()),
                 prev_focus: Mutex::new(0),

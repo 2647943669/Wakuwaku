@@ -8,8 +8,8 @@
 //     SessionStart command (--wakuwaku-ensure-running, written into
 //     settings.json; Claude's desktop app's Code tab runs the same, in the
 //     app's job), omp's extension (the same flag, "omp" and how its session
-//     started after it), and Codex's, Antigravity's and ZCode's hook
-//     commands at SessionStart (main.rs). DeepSeek Harness's never starts
+//     started after it), and Codex's, Antigravity's, ZCode's and Reasonix's
+//     hook commands at SessionStart (main.rs). DeepSeek Harness's never starts
 //     her (she would run in its sandbox); Claude Code's HTTP hooks, its
 //     plugin's and OpenCode's plugin cannot start anything;
 //   - by herself while she runs: an update's new version, or her exe again
@@ -34,6 +34,7 @@ pub enum Hook {
     Codex,
     Agy,
     Zcode,
+    Reasonix,
 }
 
 // Whether a hook finding her not up starts her: as its session starts,
@@ -42,7 +43,7 @@ pub enum Hook {
 pub fn starts_her(hook: Hook, event: &str, quit_by_choice: impl FnOnce() -> bool) -> bool {
     let at_start = match hook {
         Hook::Ensure => true,
-        Hook::Codex | Hook::Agy | Hook::Zcode => event == "SessionStart",
+        Hook::Codex | Hook::Agy | Hook::Zcode | Hook::Reasonix => event == "SessionStart",
     };
     at_start && !quit_by_choice()
 }
@@ -135,12 +136,12 @@ mod tests {
     // when it would start her.
     #[test]
     fn hooks_start_her_only_as_a_session_starts_and_never_after_a_quit_by_choice() {
-        for hook in [Hook::Ensure, Hook::Codex, Hook::Agy, Hook::Zcode] {
+        for hook in [Hook::Ensure, Hook::Codex, Hook::Agy, Hook::Zcode, Hook::Reasonix] {
             assert!(starts_her(hook, "SessionStart", || false), "{hook:?}");
             assert!(!starts_her(hook, "SessionStart", || true), "{hook:?} after a quit by choice");
         }
         for event in ["UserPromptSubmit", "PreToolUse", "PostToolUse", "PreInvocation", "Stop", "PermissionRequest", "SessionEnd", ""] {
-            for hook in [Hook::Codex, Hook::Agy, Hook::Zcode] {
+            for hook in [Hook::Codex, Hook::Agy, Hook::Zcode, Hook::Reasonix] {
                 assert!(!starts_her(hook, event, || panic!("looked for the mark for {hook:?} {event}")), "{hook:?} {event}");
             }
         }
