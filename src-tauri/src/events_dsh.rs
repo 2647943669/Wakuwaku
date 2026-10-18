@@ -102,7 +102,8 @@ pub fn for_ask(e: &Value) -> Value {
         out["tool_input"] = json!({ "questions": questions });
     } else {
         let (name, input) = claude_named(s(e, "tool_name"), input);
-        out["tool_name"] = json!(name);
+        // Its PowerShell named so on the panel (Claude Code's own name for it).
+        out["tool_name"] = json!(if s(e, "tool_name") == "pwsh" { "PowerShell" } else { name.as_str() });
         out["tool_input"] = input;
     }
     out

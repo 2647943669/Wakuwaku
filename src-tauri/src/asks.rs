@@ -707,13 +707,18 @@ mod tests {
         assert_eq!(reply_for(&e, &json!({ "action": "deny" }), "zh"), Some(json!({ "decision": "deny" })));
         assert!(reply_for(&e, &json!({ "action": "always" }), "en").is_none());
         assert!(reply_for(&e, &json!({ "action": "answer", "answers": [] }), "en").is_none());
-        // Its audit text when it gave no words to show; a command as the summary.
-        let mut cmd = e.clone();
-        cmd["tool_name"] = json!("Bash");
-        cmd["tool_input"] = json!({ "command": "Get-Content -Path C:\\Windows\\win.ini" });
-        cmd.as_object_mut().unwrap().remove("display_reason");
+        // Its audit text when it gave no words to show; its PowerShell's
+        // command as the summary, named PowerShell.
+        let cmd = crate::events_dsh::for_ask(&json!({
+            "hook_event_name": "PermissionRequest", "session_id": "session-ed6a", "agent": "dsh", "answerable": true,
+            "tool_name": "pwsh", "tool_input": { "command": "Set-Content -Path C:\\waku\\agents\\cmd.txt -Value hi", "description": "Retry write with escalated permissions" },
+            "reason": "escalate sandbox to danger-full-access: outside the workspace"
+        }));
         let view = view_of(&cmd).unwrap();
-        assert_eq!((view["summary"].as_str(), view["reason"].as_str()), (Some("Get-Content -Path C:\\Windows\\win.ini"), Some("escalate sandbox to danger-full-access: outside the workspace")));
+        assert_eq!(
+            (view["tool"].as_str(), view["summary"].as_str(), view["reason"].as_str()),
+            (Some("PowerShell"), Some("Set-Content -Path C:\\waku\\agents\\cmd.txt -Value hi"), Some("escalate sandbox to danger-full-access: outside the workspace"))
+        );
     }
 
     #[test]
