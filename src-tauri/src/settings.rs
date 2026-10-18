@@ -846,12 +846,32 @@ pub async fn settings_omp_hooks(app: AppHandle, action: String) -> Value {
 // DSH's own hook bridge, its packages in DSH's profiles, its row and her
 // hook list). "install:npmmirror": the bridge's packages from npmmirror,
 // the person having picked it after the registry pnpm names could not be
-// reached. pnpm may take a while: off the async runtime's threads.
+// reached. "via:plugin", "via:bridge" (and ":npmmirror"): the way switched,
+// the chosen one put in, then the other taken away (connection.rs
+// write_dsh_hooks), the setting kept only once that went well; one command
+// for all (another costs the exe some 9 KB of glue). pnpm may take a
+// while: off the async runtime's threads.
 #[tauri::command]
 pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
-    let way = dsh_way(&sh);
-    dsh_write(sh, action, way).await
+    let Some(via) = action.strip_prefix("via:") else {
+        let way = dsh_way(&sh);
+        return dsh_write(sh, action, way).await;
+    };
+    let (way, mirror) = via.split_once(':').map_or((via, ""), |(w, r)| (w, r));
+    let way: &'static str = match way {
+        "bridge" => "bridge",
+        "plugin" => "plugin",
+        _ => return json!({ "ok": false, "kind": "other", "error": format!("unknown way {via}"), "snapshot": snapshot(&sh) }),
+    };
+    let action = if mirror == "npmmirror" { "install:npmmirror" } else { "install" };
+    let got = dsh_write(sh.clone(), action.to_string(), way).await;
+    if got["ok"] == json!(true) {
+        sh.log(&format!("dsh: followed through {}", if way == "bridge" { "DSH's hook bridge" } else { "her plugin" }));
+        sh.change(json!({ "dshVia": way }));
+        return json!({ "ok": true, "snapshot": snapshot(&sh) });
+    }
+    got
 }
 
 // The way DSH is followed, as chosen or as the rows have it (connection.rs dsh_way).
@@ -884,27 +904,6 @@ async fn dsh_write(sh: Arc<Shared>, action: String, way: &'static str) -> Value 
     }
 }
 
-// The way to follow DeepSeek Harness, switched (plugin, bridge): the chosen
-// one put in, then the other taken away (connection.rs write_dsh_hooks);
-// the setting kept only once that went well. registry: "npmmirror" for the
-// bridge's packages from there.
-#[tauri::command]
-pub async fn settings_dsh_via(app: AppHandle, via: String, registry: Option<String>) -> Value {
-    let sh = shared(&app);
-    let way: &'static str = match via.as_str() {
-        "bridge" => "bridge",
-        "plugin" => "plugin",
-        _ => return json!({ "ok": false, "kind": "other", "error": format!("unknown way {via}"), "snapshot": snapshot(&sh) }),
-    };
-    let action = if registry.as_deref() == Some("npmmirror") { "install:npmmirror".to_string() } else { "install".to_string() };
-    let got = dsh_write(sh.clone(), action, way).await;
-    if got["ok"] == json!(true) {
-        sh.log(&format!("dsh: followed through {}", if way == "bridge" { "DSH's hook bridge" } else { "her plugin" }));
-        sh.change(json!({ "dshVia": way }));
-        return json!({ "ok": true, "snapshot": snapshot(&sh) });
-    }
-    got
-}
 
 // install, remove: Reasonix's global settings.json (zhoupengjie/Wakuwaku#60).
 #[tauri::command]

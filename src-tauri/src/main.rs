@@ -1610,7 +1610,6 @@ fn main() {
             settings::settings_omp_hooks,
             settings::settings_zcode_hooks,
             settings::settings_dsh_hooks,
-            settings::settings_dsh_via,
             settings::settings_reasonix_hooks,
             settings::settings_cpu_sensors,
             bars::bar_ready,

@@ -253,7 +253,7 @@
       reasonixHooks: action => invoke('settings_reasonix_hooks', { action }),
       // DeepSeek Harness's way: 'plugin' or 'bridge', switched (the other
       // taken away); registry 'npmmirror' for the bridge's packages from there.
-      dshVia: (via, registry) => invoke('settings_dsh_via', { via, registry: registry || null }),
+      dshVia: (via, registry) => invoke('settings_dsh_hooks', { action: `via:${via}${registry ? `:${registry}` : ''}` }),
       // The CPU temperature/power helper (#18 part B): 'install',
       // 'installPawnIO' (download PawnIO first), 'remove'. Each shows one UAC.
       cpuSensors: action => invoke('settings_cpu_sensors', { action }),

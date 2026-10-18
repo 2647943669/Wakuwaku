@@ -1855,21 +1855,26 @@ fn noted_packages() -> Vec<(PathBuf, Vec<String>)> {
         .collect()
 }
 
+// Added to the note (as JSON values: no map type of its own for it).
 fn note_packages(added: &[(PathBuf, Vec<String>)]) {
-    let mut all: std::collections::BTreeMap<String, Vec<String>> = noted_packages().into_iter().map(|(p, n)| (p.to_string_lossy().into_owned(), n)).collect();
-    for (profile, names) in added {
-        let had = all.entry(profile.to_string_lossy().into_owned()).or_default();
+    let mut all = read_json_now(&dsh_bridge_note()).ok().and_then(|n| n.get("added").cloned()).filter(Value::is_object).unwrap_or_else(|| json!({}));
+    for (profile, names) in added.iter().filter(|(_, names)| !names.is_empty()) {
+        let key = profile.to_string_lossy();
+        let had = &mut all[key.as_ref()];
+        if !had.is_array() {
+            *had = json!([]);
+        }
         for name in names {
-            if !had.contains(name) {
-                had.push(name.clone());
+            let list = had.as_array_mut().expect("an array");
+            if !list.iter().any(|n| n == name.as_str()) {
+                list.push(json!(name));
             }
         }
     }
-    all.retain(|_, names| !names.is_empty());
-    if all.is_empty() {
+    if all.as_object().is_none_or(|m| m.is_empty()) {
         let _ = fs::remove_file(dsh_bridge_note());
     } else {
-        let _ = fs::write(dsh_bridge_note(), format!("{}\n", serde_json::to_string_pretty(&json!({ "added": all })).unwrap_or_default()));
+        let _ = write_json(&dsh_bridge_note(), &json!({ "added": all }));
     }
 }
 

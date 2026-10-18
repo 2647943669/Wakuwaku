@@ -20,8 +20,8 @@
 // They are installed as DSH's plugin manager does it: `pnpm add` in the
 // profile's folder, with DSH's own pnpm (resources\runtime\pnpm, as the
 // desktop app runs it) under DSH's own Node
-// (resources\runtime\primary-runtime\dependencies\node), its runtime\bin on
-// PATH, against the registry pnpm's configuration names (or one the person
+// (resources\runtime\primary-runtime\dependencies\node), what it prints in
+// her data folder (dsh-pnpm.log), against the registry pnpm's configuration names (or one the person
 // picks: npmmirror, when that one can't be reached), hidden, with a time
 // limit, holding the desktop app's own profile lock meanwhile. The
 // profile's package.json, pnpm-lock.yaml and pnpm-workspace.yaml are kept
@@ -53,12 +53,11 @@ pub fn app_dir() -> Option<PathBuf> {
     dir.join("resources").is_dir().then_some(dir)
 }
 
-// DSH's own Node and pnpm, and the folder its package scripts find node in.
-#[derive(Clone, Debug, PartialEq)]
+// DSH's own Node and pnpm.
+#[cfg_attr(test, derive(Debug))]
 pub struct Runtime {
     pub node: PathBuf,
     pub pnpm: PathBuf,
-    pub bin: Option<PathBuf>,
 }
 
 // Where they are in an app folder (the first of each that is there).
@@ -70,8 +69,7 @@ pub fn runtime_in(app: &Path) -> Option<Runtime> {
     let pnpm = [runtime.join("pnpm").join("bin").join("pnpm.mjs"), runtime.join("primary-runtime").join("dependencies").join("pnpm").join("bin").join("pnpm.mjs")]
         .into_iter()
         .find(|p| p.is_file())?;
-    let bin = Some(runtime.join("bin")).filter(|b| b.is_dir());
-    Some(Runtime { node, pnpm, bin })
+    Some(Runtime { node, pnpm })
 }
 
 // Whether the app carries the bridge itself (0.2.0-rc.2: in app.asar, under
@@ -224,7 +222,7 @@ pub fn classify(output: &str, timed_out: bool) -> &'static str {
 
 // A failed install: its kind (classify, or runtime: no DSH Node or pnpm;
 // busy: DSH is changing the profile itself) and what to show of it.
-#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Failure {
     pub kind: &'static str,
     pub detail: String,
@@ -309,19 +307,19 @@ impl Kept {
 }
 
 // Run pnpm in a profile, hidden, for RUN_TIMEOUT at most: whether it ended
-// well, what it printed (its tail), whether time ran out.
+// well, what it printed (its tail), whether time ran out. What it prints
+// goes to a file in her data folder (dsh-pnpm.log, the last run's, there
+// after it too), read when it ends: no threads to read pipes with.
 fn run_pnpm(runtime: &Runtime, profile: &Path, args: &[String]) -> Result<(bool, String, bool), Failure> {
+    let log = crate::data::folder().join("dsh-pnpm.log");
+    let out = fs::File::create(&log).map_err(|e| Failure::new("permission", format!("{}: {e}", log.display())))?;
+    let err = out.try_clone().map_err(|e| Failure::new("permission", format!("{}: {e}", log.display())))?;
     let mut command = Command::new(&runtime.node);
-    command.arg(&runtime.pnpm).args(args).current_dir(profile).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    if let Some(bin) = &runtime.bin {
-        let path = std::env::var_os("PATH").unwrap_or_default();
-        let mut joined = bin.as_os_str().to_os_string();
-        joined.push(";");
-        joined.push(path);
-        command.env("PATH", joined);
-    }
-    // Plain output, no colours or progress lines.
-    command.env("NO_COLOR", "1").env("CI", "1");
+    // Her own environment as it is: these two packages run no scripts, so
+    // pnpm needs no node of DSH's on PATH (and a command with an
+    // environment of its own costs the exe the code that builds one); its
+    // output to a file comes without colours.
+    command.arg(&runtime.pnpm).args(args).current_dir(profile).stdin(Stdio::null()).stdout(Stdio::from(out)).stderr(Stdio::from(err));
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -329,17 +327,6 @@ fn run_pnpm(runtime: &Runtime, profile: &Path, args: &[String]) -> Result<(bool,
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = command.spawn().map_err(|e| Failure::new("runtime", format!("{}: {e}", runtime.node.display())))?;
-    let readers: Vec<_> = [child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>)]
-        .into_iter()
-        .flatten()
-        .map(|mut stream| {
-            std::thread::spawn(move || {
-                let mut out = Vec::new();
-                let _ = stream.read_to_end(&mut out);
-                out
-            })
-        })
-        .collect();
     let until = Instant::now() + RUN_TIMEOUT;
     let (ok, timed_out) = loop {
         match child.try_wait() {
@@ -358,13 +345,9 @@ fn run_pnpm(runtime: &Runtime, profile: &Path, args: &[String]) -> Result<(bool,
             }
         }
     };
-    let mut output = Vec::new();
-    for reader in readers {
-        output.extend(reader.join().unwrap_or_default());
-    }
-    let text = String::from_utf8_lossy(&output);
-    let tail: String = text.chars().rev().take(OUTPUT_MAX).collect::<Vec<_>>().into_iter().rev().collect();
-    Ok((ok, tail, timed_out))
+    let output = fs::read(&log).unwrap_or_default();
+    let tail = &output[output.len().saturating_sub(OUTPUT_MAX)..];
+    Ok((ok, String::from_utf8_lossy(tail).into_owned(), timed_out))
 }
 
 // The last lines of what pnpm printed that say something, for the person.
