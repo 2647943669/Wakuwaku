@@ -191,22 +191,44 @@
       // the old bridge's rows as a status of their own (bridge), and one
       // written but not loaded while DSH runs (notLoaded, why: off when DSH's
       // own settings turned it off).
+      // Two ways (way, connection.rs dsh_way): her plugin, or DSH's own hook
+      // bridge, whose stale rows say why as statuses of their own (way: the
+      // plugin's rows there; hooks: its hook list for another exe or
+      // folder; packages: not in DSH's profiles; version: another DSH's).
       read: snap => {
         const b = block('dsh')(snap)
         const d = snap.dsh || {}
         const load = d.load || {}
-        const status = b.status === 'stale' && d.why === 'bridge' ? 'bridge' : b.status
-        // Connected: DSH runs her plugin; or it came since she started and
-        // DSH is not running now. DSH running without it (to be restarted)
-        // is not, whatever came before.
-        const seen = ['loaded', 'older'].includes(load.state) || (b.seen && load.state !== 'restart')
-        return { ...b, status, why: d.why || '', load, seen, list: d.listShown || '', listKey: 'ag.pluginFile' }
+        const way = d.way === 'bridge' ? 'bridge' : 'plugin'
+        const bridgeWhy = { way: 'bridgeWay', hooks: 'bridgeHooks', packages: 'bridgePackages', version: 'bridgeVersion' }
+        const status = b.status !== 'stale' ? b.status : way === 'bridge' ? bridgeWhy[d.why] || 'stale' : d.why === 'bridge' ? 'bridge' : 'stale'
+        // Connected: DSH runs her plugin, or the bridge's events came since
+        // DSH started; or they came since she started and DSH is not
+        // running now. DSH running without it (to be restarted, or the
+        // bridge's first event still to come) is not, whatever came before.
+        const seen = ['loaded', 'older', 'effective'].includes(load.state) || (b.seen && !['restart', 'firstEvent'].includes(load.state))
+        // Its file besides the patch file: the plugin's, or the bridge's hook list.
+        const list = way === 'bridge' ? d.hooksShown || '' : d.listShown || ''
+        return { ...b, status, way, via: d.via || null, why: d.why || '', load, seen, list, listKey: way === 'bridge' ? 'ag.list' : 'ag.pluginFile' }
       },
-      in: ['ok', 'stale', 'bridge', 'notLoaded'],
+      // The bridge's way says what it does in words of its own: no step's
+      // tool (a hook costs a second, so few are hooked), its note.
+      wording: r => (r.way === 'bridge' ? { what: 'ag.what.dshBridge', note: 'ag.note.dshBridge', caps: { status: ['part', 'ag.cap.status.dshBridge'] } } : null),
+      in: ['ok', 'stale', 'bridge', 'notLoaded', 'bridgeWay', 'bridgeHooks', 'bridgePackages', 'bridgeVersion'],
       good: ['ok'],
-      words: { bridge: 's.dshBridge', stale: 's.dshStale', notLoaded: 's.dshNotLoaded', unreadable: 's.dshUnreadable' },
-      // Written, not loaded yet: DSH to start, or to be restarted.
-      setLine: r => (r.load?.state === 'restart' ? 'ag.st.set.dsh' : 'ag.st.set.dshWaiting'),
+      words: {
+        bridge: 's.dshBridge',
+        stale: 's.dshStale',
+        notLoaded: 's.dshNotLoaded',
+        unreadable: 's.dshUnreadable',
+        bridgeWay: 's.dshBWay',
+        bridgeHooks: 's.dshBHooks',
+        bridgePackages: 's.dshBPackages',
+        bridgeVersion: 's.dshBVersion',
+      },
+      // Written, not working yet: DSH to start, or to be restarted; the
+      // bridge's first event still to come.
+      setLine: r => (r.load?.state === 'restart' ? 'ag.st.set.dsh' : r.load?.state === 'firstEvent' ? 'ag.st.set.dshFirstEvent' : 'ag.st.set.dshWaiting'),
       caps: {
         status: ['yes', 'ag.cap.status.dsh'],
         approve: ['no', 'ag.cap.approve.dsh'],
@@ -326,8 +348,9 @@
   // Mail where its command is found (agent.rs available): else no, and why.
   function capsOf(snap, id) {
     const a = byId(id)
+    const own = (snap && wordingOf(snap, id)?.caps) || {}
     return CAPS.map(cap => {
-      const [level, key] = a.caps[cap]
+      const [level, key] = own[cap] || a.caps[cap]
       if (cap === 'mail' && level !== 'no' && snap && !(snap.mailAgents || {})[id]) return [cap, 'no', `ag.cap.mail.missing.${id}`]
       return [cap, level, key]
     })
@@ -363,14 +386,21 @@
   // How many sessions of one are in sight now (state.rs: agent, none for Claude Code's).
   const sessionsOf = (snap, id) => (snap.sessions || []).filter(s => (s.agent || 'claude') === id).length
 
+  // Words of its own for how it stands now (wording: DSH's bridge), or none.
+  const wordingOf = (snap, id) => byId(id)?.wording?.(read(snap, id) || {}) || null
+
   // The standing note at the foot of one's details (ag.note.<id>); while
-  // its step shows in amber at their top, the part that does not say it again.
-  const noteOf = (id, state) => (state === 'step' && byId(id)?.stepNote) || `ag.note.${id}`
+  // its step shows in amber at their top, the part that does not say it
+  // again; its own words for how it stands, given the snapshot.
+  const noteOf = (id, state, snap) => (state === 'step' && byId(id)?.stepNote) || (snap && wordingOf(snap, id)?.note) || `ag.note.${id}`
+
+  // What it can do and not, in a sentence (ag.what.<id>, or its own words for how it stands).
+  const whatOf = (snap, id) => wordingOf(snap, id)?.what || `ag.what.${id}`
 
   // Its line's words while written and waiting for its first event (set, step).
   const setLineOf = (snap, id) => byId(id)?.setLine?.(read(snap, id) || {}) || `ag.st.set.${id}`
 
-  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, noteOf, setLineOf, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
+  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, noteOf, whatOf, setLineOf, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

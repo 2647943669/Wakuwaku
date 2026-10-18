@@ -204,6 +204,52 @@ test('DeepSeek Harness: written is not loaded', () => {
   }
 })
 
+test("DeepSeek Harness's other way: its own hook bridge", () => {
+  const dsh = (hooks, more = {}) => snapshot({ dsh: { hooks, why: '', seen: false, way: 'bridge', via: 'bridge', listShown: '~\\.dsh\\wakuwaku\\wakuwaku.js', ...more } })
+  const state = snap => Agents.stateOf(snap, 'dsh')
+  // Its packages missing (DSH 0.2.1 on), or of another DSH; its hook list
+  // another exe's; the plugin's rows there: each its own words, amber, Repair.
+  for (const [why, status, word] of [['packages', 'bridgePackages', 's.dshBPackages'], ['version', 'bridgeVersion', 's.dshBVersion'], ['hooks', 'bridgeHooks', 's.dshBHooks'], ['way', 'bridgeWay', 's.dshBWay']]) {
+    const snap = dsh('stale', { why })
+    assert.equal(Agents.read(snap, 'dsh').status, status, why)
+    assert.equal(state(snap), 'repair', why)
+    assert.deepEqual(Agents.actionOf(snap, 'dsh'), { act: 'install', label: 'settings.repair' })
+    assert.equal(Agents.wordOf('dsh', status), word)
+    assert.ok(word in STRINGS.zh && word in STRINGS.en && `s.dshBWhy.${status}` in STRINGS.zh && `s.dshBWhy.${status}` in STRINGS.en, word)
+  }
+  // Written: an event since DSH started is connected; the first still to
+  // come, not, whatever came before; DSH not running, as before.
+  assert.equal(state(dsh('ok', { load: { state: 'effective' } })), 'on')
+  const first = dsh('ok', { seen: true, load: { state: 'firstEvent' } })
+  assert.equal(state(first), 'set')
+  assert.equal(Agents.setLineOf(first, 'dsh'), 'ag.st.set.dshFirstEvent')
+  assert.equal(state(dsh('ok', { seen: true, load: { state: 'waiting' } })), 'on')
+  // Its hook list shown, not the plugin's file.
+  assert.equal(Agents.read(dsh('ok'), 'dsh').list, '')
+  assert.deepEqual([Agents.read(dsh('ok', { hooksShown: '~\\x\\dsh-hooks.json' }), 'dsh').list, Agents.read(dsh('ok'), 'dsh').listKey], ['~\\x\\dsh-hooks.json', 'ag.list'])
+  // Its own words: no step's tool, its note; the plugin's otherwise.
+  assert.equal(Agents.whatOf(dsh('ok'), 'dsh'), 'ag.what.dshBridge')
+  assert.equal(Agents.noteOf('dsh', 'on', dsh('ok')), 'ag.note.dshBridge')
+  assert.deepEqual(Agents.capsOf(dsh('ok'), 'dsh')[0], ['status', 'part', 'ag.cap.status.dshBridge'])
+  const pluginWay = snapshot({ dsh: { hooks: 'ok', way: 'plugin' } })
+  assert.equal(Agents.whatOf(pluginWay, 'dsh'), 'ag.what.dsh')
+  assert.equal(Agents.noteOf('dsh', 'on', pluginWay), 'ag.note.dsh')
+  assert.deepEqual(Agents.capsOf(pluginWay, 'dsh')[0], ['status', 'yes', 'ag.cap.status.dsh'])
+  for (const key of ['ag.what.dshBridge', 'ag.note.dshBridge', 'ag.cap.status.dshBridge']) assert.ok(key in STRINGS.zh && key in STRINGS.en, key)
+  assert.equal(Agents.read(dsh('ok'), 'dsh').way, 'bridge')
+  // The plugin's way unless the snapshot says the bridge.
+  assert.equal(Agents.read(snapshot({ dsh: { hooks: 'missing' } }), 'dsh').way, 'plugin')
+  // The words of the way picker, its notes, a failure's, both languages.
+  const keys = ['ag.dsh.via', 'ag.dsh.viaPlugin', 'ag.dsh.viaBridge', 'ag.dsh.viaNote.plugin', 'ag.dsh.viaNote.bridge', 'ag.dsh.switching.plugin', 'ag.dsh.switching.bridge', 'ag.dsh.mirror', 's.dshBridgeOn', 's.dshBridgeFirst', 's.dshBridgeWaiting', 's.dshBridgeFailed']
+  for (const kind of ['Registry', 'Version', 'NotFound', 'ReleaseAge', 'Timeout', 'Runtime', 'Busy', 'Disk', 'Permission', 'Other']) keys.push(`s.dshBK.bridge${kind}`)
+  for (const key of keys) assert.ok(key in STRINGS.zh && key in STRINGS.en, key)
+  assert.equal(STRINGS.zh['ag.dsh.viaNote.plugin'], '不用联网，事件即时，以后能在岛上审批')
+  assert.equal(STRINGS.zh['ag.dsh.viaNote.bridge'], 'DSH 官方的钩子桥，要从 npm 下载两个包，每个事件约 1 秒，不能审批')
+  // Every kind connection.rs error_kind gives the bridge's failures has its words.
+  const rust = read('src-tauri/src/connection.rs')
+  for (const [, kind] of rust.matchAll(/=> "(bridge[A-Z]\w+)",/g)) assert.ok(`s.dshBK.${kind}` in STRINGS.zh, kind)
+})
+
 test("Claude Code's two ways", () => {
   const state = change => Agents.stateOf(snapshot(change), 'claude')
   assert.equal(state({}), 'none')

@@ -2080,11 +2080,14 @@
     if (!a || connecting) return
     if (action === 'install') {
       connecting = id
+      // DSH's way said meanwhile (the bridge's packages take a while).
+      if (id === 'dsh') dshSwitching = Agents.read(snap, 'dsh')?.way || ''
       delete failed[id]
       draw()
     }
     const got = await window.pet.settings[a.call](action)
     connecting = ''
+    dshSwitching = ''
     snap = got.snapshot
     if (action === 'install' && !got.ok) {
       failed[id] = { error: got.error || '', kind: got.kind || 'other', folder: got.folder || '' }
@@ -2094,6 +2097,34 @@
     draw()
     relayout()
     return got.ok
+  }
+
+  // DeepSeek Harness's way switched (her plugin, or DSH's own hook bridge:
+  // agents.js, connection.rs dsh_way): the chosen one put in, the other
+  // taken away, in its row meanwhile (the bridge's packages come from npm:
+  // a minute or two); not connected yet, the choice is kept for Connect.
+  // registry: 'npmmirror', picked after the registry pnpm names could not
+  // be reached.
+  let dshSwitching = ''
+  async function dshSwitch(via, registry) {
+    if (connecting) return
+    const r = Agents.read(snap, 'dsh') || {}
+    if (!registry && !Agents.isIn(snap, 'dsh')) return (r.via || 'plugin') === via ? undefined : patch({ dshVia: via })
+    if (!registry && r.way === via && r.status === 'ok') return
+    connecting = 'dsh'
+    dshSwitching = via
+    delete failed.dsh
+    draw()
+    const got = await window.pet.settings.dshVia(via, registry)
+    connecting = ''
+    dshSwitching = ''
+    snap = got.snapshot
+    if (!got.ok) {
+      failed.dsh = { error: got.error || '', kind: got.kind || 'other', via }
+      if (tab === 'agents') agentOpen = 'dsh'
+    }
+    draw()
+    relayout()
   }
 
   // Connect all: each found and not connected, one after another.
@@ -2116,6 +2147,7 @@
       return n ? T(n === 1 ? 'ag.st.on1' : 'ag.st.onN', { n }) : T('ag.st.on')
     }
     if (state === 'set' || state === 'step') return T(Agents.setLineOf(snap, id))
+    if (state === 'busy' && id === 'dsh' && dshSwitching) return T(`ag.dsh.switching.${dshSwitching}`)
     if (state === 'busy') return T('wc.busy')
     if (state === 'failed') return T('ag.st.failed')
     if (state === 'repair' || state === 'error') return T(Agents.wordOf(id, r.status))
@@ -2157,6 +2189,9 @@
     // DSH: the old bridge's rows; the plugin written but not loaded, and why.
     if (id === 'dsh' && r.status === 'bridge') warn.push(T('s.dshBridgeWhy'))
     if (id === 'dsh' && r.status === 'notLoaded') warn.push(T(r.why === 'off' ? 's.dshNotLoadedOff' : 's.dshNotLoadedWhy'))
+    // The hook bridge's: its packages missing or of another DSH (Repair
+    // puts them in from npm), its rows or hook list another's.
+    if (id === 'dsh' && ['bridgePackages', 'bridgeVersion', 'bridgeHooks', 'bridgeWay'].includes(r.status)) warn.push(T(`s.dshBWhy.${r.status}`, { version: snap.dsh?.dshVersion || '' }))
     if (state === 'error') warn.push(T('ag.note.unreadable'))
     return warn.map(text => `<div class="ag-note warn">${esc(text)}</div>`).join('')
   }
@@ -2175,13 +2210,21 @@
           : state === 'unsupported' && id === 'reasonix'
             ? T('s.reasonixOldNote', { version: r.version || r.line })
             : ''
-    return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(Agents.noteOf(id, state)))}</div>`
+    return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(Agents.noteOf(id, state, snap)))}</div>`
   }
 
   // DSH and her plugin (connection.rs dsh_view): loaded, when and in which
   // profile; an older one loaded; DSH to be restarted; DSH to start.
   function dshNote(state) {
-    const load = Agents.read(snap, 'dsh')?.load || {}
+    const r = Agents.read(snap, 'dsh') || {}
+    const load = r.load || {}
+    // The hook bridge: an event of it since DSH started, the first still to
+    // come, or DSH not running.
+    if (r.way === 'bridge') {
+      if (load.state === 'effective') return T('s.dshBridgeOn')
+      if (load.state === 'firstEvent') return T('s.dshBridgeFirst')
+      return state === 'set' ? T('s.dshBridgeWaiting') : ''
+    }
     if (load.state === 'loaded' || load.state === 'older') {
       const time = load.at ? new Date(load.at).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
       const loaded = T('s.dshLoaded', { time, profile: load.profile || '—' })
@@ -2230,6 +2273,19 @@
     return plugin + direct
   }
 
+  // DeepSeek Harness's way, to pick: her plugin (recommended) or DSH's own
+  // hook bridge, the one in use lit (not connected yet: the one chosen for
+  // Connect), and in grey what it means (dshSwitch switches).
+  function dshWay() {
+    const r = Agents.read(snap, 'dsh') || {}
+    const way = Agents.isIn(snap, 'dsh') ? r.way : r.via || 'plugin'
+    const options = [
+      ['plugin', T('ag.dsh.viaPlugin')],
+      ['bridge', T('ag.dsh.viaBridge')],
+    ]
+    return `${field('ag.dsh.via', seg('dshVia', options, way))}<div class="d ag-way-note">${esc(T(`ag.dsh.viaNote.${way}`))}</div>`
+  }
+
   // How one connects, in one word for all (the plugin or the hooks for Claude Code, as connected).
   function viaOf(id) {
     if (id !== 'claude') return T(`ag.via.${Agents.byId(id).via}`)
@@ -2251,9 +2307,9 @@
           ? `<button class="pbtn sm" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'repair' ? 'settings.repair' : 'settings.reinstall'))}</button><button class="pbtn sm no" data-agent="${id}:remove" ${connecting ? 'disabled' : ''}>${esc(T('settings.remove'))}</button>`
           : `<button class="pbtn sm al" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'failed' ? 'wc.toolRetry' : 'ag.do.install'))}</button>`
     // A version she does not connect to: no file of hers to show.
-    const top = id === 'claude' ? claudeWays() : `${field('ag.via', esc(viaOf(id)))}${state === 'unsupported' ? '' : agentFiles(id)}`
+    const top = id === 'claude' ? claudeWays() : id === 'dsh' ? `${dshWay()}${agentFiles(id)}` : `${field('ag.via', esc(viaOf(id)))}${state === 'unsupported' ? '' : agentFiles(id)}`
     return `<div class="ag-det">${agentSteps(id, state)}${failed[id] ? failedHTML(id) : ''}${top}
-        <div class="ag-what">${esc(T(`ag.what.${id}`))}</div>
+        <div class="ag-what">${esc(T(Agents.whatOf(snap, id)))}</div>
         <div class="ag-caps">${caps}</div>
         ${agentNotes(id, state)}
         ${id === 'claude' ? '' : `<div class="ag-btns">${buttons}</div>`}
@@ -2424,6 +2480,14 @@
     // Her folder's path has a space, which agy can't run: not a file not
     // written, but where she is (the appearance session's words).
     if (kind === 'path') return `<div class="wc-err"><div><b>${esc(T('wc.errConnect', { name }))}</b></div><div>${esc(T('wc.way.path', { folder: folder || '' }))}</div></div>`
+    // DSH's hook bridge, its packages not installed (its profiles as they
+    // were): why, what pnpm said, and npmmirror to pick when the registry
+    // could not be reached.
+    if (tool === 'dsh' && kind.startsWith('bridge')) {
+      const said = String(error || '').replace(/^.*?\]:\s*/, '')
+      const mirror = kind === 'bridgeRegistry' ? `<div class="ag-btns"><button class="pbtn sm" data-dsh-mirror ${connecting ? 'disabled' : ''}>${esc(T('ag.dsh.mirror'))}</button></div>` : ''
+      return `<div class="wc-err"><div><b>${esc(T('s.dshBridgeFailed'))}</b></div><div>${esc(T(`s.dshBK.${kind}`, { version: snap.dsh?.dshVersion || '' }))}</div>${said ? `<div class="mono">${esc(said)}</div>` : ''}${mirror}</div>`
+    }
     const way = `${T(`wc.way.${kind}`)}${T(tool === 'claude' ? 'wc.wayPlugin' : 'wc.wayEnd')}`
     const file = Agents.read(snap, tool).shown
     return `<div class="wc-err"><div><b>${esc(T('wc.errLead', { name, file: file.split(/[\\/]/).pop() }))}</b></div>
@@ -2936,6 +3000,7 @@
         if ((raw === 'light') === !!snap.winLook?.light) return
         return window.pet.settings.winLook({ light: raw === 'light' }).then(got => ((snap = got), draw()))
       }
+      if (key === 'dshVia') return dshSwitch(raw)
       if (key === 'gallery') {
         if (gallery.sort === raw) return
         gallery.sort = raw
@@ -3017,6 +3082,9 @@
       return agentDo(id, action)
     }
     if (at('[data-ag-all]')) return connectAll()
+    // DSH's hook bridge again, its packages from npmmirror (picked by the person).
+    const mirror = at('[data-dsh-mirror]')
+    if (mirror) return mirror.disabled ? undefined : dshSwitch(failed.dsh?.via || 'bridge', 'npmmirror')
     // A row opened in place, or closed; one at a time. Its 怎么信任 (Codex's step) opens it.
     const agentRowAt = at('[data-ag-open]')
     if (agentRowAt) {
