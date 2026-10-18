@@ -730,11 +730,10 @@
     if (!placed) return { text: T('pl.unplaced') }
     if (p.state === 'off') return { text: T('pl.starting') }
     if (p.state === 'needs') return { text: T('pl.needs', { what: T(`pl.${p.id}.${p.missing}`) }), bad: true }
-    if (p.state === 'stopped') {
-      // No PowerShell would start it: not the plugin's fault (#28).
-      const why = p.noShell ? T('pl.noShell', { line: p.said || '' }) : p.said ? T('pl.stopped', { line: p.said }) : T('pl.stoppedQuiet')
-      return { text: p.retryIn ? `${why} · ${T('pl.retry', { n: p.retryIn })}` : why, bad: true }
-    }
+    // Ended with what went wrong (plugins.rs view: none of hers ends by
+    // itself now that they run inside her; no PowerShell to start, no turn
+    // to try again in so many seconds).
+    if (p.state === 'stopped') return { text: T('pl.stopped', { line: p.said || '' }), bad: true }
     if (p.state === 'running' && !mine.length) return p.said ? { text: T('pl.trouble', { line: p.said }), bad: true } : { text: T('pl.starting') }
     return { text: `${T('pl.running')} · ${T(`w.ex.${p.id}.note`)}` }
   }
@@ -755,7 +754,7 @@
       const label = esc(T(`pl.${key}`))
       if (f.kind === 'flag') return `<div class="fr"><span class="fl">${label}</span><span class="grow"></span>${sw('pf:' + key, f.value === true)}</div>`
       // One of a few (a stock's up and down colours): the one in effect,
-      // her language's until one is picked (scripts.rs choice).
+      // her language's until one is picked (plugins.rs choice).
       if (f.kind === 'choice') return `<div class="fr"><span class="fl">${label}</span><span class="grow"></span>${seg('pc:' + key, (f.options || []).map(o => [o, T(`pl.${key}.${o}`)]), f.value)}</div>`
       const value = key in drafts ? drafts[key] : f.value || ''
       return `<label class="fr"><span class="fl">${label}${f.required ? ' *' : ''}</span><input class="in" data-field="${esc(key)}" value="${esc(value)}" placeholder="${esc(T(`pl.${key}.hint`))}" spellcheck="false"${f.kind === 'number' ? ' inputmode="decimal"' : ''}></label>`
@@ -2831,8 +2830,8 @@
       if (option.classList.contains('off')) return
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
-      // A plugin's choice (pc:<plugin>.<param>), kept: its script started
-      // again with it (scripts.rs sync).
+      // A plugin's choice (pc:<plugin>.<param>), kept: the plugin started
+      // again with it (plugins.rs sync).
       if (key.startsWith('pc:')) {
         const [id, name] = key.slice(3).split('.')
         return setPlugin(id, { [name]: raw })
