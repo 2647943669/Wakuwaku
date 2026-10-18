@@ -1356,6 +1356,25 @@
       'mail.hand.makeFirst': '设 {agent} 为默认',
       's.fromCodex': '来自 Codex',
       's.codexOld': '你的 Codex（{version}）还不能在后台运行 hook，所以只装了必要的几个：气泡里不显示每一步用的工具。升级到 0.148 或更新的版本后点「修复」。',
+
+      // Reasonix (zhoupengjie/Wakuwaku#60): the island's words, the welcome, the Agent page
+      'detail.approveIn': '在 {app} 里批准：{what}',
+      'detail.needsYou': '需要你看一下',
+      'wc.reasonixLeft': '<b>Reasonix</b>：在 Studio 里新开一个会话，或重开命令行，她就会动起来。批准还在 Reasonix 里点。',
+      'wc.safe.reasonix': '只在 Reasonix 的 <span class="mono">settings.json</span> 里加我们的几条，别的设置不动',
+      'wc.way.pathChars': 'Wakuwaku 所在文件夹的路径里有 \' $ ` % ! 或双引号，Reasonix 跑不了这种路径下的 hook：把 Wakuwaku 移到路径里没有这些符号的文件夹再试',
+      'wc.way.old': '这是 Node 版的 Reasonix 0.x，它的 hook 不带会话编号，所以什么都没写：升级到 Reasonix 2.x 再连接',
+      's.reasonixOld': 'Reasonix {version}：还不支持',
+      's.reasonixOldNote': '这台电脑上的是 Reasonix {version}（Node 版的 0.x）。她支持 Go 写的 1.x 和 2.x（Studio 桌面版和命令行）：0.x 的 hook 只有 4 种事件，也不带会话编号，分不清几个会话，所以她不改它的设置。升级到 2.x 以后，这一行会出现「连接」。',
+      's.reasonixUnreadable': '读不了 settings.json',
+      'ag.how.reasonix': 'Reasonix：Studio 桌面版或命令行（1.x、2.x）',
+      'ag.st.set.reasonix': '装好了，等一个新会话',
+      'ag.what.reasonix': '跟着会话、每一步的工具（子代理的也算进它的会话）、做完和出错，带上它最后说的话；要批准时岛上显示「在 Reasonix 里批准」，批准和提问都在 Reasonix 自己那里答。',
+      'ag.note.reasonix': '在 Studio 里新开的会话、重开的命令行（或 /reload）才会用上，开着的会话不算。Reasonix 每个事件都等 hook 跑完，每次大约 0.1 秒；她没开着时 hook 马上退出，Reasonix 照常。',
+      'ag.cap.status.reasonix': '跟着会话、每一步的工具、做完、出错和它最后说的话',
+      'ag.cap.approve.reasonix': '批准还在 Reasonix 里，岛上只显示它在等你批准什么',
+      'ag.cap.choose.reasonix': '它问你问题时岛上显示「有问题问你」，要在 Reasonix 里答',
+      'ag.cap.stats.reasonix': '算进「今天」的轮数和时长（批准不经过她）；token 还不算',
     },
 
     en: {
@@ -2703,6 +2722,25 @@
       's.fromCodex': 'From Codex',
       's.codexOld':
         "Your Codex ({version}) can't run hooks in the background yet, so only the essential ones are in: the bubble won't show each step's tool. After updating to 0.148 or later, click Repair.",
+
+      // Reasonix (zhoupengjie/Wakuwaku#60): the island's words, the welcome, the Agent page
+      'detail.approveIn': 'Approve it in {app}: {what}',
+      'detail.needsYou': 'needs your attention',
+      'wc.reasonixLeft': "<b>Reasonix</b>: open a new session in Studio, or restart the command line, and she'll come alive. Approvals stay in Reasonix.",
+      'wc.safe.reasonix': 'Adds only our own entries to Reasonix\'s <span class="mono">settings.json</span> and leaves the rest alone',
+      'wc.way.pathChars': "Wakuwaku's folder has ' $ ` % ! or a double quote in its path, and Reasonix can't run a hook from such a path: move Wakuwaku to a folder without them and try again",
+      'wc.way.old': "This is the Node Reasonix 0.x, whose hooks carry no session id, so nothing was written: update to Reasonix 2.x and connect then",
+      's.reasonixOld': 'Reasonix {version}: not supported yet',
+      's.reasonixOldNote': "This computer has Reasonix {version} (the Node 0.x). She supports the Go 1.x and 2.x (the Studio desktop app and the command line): 0.x's hooks have only 4 events and no session id, so its sessions can't be told apart, and she leaves its settings alone. Once it's 2.x, this row offers Connect.",
+      's.reasonixUnreadable': "Can't read settings.json",
+      'ag.how.reasonix': 'Reasonix: the Studio desktop app or the command line (1.x, 2.x)',
+      'ag.st.set.reasonix': 'Set up; waiting for a new session',
+      'ag.what.reasonix': "Follows its sessions, each step's tool (a subagent's counted in its session), its finish and its errors, with its last words; when it needs an approval the island says so (approve it in Reasonix): approvals and questions are answered in Reasonix itself.",
+      'ag.note.reasonix': "A new session in Studio, or the command line started again (or /reload), picks them up; sessions already open don't. Reasonix waits for each hook, about 0.1 s each time; with her not running, the hook leaves at once and Reasonix carries on.",
+      'ag.cap.status.reasonix': "Follows its sessions, each step's tool, its finish, its errors and its last words",
+      'ag.cap.approve.reasonix': 'Approvals stay in Reasonix; the island only shows what it waits for you to approve',
+      'ag.cap.choose.reasonix': 'When it asks you, the island says it has a question for you; answer in Reasonix',
+      'ag.cap.stats.reasonix': "Counted in Today's turns and time (its approvals don't pass through her); not its tokens yet",
     },
   }
 

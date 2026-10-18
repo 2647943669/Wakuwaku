@@ -2081,6 +2081,8 @@
     if (state === 'busy') return T('wc.busy')
     if (state === 'failed') return T('ag.st.failed')
     if (state === 'repair' || state === 'error') return T(Agents.wordOf(id, r.status))
+    // A version she cannot connect to (Reasonix 0.x): which, and that it is not.
+    if (state === 'unsupported') return T(Agents.wordOf(id, r.status), { version: r.version || r.line })
     return T('ag.st.none')
   }
 
@@ -2118,9 +2120,18 @@
   }
 
   // What to know about one: how it is, and what comes next while it waits
-  // for its first turn (a new omp session, DSH restarted).
+  // for its first turn (a new omp session, DSH restarted), or why a version
+  // of it cannot be connected (Reasonix 0.x).
   function agentNotes(id, state) {
-    const next = state === 'set' && id === 'omp' ? T('s.ompNew') : state === 'set' && id === 'dsh' ? T('s.dshRestart') : ''
+    const r = Agents.read(snap, id)
+    const next =
+      state === 'set' && id === 'omp'
+        ? T('s.ompNew')
+        : state === 'set' && id === 'dsh'
+          ? T('s.dshRestart')
+          : state === 'unsupported' && id === 'reasonix'
+            ? T('s.reasonixOldNote', { version: r.version || r.line })
+            : ''
     return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(Agents.noteOf(id, state)))}</div>`
   }
 
@@ -2178,7 +2189,7 @@
     const busy = connecting === id
     // Connect, repair or install again; remove, with the file it is taken out of.
     const buttons =
-      state === 'error'
+      state === 'error' || state === 'unsupported'
         ? ''
         : ours
           ? `<button class="pbtn sm" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'repair' ? 'settings.repair' : 'settings.reinstall'))}</button><button class="pbtn sm no" data-agent="${id}:remove" ${connecting ? 'disabled' : ''}>${esc(T('settings.remove'))}</button>`
@@ -2305,10 +2316,11 @@
   // The card itself, not General's line: shown, and none connected for real yet.
   const cardShows = () => showWelcome() && !toolsHere().some(tool => toolState(tool) === 'seen')
 
-  // The ones on this computer, in the table's order (agents.js here). None
-  // found: the first four (it cannot be told).
+  // The ones on this computer, in the table's order (agents.js here), but
+  // one of a version she cannot connect to (Reasonix 0.x: its row on the
+  // Agent page says why). None found: the first four (it cannot be told).
   function toolsHere() {
-    const here = Agents.here(snap)
+    const here = Agents.here(snap).filter(id => Agents.stateOf(snap, id) !== 'unsupported')
     return here.length ? here : ['claude', 'codex', 'agy', 'opencode']
   }
 
@@ -2368,7 +2380,7 @@
     const mono = text => `<span class="mono">${esc(text)}</span>`
     const { shown: file, backup } = Agents.read(snap, tool)
     const undo = `<span class="link" data-agent="${tool}:remove">${esc(T('wc.undo'))}</span>`
-    if (['claude', 'agy', 'zcode', 'dsh'].includes(tool) && state === 'set') {
+    if (['claude', 'agy', 'zcode', 'dsh', 'reasonix'].includes(tool) && state === 'set') {
       const where = backup ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
       return `<div class="wc-tnote"><div>${T(`wc.${tool}Left`)}</div><div class="wc-where">${where}${undo}</div></div>`
     }

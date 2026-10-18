@@ -197,6 +197,28 @@
         mail: ['no', 'ag.cap.mail.no'],
       },
     },
+    {
+      id: 'reasonix',
+      name: 'Reasonix',
+      via: 'hooks',
+      call: 'reasonixHooks',
+      site: 'agent:reasonix',
+      // Its line too: 2.x, 1.x (the same hooks), or the Node 0.x, which she
+      // does not write to (unsupported).
+      read: snap => ({ ...block('reasonix')(snap), line: snap.reasonix?.line || '' }),
+      in: ['ok', 'stale', 'partial'],
+      good: ['ok'],
+      words: { unsupported: 's.reasonixOld', unreadable: 's.reasonixUnreadable' },
+      // Phase 1 of zhoupengjie/Wakuwaku#60: its sessions followed, its
+      // approvals still answered in Reasonix.
+      caps: {
+        status: ['yes', 'ag.cap.status.reasonix'],
+        approve: ['no', 'ag.cap.approve.reasonix'],
+        choose: ['no', 'ag.cap.choose.reasonix'],
+        stats: ['yes', 'ag.cap.stats.reasonix'],
+        mail: ['no', 'ag.cap.mail.no'],
+      },
+    },
   ]
 
   const byId = id => TABLE.find(a => a.id === id) || null
@@ -232,6 +254,8 @@
   //            Code's ways at once)
   //   error    its file can't be read
   //   failed   the last write failed (why: the page keeps it)
+  //   unsupported  here, but a version she cannot connect to (Reasonix 0.x,
+  //            whose hooks are not 2.x's): nothing to press, its row says why
   //   none     not connected
   // The page passes what it knows: { busy: id being written, failed: { id: why } }.
   function stateOf(snap, id, { busy = '', failed = {} } = {}) {
@@ -241,6 +265,7 @@
     if (!a || !r) return 'none'
     if (a.in.includes(r.status)) return !a.good.includes(r.status) ? 'repair' : r.seen ? 'on' : a.step ? 'step' : 'set'
     if (r.status === 'off') return 'repair'
+    if (r.status === 'unsupported') return 'unsupported'
     if (failed[id]) return 'failed'
     if (r.status === 'unreadable') return 'error'
     return 'none'
@@ -252,9 +277,9 @@
 
   // The mood whose colour a state's dot takes (the island's, settings.js
   // COLOR), four of them: green connected, blue written and waiting for
-  // its first turn, amber the person must act, grey not connected. Colour
-  // says how it stands, never which one it is.
-  const MOOD = { on: 'done', set: 'working', busy: 'working', step: 'waiting', repair: 'waiting', error: 'waiting', failed: 'waiting', none: 'idle' }
+  // its first turn, amber the person must act, grey not connected (or not
+  // to be, this version). Colour says how it stands, never which one it is.
+  const MOOD = { on: 'done', set: 'working', busy: 'working', step: 'waiting', repair: 'waiting', error: 'waiting', failed: 'waiting', unsupported: 'idle', none: 'idle' }
 
   // Its row's button, only where the person has something to do:
   //   install   connect (or try again), or repair
@@ -292,14 +317,15 @@
 
   // General's status line and the Agent tab's dot: the ones on this
   // computer by how they stand. connected: written (Codex's still to be
-  // trusted too); wants: those the person must act on (amber).
+  // trusted too); wants: those the person must act on (amber); none: those
+  // still to connect (one of a version she cannot connect to is not).
   function summary(snap, known) {
     const out = { here: here(snap), on: [], set: [], wants: [], none: [] }
     for (const id of out.here) {
       const state = stateOf(snap, id, known)
       if (state === 'on' || state === 'set') out[state].push(id)
       else if (WANTS.includes(state)) out.wants.push(id)
-      else out.none.push(id)
+      else if (state !== 'unsupported') out.none.push(id)
     }
     out.connected = out.here.filter(id => out.on.includes(id) || out.set.includes(id) || stateOf(snap, id, known) === 'step')
     return out

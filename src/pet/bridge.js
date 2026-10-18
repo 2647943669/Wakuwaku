@@ -250,6 +250,7 @@
       ompHooks: action => invoke('settings_omp_hooks', { action }),
       zcodeHooks: action => invoke('settings_zcode_hooks', { action }),
       dshHooks: action => invoke('settings_dsh_hooks', { action }),
+      reasonixHooks: action => invoke('settings_reasonix_hooks', { action }),
       // The CPU temperature/power helper (#18 part B): 'install',
       // 'installPawnIO' (download PawnIO first), 'remove'. Each shows one UAC.
       cpuSensors: action => invoke('settings_cpu_sensors', { action }),

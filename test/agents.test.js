@@ -27,19 +27,20 @@ function snapshot(change = {}) {
     omp: block('missing', { more: 0 }),
     zcode: block('missing'),
     dsh: block('missing', { listShown: 'D:\\wakuwaku-data\\dsh-hooks.json' }),
+    reasonix: block('missing', { line: '2.x' }),
     mailAgents: { claude: true, codex: true, agy: false },
-    agentVersions: { claude: '2.1.296', zcode: '3.15.3', dsh: '0.2.0-rc.2', opencode: null, omp: null },
+    agentVersions: { claude: '2.1.296', zcode: '3.15.3', dsh: '0.2.0-rc.2', reasonix: '2.3.0', opencode: null, omp: null },
     sessions: [],
     ...change,
   }
 }
-const absent = { codex: { hooks: 'absent' }, agy: { hooks: 'absent' }, opencode: { plugin: 'absent' }, omp: { hooks: 'absent' }, zcode: { hooks: 'absent' }, dsh: { hooks: 'absent' } }
+const absent = { codex: { hooks: 'absent' }, agy: { hooks: 'absent' }, opencode: { plugin: 'absent' }, omp: { hooks: 'absent' }, zcode: { hooks: 'absent' }, dsh: { hooks: 'absent' }, reasonix: { hooks: 'absent' } }
 
 test('each agent in the table is whole, and its words are there in both languages', () => {
   const bridge = read('src/pet/bridge.js')
   const sites = read('src-tauri/src/settings.rs')
   const keys = new Set()
-  assert.equal(Agents.TABLE.length, 7)
+  assert.equal(Agents.TABLE.length, 8)
   for (const a of Agents.TABLE) {
     assert.match(a.id, /^[a-z]+$/)
     assert.ok(a.name, a.id)
@@ -103,11 +104,11 @@ test('what she can do is what the code does', () => {
 
 test('found here or not', () => {
   const snap = snapshot()
-  assert.deepEqual(Agents.here(snap), ['claude', 'codex', 'agy', 'opencode', 'omp', 'zcode', 'dsh'])
+  assert.deepEqual(Agents.here(snap), ['claude', 'codex', 'agy', 'opencode', 'omp', 'zcode', 'dsh', 'reasonix'])
   assert.deepEqual(Agents.elsewhere(snap), [])
   const none = snapshot({ claudeHere: false, ...absent })
   assert.deepEqual(Agents.here(none), [])
-  assert.deepEqual(Agents.elsewhere(none), ['claude', 'codex', 'agy', 'opencode', 'omp', 'zcode', 'dsh'])
+  assert.deepEqual(Agents.elsewhere(none), ['claude', 'codex', 'agy', 'opencode', 'omp', 'zcode', 'dsh', 'reasonix'])
   // Claude Code's folder gone, its plugin still on: here.
   assert.deepEqual(Agents.here(snapshot({ claudeHere: false, connection: 'plugin', ...absent })), ['claude'])
   // Only OpenCode and ZCode.
@@ -123,7 +124,7 @@ test('how each stands, and its one button', () => {
   assert.deepEqual(action({}, 'codex'), { act: 'install', label: 'ag.do.install' })
   // Written, waiting for its first turn: nothing to do, no button; an event
   // seen: connected, no button either (Reinstall and Remove are in its details).
-  for (const id of ['agy', 'omp', 'zcode', 'dsh']) {
+  for (const id of ['agy', 'omp', 'zcode', 'dsh', 'reasonix']) {
     assert.equal(state({ [id]: { hooks: 'ok', seen: false } }, id), 'set', id)
     assert.equal(action({ [id]: { hooks: 'ok', seen: false } }, id), null, id)
     assert.equal(state({ [id]: { hooks: 'ok', seen: true } }, id), 'on', id)
@@ -146,7 +147,7 @@ test('how each stands, and its one button', () => {
     assert.ok(STRINGS[lang]['ag.note.codexWake'].length < STRINGS[lang]['ag.note.codex'].length / 2, lang)
   }
   // Ours there but to repair (moved, older, part missing, turned off): Repair.
-  for (const [id, status] of [['codex', 'stale'], ['codex', 'upgradable'], ['codex', 'partial'], ['agy', 'stale'], ['agy', 'off'], ['omp', 'partial'], ['zcode', 'off'], ['zcode', 'partial'], ['dsh', 'stale']]) {
+  for (const [id, status] of [['codex', 'stale'], ['codex', 'upgradable'], ['codex', 'partial'], ['agy', 'stale'], ['agy', 'off'], ['omp', 'partial'], ['zcode', 'off'], ['zcode', 'partial'], ['dsh', 'stale'], ['reasonix', 'stale'], ['reasonix', 'partial']]) {
     assert.equal(state({ [id]: { hooks: status } }, id), 'repair', `${id} ${status}`)
     assert.deepEqual(action({ [id]: { hooks: status } }, id), { act: 'install', label: 'settings.repair' }, `${id} ${status}`)
   }
@@ -200,17 +201,17 @@ test('the files, as each reads them', () => {
 
 test('Connect all, and General’s line', () => {
   const snap = snapshot({ connection: 'plugin', codex: { hooks: 'ok', seen: false }, agy: { hooks: 'stale' }, ...{ omp: { hooks: 'absent' } } })
-  // Here and not connected: OpenCode, ZCode, DeepSeek Harness (agy is to repair, omp is not here).
-  assert.deepEqual(Agents.toConnect(snap), ['opencode', 'zcode', 'dsh'])
+  // Here and not connected: OpenCode, ZCode, DeepSeek Harness, Reasonix (agy is to repair, omp is not here).
+  assert.deepEqual(Agents.toConnect(snap), ['opencode', 'zcode', 'dsh', 'reasonix'])
   // One being written is not offered again; one that failed is.
-  assert.deepEqual(Agents.toConnect(snap, { busy: 'zcode', failed: { dsh: { kind: 'locked' } } }), ['opencode', 'dsh'])
+  assert.deepEqual(Agents.toConnect(snap, { busy: 'zcode', failed: { dsh: { kind: 'locked' } } }), ['opencode', 'dsh', 'reasonix'])
   // Codex written, to be trusted: connected, and wanting the person (as agy's repair).
   const s = Agents.summary(snap)
   assert.deepEqual(s.on, ['claude'])
   assert.deepEqual(s.set, [])
   assert.deepEqual(s.connected, ['claude', 'codex'])
   assert.deepEqual(s.wants, ['codex', 'agy'])
-  assert.deepEqual(s.none, ['opencode', 'zcode', 'dsh'])
+  assert.deepEqual(s.none, ['opencode', 'zcode', 'dsh', 'reasonix'])
   // A file unreadable and a write that failed want the person too.
   const more = Agents.summary(snapshot({ zcode: { hooks: 'unreadable' }, omp: { hooks: 'ok' } }), { failed: { dsh: { kind: 'locked' } } })
   assert.deepEqual(more.wants, ['zcode', 'dsh'])
@@ -219,9 +220,28 @@ test('Connect all, and General’s line', () => {
   assert.deepEqual(Agents.summary(snapshot({ connection: 'plugin', codex: { hooks: 'ok', seen: true }, zcode: { hooks: 'ok' } })).wants, [])
 })
 
+test('a Reasonix 0.x: on the page, never offered nor written', () => {
+  const old = snapshot({ reasonix: { hooks: 'unsupported', line: '0.x', fileShown: '~\\AppData\\Roaming\\reasonix\\settings.json' } })
+  // Here, its row there, grey, no button; not one to connect, nor a repair.
+  assert.ok(Agents.here(old).includes('reasonix'))
+  assert.equal(Agents.stateOf(old, 'reasonix'), 'unsupported')
+  assert.equal(Agents.actionOf(old, 'reasonix'), null)
+  assert.ok(!Agents.toConnect(old).includes('reasonix'))
+  const s = Agents.summary(old)
+  for (const part of ['on', 'set', 'wants', 'none', 'connected']) assert.ok(!s[part].includes('reasonix'), part)
+  assert.equal(Agents.read(old, 'reasonix').line, '0.x')
+  assert.equal(Agents.wordOf('reasonix', 'unsupported'), 's.reasonixOld')
+  // A 0.x with ours written all the same (by hand, or before): ours is there, to repair or remove.
+  assert.equal(Agents.stateOf(snapshot({ reasonix: { hooks: 'stale', line: '0.x' } }), 'reasonix'), 'repair')
+  // 2.x, connected: approvals and questions stay in Reasonix (phase 1).
+  const caps = Object.fromEntries(Agents.capsOf(snapshot(), 'reasonix').map(([cap, level]) => [cap, level]))
+  assert.deepEqual(caps, { status: 'yes', approve: 'no', choose: 'no', stats: 'yes', mail: 'no' })
+})
+
 test('the dots: four colours, by what the person has to do', () => {
-  // Green connected, blue written and waiting, amber the person must act, grey not connected.
-  assert.deepEqual(Agents.MOOD, { on: 'done', set: 'working', busy: 'working', step: 'waiting', repair: 'waiting', error: 'waiting', failed: 'waiting', none: 'idle' })
+  // Green connected, blue written and waiting, amber the person must act,
+  // grey not connected (or a version she cannot connect to).
+  assert.deepEqual(Agents.MOOD, { on: 'done', set: 'working', busy: 'working', step: 'waiting', repair: 'waiting', error: 'waiting', failed: 'waiting', unsupported: 'idle', none: 'idle' })
   assert.deepEqual([...new Set(Object.values(Agents.MOOD))].sort(), ['done', 'idle', 'waiting', 'working'])
   // Every state that wants the person is amber, and only those.
   for (const [state, mood] of Object.entries(Agents.MOOD)) assert.equal(mood === 'waiting', Agents.WANTS.includes(state), state)
