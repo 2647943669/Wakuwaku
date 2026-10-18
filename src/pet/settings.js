@@ -2081,8 +2081,9 @@
     if (state === 'busy') return T('wc.busy')
     if (state === 'failed') return T('ag.st.failed')
     if (state === 'repair' || state === 'error') return T(Agents.wordOf(id, r.status))
-    // A version she cannot connect to (Reasonix 0.x): which, and that it is not.
-    if (state === 'unsupported') return T(Agents.wordOf(id, r.status), { version: r.version || r.line })
+    // A version she cannot connect to (Reasonix 0.x): that it is not (which,
+    // beside its name).
+    if (state === 'unsupported') return T(Agents.wordOf(id, r.status))
     return T('ag.st.none')
   }
 
@@ -2194,7 +2195,8 @@
         : ours
           ? `<button class="pbtn sm" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'repair' ? 'settings.repair' : 'settings.reinstall'))}</button><button class="pbtn sm no" data-agent="${id}:remove" ${connecting ? 'disabled' : ''}>${esc(T('settings.remove'))}</button>`
           : `<button class="pbtn sm al" data-agent="${id}:install" ${connecting ? 'disabled' : ''}>${busy ? `<span class="spin"></span>${esc(T('wc.busy'))}` : esc(T(state === 'failed' ? 'wc.toolRetry' : 'ag.do.install'))}</button>`
-    const top = id === 'claude' ? claudeWays() : `${field('ag.via', esc(viaOf(id)))}${agentFiles(id)}`
+    // A version she does not connect to: no file of hers to show.
+    const top = id === 'claude' ? claudeWays() : `${field('ag.via', esc(viaOf(id)))}${state === 'unsupported' ? '' : agentFiles(id)}`
     return `<div class="ag-det">${agentSteps(id, state)}${failed[id] ? failedHTML(id) : ''}${top}
         <div class="ag-what">${esc(T(`ag.what.${id}`))}</div>
         <div class="ag-caps">${caps}</div>
