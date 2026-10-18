@@ -47,6 +47,19 @@ function fakeDsh(services = {}) {
   }
 }
 
+// A marker the plugin writes in the background, once whole (it may be there
+// and still empty for a moment): its word, or what failed after 5 s.
+async function written(marker) {
+  for (let i = 0; ; i++) {
+    try {
+      return JSON.parse(fs.readFileSync(marker, 'utf8'))
+    } catch (e) {
+      if (i >= 500) throw e
+      await new Promise(done => setTimeout(done, 10))
+    }
+  }
+}
+
 const WORKSPACE = 'C:\\Users\\waku\\Documents\\deepseek-harness\\default-workspace'
 const session = (id, more = {}) => ({ id, header: { type: 'session', version: 4, id, cwd: WORKSPACE, createdAt: 1, isSeeded: false, delegationDepth: 0, ...more } })
 const agentOf = s => ({ session: s })
@@ -154,9 +167,7 @@ test('its word as DSH loads it, and as it is let go', async () => {
   const letGo = plugin.hello()
   await plugin.idle()
   const marker = path.join(dir, 'loaded-desktop.json')
-  // Written in the background: wait for it a moment.
-  for (let i = 0; i < 50 && !fs.existsSync(marker); i++) await new Promise(done => setTimeout(done, 10))
-  const word = JSON.parse(fs.readFileSync(marker, 'utf8'))
+  const word = await written(marker)
   assert.deepEqual([word.pid, word.version, word.sha, word.profile, word.port], [process.pid, VERSION, '0123456789abcdef', 'desktop', her.port])
   assert.ok(Math.abs(Date.now() - word.at) < 5000)
   assert.deepEqual(her.got.map(g => g.event), [{ session_id: '', hook_event_name: 'WakuwakuLoaded', version: VERSION, pid: process.pid, profile: 'desktop' }])
@@ -191,8 +202,7 @@ test('its own digest, the same with its lines ending LF or CRLF', async () => {
     const plugin = make(fakeDsh({ profileContext: { name: 'desktop' } }).ctx, { port: 9 })
     const letGo = plugin.hello()
     const marker = path.join(dir, name, 'loaded-desktop.json')
-    for (let i = 0; i < 50 && !fs.existsSync(marker); i++) await new Promise(done => setTimeout(done, 10))
-    shas.push(JSON.parse(fs.readFileSync(marker, 'utf8')).sha)
+    shas.push((await written(marker)).sha)
     letGo()
   }
   assert.deepEqual(shas, [want, want])
