@@ -760,6 +760,29 @@
         await p.wait(1000)
       },
     },
+    // The Agent page, DeepSeek Harness's row open: its two ways (her plugin,
+    // loaded; DSH's own hook bridge, its packages not installed yet), the
+    // way picker on top (zhoupengjie/Wakuwaku#61).
+    ...[
+      ['plugin', 'Wakuwaku 插件，已加载', F => ({ hooks: 'ok', way: 'plugin', via: null, why: '', seen: true, load: { state: 'loaded', at: F.T0 - 600e3, version: 1, profile: 'desktop', pid: 4321 }, listShown: '~\\.dsh\\wakuwaku\\wakuwaku.js' })],
+      ['bridge', '官方钩子桥，包没装上', F => ({ hooks: 'stale', way: 'bridge', via: 'bridge', why: 'packages', seen: false, listShown: '~\\.dsh\\wakuwaku\\wakuwaku.js', hooksShown: '~\\AppData\\Roaming\\wakuwaku\\dsh-hooks.json' })],
+    ].map(([way, name, dsh]) => ({
+      id: `settings-agents-dsh-${way}`,
+      section: 'settings',
+      title: `设置 · Agent · DeepSeek Harness：${name}`,
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(660), 560, 660],
+      world: F => ({ ...busy(F), dsh: { file: 'C:\\Users\\you\\.dsh\\cordis.patch.yml', fileShown: '~\\.dsh\\cordis.patch.yml', backup: false, dshVersion: '0.2.1-rc.2', ...dsh(F) } }),
+      steps: async p => {
+        p.emit('island:settings', { tab: 'agents' })
+        await p.wait(600)
+        p.click('#island-settings [data-ag-open="dsh"] .ag-name')
+        await p.wait(400)
+        p.$('#island-settings .ag-row[data-ag-open="dsh"]')?.scrollIntoView({ block: 'start' })
+        await p.wait(200)
+      },
+    })),
 
     // --- Controls, from the settings ---------------------------------------------------------
     {
