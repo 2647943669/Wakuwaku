@@ -183,13 +183,14 @@ export function make(ctx, config = {}, options = {}) {
   }
 
   // What every event carries: the session, its folder (the one it began in:
-  // DSH keeps its log under it), whose it is, its name if DSH gave one.
+  // DSH keeps its log under it), whose it is, its name if DSH gave one (a
+  // subagent's, made of its task, is no name for her: none).
   function base(session, event) {
     const header = session?.header || {}
     const id = header.id || session?.id || ''
     const out = { session_id: id, transcript_path: '', cwd: header.cwd || process.cwd(), hook_event_name: event, origin: header.origin || '', parent_session: header.parentSession || '' }
     if (header.origin === 'subagent') out.top_session = topOf(header)
-    if (titles.has(id)) out.session_title = titles.get(id)
+    else if (titles.has(id)) out.session_title = titles.get(id)
     return out
   }
 

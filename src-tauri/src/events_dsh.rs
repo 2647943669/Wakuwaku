@@ -411,6 +411,10 @@ fn of_subagent(e: &Value, top: &str, home: &Path) -> Option<Value> {
     }
     let mut theirs = e.clone();
     theirs["session_id"] = json!(top);
+    // Its own name (made of its task) is not the session's it works for.
+    if let Some(fields) = theirs.as_object_mut() {
+        fields.remove("session_title");
+    }
     let mut message = message_of(&theirs, home)?;
     message["within"] = json!(true);
     Some(message)
@@ -831,10 +835,13 @@ mod tests {
 
         // Whose, as it says: a subagent's, the top of its lineage given; the
         // person's (origin ""), with no log read at all.
-        let sub = plugin("PostToolUse", "9d1f-child", json!({ "origin": "subagent", "parent_session": "a1-mid", "top_session": PARENT, "tool_name": "write", "tool_input": { "file_path": "C:\\w\\n.md" }, "tool_use_id": "c3", "tool_response": "ok" }));
+        let sub = plugin("PostToolUse", "9d1f-child", json!({ "origin": "subagent", "parent_session": "a1-mid", "top_session": PARENT, "tool_name": "write", "tool_input": { "file_path": "C:\\w\\n.md" }, "tool_use_id": "c3", "tool_response": "ok", "session_title": "List all files in the" }));
         assert_eq!(whose_of(&sub, &home), Whose::Sub(PARENT.into()));
         let m = to_message(&sub, &home).unwrap();
         assert_eq!((m["session"].as_str(), m["within"].as_bool(), m["file"].as_str()), (Some(PARENT), Some(true), Some("C:\\w\\n.md")));
+        // Its own name (of its task) does not rename the session it works for
+        // (seen in the test VM, 0.2.0-rc.2: the line read "List all files in the").
+        assert_eq!(m.get("title"), None);
         let mut start = sub.clone();
         start["hook_event_name"] = json!("UserPromptSubmit");
         assert_eq!(to_message(&start, &home).unwrap()["event"], "session-end");

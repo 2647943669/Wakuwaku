@@ -118,7 +118,9 @@ test('a turn that ends unfinished, and a subagent', async () => {
   // A turn that failed: StopFailure, why.
   log(parent, ev('turn/start', { turn: 2 }))
   log(parent, ev('turn/end', { turn: 2, reason: { kind: 'error', error: { message: '401 Unauthorized', code: 'AUTH' } } }))
-  // A subagent's tool: whose, up its lineage as far as live sessions go.
+  // A subagent's tool: whose, up its lineage as far as live sessions go; its
+  // own name (made of its task) not sent.
+  log(child, ev('session/title', { title: 'List all files in the' }))
   const exec = { name: 'grep', arguments: { pattern: 'TODO' }, callId: 'c9', agent: agentOf(child) }
   dsh.on['tools/pre-execute'].fn(exec, () => NEXT)
   // Its parent not live: the parent itself.
@@ -137,6 +139,7 @@ test('a turn that ends unfinished, and a subagent', async () => {
     ],
   )
   assert.deepEqual([told[2].origin, told[2].parent_session, told[2].top_session], ['subagent', 'a1-mid', 'session-1'])
+  assert.equal('session_title' in told[2], false)
   assert.equal(told[3].top_session, 'a1-mid')
   assert.equal(told[0].origin, '')
   assert.equal('top_session' in told[0], false)
