@@ -178,12 +178,13 @@ ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwak
 
 ### 9. 连上 Reasonix（可选）
 
-支持 [Reasonix](https://github.com/esengine/DeepSeek-Reasonix)：Reasonix Studio 桌面版和命令行（Go 写的 1.x、2.x）。在「Agent」页 Reasonix 那一行点「连接」，会在 Reasonix 的全局 `settings.json`（Windows 上是 `%APPDATA%\reasonix\settings.json`，设了 `REASONIX_HOME` 就在那里）的 `hooks` 里给 10 个事件各加一条我们的 hook（先备份；移除时只删我们的条目）。原来只有老位置的 `~/.reasonix/settings.json` 时，你在那里的 hook 会一起抄过来，因为新文件一出现 Reasonix 就不再读老的；移除后新文件又拿掉，回到原样。之后**在 Studio 里新开的会话、重开的命令行**（或 `/reload`）就会连上，已经开着的会话不算。
+支持 [Reasonix](https://github.com/esengine/DeepSeek-Reasonix)：Reasonix Studio 桌面版和命令行（Go 写的 1.x、2.x；Studio 2.44 实测）。在「Agent」页 Reasonix 那一行点「连接」，会在 Reasonix 的全局 `settings.json`（Windows 上是 `%APPDATA%\reasonix\settings.json`，设了 `REASONIX_HOME` 就在那里）的 `hooks` 里给 10 个事件各加一条我们的 hook（先备份；移除时只删我们的条目）。原来只有老位置的 `~/.reasonix/settings.json` 时，你在那里的 hook 会一起抄过来，因为新文件一出现 Reasonix 就不再读老的；移除后新文件又拿掉，回到原样。之后**在 Studio 里新开的会话、重开的命令行**（或 `/reload`）就会连上，已经开着的会话不算。
 
 能做的：会话开始、干活、每一步的工具、做完（带上它最后说的话）、改好了、出错（Reasonix 自己的报错原文），「今天」也算上它的轮次和时长；它的子代理、计划和守护（guardian）调用的工具算进启动它们的那个会话，不单独占一行；点会话跳回 Studio 的窗口，或命令行所在的终端、VS Code。做不到的：
 
 - **批准还在 Reasonix 里答**：写在 settings.json 里的 hook 只能看、不能替它答（只有插件包里的 Claude Code 格式 hook 能答）。它要你批准时，岛上显示「在 Reasonix 里批准：……」；它问你问题时显示「有问题问你」。
 - 「今天」的 token 还不算。
+- 在 Studio 里按「停下」时，它会在对话里提示一条 Wakuwaku 的 hook「could not run · context canceled」：Reasonix 在取消之后才去跑那一步的 hook，跑不起来，不影响使用。
 
 Reasonix 的 hook 只能是命令：每个事件经 `cmd.exe` 运行一次 `"wakuwaku.exe" --wakuwaku-reasonix-hook <事件名>`，把事件转给她，什么都不输出（Reasonix 会把 `SessionStart` 的输出塞给模型）。Reasonix 每一步都等它跑完，大约 0.1 秒；她没开时它马上退出，Reasonix 照常。新会话开始时她没开，也会把她拉起来（除非你让她退出了）。Node 版的 Reasonix 0.x 不支持：它的 hook 只有 4 种事件，也不带会话编号，「Agent」页会写出它的版本，不去改它的设置。
 
