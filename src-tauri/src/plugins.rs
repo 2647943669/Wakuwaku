@@ -7,6 +7,7 @@
 pub mod countdown;
 pub mod fmt;
 mod pomodoro;
+mod stock;
 mod stretch;
 mod weather;
 pub mod web;
