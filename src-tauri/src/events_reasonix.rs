@@ -94,6 +94,23 @@ fn claude_input(tool: &str, args: &Value, cwd: &str) -> Value {
     Value::Object(out)
 }
 
+// The person's words in the prompt Reasonix hands its UserPromptSubmit hook:
+// the input it composed for the model, which begins with blocks of its own
+// (<current-date>…</current-date>, <available-skills>…</available-skills>,
+// as 2.44 sends it, 2026-10-18) before them, each closed on a line of its
+// own; those taken off. Words that begin with a tag of their own (closed on
+// the same line) are left as they are.
+fn person_words(prompt: &str) -> &str {
+    let mut rest = prompt.trim_start();
+    while let Some(after) = rest.strip_prefix('<') {
+        let Some(name) = after.split_once('>').map(|(n, _)| n).filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')) else { break };
+        let close = format!("\n</{name}>");
+        let Some(end) = rest.find(&close) else { break };
+        rest = rest[end + close.len()..].trim_start();
+    }
+    if rest.is_empty() { prompt } else { rest }
+}
+
 // The event in Claude Code's words, for events.rs: Reasonix's own payload
 // (camelCase) with the fields renamed, its tool and arguments as Claude
 // Code's.
@@ -111,7 +128,7 @@ pub fn as_claude(e: &Value) -> Value {
         "cwd": s(e, "cwd"),
         "tool_name": claude_name(tool),
         "tool_input": claude_input(tool, &args, s(e, "cwd")),
-        "prompt": s(e, "prompt"),
+        "prompt": person_words(s(e, "prompt")),
         "last_assistant_message": s(e, "lastAssistantText"),
         "source": s(e, "source"),
         "reason": s(e, "reason"),
@@ -298,6 +315,21 @@ mod tests {
         assert_eq!((m["mood"].as_str(), m["error"].as_str()), (Some("error"), Some("deepseek: 402 Insufficient Balance")));
         let m = to_message(&event("SessionEnd", json!({ "reason": "exit" }))).unwrap();
         assert_eq!((m["mood"].as_str(), m["event"].as_str()), (Some("idle"), Some("session-end")));
+    }
+
+    #[test]
+    fn the_person_s_words_past_reasonix_s_own_blocks() {
+        // As Reasonix 2.44 composes it (trimmed): its blocks, then the person's words.
+        let prompt = "<current-date>\nToday's date is 2026-10-18 (Sunday); the local time zone is UTC+02:00.\n</current-date>\n\n<available-skills>\n# Skills\n- explore [🧬 subagent] — Explore…\n</available-skills>\n\nList the files in this folder and reply in one short sentence.";
+        assert_eq!(person_words(prompt), "List the files in this folder and reply in one short sentence.");
+        let m = to_message(&event("UserPromptSubmit", json!({ "prompt": prompt, "turn": 1 }))).unwrap();
+        assert_eq!(m["task"], "List the files in this folder and reply in one short sentence.");
+        // Plain words, words beginning with a tag of their own, a block never closed: as they are.
+        assert_eq!(person_words("fix the login page"), "fix the login page");
+        assert_eq!(person_words("<b>bold</b> is a tag"), "<b>bold</b> is a tag");
+        assert_eq!(person_words("<div class=x>keep</div>"), "<div class=x>keep</div>");
+        assert_eq!(person_words("<current-date>\nno end"), "<current-date>\nno end");
+        assert_eq!(person_words("<current-date>x</current-date>"), "<current-date>x</current-date>");
     }
 
     #[test]
