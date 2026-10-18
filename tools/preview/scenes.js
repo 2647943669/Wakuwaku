@@ -475,6 +475,29 @@
       open: [520, 0, 560, 400],
       card: [520, 0, 560, 600],
     }),
+    // DeepSeek Harness waiting on you: its approval (why it asks, under the
+    // buttons; handled in DSH as the way out) and its question, its own
+    // dialog open all the while.
+    {
+      id: 'capsule-ask-dsh',
+      section: 'capsule',
+      title: '等你 · DeepSeek Harness 要批准（下面是它说的原因）',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(330), 520, 330],
+      world: F => ({ ...home(F), sessions: [F.dsh({ key: 'detail.approve', vars: { what: { key: 'step.write', vars: { file: 'note.txt' } } } })], asks: [F.DSH_ASK] }),
+      settle: 900,
+    },
+    {
+      id: 'capsule-question-dsh',
+      section: 'capsule',
+      title: '等你 · DeepSeek Harness 问你问题',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(360), 520, 360],
+      world: F => ({ ...home(F), sessions: [F.dsh({ key: 'detail.asksQuestion' })], asks: [F.DSH_QUESTION] }),
+      settle: 900,
+    },
     // At a top corner (islandPos, zhoupengjie/Wakuwaku#59): closed 8 px in
     // from the screen's side, and open, grown toward the middle.
     ...[

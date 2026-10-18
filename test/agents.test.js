@@ -87,8 +87,10 @@ test('what she can do is what the code does', () => {
   assert.deepEqual(lit('approve'), ['claude', ...from].sort())
   // omp's are its plan reviews alone.
   assert.equal(Agents.byId('omp').caps.approve[0], 'part')
-  // A question answered on the island: Claude Code's AskUserQuestion alone.
-  assert.deepEqual(lit('choose'), ['claude'])
+  // A question answered on the island: Claude Code's AskUserQuestion, and
+  // DeepSeek Harness's, whose answers asks.rs gives back by their ids.
+  assert.deepEqual(lit('choose'), ['claude', 'dsh'])
+  assert.match(read('src-tauri/src/asks.rs'), /fn dsh_answer\(/)
   // Mail: those mail/agent.rs runs.
   const mail = /const NAMES: \[&str; \d\] = \[([^\]]*)\]/.exec(read('src-tauri/src/mail/agent.rs'))[1]
   assert.deepEqual(lit('mail'), [...mail.matchAll(/"(\w+)"/g)].map(m => m[1]).sort())
@@ -231,11 +233,14 @@ test("DeepSeek Harness's other way: its own hook bridge", () => {
   assert.equal(Agents.whatOf(dsh('ok'), 'dsh'), 'ag.what.dshBridge')
   assert.equal(Agents.noteOf('dsh', 'on', dsh('ok')), 'ag.note.dshBridge')
   assert.deepEqual(Agents.capsOf(dsh('ok'), 'dsh')[0], ['status', 'part', 'ag.cap.status.dshBridge'])
+  // No approval nor question on the island that way (no PermissionRequest), nor in Today.
+  assert.deepEqual(Agents.capsOf(dsh('ok'), 'dsh').map(([cap, level, key]) => [cap, level, key]).slice(1, 4), [['approve', 'no', 'ag.cap.approve.dshBridge'], ['choose', 'no', 'ag.cap.choose.dshBridge'], ['stats', 'yes', 'ag.cap.stats.dsh']])
+  assert.deepEqual(Agents.capsOf(snapshot({ dsh: { hooks: 'ok', way: 'plugin' } }), 'dsh').slice(1, 4).map(([cap, level]) => level), ['yes', 'yes', 'yes'])
   const pluginWay = snapshot({ dsh: { hooks: 'ok', way: 'plugin' } })
   assert.equal(Agents.whatOf(pluginWay, 'dsh'), 'ag.what.dsh')
   assert.equal(Agents.noteOf('dsh', 'on', pluginWay), 'ag.note.dsh')
   assert.deepEqual(Agents.capsOf(pluginWay, 'dsh')[0], ['status', 'yes', 'ag.cap.status.dsh'])
-  for (const key of ['ag.what.dshBridge', 'ag.note.dshBridge', 'ag.cap.status.dshBridge']) assert.ok(key in STRINGS.zh && key in STRINGS.en, key)
+  for (const key of ['ag.what.dshBridge', 'ag.note.dshBridge', 'ag.cap.status.dshBridge', 'ag.cap.approve.dshBridge', 'ag.cap.choose.dshBridge', 'ag.cap.stats.dsh']) assert.ok(key in STRINGS.zh && key in STRINGS.en, key)
   assert.equal(Agents.read(dsh('ok'), 'dsh').way, 'bridge')
   // The plugin's way unless the snapshot says the bridge.
   assert.equal(Agents.read(snapshot({ dsh: { hooks: 'missing' } }), 'dsh').way, 'plugin')
@@ -243,7 +248,7 @@ test("DeepSeek Harness's other way: its own hook bridge", () => {
   const keys = ['ag.dsh.via', 'ag.dsh.viaPlugin', 'ag.dsh.viaBridge', 'ag.dsh.viaNote.plugin', 'ag.dsh.viaNote.bridge', 'ag.dsh.switching.plugin', 'ag.dsh.switching.bridge', 'ag.dsh.mirror', 's.dshBridgeOn', 's.dshBridgeFirst', 's.dshBridgeWaiting', 's.dshBridgeFailed']
   for (const kind of ['Registry', 'Version', 'NotFound', 'ReleaseAge', 'Timeout', 'Runtime', 'Busy', 'Disk', 'Permission', 'Other']) keys.push(`s.dshBK.bridge${kind}`)
   for (const key of keys) assert.ok(key in STRINGS.zh && key in STRINGS.en, key)
-  assert.equal(STRINGS.zh['ag.dsh.viaNote.plugin'], '不用联网，事件即时，以后能在岛上审批')
+  assert.equal(STRINGS.zh['ag.dsh.viaNote.plugin'], '不用联网，事件即时，能在岛上批准和回答提问')
   assert.equal(STRINGS.zh['ag.dsh.viaNote.bridge'], 'DSH 官方的钩子桥，要从 npm 下载两个包，每个事件约 1 秒，不能审批')
   // Every kind connection.rs error_kind gives the bridge's failures has its words.
   const rust = read('src-tauri/src/connection.rs')
@@ -340,7 +345,7 @@ test('mail: lit where its command is found, and the Mail page’s list', () => {
   assert.deepEqual(caps(snapshot(), 'agy').mail, ['no', 'ag.cap.mail.missing.agy'])
   assert.deepEqual(caps(snapshot({ mailAgents: { agy: true } }), 'agy').mail, ['yes', 'ag.cap.mail.agy'])
   assert.deepEqual(caps(snapshot(), 'dsh').mail, ['no', 'ag.cap.mail.no'])
-  assert.deepEqual(caps(snapshot(), 'dsh').approve, ['no', 'ag.cap.approve.dsh'])
+  assert.deepEqual(caps(snapshot(), 'dsh').approve, ['yes', 'ag.cap.approve.dsh'])
   // Claude Code and Codex always; Antigravity where it is (its app alone:
   // greyed), found, or picked already.
   const ids = (snap, current) => Agents.mailAgents(snap, current).map(a => `${a.id}${a.found ? '' : '?'}`)

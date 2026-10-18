@@ -74,6 +74,32 @@
 
   // A permission prompt (asks.rs view).
   const ASK = { id: 1, kind: 'permission', tool: 'Bash', summary: 'npm test -- --watch=false', project: 'pet', session: 's1', always: { rules: ['Bash(npm test:*)'], dirs: [], modes: [], where: ['localSettings'] } }
+  // DeepSeek Harness waiting on you (her plugin's, asks.rs views): its
+  // sandbox to widen for a write outside the workspace, with its reason in
+  // both languages; and its ask_user_question, as the test machine had them.
+  const dsh = detail => ({ ...BASE, id: 's4', agent: 'dsh', project: 'default-workspace', name: '写个工作区外的文件', mood: 'waiting', since: T0 - 21e3, detail })
+  const DSH_ASK = {
+    id: 2,
+    kind: 'permission',
+    from: 'dsh',
+    tool: 'Write',
+    summary: 'C:\\Users\\mira\\notes\\note.txt',
+    project: 'default-workspace',
+    session: 's4',
+    always: null,
+    reason: { en: 'Allow this operation with danger-full-access permissions: the file is outside the workspace, so the sandbox must be widened for this one write.', zh: '允许本次操作使用 danger-full-access 权限：the file is outside the workspace, so the sandbox must be widened for this one write.' },
+  }
+  const DSH_QUESTION = {
+    id: 3,
+    kind: 'question',
+    from: 'dsh',
+    tool: 'AskUserQuestion',
+    project: 'default-workspace',
+    session: 's4',
+    title: '',
+    canAnswer: true,
+    questions: [{ kind: 'choice', header: 'File Name', question: 'Which file name should be used: test1 or test2?', description: '', multiSelect: false, options: [{ label: 'test1', description: 'Use test1 as the file name.' }, { label: 'test2', description: 'Use test2 as the file name.' }] }],
+  }
 
   // --- Mail (mail.rs) ---------------------------------------------------------------------
   // Two accounts as the settings keep them (mail.rs Account json), each with
@@ -438,7 +464,7 @@
     },
   }
 
-  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Fixtures = api
 })(typeof window !== 'undefined' ? window : globalThis)

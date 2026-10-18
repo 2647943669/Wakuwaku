@@ -13,8 +13,9 @@
 //   approve  answers its approvals on the island (asks.rs, panel.js): which
 //            buttons; a PermissionRequest held for her
 //   choose   answers a question with choices on the island (asks.rs
-//            AskUserQuestion: Claude Code's alone; the others' questions
-//            only make her wait, "detail.asksQuestion")
+//            AskUserQuestion: Claude Code's, and DeepSeek Harness's through
+//            her plugin; the others' questions only make her wait,
+//            "detail.asksQuestion")
 //   stats    counted in Today (main.rs count_today: every agent's turns and
 //            time), and its tokens (tokens.rs: Claude Code, Codex, Antigravity)
 //   mail     can read a letter for the Mail page (mail/agent.rs: claude,
@@ -212,8 +213,21 @@
         return { ...b, status, way, via: d.via || null, why: d.why || '', load, seen, list, listKey: way === 'bridge' ? 'ag.list' : 'ag.pluginFile' }
       },
       // The bridge's way says what it does in words of its own: no step's
-      // tool (a hook costs a second, so few are hooked), its note.
-      wording: r => (r.way === 'bridge' ? { what: 'ag.what.dshBridge', note: 'ag.note.dshBridge', caps: { status: ['part', 'ag.cap.status.dshBridge'] } } : null),
+      // tool (a hook costs a second, so few are hooked), no approval nor
+      // question on the island (it has no PermissionRequest), its note.
+      wording: r =>
+        r.way === 'bridge'
+          ? {
+              what: 'ag.what.dshBridge',
+              note: 'ag.note.dshBridge',
+              caps: {
+                status: ['part', 'ag.cap.status.dshBridge'],
+                approve: ['no', 'ag.cap.approve.dshBridge'],
+                choose: ['no', 'ag.cap.choose.dshBridge'],
+                stats: ['yes', 'ag.cap.stats.dsh'],
+              },
+            }
+          : null,
       in: ['ok', 'stale', 'bridge', 'notLoaded', 'bridgeWay', 'bridgeHooks', 'bridgePackages', 'bridgeVersion'],
       good: ['ok'],
       words: {
@@ -229,11 +243,13 @@
       // Written, not working yet: DSH to start, or to be restarted; the
       // bridge's first event still to come.
       setLine: r => (r.load?.state === 'restart' ? 'ag.st.set.dsh' : r.load?.state === 'firstEvent' ? 'ag.st.set.dshFirstEvent' : 'ag.st.set.dshWaiting'),
+      // Its approvals and questions answered on the island through her
+      // plugin (asks.rs), DSH's own window asking all the while.
       caps: {
         status: ['yes', 'ag.cap.status.dsh'],
-        approve: ['no', 'ag.cap.approve.dsh'],
-        choose: ['no', 'ag.cap.choose.dsh'],
-        stats: ['yes', 'ag.cap.stats.dsh'],
+        approve: ['yes', 'ag.cap.approve.dsh'],
+        choose: ['yes', 'ag.cap.choose.dsh'],
+        stats: ['yes', 'ag.cap.stats.turns'],
         mail: ['no', 'ag.cap.mail.no'],
       },
     },

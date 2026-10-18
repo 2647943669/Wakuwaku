@@ -5,13 +5,17 @@
 // only once the panel hands it over. And OpenCode's (allow, always, deny),
 // which OpenCode asks in its own window all the while; omp's plan reviews
 // (approve: it is executed; deny: omp refines it), with omp's own review
-// open meanwhile; and ZCode's (allow or deny) beside its own.
+// open meanwhile; and ZCode's (allow or deny) beside its own. DeepSeek
+// Harness's approvals (allow or deny, with why it asks) and its questions,
+// its own dialog open all the while.
 //
 // Everything shown comes from the tool call, so it is set as text, never HTML.
 ;(function () {
   const { t } = window.I18n
   // The other agents a prompt may come from, named on it (Claude Code's: none).
-  const FROM = { codex: 'Codex', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode' }
+  const FROM = { codex: 'Codex', opencode: 'OpenCode', omp: 'omp', zcode: 'ZCode', dsh: 'DeepSeek Harness' }
+  // Apps whose own dialog stays open meanwhile: a prompt is handled there.
+  const IN_APP = new Set(['zcode', 'dsh'])
 
   // Buttons wake up a moment after a prompt appears, so a click already on
   // its way to where the panel opens cannot answer it.
@@ -113,6 +117,13 @@
     return el('div', { class: 'note' }, T('panel.alwaysNote', { rules, where }))
   }
 
+  // Why the app asks (DeepSeek Harness's: a sandbox to widen, and why), in
+  // her language when it gave both.
+  function reasonNote(reason) {
+    const text = typeof reason === 'string' ? reason : reason[lang] || reason.en || ''
+    return text ? el('div', { class: 'note' }, text) : null
+  }
+
   function permissionBody(ask) {
     return [
       header(T('panel.needsApproval', { tool: ask.tool }), ask),
@@ -125,6 +136,7 @@
         button(T('panel.deny'), 'deny', () => answer({ action: 'deny' }), 'danger'),
       ),
       ask.always ? alwaysNote(ask.always) : null,
+      ask.reason ? reasonNote(ask.reason) : null,
     ]
   }
 
@@ -179,8 +191,10 @@
   }
 
   function questionBody(ask) {
+    // Another app's question is named as its (Claude Code's: as Claude's).
+    const title = ask.title || (FROM[ask.from] ? T('panel.questionFrom', { app: FROM[ask.from] }) : T('panel.questionTitle'))
     if (!ask.canAnswer) {
-      return [header(ask.title || T('panel.questionTitle'), ask), el('div', { class: 'text' }, T('panel.cannotAnswer'))]
+      return [header(title, ask), el('div', { class: 'text' }, T('panel.cannotAnswer'))]
     }
 
     const q = ask.questions[step]
@@ -188,7 +202,7 @@
     const count = ask.questions.length > 1 ? ` (${step + 1}/${ask.questions.length})` : ''
     const confirm = () => button(isLast ? T('panel.confirm') : T('panel.next'), 'confirm', next, 'primary')
     const parts = [
-      header(`${q.header || ask.title || T('panel.questionTitle')}${count}`, ask),
+      header(`${q.header || title}${count}`, ask),
       el('div', { class: 'text' }, q.question),
       q.description ? el('div', { class: 'qdesc' }, q.description) : null,
     ]
@@ -294,8 +308,8 @@
       el(
         'div',
         { class: 'foot' },
-        // An app's prompt (ZCode's dialog stays open meanwhile) is handled there.
-        button(ask.kind === 'question' && !ask.canAnswer ? T('panel.gotIt') : ask.from === 'zcode' ? T('panel.toApp', { app: FROM[ask.from] }) : T('panel.toTerminal'), 'dismiss', dismiss, 'ghost'),
+        // An app's prompt (ZCode's, DSH's dialog stays open meanwhile) is handled there.
+        button(ask.kind === 'question' && !ask.canAnswer ? T('panel.gotIt') : IN_APP.has(ask.from) ? T('panel.toApp', { app: FROM[ask.from] }) : T('panel.toTerminal'), 'dismiss', dismiss, 'ghost'),
         more,
       ),
     )
