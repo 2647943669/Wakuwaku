@@ -6,7 +6,7 @@ use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, WebviewWindow};
 
-use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet, scripts, set_display, set_out, shared, Shared};
+use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet, plugins, scripts, set_display, set_out, shared, Shared};
 
 const REPO: &str = "https://github.com/zhoupengjie/wakuwaku";
 
@@ -159,7 +159,7 @@ pub fn snapshot(sh: &Shared) -> Value {
         // while the settings show it.
         "lhmSetup": crate::lhm_setup::view(sh, &lhm_status, lhm_shown),
         // The plugins she runs, and where waku is for the terminal.
-        "plugins": scripts::view(sh),
+        "plugins": plugins::view(sh),
         // The mail accounts, each with how its watch is going.
         "mail": mail::view(sh),
         // Who a letter can go to (claude, codex, agy: found or not; looked
@@ -241,7 +241,7 @@ fn is_name(n: &str) -> bool {
 fn is_source_of(kind: &str, of: &str) -> bool {
     match kind {
         "widget" => crate::widgets::is_id(of),
-        "plugin" => crate::scripts::SCRIPTS.iter().any(|s| s.id == of),
+        "plugin" => crate::plugins::PLUGINS.iter().any(|s| s.id == of),
         _ => false,
     }
 }
@@ -263,7 +263,7 @@ fn is_member(v: &Value) -> bool {
 // Whether a taskbar layout shows this widget: put there by itself, or its
 // plugin's; alone or with others in one place.
 pub fn is_on_taskbar(layout: &Value, widget: &str) -> bool {
-    let owner = crate::scripts::owner_of(widget);
+    let owner = crate::plugins::owner_of(widget);
     let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
         (Some("plugin"), Some(of)) => Some(of) == owner,
@@ -439,7 +439,7 @@ fn is_capsule_member(v: &Value) -> bool {
 // Whether the desktop shows this widget: put there by itself, or its
 // plugin's; alone or in a stack.
 pub fn is_on_desk(layout: &Value, widget: &str) -> bool {
-    let owner = crate::scripts::owner_of(widget);
+    let owner = crate::plugins::owner_of(widget);
     let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
         (Some("plugin"), Some(of)) => Some(of) == owner,
@@ -527,7 +527,7 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // Each widget's row in the open island, small or medium, by its id
         // (island.js rowSize).
         "widgetSize" => v.as_object().is_some_and(|m| m.len() <= 64 && m.iter().all(|(id, s)| crate::widgets::is_id(id) && matches!(s.as_str(), Some("S" | "M")))),
-        "plugins" => scripts::is_ok(v),
+        "plugins" => plugins::is_ok(v),
         "monitor" => v.as_object().is_some_and(|m| {
             m.iter().all(|(k, v)| match k.as_str() {
                 "cpu" | "mem" | "net" | "battery" | "pin" => v.is_boolean(),
@@ -604,7 +604,7 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     if crash_auto {
         crate::crash::send_now(sh);
     }
-    if plugins && scripts::sync(sh) {
+    if plugins && plugins::sync(sh) {
         sh.redraw();
     }
     // Mail kept offline for more or less: each account's sync at it now,

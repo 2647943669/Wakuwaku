@@ -320,7 +320,7 @@ fn entry_shows_at(e: &Value, id: &str, owner: Option<&str>, big: bool) -> bool {
 // big: medium or large only (the monitor's card's readings, its graphics
 // card and drives, are shown there: read only then).
 fn seen_with(sh: &Shared, id: &str, big: bool) -> bool {
-    let owner = crate::scripts::owner_of(id);
+    let owner = crate::plugins::owner_of(id);
     let desks: Vec<(Mon, bool)> = DESKS.lock().unwrap().iter().filter(|d| d.ready).map(|d| (d.mon, d.entries.iter().any(|e| entry_shows_at(e, id, owner, big)))).collect();
     desks.into_iter().any(|(mon, has)| has && seen_now(sh, mon))
 }

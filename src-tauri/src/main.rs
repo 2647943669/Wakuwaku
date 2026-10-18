@@ -33,6 +33,7 @@
 //   data.rs        her folder, settings and pets; the mark of a quit by choice
 //   starts.rs      what starts her (the hooks, at login, by hand), whether it may, and who did
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
+//   plugins.rs     the plugins she runs for you (weather, stocks, timers, CI, dev servers)
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // The settings' snapshot (settings.rs) is one json! with every agent's part
@@ -135,8 +136,8 @@ pub struct Shared {
     // Plugins in the island (widgets.rs), and what today has seen.
     pub widgets: Mutex<widgets::Widgets>,
     pub today: Mutex<widgets::Today>,
-    // The plugins she runs for you (scripts.rs).
-    pub scripts: Mutex<scripts::Runner>,
+    // The plugins she runs for you (plugins.rs).
+    pub plugins: Mutex<plugins::Runner>,
     // The mail accounts being watched (mail.rs).
     pub mail: Mutex<mail::Runner>,
     screens: Mutex<screen::Screens>,
@@ -247,6 +248,8 @@ impl Shared {
             self.log(&format!("quiet: {quiet} (efficiency mode set: {eco}; for {webview_eco} of WebView2's processes; memory {} for {} pages)", if quiet { "low" } else { "normal" }, windows.len()));
             self.to_pages("pet:quiet", json!({ "on": quiet }));
             wake_monitor();
+            // The plugins she runs at their quiet pace, or back to their own.
+            plugins::wake();
             if !quiet {
                 taskbar::wake();
             }
@@ -511,7 +514,7 @@ impl Shared {
     // Every widget, in the person's order, on or off.
     pub fn widgets_view(&self) -> Value {
         let (off, order) = (self.list_setting("widgetsOff"), self.list_setting("widgetOrder"));
-        self.widgets.lock().unwrap().view(now_ms(), &off, &order, &scripts::owner_of)
+        self.widgets.lock().unwrap().view(now_ms(), &off, &order, &plugins::owner_of)
     }
 
     // A widget from a script: there it is, and it may open the island for itself.
@@ -676,6 +679,9 @@ impl Shared {
             }
         }
         tray::refresh(self);
+        // Back in sight: the pomodoro's count and the dev servers at their
+        // own pace again, not the slower one kept while unseen.
+        plugins::wake();
     }
 
     pub fn set_hidden(self: &Arc<Self>, is_hidden: bool) {
@@ -1660,7 +1666,7 @@ fn main() {
                 island: Mutex::new(island::Island::default()),
                 asks: Mutex::new(asks::Asks::default()),
                 widgets: Mutex::new(widgets::Widgets::default()),
-                scripts: Mutex::new(scripts::Runner::default()),
+                plugins: Mutex::new(plugins::Runner::default()),
                 mail: Mutex::new(mail::Runner::default()),
                 today: Mutex::new(today),
                 screens: Mutex::new(screen::read(app.handle())),
@@ -1782,8 +1788,9 @@ fn main() {
                     if watcher.today.lock().unwrap().date != widgets::local_date() {
                         watcher.count_today(|_| {});
                     }
-                    // The plugins she runs: started, stopped, started again.
-                    changed |= scripts::sync(&watcher);
+                    // The plugins she runs: started, stopped, started again
+                    // (her language changed, too: the weather's words).
+                    changed |= plugins::sync(&watcher);
                     if changed {
                         watcher.redraw_widgets();
                     }
@@ -1967,13 +1974,12 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while running wakuwaku")
         // Quitting: the bar's strip back to the other windows, and the
-        // plugins she ran stopped.
+        // mail stopped (the plugins she runs end with her: plugins.rs).
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 let sh = shared(app);
-                sh.log("quitting: the bar given back, the plugins and the mail stopped");
+                sh.log("quitting: the bar given back, the mail stopped");
                 island::release_bar(&sh);
-                scripts::stop_all(&sh);
                 mail::stop_all(&sh);
                 sh.log("quitting: done");
             }

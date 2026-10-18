@@ -333,7 +333,7 @@ impl Widgets {
 
     // All of them, in the order the person put them in (then as first seen),
     // each saying whether it is on and which plugin it comes from (`owner`:
-    // one she runs, scripts.rs), which places it when the plugin was placed.
+    // one she runs, plugins.rs), which places it when the plugin was placed.
     // The built-in ones not measured (off, or nothing to read yet, like a
     // battery on a desktop) are there too, with no value, so they can be
     // turned on.
