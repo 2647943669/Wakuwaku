@@ -26,7 +26,7 @@ function snapshot(change = {}) {
     opencode: { plugin: 'missing', file: 'C:\\Users\\me\\.config\\opencode\\plugins\\wakuwaku.js', fileShown: '~\\.config\\opencode\\plugins\\wakuwaku.js', seen: false },
     omp: block('missing', { more: 0 }),
     zcode: block('missing'),
-    dsh: block('missing', { listShown: 'D:\\wakuwaku-data\\dsh-hooks.json' }),
+    dsh: block('missing', { why: '', listShown: '~\\.dsh\\wakuwaku\\wakuwaku.js' }),
     reasonix: block('missing', { line: '2.x' }),
     mailAgents: { claude: true, codex: true, agy: false },
     agentVersions: { claude: '2.1.296', zcode: '3.15.3', dsh: '0.2.0-rc.2', reasonix: '2.3.0', opencode: null, omp: null },
@@ -164,6 +164,42 @@ test('how each stands, and its one button', () => {
   assert.equal(state({ dsh: { hooks: 'ok', seen: true } }, 'dsh', failed), 'on')
 })
 
+test('DeepSeek Harness: written is not loaded', () => {
+  // connection.rs dsh_view: hooks, why, load.
+  const dsh = (hooks, more = {}) => snapshot({ dsh: { hooks, why: '', seen: false, listShown: '~\\.dsh\\wakuwaku\\wakuwaku.js', ...more } })
+  const state = snap => Agents.stateOf(snap, 'dsh')
+  // Written, DSH not running or only starting; or running since before: blue, its line says which.
+  assert.equal(state(dsh('ok', { load: { state: 'waiting' } })), 'set')
+  assert.equal(Agents.setLineOf(dsh('ok', { load: { state: 'waiting' } }), 'dsh'), 'ag.st.set.dshWaiting')
+  assert.equal(Agents.setLineOf(dsh('ok', { load: { state: 'restart' } }), 'dsh'), 'ag.st.set.dsh')
+  assert.equal(Agents.setLineOf(dsh('ok', { load: { state: 'restart' } }), 'zcode'), 'ag.st.set.zcode')
+  // Loaded (an older version too): connected, before any session.
+  const loaded = dsh('ok', { load: { state: 'loaded', at: 1792200000000, version: 1, profile: 'desktop', pid: 4321 } })
+  assert.equal(state(loaded), 'on')
+  assert.equal(Agents.read(loaded, 'dsh').load.profile, 'desktop')
+  assert.equal(state(dsh('ok', { load: { state: 'older' } })), 'on')
+  // Written but not loaded while DSH runs: amber, Repair, "DSH 插件没生效".
+  const notLoaded = dsh('notLoaded', { load: { state: 'notLoaded' } })
+  assert.equal(state(notLoaded), 'repair')
+  assert.deepEqual(Agents.actionOf(notLoaded, 'dsh'), { act: 'install', label: 'settings.repair' })
+  assert.equal(Agents.wordOf('dsh', Agents.read(notLoaded, 'dsh').status), 's.dshNotLoaded')
+  assert.equal(STRINGS.zh['s.dshNotLoaded'], 'DSH 插件没生效')
+  assert.equal(Agents.read(dsh('notLoaded', { why: 'off' }), 'dsh').why, 'off')
+  // The old bridge's rows: a status of their own, Repair.
+  const bridge = dsh('stale', { why: 'bridge' })
+  assert.equal(Agents.read(bridge, 'dsh').status, 'bridge')
+  assert.equal(state(bridge), 'repair')
+  assert.equal(Agents.wordOf('dsh', 'bridge'), 's.dshBridge')
+  assert.equal(Agents.wordOf('dsh', 'stale'), 's.dshStale')
+  // Connected (for Connect all and the summary) in all of these.
+  for (const snap of [loaded, notLoaded, bridge]) assert.ok(Agents.isIn(snap, 'dsh'))
+  assert.ok(!Agents.isIn(dsh('missing'), 'dsh'))
+  assert.deepEqual(Agents.summary(notLoaded).wants.filter(id => id === 'dsh'), ['dsh'])
+  for (const key of ['ag.st.set.dshWaiting', 's.dshWaiting', 's.dshRestart', 's.dshLoaded', 's.dshOlder', 's.dshNotLoadedWhy', 's.dshNotLoadedOff', 's.dshBridgeWhy', 'ag.pluginFile']) {
+    assert.ok(key in STRINGS.zh && key in STRINGS.en, key)
+  }
+})
+
 test("Claude Code's two ways", () => {
   const state = change => Agents.stateOf(snapshot(change), 'claude')
   assert.equal(state({}), 'none')
@@ -187,7 +223,8 @@ test('the files, as each reads them', () => {
   const snap = snapshot({ omp: { hooks: 'ok', fileShown: '~\\.omp\\agent\\extensions\\wakuwaku.ts', more: 2 } })
   assert.equal(Agents.read(snap, 'omp').more, 2)
   assert.equal(Agents.read(snap, 'omp').shown, '~\\.omp\\agent\\extensions\\wakuwaku.ts')
-  assert.equal(Agents.read(snap, 'dsh').list, 'D:\\wakuwaku-data\\dsh-hooks.json')
+  assert.equal(Agents.read(snap, 'dsh').list, '~\\.dsh\\wakuwaku\\wakuwaku.js')
+  assert.equal(Agents.read(snap, 'dsh').listKey, 'ag.pluginFile')
   assert.equal(Agents.read(snap, 'opencode').shown, '~\\.config\\opencode\\plugins\\wakuwaku.js')
   assert.equal(Agents.read(snap, 'codex').version, '0.150.0')
   assert.equal(Agents.read(snap, 'zcode').version, '3.15.3')

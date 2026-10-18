@@ -47,6 +47,8 @@
   //   words   its own words for a status that wants something (wordOf)
   //   step    written, a step of the person's left before its first event
   //           (Codex: trusting the hooks in its /hooks): its button's words
+  //   setLine written, no event yet: its line's words, from its read, where
+  //           they depend on more than its id (ag.st.set.<id>)
   //   caps    [level, the words' key] for each of CAPS
   //   mail    its name on the Mail page (agent.rs Agent::name), if it reads mail
   const TABLE = [
@@ -181,14 +183,26 @@
     {
       id: 'dsh',
       name: 'DeepSeek Harness',
-      via: 'bridge',
+      via: 'plugin',
       call: 'dshHooks',
       site: 'agent:dsh',
-      // The bridge's hook list, in her data folder, besides the patch file.
-      read: snap => ({ ...block('dsh')(snap), list: snap.dsh?.listShown || '' }),
-      in: ['ok', 'stale'],
+      // Her plugin's file in DSH's folder, besides the patch file; whether
+      // DSH loaded it (connection.rs dsh_view: load), which counts as seen;
+      // the old bridge's rows as a status of their own (bridge), and one
+      // written but not loaded while DSH runs (notLoaded, why: off when DSH's
+      // own settings turned it off).
+      read: snap => {
+        const b = block('dsh')(snap)
+        const d = snap.dsh || {}
+        const load = d.load || {}
+        const status = b.status === 'stale' && d.why === 'bridge' ? 'bridge' : b.status
+        return { ...b, status, why: d.why || '', load, seen: b.seen || ['loaded', 'older'].includes(load.state), list: d.listShown || '', listKey: 'ag.pluginFile' }
+      },
+      in: ['ok', 'stale', 'bridge', 'notLoaded'],
       good: ['ok'],
-      words: { unreadable: 's.dshUnreadable' },
+      words: { bridge: 's.dshBridge', stale: 's.dshStale', notLoaded: 's.dshNotLoaded', unreadable: 's.dshUnreadable' },
+      // Written, not loaded yet: DSH to start, or to be restarted.
+      setLine: r => (r.load?.state === 'restart' ? 'ag.st.set.dsh' : 'ag.st.set.dshWaiting'),
       caps: {
         status: ['yes', 'ag.cap.status.dsh'],
         approve: ['no', 'ag.cap.approve.dsh'],
@@ -349,7 +363,10 @@
   // its step shows in amber at their top, the part that does not say it again.
   const noteOf = (id, state) => (state === 'step' && byId(id)?.stepNote) || `ag.note.${id}`
 
-  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, noteOf, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
+  // Its line's words while written and waiting for its first event (set, step).
+  const setLineOf = (snap, id) => byId(id)?.setLine?.(read(snap, id) || {}) || `ag.st.set.${id}`
+
+  const api = { CAPS, CAP_GLYPH, TABLE, MOOD, WANTS, byId, noteOf, setLineOf, wordOf, read, isIn, stateOf, actionOf, here, elsewhere, toConnect, capsOf, summary, mailAgents, sessionsOf }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

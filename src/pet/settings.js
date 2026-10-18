@@ -2115,7 +2115,7 @@
       const n = Agents.sessionsOf(snap, id)
       return n ? T(n === 1 ? 'ag.st.on1' : 'ag.st.onN', { n }) : T('ag.st.on')
     }
-    if (state === 'set' || state === 'step') return T(`ag.st.set.${id}`)
+    if (state === 'set' || state === 'step') return T(Agents.setLineOf(snap, id))
     if (state === 'busy') return T('wc.busy')
     if (state === 'failed') return T('ag.st.failed')
     if (state === 'repair' || state === 'error') return T(Agents.wordOf(id, r.status))
@@ -2154,37 +2154,54 @@
     if (id === 'codex' && r.here && snap.codex?.async === false) warn.push(T('s.codexOld', { version: r.version }))
     if (id === 'zcode' && r.status === 'off') warn.push(T('s.zcodeOffNote'))
     if (id === 'claude' && r.status === 'both') warn.push(T('ag.claude.both'))
+    // DSH: the old bridge's rows; the plugin written but not loaded, and why.
+    if (id === 'dsh' && r.status === 'bridge') warn.push(T('s.dshBridgeWhy'))
+    if (id === 'dsh' && r.status === 'notLoaded') warn.push(T(r.why === 'off' ? 's.dshNotLoadedOff' : 's.dshNotLoadedWhy'))
     if (state === 'error') warn.push(T('ag.note.unreadable'))
     return warn.map(text => `<div class="ag-note warn">${esc(text)}</div>`).join('')
   }
 
   // What to know about one: how it is, and what comes next while it waits
-  // for its first turn (a new omp session, DSH restarted), or why a version
-  // of it cannot be connected (Reasonix 0.x).
+  // for its first turn (a new omp session, DSH started or restarted); for
+  // DSH, whether and when it loaded her plugin; or why a version of it
+  // cannot be connected (Reasonix 0.x).
   function agentNotes(id, state) {
     const r = Agents.read(snap, id)
     const next =
       state === 'set' && id === 'omp'
         ? T('s.ompNew')
-        : state === 'set' && id === 'dsh'
-          ? T('s.dshRestart')
+        : id === 'dsh'
+          ? dshNote(state)
           : state === 'unsupported' && id === 'reasonix'
             ? T('s.reasonixOldNote', { version: r.version || r.line })
             : ''
     return `${next ? `<div class="ag-note">${esc(next)}</div>` : ''}<div class="ag-note">${esc(T(Agents.noteOf(id, state)))}</div>`
   }
 
+  // DSH and her plugin (connection.rs dsh_view): loaded, when and in which
+  // profile; an older one loaded; DSH to be restarted; DSH to start.
+  function dshNote(state) {
+    const load = Agents.read(snap, 'dsh')?.load || {}
+    if (load.state === 'loaded' || load.state === 'older') {
+      const time = load.at ? new Date(load.at).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+      const loaded = T('s.dshLoaded', { time, profile: load.profile || '—' })
+      return load.state === 'older' ? `${loaded} ${T('s.dshOlder')}` : loaded
+    }
+    if (state !== 'set') return ''
+    return T(load.state === 'restart' ? 's.dshRestart' : 's.dshWaiting')
+  }
+
   // A field of the details: its name, what it is.
   const field = (key, value) => `<div class="kv"><span class="k">${esc(T(key))}</span><span class="v">${value}</span></div>`
   const pathOf = text => `<span class="mono path">${esc(text)}</span>`
 
-  // Where one is written: the file (omp's in each profile too; DSH's hook
-  // list in her data folder), its backup.
+  // Where one is written: the file (omp's in each profile too; DSH's patch
+  // file, and her plugin beside it), its backup.
   function agentFiles(id) {
     const r = Agents.read(snap, id)
     return [
       field('ag.file', `${pathOf(r.shown)}${r.more ? esc(T('s.ompMore', { n: r.more })) : ''}`),
-      r.list ? field('ag.list', pathOf(r.list)) : '',
+      r.list ? field(r.listKey || 'ag.list', pathOf(r.list)) : '',
       r.backup ? field('ag.backup', pathOf(`${r.shown}.wakuwaku.bak`)) : '',
     ].join('')
   }
