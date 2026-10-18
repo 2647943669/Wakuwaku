@@ -87,6 +87,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 - OpenCode 要你批准时也会弹到面板上：**允许** / **以后都允许** / **拒绝**。OpenCode 自己同时也在问，两边哪边先答算哪边的；「以后都允许」由 OpenCode 记在这个项目里。
 - omp（oh-my-pi）的计划审批也会弹到面板上：**批准**就按计划执行，**拒绝**就让 omp 接着改计划；终端里的审批框同时开着，在终端里先答了，面板就收起。omp 的工具批准她答不了（omp 没有给扩展回答它的办法），只提醒你去终端。
 - ZCode 的授权请求也一样只有**允许** / **拒绝**；ZCode 自己的确认框同时弹出，两边先答的算数，点「去 ZCode 处理」交回 ZCode。
+- Reasonix 的批准暂时还在 Reasonix 里答：岛上只显示它在等你批准什么（「在 Reasonix 里批准：……」）。
 
 ## 安装
 
@@ -174,6 +175,17 @@ ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwak
 - **批准还在 DSH 自己的窗口里点**：这个桥不支持 `PermissionRequest`，她不知道它在等你批准（这时岛上显示的是「在干活」）。
 - 每一步用的什么工具不显示：DSH 用 PowerShell 跑 hook，而且是在它的沙箱里，每条大约 1 秒，所以只挂了一轮的开始和结束、改文件、任务清单、提问这几处，别的工具不挂，免得每次调用都慢一秒。
 - 新会话开始时不会把她拉起来：hook 在 DSH 的沙箱里运行，从那里启动的她什么都存不下。
+
+### 9. 连上 Reasonix（可选）
+
+支持 [Reasonix](https://github.com/esengine/DeepSeek-Reasonix)：Reasonix Studio 桌面版和命令行（Go 写的 1.x、2.x）。在「Agent」页 Reasonix 那一行点「连接」，会在 Reasonix 的全局 `settings.json`（Windows 上是 `%APPDATA%\reasonix\settings.json`，设了 `REASONIX_HOME` 就在那里）的 `hooks` 里给 10 个事件各加一条我们的 hook（先备份；移除时只删我们的条目）。原来只有老位置的 `~/.reasonix/settings.json` 时，你在那里的 hook 会一起抄过来，因为新文件一出现 Reasonix 就不再读老的；移除后新文件又拿掉，回到原样。之后**在 Studio 里新开的会话、重开的命令行**（或 `/reload`）就会连上，已经开着的会话不算。
+
+能做的：会话开始、干活、每一步的工具、做完（带上它最后说的话）、改好了、出错（Reasonix 自己的报错原文），「今天」也算上它的轮次和时长；它的子代理、计划和守护（guardian）调用的工具算进启动它们的那个会话，不单独占一行；点会话跳回 Studio 的窗口，或命令行所在的终端、VS Code。做不到的：
+
+- **批准还在 Reasonix 里答**：写在 settings.json 里的 hook 只能看、不能替它答（只有插件包里的 Claude Code 格式 hook 能答）。它要你批准时，岛上显示「在 Reasonix 里批准：……」；它问你问题时显示「有问题问你」。
+- 「今天」的 token 还不算。
+
+Reasonix 的 hook 只能是命令：每个事件经 `cmd.exe` 运行一次 `"wakuwaku.exe" --wakuwaku-reasonix-hook <事件名>`，把事件转给她，什么都不输出（Reasonix 会把 `SessionStart` 的输出塞给模型）。Reasonix 每一步都等它跑完，大约 0.1 秒；她没开时它马上退出，Reasonix 照常。新会话开始时她没开，也会把她拉起来（除非你让她退出了）。Node 版的 Reasonix 0.x 不支持：它的 hook 只有 4 种事件，也不带会话编号，「Agent」页会写出它的版本，不去改它的设置。
 
 ### 从源码运行
 
@@ -266,6 +278,7 @@ OpenCode ──它后台服务里的插件 wakuwaku.js──▶ 宠物窗口 (/h
 omp ──扩展 wakuwaku.ts（在 omp 进程里）──▶ 宠物窗口 (/hook?agent=omp)
 ZCode ──process hooks──▶ 程序本身 --wakuwaku-zcode-hook <事件> ──▶ 宠物窗口 (/hook?agent=zcode)
 DeepSeek Harness ──Claude Code 兼容桥（PowerShell）──▶ 程序本身 --wakuwaku-dsh-hook <事件> ──▶ 宠物窗口 (/hook?agent=dsh)
+Reasonix ──command hooks（cmd）──▶ 程序本身 --wakuwaku-reasonix-hook <事件> ──▶ 宠物窗口 (/hook?agent=reasonix)
 ```
 
 - 所有事件都用 Claude Code 的 **HTTP hook** 直接发给她，调用工具时不启动任何进程（本机实测每次约 0.3ms）。她立刻回 `{}`，表示不做任何决定；只有确认请求会等你在面板上点了再回。
@@ -277,6 +290,7 @@ DeepSeek Harness ──Claude Code 兼容桥（PowerShell）──▶ 程序本�
 | `WAKUWAKU_PORT` | 换端口（默认 47213），她和 hooks 两边都要设 |
 | `CLAUDE_CONFIG_DIR` | Claude Code 的配置目录不在 `~/.claude` 时 |
 | `CODEX_HOME` | Codex 的配置目录不在 `~/.codex` 时 |
+| `REASONIX_HOME` | Reasonix 的家目录不在 `%APPDATA%\reasonix` 时（和 Reasonix 自己一样找） |
 | `OPENCODE_CONFIG_DIR`、`XDG_CONFIG_HOME` | OpenCode 的配置目录不在 `~/.config/opencode` 时（和 OpenCode 自己一样找） |
 
 ## 测试

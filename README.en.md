@@ -89,6 +89,7 @@ Each pet has 11 animations, and every one of them has a job:
 - OpenCode's permission asks come to the panel too: **Allow** / **Always allow** / **Deny**. OpenCode asks in its own window at the same time, and the first answer counts; OpenCode keeps an "always" for that project.
 - omp's (oh-my-pi's) plan reviews come to the panel too: **Approve** executes the plan, **Deny** has omp refine it; omp's own review stays open in the terminal meanwhile, and answering there first puts the panel away. omp's tool approvals she can't answer (omp gives an extension no way to), only remind you to go to the terminal.
 - ZCode's permission prompts too, with **Allow** / **Deny** only; ZCode shows its own dialog at the same time, the first answer counts, and Handle in ZCode hands it back.
+- Reasonix's approvals are still answered in Reasonix for now: the island only shows what it is waiting for you to approve ("Approve it in Reasonix: …").
 
 ## Install
 
@@ -176,6 +177,17 @@ What works: sessions starting, working and finishing (an edit makes it "edited")
 - **Approvals stay in DSH's own window**: the bridge has no `PermissionRequest`, so she can't tell it is waiting for your approval (the island shows it working then).
 - Not every step's tool: DSH runs hooks through PowerShell in its sandbox, about 1 s each, so only a turn's start and end, edits, the to-do list and questions have one, to keep other tool calls from waiting a second each.
 - A new session doesn't start her: the hook runs in DSH's sandbox, and she couldn't keep anything if started from there.
+
+### 9. Connect Reasonix (optional)
+
+[Reasonix](https://github.com/esengine/DeepSeek-Reasonix) is supported: the Reasonix Studio desktop app and the command line (the Go 1.x and 2.x). Click Connect in Reasonix's row of the Agents page: one hook of ours goes into each of 10 events under `hooks` in Reasonix's global `settings.json` (`%APPDATA%\reasonix\settings.json` on Windows, or under `REASONIX_HOME` when that is set; backed up first, and removing takes out only ours). If you only had the older `~/.reasonix/settings.json`, your hooks there are copied over too, since Reasonix stops reading the old file once the new one exists; removing takes the new file away again, as it was. Then **a new session in Studio, or the command line started again** (or `/reload`), is connected; sessions already open aren't.
+
+What works: sessions starting, working, each step's tool, finishing (with its last words), edited, and errors (Reasonix's own words for them); Today counts its turns and time; the tools its subagents, planner and guardian call count toward the session that started them, with no line of their own; a click on a session goes back to Studio's window, or the terminal or VS Code the command line runs in. What doesn't:
+
+- **Approvals are still answered in Reasonix**: hooks in settings.json can watch them but not answer them (only a Claude Code-style hook in a plugin package can). When it waits for your approval, the island says "Approve it in Reasonix: …"; when it asks you a question, "has a question for you".
+- Today doesn't count its tokens yet.
+
+Reasonix's hooks can only be commands: each event runs `"wakuwaku.exe" --wakuwaku-reasonix-hook <event>` once through `cmd.exe`, which hands it to her and prints nothing (Reasonix would pass `SessionStart`'s output to the model). Reasonix waits for it at each step, about 0.1 s; with her not running it leaves at once and Reasonix carries on. A new session starts her when she isn't running (unless you quit her). The Node Reasonix 0.x isn't supported: its hooks have only 4 events and no session id; the Agents page shows its version and leaves its settings alone.
 
 ### From source
 
@@ -268,6 +280,7 @@ OpenCode ──the plugin wakuwaku.js in its background service──▶ the pet
 omp ──extension wakuwaku.ts (inside omp's process)──▶ the pet (/hook?agent=omp)
 ZCode ──process hooks──▶ the app itself --wakuwaku-zcode-hook <event> ──▶ the pet (/hook?agent=zcode)
 DeepSeek Harness ──Claude Code bridge (PowerShell)──▶ the app itself --wakuwaku-dsh-hook <event> ──▶ the pet (/hook?agent=dsh)
+Reasonix ──command hooks (cmd)──▶ the app itself --wakuwaku-reasonix-hook <event> ──▶ the pet (/hook?agent=reasonix)
 ```
 
 - Every event is a Claude Code **HTTP hook** sent straight to her, so a tool call starts no process (about 0.3 ms here). She answers `{}` at once, meaning no decision; only a prompt waits until you answer on the panel.
@@ -279,6 +292,7 @@ DeepSeek Harness ──Claude Code bridge (PowerShell)──▶ the app itself -
 | `WAKUWAKU_PORT` | Another port (default 47213); set it for both her and the hooks |
 | `CLAUDE_CONFIG_DIR` | Claude Code's config folder, when it isn't `~/.claude` |
 | `CODEX_HOME` | Codex's config folder, when it isn't `~/.codex` |
+| `REASONIX_HOME` | Reasonix's home, when it isn't `%APPDATA%\reasonix` (found as Reasonix finds it) |
 | `OPENCODE_CONFIG_DIR`, `XDG_CONFIG_HOME` | OpenCode's config folder, when it isn't `~/.config/opencode` (found as OpenCode finds it) |
 
 ## Tests
