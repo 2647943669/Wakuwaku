@@ -570,6 +570,33 @@
         await p.wait(600)
       },
     })),
+    // The Agent page: the agents found here (fake-tauri.js: Claude Code,
+    // Codex and Reasonix, the others not on this computer), then Reasonix's
+    // row opened to its details, and a Reasonix 0.x's, which she does not
+    // connect to (zhoupengjie/Wakuwaku#60; a page with no such row is shot
+    // as it is).
+    ...[
+      ['settings-agents', '设置 · Agent', null, null],
+      ['settings-agents-reasonix', '设置 · Agent，Reasonix 那一行展开', 'reasonix', null],
+      ['settings-agents-reasonix-0x', '设置 · Agent，Reasonix 0.x（不支持）展开', 'reasonix', { hooks: 'unsupported', line: '0.x', version: '0.52.0', seen: false, backup: false }],
+    ].map(([id, title, open, reasonix]) => ({
+      id,
+      section: 'settings',
+      title,
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(660), 560, 660],
+      world: F => ({ ...busy(F), ...(reasonix ? { reasonix } : {}) }),
+      steps: async p => {
+        p.emit('island:settings', { tab: 'agents' })
+        await p.wait(600)
+        const row = open && p.$(`#island-settings [data-ag-open="${open}"]`)
+        if (row) {
+          p.click(`#island-settings .ag-row[data-ag-open="${open}"]`)
+          await p.wait(300)
+        }
+      },
+    })),
     {
       id: 'settings-plugins-unplaced',
       section: 'settings',
