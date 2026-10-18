@@ -386,12 +386,34 @@ pub struct Ask<R> {
 pub struct Asks<R: FnOnce(Option<Value>)> {
     next_id: u64,
     list: Vec<Ask<R>>,
+    // Messages for the sessions whose prompt went back to the app's own
+    // window, till taken (take_handed).
+    handed: Vec<Value>,
 }
 
 impl<R: FnOnce(Option<Value>)> Default for Asks<R> {
     fn default() -> Self {
-        Asks { next_id: 1, list: Vec::new() }
+        Asks { next_id: 1, list: Vec::new(), handed: Vec::new() }
     }
+}
+
+// A prompt of DSH's handed back to its own window (her time up, "去
+// DeepSeek Harness 处理", out of sight): its session still waits, and says
+// where to answer now ("在 DeepSeek Harness 里批准：写 note.txt", "在 DeepSeek
+// Harness 里回答：…"), only within its turn still under way. None for
+// another agent's (Claude Code's keeps its words).
+fn handed_back<R>(ask: &Ask<R>) -> Option<Value> {
+    if !is_dsh(&ask.event) {
+        return None;
+    }
+    let app = "DeepSeek Harness";
+    let detail = if s(&ask.view, "kind") == "question" {
+        let question = ask.view["questions"][0]["question"].as_str().unwrap_or("");
+        json!({ "key": "detail.answerIn", "vars": { "app": app, "what": crate::events::clip(question, 40) } })
+    } else {
+        json!({ "key": "detail.approveIn", "vars": { "app": app, "what": crate::events::step_of(s(&ask.event, "tool_name"), &input_of(&ask.event)) } })
+    };
+    Some(json!({ "session": ask.view["session"], "agent": "dsh", "mood": "waiting", "detail": detail, "within": true }))
 }
 
 // Events that mean the session has moved past any dialog it showed (Interrupt: Codex's).
@@ -439,10 +461,19 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
         true
     }
 
+    // Give it back to the terminal or the app's own window, the session told
+    // so where that changes its words (handed_back).
+    fn hand_back(&mut self, index: usize) {
+        if let Some(message) = handed_back(&self.list[index]) {
+            self.handed.push(message);
+        }
+        self.finish(index, Some(json!({})));
+    }
+
     // Leave it to the terminal.
     pub fn dismiss(&mut self, id: u64) -> bool {
         let Some(i) = self.list.iter().position(|a| a.id == id) else { return false };
-        self.finish(i, Some(json!({})));
+        self.hand_back(i);
         true
     }
 
@@ -451,9 +482,14 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
     pub fn dismiss_all(&mut self) -> usize {
         let n = self.list.len();
         while !self.list.is_empty() {
-            self.finish(0, Some(json!({})));
+            self.hand_back(0);
         }
         n
+    }
+
+    // The messages for the sessions whose prompt was handed back, since last taken.
+    pub fn take_handed(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.handed)
     }
 
     // Any other hook event: drop the asks it shows were settled in the
@@ -490,7 +526,7 @@ impl<R: FnOnce(Option<Value>)> Asks<R> {
         let mut gone = Vec::new();
         while let Some(i) = self.list.iter().position(|a| a.deadline <= now) {
             gone.push(self.list[i].id);
-            self.finish(i, Some(json!({})));
+            self.hand_back(i);
         }
         gone
     }
@@ -770,6 +806,36 @@ mod tests {
         let three = asks.add(dsh_permission("9-3", "call_3"), reply(&got), 0, 1000).ok().unwrap();
         let done = json!({ "hook_event_name": "PostToolUse", "session_id": "session-ed6a", "agent": "dsh", "tool_name": "write", "tool_input": {}, "tool_use_id": "call_3" });
         assert_eq!(asks.seen(&done), vec![three]);
+    }
+
+    #[test]
+    fn a_dsh_prompt_handed_back_says_where_to_answer() {
+        let mut asks: Asks<Box<dyn FnOnce(Option<Value>)>> = Asks::default();
+        let none = || Box::new(|_: Option<Value>| {}) as Box<dyn FnOnce(Option<Value>)>;
+        // Its time up: the session waits on DSH's own window for it.
+        asks.add(dsh_permission("9-1", "call_1"), none(), 0, 1000).ok().unwrap();
+        assert_eq!(asks.expire(1000).len(), 1);
+        assert_eq!(
+            asks.take_handed(),
+            vec![json!({ "session": "session-ed6a", "agent": "dsh", "mood": "waiting", "within": true, "detail": { "key": "detail.approveIn", "vars": { "app": "DeepSeek Harness", "what": { "key": "step.write", "vars": { "file": "probe1.txt" } } } } })]
+        );
+        assert!(asks.take_handed().is_empty(), "taken once");
+        // A question handed back ("去 DeepSeek Harness 处理"): to be answered there.
+        let id = asks.add(dsh_question(), none(), 0, 1000).ok().unwrap();
+        assert!(asks.dismiss(id));
+        let handed = asks.take_handed();
+        assert_eq!(handed[0]["detail"], json!({ "key": "detail.answerIn", "vars": { "app": "DeepSeek Harness", "what": "test1 or test2?" } }));
+        // Out of sight: each of DSH's; Claude Code's keeps its words.
+        asks.add(dsh_permission("9-2", "call_2"), none(), 0, 1000).ok().unwrap();
+        asks.add(permission(), none(), 0, 1000).ok().unwrap();
+        assert_eq!(asks.dismiss_all(), 2);
+        assert_eq!(asks.take_handed().len(), 1);
+        // Answered on her, or settled in DSH: nothing to say.
+        let id = asks.add(dsh_permission("9-3", "call_3"), none(), 0, 1000).ok().unwrap();
+        assert!(asks.answer(id, &json!({ "action": "allow" }), "en"));
+        asks.add(dsh_permission("9-4", "call_4"), none(), 0, 1000).ok().unwrap();
+        asks.seen(&json!({ "hook_event_name": "PermissionReplied", "session_id": "session-ed6a", "agent": "dsh", "permission_id": "9-4" }));
+        assert!(asks.take_handed().is_empty());
     }
 
     #[test]

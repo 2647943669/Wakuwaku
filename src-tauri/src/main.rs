@@ -434,10 +434,15 @@ impl Shared {
 
     // The prompts waiting changed.
     pub fn push_asks(&self) {
-        let (views, none) = {
-            let asks = self.asks.lock().unwrap();
-            (asks.views(), asks.is_empty())
+        let (views, none, handed) = {
+            let mut asks = self.asks.lock().unwrap();
+            (asks.views(), asks.is_empty(), asks.take_handed())
         };
+        // DeepSeek Harness's handed back to its own window: its session's
+        // line says to answer there (asks.rs handed_back).
+        for message in &handed {
+            self.apply(message);
+        }
         self.to_pages("pet:asks", views);
         self.push_settings();
         // Her taskbar on the other displays says how many wait (bars.rs);
@@ -466,8 +471,9 @@ impl Shared {
         let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
-            // Antigravity's, DeepSeek Harness's and Reasonix's approvals never
-            // come to her.
+            // Antigravity's and Reasonix's approvals never come to her, nor
+            // DeepSeek Harness's through its hook bridge (through her plugin
+            // they may: those given on her are counted all the same).
             let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh" || msg["agent"] == "reasonix";
             self.count_today(|t| {
                 t.begun(out.turns);

@@ -90,7 +90,7 @@ Each pet has 11 animations, and every one of them has a job:
 - omp's (oh-my-pi's) plan reviews come to the panel too: **Approve** executes the plan, **Deny** has omp refine it; omp's own review stays open in the terminal meanwhile, and answering there first puts the panel away. omp's tool approvals she can't answer (omp gives an extension no way to), only remind you to go to the terminal.
 - ZCode's permission prompts too, with **Allow** / **Deny** only; ZCode shows its own dialog at the same time, the first answer counts, and Handle in ZCode hands it back.
 - DeepSeek Harness's approvals (its sandbox widened to danger-full-access for a write outside the workspace or a command, say) come to the panel with **Allow** / **Deny** (DSH only ever allows once: no "always"), DSH's own reason under them; when it asks you something with `ask_user_question`, pick an option (or several) or type an answer on the panel. DSH asks in its own window at the same time, and **the first answer counts**: answered on the panel, DSH's approval box (or question card) closes and it goes on; answered in DSH first, the panel goes. Handle in DeepSeek Harness hands it back.
-- Reasonix's approvals are still answered in Reasonix for now: the island only shows what it is waiting for you to approve ("Approve it in Reasonix: …").
+- Reasonix's approvals are still answered in Reasonix for now: the island only shows what it is waiting for you to approve ("Approve in Reasonix: …").
 
 ## Install
 
@@ -180,7 +180,7 @@ The DeepSeek Harness row, opened, also lets you pick DSH's "Official hook bridge
 What works: sessions starting, working, each step's tool and finishing (an edit makes it "edited"), with DSH's own session name, its last words, the files changed and the to-do list on the island; its approvals and questions come to the panel to answer there (see the panel above), DSH asking in its own window at the same time, the first answer counting; a turn you stop in DSH goes back to idle, one that fails shows the error; Today counts its turns, time and the approvals given on the island; a click on its session goes to DSH's window. A subagent DSH starts (its subagent tool, or a plugin's, like dsh-mnemon's idle review) gets no line of its own, and its task never names a session: the files it changes count toward the turn of the session that started it, while that one is at work; with that one at rest, nothing shows. What doesn't:
 
 - No "always allow": DSH's approvals are one-shot only.
-- With her out of sight (do not disturb, an app full screen, or not running) no panel comes: the island only shows "Approve it in DeepSeek Harness: …", answered in DSH; a panel whose time runs out (the wait set in the settings) goes back to DSH the same way, and DSH's own window can answer all along. With her not running, DSH goes on as it always did.
+- With her out of sight (do not disturb, an app full screen) no panel comes: the island only shows "Approve in DeepSeek Harness: …", answered in DSH. A panel whose time runs out (the wait set in the settings), or handed back with Handle in DeepSeek Harness, goes back to DSH, and the session's line then says "Approve in DeepSeek Harness: …" ("Answer in DeepSeek Harness: …" for a question); DSH's own window can answer all along. With her not running, DSH goes on as it always did.
 - Once the plugin is updated to the version that answers approvals, restart DSH for it (the Agents page says so).
 - A new session doesn't start her: the plugin only sends her events, it starts no program.
 
@@ -190,7 +190,7 @@ What works: sessions starting, working, each step's tool and finishing (an edit 
 
 What works: sessions starting, working, each step's tool, finishing (with its last words), edited, and errors (Reasonix's own words for them); Today counts its turns and time; the tools its subagents, planner and guardian call count toward the session that started them, with no line of their own; a click on a session goes back to Studio's window, or the terminal or VS Code the command line runs in. What doesn't:
 
-- **Approvals are still answered in Reasonix**: hooks in settings.json can watch them but not answer them (only a Claude Code-style hook in a plugin package can). When it waits for your approval, the island says "Approve it in Reasonix: …"; when it asks you a question, "has a question for you".
+- **Approvals are still answered in Reasonix**: hooks in settings.json can watch them but not answer them (only a Claude Code-style hook in a plugin package can). When it waits for your approval, the island says "Approve in Reasonix: …"; when it asks you a question, "has a question for you".
 - Today doesn't count its tokens yet.
 - Stopping a turn in Studio shows a note in the conversation that a Wakuwaku hook "could not run · context canceled": Reasonix runs that step's hooks only after the cancel, when they can no longer start. Nothing else is affected.
 

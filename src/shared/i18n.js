@@ -1421,6 +1421,7 @@
 
       // Reasonix (zhoupengjie/Wakuwaku#60): the island's words, the welcome, the Agent page
       'detail.approveIn': '在 {app} 里批准：{what}',
+      'detail.answerIn': '在 {app} 里回答：{what}',
       'detail.needsYou': '需要你看一下',
       'wc.reasonixLeft': '<b>Reasonix</b>：在 Studio 里新开一个会话，或重开命令行，她就会动起来。批准还在 Reasonix 里点。',
       'wc.safe.reasonix': '只在 Reasonix 的 <span class="mono">settings.json</span> 里加我们的几条，别的设置不动',
@@ -2848,7 +2849,8 @@
         "Your Codex ({version}) can't run hooks in the background yet, so only the essential ones are in: the bubble won't show each step's tool. After updating to 0.148 or later, click Repair.",
 
       // Reasonix (zhoupengjie/Wakuwaku#60): the island's words, the welcome, the Agent page
-      'detail.approveIn': 'Approve it in {app}: {what}',
+      'detail.approveIn': 'Approve in {app}: {what}',
+      'detail.answerIn': 'Answer in {app}: {what}',
       'detail.needsYou': 'needs your attention',
       'wc.reasonixLeft': "<b>Reasonix</b>: open a new session in Studio, or restart the command line, and she'll come alive. Approvals stay in Reasonix.",
       'wc.safe.reasonix': 'Adds only our own entries to Reasonix\'s <span class="mono">settings.json</span> and leaves the rest alone',
