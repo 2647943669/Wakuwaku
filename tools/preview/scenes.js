@@ -187,19 +187,8 @@
     {
       id: 'hold-ring',
       title: '提醒停留',
-      note: '「停留多久」是「看到为止」：一轮刚做完，流光转完三圈后接着慢慢流动，一直流到鼠标移到胶囊上（算看过），才减速淡出、变成小点。「其他」里的「没人在电脑前」打开时它停在原地。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（8 秒、30 秒、自定义秒数，到时间就减速淡出）。',
-      world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'ring', hold: 'seen' } }),
-      play: turnEnds,
-    },
-    // 流动帧率, an experiment (zhoupengjie/Wakuwaku#65): the flow after the
-    // three turns at 30 new angles a second, as a native ring capped to 30
-    // would show it (playground.js flowFps, island.js stepFlow).
-    {
-      id: 'flow-fps',
-      title: '流动帧率',
-      flowFps: 30,
-      note: '试验：流光转完三圈后一直流动（停留「看到为止」），那段流动每秒只换「流动帧率」那么多次角度，就是原生光环限帧后的样子。这里先是 30；在右边换成 15、60、满帧比比看，「再做完一次」从头来。开头三圈和最后的减速淡出照旧满帧。鼠标移到胶囊上算看过，减速变成小点；「没人在电脑前」时停在原地。',
-      world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'ring', hold: 'seen' } }),
+      note: '「停留多久」是 30 秒：一轮刚做完，流光转完三圈后光环静静亮着，到 30 秒才变成小点；鼠标停到胶囊上就算看过。右边「发生点什么」里的做完、改好、出错、打招呼能一次次再来；「她有事告诉你时」里能换停留时间（含自定义秒数）。',
+      world: F => ({ ...desktop(F), sessions: [F.session('done'), codex(F)], config: { boardSets: F.BOARD_SETS, endCue: 'ring', hold: 30 } }),
       play: turnEnds,
     },
     {
@@ -434,33 +423,8 @@
     },
     // Past its hold (8 s from the event, the default) and its fade.
     { id: 'scene-error', section: 'scenes', scene: 'error', title: '出错了 · 流光播完留下的红点', page: 'island', view: CLOSED, budget: 12000, steps: p => p.wait(9200) },
-    // Past its turns (2.55 s), flowing on (until seen): held there, 4 s in.
-    {
-      id: 'scene-hold-ring',
-      section: 'scenes',
-      scene: 'hold-ring',
-      title: '提醒停留 · 流光转完三圈后接着流动（看到为止）',
-      page: 'island',
-      view: CLOSED,
-      steps: async p => {
-        await p.wait(50)
-        p.freeze({ flow: 4000 })
-      },
-    },
-    // The same moment (a picture shows no frame rate: the playground's flowFps
-    // is not the gallery's); the scene is shot as all are.
-    {
-      id: 'scene-flow-fps',
-      section: 'scenes',
-      scene: 'flow-fps',
-      title: '流动帧率 · 三圈之后流动的那段（帧率要在试玩里看）',
-      page: 'island',
-      view: CLOSED,
-      steps: async p => {
-        await p.wait(50)
-        p.freeze({ flow: 4000 })
-      },
-    },
+    // Past the turns (2.55 s), held lit and still (hold 30 s).
+    { id: 'scene-hold-ring', section: 'scenes', scene: 'hold-ring', title: '提醒停留 · 流光转完，光环静止亮着（停 30 秒）', page: 'island', view: CLOSED, budget: 8000, steps: p => p.wait(4500) },
     // Past the few seconds it used to stay open (6.5 s with Claude's words), open still.
     { id: 'scene-hold-open', section: 'scenes', scene: 'hold-open', title: '展开停留 · 做完自己展开，7 秒时还开着（停 30 秒）', page: 'island', view: [0, above(420), 520, 420], budget: 10000, steps: p => p.wait(7000) },
     { id: 'scene-taskbar-full', section: 'scenes', scene: 'taskbar-full', title: '放满小工具的任务栏', page: 'island', view: STRIP_VIEW },
@@ -602,8 +566,8 @@
         p.freeze({ flow: 1100 })
       },
     },
-    // Held (停留多久 30 s, zhoupengjie/Wakuwaku#65): its turns over, flowing
-    // on (held 4 s in); on the taskbar, at the top, at a corner.
+    // Held (停留多久 30 s, zhoupengjie/Wakuwaku#65): its turns over, lit and
+    // still, nothing of it animated; on the taskbar, at the top, at a corner.
     ...[
       ['flow-held', '任务栏上', 'taskbar', 'center', CLOSED],
       ['flow-held-island', '顶部灵动岛上', 'island', 'center', [480, 0, 640, 60]],
@@ -611,18 +575,18 @@
     ].map(([id, name, home_, islandPos, view]) => ({
       id,
       section: 'flow',
-      title: `停留 · 转完三圈后接着流动 · ${name}`,
+      title: `停留 · 转完后光环静止亮着 · ${name}`,
       page: 'island',
       home: home_,
       islandPos,
       view,
+      budget: 8000,
       world: F => ({ ...home(F), home: home_, sessions: [F.session('working')], config: { hold: 30 } }),
       steps: async p => {
         await p.wait(300)
         p.set({ sessions: [p.F.session('done')] })
         p.push()
-        await p.wait(50)
-        p.freeze({ flow: 4000 })
+        await p.wait(4000)
       },
     })),
 

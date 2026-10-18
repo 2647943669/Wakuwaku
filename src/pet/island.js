@@ -4947,9 +4947,9 @@
   // What opened the island by itself (a turn done, changes to review, an
   // error, a hello, a plugin's nudge) keeps it closed now: a ring of colour
   // runs round her capsule (round her portrait on the black strip, where
-  // she has none) three times, flows on calmly until the hold setting's
-  // time from the event is over (until seen: until the pointer comes on
-  // it; zhoupengjie/Wakuwaku#65) and fades, and a dot stays on her
+  // she has none) about three times, stays lit and still until the hold
+  // setting's time from the event is over (until seen: until the island
+  // opens; zhoupengjie/Wakuwaku#65) and fades, and a dot stays on her
   // portrait until the island has been open for any reason (seen). What it
   // would have shown is there as it opens next (pending): an ending's own
   // words are its session's anyway. Only a session waiting on the person
@@ -4964,10 +4964,9 @@
   // ground (glow). Its own element, never drawn anew by update(): the island
   // drawn again (the widgets' words every few seconds, the clock) neither
   // starts it over nor makes it flicker. Animated by the page (Web
-  // Animations), only its turning (transform) and its light (opacity), on
-  // the compositor; still while nobody can see it, nothing animated
-  // (holdRing, syncFlow); gone (display: none, will-change with it) once it
-  // has played.
+  // Animations), only its turning (transform) and its light (opacity);
+  // held still, nothing animated (holdRing); gone (display: none,
+  // will-change with it) once it has played.
   // The ring's colours by Windows' mode (the strip's, or the screen's at
   // the top): deeper in the light, where the dark set's pale ones are lost.
   const flowLight = () => modeNow() === 'light'
@@ -5022,8 +5021,8 @@
   const flowStops = kind => Flow.gradient(Flow.palette(kind, flowLight(), news?.colour, hintAccent()))
 
   function ring(kind) {
-    // Flowing after its turns for as long as the hold says (until seen: until
-    // the pointer comes on it), zhoupengjie/Wakuwaku#65.
+    // Held lit after its turns for as long as the hold says (until seen: until
+    // the island opens), zhoupengjie/Wakuwaku#65.
     const step = Flow.play(flowState, kind, performance.now(), { still: stillMotionNow(), hold: Flow.holdMs(config.hold) })
     flowState = step.state
     if (step.act === 'start') {
@@ -5038,12 +5037,6 @@
       animateRing(step.ring)
     } else if (step.act === 'blend') {
       blendTo(kind)
-      // Taken on as it faded (its dot come already): the dot goes again, and
-      // comes as it fades this time.
-      if (step.retimed && news?.shown && step.ring.hold > 0 && step.ring.dotAt > performance.now()) {
-        news.shown = false
-        drawNews()
-      }
       if (step.retimed) animateRing(step.ring)
     } else if (step.act === 'hop' || step.act === 'swap') {
       showNews(step.act)
@@ -5051,94 +5044,48 @@
     // hold: the ring keeps its colour; the dot has the new one as it comes.
   }
 
-  // The simulator's 流动帧率 (tools/preview's playground, to see the flow at
-  // the rates a native ring capped to them would show; the app never sets
-  // it): new angles that many times a second for the flowing part alone
-  // (after its three turns, before it slows), each on the frame after its
-  // moment, as one timed to the display would; 0, every frame, as ever.
-  let flowFps = 0
-  let stepping = 0
-  function stopStepping() {
-    cancelAnimationFrame(stepping)
-    stepping = 0
-  }
-  // Those turnings' animations paused and moved on only by whole steps of
-  // 1/fps from the start of their turning (a re-timing keeps the grid).
-  function stepFlow(groups, fps) {
-    const made = performance.now()
-    for (const g of groups) {
-      for (const a of g.anims) a.pause()
-      g.last = null
-    }
-    const tick = now => {
-      stepping = requestAnimationFrame(tick)
-      for (const g of groups) {
-        const into = now - made - g.delay
-        const n = into < 0 ? -1 : Math.floor((into * fps) / 1000)
-        if (n === g.last) continue
-        g.last = n
-        for (const a of g.anims) a.currentTime = n < 0 ? 0 : g.delay + (n * 1000) / fps
-      }
-    }
-    stepping = requestAnimationFrame(tick)
-  }
-
   // Its turning and its light from where they are now (Flow.frames), its
   // dot as it fades and its end, timed anew. Held (the hold setting,
-  // zhoupengjie/Wakuwaku#65), it flows for as long as it stays: each of its
-  // turnings in turn (its three turns, the flow, slowing at the end), the
-  // one now filling back (so it shows from the start), those after only
-  // forwards (so they do not cover it before their time); its light down at
-  // the hold's end; until seen, no end of its own (seen: releaseRing, the
-  // island open: stopRing). Still while nobody can see it (syncFlow), and
-  // with reduced motion once lit: nothing animated (holdRing).
+  // zhoupengjie/Wakuwaku#65): animated only until it is held still
+  // (holdRing), down again at the hold's end (fadeRing); until seen, no end
+  // of its own (the island opening ends it: stopRing).
   function animateRing(r) {
     for (const a of flowAnims) a.cancel()
     for (const t of flowTimers) clearTimeout(t)
     flowAnims = []
     flowTimers = []
-    stopStepping()
     unholdRing()
     const f = Flow.frames(r, performance.now())
     const later = (fn, ms) => Number.isFinite(ms) && flowTimers.push(setTimeout(fn, Math.max(0, ms)))
-    if (f.paused) holdRing(f.rest, f.lit)
-    else {
-      if (f.light && (f.still == null || f.still > 0)) flowAnims.push(flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' }))
+    if (f.still == null || f.still > 0) {
+      flowAnims.push(flow.animate(f.light.keyframes, { delay: f.light.delay, duration: f.light.duration, fill: 'both' }))
       const glow = flow.classList.contains('glow')
-      const stepped = []
-      f.turns.forEach((turn, i) => {
-        const group = []
+      if (f.turn) {
         for (const s of spins) {
           if (!glow && s.closest('.flow-glow')) continue
-          const keys = [{ transform: `rotate(${turn.from}deg)` }, { transform: `rotate(${turn.to}deg)` }]
-          const a = s.animate(keys, { delay: turn.delay, duration: turn.duration, easing: turn.easing, iterations: turn.iterations, fill: i ? 'forwards' : 'both' })
-          flowAnims.push(a)
-          group.push(a)
+          const turn = [{ transform: `rotate(${f.turn.from}deg)` }, { transform: `rotate(${f.turn.to}deg)` }]
+          flowAnims.push(s.animate(turn, { delay: f.turn.delay, duration: f.turn.duration, easing: f.turn.easing, fill: 'both' }))
         }
-        if (flowFps && turn.kind === 'flow') stepped.push({ anims: group, delay: turn.delay })
-      })
-      if (stepped.length) stepFlow(stepped, flowFps)
-      if (f.still != null) {
-        // Reduced motion: lit, then still until its hold is over.
-        if (f.still > 0) later(() => holdRing(f.rest), f.still)
-        else holdRing(f.rest)
-        if (f.out) later(() => fadeRing(r), f.out.delay)
-      } else if (f.out) flowAnims.push(flow.animate(f.out.keyframes, { delay: f.out.delay, duration: f.out.duration, fill: 'forwards' }))
+      }
     }
+    if (f.still != null) {
+      if (f.still > 0) later(() => holdRing(f.rest), f.still)
+      else holdRing(f.rest)
+    }
+    if (f.out) later(() => fadeRing(r), f.out.delay)
     later(() => showNews('in'), f.dotIn)
     later(endRing, f.end)
   }
 
-  // Held still (nobody can see it, or reduced motion once lit): nothing of
-  // it running, not even a light held at full: the ring left as lit as it
-  // was, its gradient where it stopped, the glow under it the same, no
-  // will-change (held).
-  function holdRing(rest, lit = 1) {
+  // Held still (its turns over, its hold not yet): nothing of it running,
+  // not even a light held at full (an animation filling forwards still
+  // costs its frames): the ring left lit, its gradient where it stopped,
+  // the glow under it the same, no will-change (held).
+  function holdRing(rest) {
     for (const a of flowAnims) a.cancel()
     flowAnims = []
-    stopStepping()
     flow.classList.add('held')
-    flow.style.opacity = String(lit)
+    flow.style.opacity = '1'
     for (const s of spins) s.style.transform = `rotate(${rest}deg)`
   }
 
@@ -5149,13 +5096,12 @@
     for (const s of spins) s.style.transform = ''
   }
 
-  // Reduced motion, the hold over: its light down from lit (as Flow.frames
-  // has it now), still.
+  // The hold over: its light down from lit (as Flow.frames has it now),
+  // the gradient resting where it was held.
   function fadeRing(r) {
     const o = Flow.frames(r, performance.now()).out
     if (!o) return
     for (const a of flowAnims) a.cancel()
-    stopStepping()
     flow.classList.remove('held')
     flow.style.opacity = ''
     flowAnims = [flow.animate(o.keyframes, { delay: o.delay, duration: o.duration, fill: 'both' })]
@@ -5190,7 +5136,6 @@
     flowAnims = []
     blends = []
     flowTimers = []
-    stopStepping()
     unholdRing()
     flow.classList.remove('on', 'glow')
     if (news && !news.shown) showNews('in')
@@ -5263,8 +5208,7 @@
     news.shown = true
     drawNews()
     const cls = !was ? 'pop' : how === 'hop' ? 'hop' : ''
-    // Nobody to see it come (a ring held still gone at its end): just there.
-    if (!cls || stillMotionNow() || flowUnseen()) return
+    if (!cls || stillMotionNow()) return
     newsDot.classList.remove('pop', 'hop')
     void newsDot.offsetWidth
     newsDot.classList.add(cls)
@@ -5661,9 +5605,6 @@
       if (isOn() && before !== now.mood && now.mood === 'working') movedOn()
       update()
     }
-    // Full screen, nobody about, do not disturb now, or no more: a ring
-    // flowing holds still, or flows on.
-    syncFlow()
   })
 
   // A turn begun again (the one shown at work once more, from an ending):
@@ -5676,36 +5617,12 @@
   // a plugin's nudge, which no session's turn ends.
   function movedOn() {
     if (nudge && Flow.isEnding(nudge.kind)) endNudge()
-    if (isRinging() && Flow.isEnding(flowState.ring?.kind)) releaseRing()
-  }
-
-  // Held, and seen (the pointer come on her capsule) or moved on (movedOn):
-  // slowing to a stop as it fades, the dot coming (Flow.release; still,
-  // gone at once). The island opening under the pointer takes it at once
-  // (stopRing), and its dot with it: seen.
-  function releaseRing() {
+    if (!isRinging() || !Flow.isEnding(flowState.ring?.kind)) return
     const next = Flow.release(flowState, performance.now())
     if (next === flowState) return
     flowState = next
     animateRing(next.ring)
   }
-
-  // Not to be seen (nobody at the computer, something full screen, do not
-  // disturb, her window hidden): a ring flowing holds still where it is,
-  // nothing animated (Flow.pause), its hold going on; once it can be seen
-  // again it flows on if its hold is not over (Flow.resume), else it went
-  // at its end, the dot alone. Nothing burns while nobody can see it. (The
-  // island open is seen: it ends it, stopRing.)
-  const flowUnseen = () => fullScreen || quiet || config.dnd === true || document.hidden
-  function syncFlow() {
-    if (!isRinging() || !flowState.ring) return
-    const t = performance.now()
-    const next = flowUnseen() ? Flow.pause(flowState, t) : Flow.resume(flowState, t)
-    if (next === flowState) return
-    flowState = next
-    animateRing(next.ring)
-  }
-  document.addEventListener('visibilitychange', syncFlow)
 
   // Only the widgets' words changed (the monitor's readings every couple
   // of seconds, main.rs redraw_widgets): on the strip, the readings' node
@@ -5735,8 +5652,6 @@
   // stands still, or plays on.
   window.pet.onQuiet(({ on }) => {
     quiet = on === true
-    // A ring flowing holds still while nobody is about.
-    syncFlow()
     herClip = null
     animateHer()
     playPortraits()
@@ -5761,7 +5676,6 @@
   // An app full screen on her display, or none now: no ring while one is.
   window.pet.onFullScreen(({ on } = {}) => {
     fullScreen = on === true
-    syncFlow()
   })
 
   // A widget asks to open the island (main checked that nothing wants you):
@@ -5789,11 +5703,8 @@
   for (const target of [island]) {
     target.addEventListener('mouseenter', () => {
       window.pet.hover(true)
-      // Open by itself until seen: seen now. A ring flowing round her
-      // capsule: seen, slowing as it fades into the dot (opened under the
-      // pointer in a moment, it goes at once, the dot with it).
+      // Open by itself until seen: seen now.
       seenNudge()
-      if (isRinging()) releaseRing()
       clearTimeout(hoverTimer)
       hoverTimer = setTimeout(() => {
         // Closed by a press under this pointer (dismiss): not opened by it again.
@@ -6015,10 +5926,5 @@
     compact,
     expanded,
   }
-  // The simulator's 流动帧率 (stepFlow): a ring flowing now goes on at it.
-  const setFlowFps = n => {
-    flowFps = Number.isFinite(n) && n > 0 ? n : 0
-    if (isRinging() && flowState.ring) animateRing(flowState.ring)
-  }
-  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch, flowFps: setFlowFps }
+  window.Island = { accent: () => look.accent || null, isOn, changed: update, reach, absorb, settingsMax, tbPresets: TB_PRESETS, tbPreset: () => presetOf(config.taskbarLayout), tbWithPreset: name => TB_PRESETS[name] && Widgets.withParts(TB_PRESETS[name], tbLayout(config.taskbarLayout)), editTaskbar, whereOf, placeWidget, placeNow, anchor, notched: () => !!screenTop?.notch }
 })()

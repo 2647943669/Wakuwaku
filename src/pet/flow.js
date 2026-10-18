@@ -2,8 +2,8 @@
 // happens on her closed capsule when something happens that does not need
 // the person at once. A turn done, changes to review, an error, a hello, a
 // plugin's nudge: the island no longer opens by itself (unless set to, as
-// before); a thin ring of colour runs round the capsule three times, flows
-// on calmly for as long as the hold setting says (or until seen), and
+// before); a thin ring of colour runs round the capsule three times, stays
+// lit and still for as long as the hold setting says (or until seen), and
 // fades, and a small dot on her portrait stays until it has been seen. Only
 // a session waiting on the person (to approve, answer or choose) always
 // opens it; what happens inside a turn (a tool failed) only plays her clip.
@@ -42,20 +42,8 @@
   const STILL_MS = 1400
   const STILL_FADE_MS = 200
   // Held (the hold setting, zhoupengjie/Wakuwaku#65): its light down over
-  // the same 0.56 s once the hold is over, as it slows to a stop.
+  // the same 0.56 s once the hold is over, from lit, still.
   const FADE_OUT_MS = FADE_LEAD_MS + TAIL_MS
-  // Held, it flows on for as long as it stays (the user, 2026-10-18: 停多久
-  // 就流动多久): after its three turns, steadily, a turn each FLOW_TURN_MS
-  // (calm, the same light still going round), FLOW_W °/ms. Its three turns
-  // end at that speed rather than slowing to a stop: the same start (EASE's
-  // first point), its second set so the curve ends as steep as the flow
-  // (a cubic-bezier's slope at its end is (1 - y2) / (1 - x2)).
-  const FLOW_TURN_MS = 2250
-  const FLOW_W = 360 / FLOW_TURN_MS
-  const EASE_FLOW = [EASE[0], EASE[1], EASE[2], 1 - ((1 - EASE[2]) * FLOW_W * TURNS * TURN_MS) / (TURNS * 360)]
-  // Back up to the flow's speed, from still (nobody about, then someone
-  // again) or from slowing (another as it fades): over this long.
-  const RAMP_MS = 600
   // The dot's coming (0.25 s, a little past full size and back) and its hop.
   const DOT_IN_MS = 250
   const HOP_MS = 300
@@ -270,41 +258,23 @@
     return seg
   }
 
-  // A ramp: from speed v to speed w (°/ms) over T ms from t at a°, going
-  // the mean of the two speeds' way. A cubic in time, which CSS says as
-  // cubic-bezier(1/3, y1, 2/3, y2): its slopes at the ends are 3 y1 and
-  // 3 (1 - y2), times Δ/T. From still to the flow's speed (resuming), from
-  // the flow's to still (slowing as it fades), from slowing back up.
-  function ramp(t, a, v, w, T) {
-    const d = ((v + w) / 2) * T
-    const ease = d > 0 ? [1 / 3, (v * T) / (3 * d), 2 / 3, 1 - (w * T) / (3 * d)] : [1 / 3, 1 / 3, 2 / 3, 2 / 3]
-    return { t0: t, t1: t + T, a0: a, a1: a + d, ease, kind: 'ramp' }
-  }
-
   // Where a ring has turned to by t (°), and how fast it turns then (°/ms).
-  // A flowing turning (w: its speed) goes on steadily until its t1, which
-  // may be never (Infinity: held until seen); held still (paused), it rests
-  // where it stopped.
   function angleAt(ring, t) {
     if (ring.still) return 0
-    if (ring.paused && t >= ring.paused.at) return ring.paused.angle
     const s = turningAt(ring, t)
     if (t <= s.t0) return s.a0
-    if (s.w != null) return s.a0 + s.w * (Math.min(t, s.t1) - s.t0)
     if (t >= s.t1) return s.a1
     return s.a0 + (s.a1 - s.a0) * bezier(s.ease).y((t - s.t0) / (s.t1 - s.t0))
   }
   function speedAt(ring, t) {
-    if (ring.still || (ring.paused && t >= ring.paused.at)) return 0
+    if (ring.still) return 0
     const s = turningAt(ring, t)
-    if (t < s.t0 || t >= s.t1) return 0
-    if (s.w != null) return s.w
+    if (t <= s.t0 || t >= s.t1) return 0
     return ((s.a1 - s.a0) / (s.t1 - s.t0)) * bezier(s.ease).dy((t - s.t0) / (s.t1 - s.t0))
   }
 
   // How lit it is at t: along its fade's points ([t, opacity], in time).
   function lightAt(ring, t) {
-    if (ring.paused && t >= ring.paused.at) return ring.paused.lit
     const f = ring.fade
     if (t <= f[0][0]) return f[0][1]
     for (let i = 1; i < f.length; i++) {
@@ -319,63 +289,30 @@
 
   // --- Held: the hold setting (zhoupengjie/Wakuwaku#65) ----------------------------------
   // A ring turned and faded in its 2.8 s whatever the hold said. Held (hold:
-  // its ms, Infinity until seen), it stays until the hold is over, counted
-  // from the event (as main holds the ending itself, state.rs settle_at),
-  // and flows for as long as it stays (the user, 2026-10-18, over the
-  // design's "nothing left running"): its three turns as ever, but ending
-  // at the flow's speed (EASE_FLOW), then on steadily, a turn each
-  // FLOW_TURN_MS, then slowing to a stop as its light goes down over 0.56 s,
-  // the dot coming as it starts to. Until seen, it flows until it is seen
-  // (the pointer on it, the island open) or its session is at work again
-  // (release). Only its turning and its light are animated. With reduced
-  // motion it is lit still the whole hold, not 1.4 s. A ring's times then:
-  //   fadeAt   its light going down, it slowing (and the dot coming): the
-  //            hold over
+  // its ms, Infinity until seen), its turns are the same, but it is not let
+  // fade as they end: lit, still, until the hold is over, counted from the
+  // event (as main holds the ending itself, state.rs settle_at), then down
+  // over 0.56 s, the dot coming as it does. Held still, nothing of it runs
+  // (island.js holdRing): the gradient left where it stopped, the glow
+  // under it the same. With reduced motion it is lit still the whole hold,
+  // not 1.4 s. A ring's times then:
+  //   stillAt  its turning over (the light up, with reduced motion): from
+  //            then on it is held still, nothing animated
+  //   fadeAt   its light going down (and the dot coming): the hold over
   //   until    gone
-  //   stillAt  with reduced motion: its light up, held still from then
-  //   paused   while nobody can see it (nobody about, something full screen,
-  //            do not disturb, her window hidden: island.js syncFlow), still
-  //            where it is, nothing animated, its hold going on, gone at its
-  //            end without fading (the dot alone); seen again (resume), it
-  //            ramps back up to the flow's speed and flows on
-  // Its turnings, one after another (kind): its three turns (turns), a
-  // ramp up to the flow's speed (ramp), the flow (w: its speed, until t1,
-  // Infinity until seen), slowing to a stop as it fades (slow). Without a hold (hold 0, as before it was one): its
-  // turns, its light going down over their end, fadeAt 0.31 s before it.
+  // Without a hold (hold 0, as before it was one): stillAt null, its light
+  // going down over its turning's end, fadeAt 0.31 s before it.
   //
-  // Not held: its light from the points given (coming up), lit after them
-  // until its turning's end (t1).
-  function timed(ring, up, t1) {
-    const fadeAt = t1 - FADE_LEAD_MS
-    return { ...ring, fade: [...up, [fadeAt, 1], [t1 + TAIL_MS, 0]], stillAt: null, fadeAt, dotAt: fadeAt, until: t1 + TAIL_MS }
-  }
-
-  // Held: its turnings so far, then flowing from `from` ({ t, a }: where its
-  // turns or a ramp reach the flow's speed) until fadeAt, then slowing to a
-  // stop as its light goes down, from the points given (coming up) to none.
-  function flowing(ring, up, turnings, from, fadeAt) {
-    const flow = { t0: from.t, t1: fadeAt, a0: from.a, w: FLOW_W, kind: 'flow' }
-    const base = { ...ring, turnings: [...turnings, flow], stillAt: null, fadeAt, dotAt: fadeAt, paused: null }
-    if (!Number.isFinite(fadeAt)) return { ...base, fade: [...up, [Infinity, 1], [Infinity, 0]], until: Infinity }
-    const slow = { ...ramp(fadeAt, from.a + FLOW_W * (fadeAt - from.t), FLOW_W, 0, FADE_OUT_MS), kind: 'slow' }
-    return { ...base, turnings: [...base.turnings, slow], fade: [...up, [fadeAt, 1], [fadeAt + FADE_OUT_MS, 0]], until: fadeAt + FADE_OUT_MS }
-  }
-
-  // Held, from t on (another come, or able to be seen again after being
-  // still: from, { angle, lit }): flowing on until fadeAt from where it is,
-  // its turns not begun again. In its first turns (or ramping up) they go
-  // on as they are, into the flow; flowing, it flows on; slowing as it
-  // fades, or still, it ramps back up to the flow's speed. Lit again over
-  // the blend, should it be going down (or coming up).
-  function flowOn(ring, t, fadeAt, from = null) {
-    const lit = from ? from.lit : lightAt(ring, t)
-    const up = [[t, lit], ...(lit < 1 ? [[t + BLEND_MS, 1]] : [])]
-    const before = ring.turnings.filter(s => s.t0 <= t)
-    const s = turningAt(ring, t)
-    if (!from && (s.kind === 'turns' || s.kind === 'ramp') && t < s.t1) return flowing(ring, up, before, { t: s.t1, a: s.a1 }, Math.max(fadeAt, s.t1))
-    if (!from && s.kind === 'flow' && t < s.t1) return flowing(ring, up, before, { t, a: angleAt(ring, t) }, fadeAt)
-    const r = ramp(t, from ? from.angle : angleAt(ring, t), from ? 0 : speedAt(ring, t), FLOW_W, RAMP_MS)
-    return flowing(ring, up, [...before, r], { t: r.t1, a: r.a1 }, Math.max(fadeAt, r.t1))
+  // Its light from the points given (coming up), lit after them until its
+  // end: its turning's (t1), and with a hold, held still from there until
+  // the hold after t is over.
+  function timed(ring, t, up, t1) {
+    if (!(ring.hold > 0)) {
+      const fadeAt = t1 - FADE_LEAD_MS
+      return { ...ring, fade: [...up, [fadeAt, 1], [t1 + TAIL_MS, 0]], stillAt: null, fadeAt, dotAt: fadeAt, until: t1 + TAIL_MS }
+    }
+    const fadeAt = Math.max(t1, t + ring.hold)
+    return { ...ring, fade: [...up, [fadeAt, 1], [fadeAt + FADE_OUT_MS, 0]], stillAt: t1, fadeAt, dotAt: fadeAt, until: fadeAt + FADE_OUT_MS }
   }
 
   // The same with reduced motion: lit once the points given are, held
@@ -387,21 +324,17 @@
   }
 
   // A ring begun at t: three turns over 2.55 s inside 2.8 s of light; still,
-  // 1.4 s lit. Its dot comes as it starts to fade. Held (hold, ms), its
-  // turns into the flow, flowing until the hold after t is over; still, lit
-  // still until then.
+  // 1.4 s lit. Its dot comes as it starts to fade. Held (hold, ms), lit
+  // still after its turns until the hold after t is over.
   function begin(kind, t, still, hold = 0) {
     if (still) {
-      if (hold > 0) return timedStill({ kind, still: true, t0: t, turns: 0, base: 0, hold, paused: null, turnings: [] }, t, [[t, 0], [t + STILL_FADE_MS, 1]])
+      if (hold > 0) return timedStill({ kind, still: true, t0: t, turns: 0, base: 0, hold, turnings: [] }, t, [[t, 0], [t + STILL_FADE_MS, 1]])
       const until = t + STILL_MS
-      return { kind, still: true, t0: t, turns: 0, base: 0, hold: 0, paused: null, turnings: [], fade: [[t, 0], [t + STILL_FADE_MS, 1], [until - STILL_FADE_MS, 1], [until, 0]], stillAt: null, fadeAt: until - STILL_FADE_MS, dotAt: until - STILL_FADE_MS, until }
+      return { kind, still: true, t0: t, turns: 0, base: 0, hold: 0, turnings: [], fade: [[t, 0], [t + STILL_FADE_MS, 1], [until - STILL_FADE_MS, 1], [until, 0]], stillAt: null, fadeAt: until - STILL_FADE_MS, dotAt: until - STILL_FADE_MS, until }
     }
     const t1 = t + TURNS * TURN_MS
-    const up = [[t, 0], [t + FADE_IN_MS, 1]]
-    const ring = { kind, still: false, t0: t, turns: TURNS, base: 0, hold, paused: null, turnings: [] }
-    if (!(hold > 0)) return timed({ ...ring, turnings: [{ t0: t, t1, a0: 0, a1: TURNS * 360, ease: EASE, kind: 'turns' }] }, up, t1)
-    const turns = { t0: t, t1, a0: 0, a1: TURNS * 360, ease: EASE_FLOW, kind: 'turns' }
-    return flowing(ring, up, [turns], { t: t1, a: turns.a1 }, Math.max(t1, t + hold))
+    const ring = { kind, still: false, t0: t, turns: TURNS, base: 0, hold, turnings: [{ t0: t, t1, a0: 0, a1: TURNS * 360, ease: EASE }] }
+    return timed(ring, t, [[t, 0], [t + FADE_IN_MS, 1]], t1)
   }
 
   // No ring yet.
@@ -416,157 +349,107 @@
   //   hold    a lower one: the ring keeps its colour, the dot takes the new
   //   hop     within AGAIN_MS of a ring's end: no ring, the dot takes the new
   //           colour and hops (with reduced motion only its colour: swap)
-  // hold: how long it stays (ms; Infinity until seen; 0 none, as before
-  // there was one). Held, another that takes the ring (as it flows, in its
-  // first turns, or as it fades) takes it on in its colour (the blend) with
-  // its hold counted anew from itself, the turns not begun again: flowing
-  // on (flowOn). Still while nobody can see it: its colour and hold the
-  // same, still.
+  // hold: how long it is held lit (ms; Infinity until seen; 0 none, as
+  // before there was one). Held, each event that takes the ring counts the
+  // hold anew from itself; one while it is held still (or fading after)
+  // turns it again in its colour, three turns from where it rests, carried
+  // on by those after it as any (a blend, 4.5 turns at most from there).
   function play(state, kind, t, { still = false, hold = 0 } = {}) {
-    const ring = live(state, t)
+    const ring = state.ring && t < state.ring.until ? state.ring : null
     if (ring) {
       if ((PRIORITY[kind] || 0) < (PRIORITY[ring.kind] || 0)) return { state, act: 'hold', ring }
       const retimed = next => ({ state: { ring: next, until: next.until }, act: 'blend', retimed: true, ring: next })
       // Lit again over the blend, should it be fading (or coming up).
       const lit = lightAt(ring, t)
       const up = [[t, lit], ...(lit < 1 ? [[t + (ring.still ? STILL_FADE_MS : BLEND_MS), 1]] : [])]
-      const held = { ...ring, kind, hold: hold > 0 ? hold : ring.hold }
+      const held = { ...ring, kind, hold }
       if (ring.still) {
         if (hold > 0) return retimed(timedStill(held, t, up))
         const next = { ...ring, kind }
         return { state: { ...state, ring: next }, act: 'blend', retimed: false, ring: next }
       }
-      if (ring.hold > 0) {
-        const fadeAt = t + held.hold
-        if (ring.paused) return retimed({ ...held, fadeAt, dotAt: fadeAt, until: fadeAt })
-        return retimed(flowOn(held, t, fadeAt))
+      const last = ring.turnings[ring.turnings.length - 1]
+      // Turning yet (or, held by nothing, in its last fade): on as ever.
+      if (t < last.t1 || !(hold > 0)) {
+        const at = (angleAt(ring, t) - ring.base) / 360
+        const want = Math.min(MAX_TURNS, Math.max(ring.turns, at + MIN_NEW_TURNS))
+        if (want <= ring.turns + 1e-9) {
+          // Its turning as it is; held, its hold from this one.
+          if (hold > 0) return retimed(timed(held, t, up, last.t1))
+          const next = { ...ring, kind }
+          return { state: { ...state, ring: next }, act: 'blend', retimed: false, ring: next }
+        }
+        // On from where it is, at the average speed for what is left.
+        const t1 = t + (want - at) * TURN_MS
+        const turning = onFrom(t, angleAt(ring, t), speedAt(ring, t), t1, ring.base + want * 360)
+        return retimed(timed({ ...held, turns: want, turnings: [...ring.turnings, turning] }, t, up, t1))
       }
-      // Not held: turning on, as ever.
-      const at = (angleAt(ring, t) - ring.base) / 360
-      const want = Math.min(MAX_TURNS, Math.max(ring.turns, at + MIN_NEW_TURNS))
-      if (want <= ring.turns + 1e-9) {
-        const next = { ...ring, kind }
-        return { state: { ...state, ring: next }, act: 'blend', retimed: false, ring: next }
-      }
-      // On from where it is, at the average speed for what is left.
-      const t1 = t + (want - at) * TURN_MS
-      const turning = { ...onFrom(t, angleAt(ring, t), speedAt(ring, t), t1, ring.base + want * 360), kind: 'turns' }
-      return retimed(timed({ ...held, turns: want, turnings: [...ring.turnings, turning] }, up, t1))
+      // Held still, or fading after: its turns again, in the new colour,
+      // from where it rests (its glow and its blend as ever).
+      const a0 = last.a1
+      const t1 = t + TURNS * TURN_MS
+      return retimed(timed({ ...held, turns: TURNS, base: a0, turnings: [...ring.turnings, { t0: t, t1, a0, a1: a0 + TURNS * 360, ease: EASE }] }, t, up, t1))
     }
     if (t - state.until < AGAIN_MS) return { state: { ...state, ring: null }, act: still ? 'swap' : 'hop' }
     const next = begin(kind, t, still, hold)
     return { state: { ring: next, until: next.until }, act: 'start', ring: next }
   }
 
-  // The ring still there at t, if any.
-  const live = (state, t) => (state.ring && t < state.ring.until ? state.ring : null)
-
   // Cut short (the island opened: the person is looking). What comes next
   // rings anew: it was seen, not played out.
   const stop = () => idle()
 
-  // Held, and seen (the pointer come on it) or what it says has moved on (its
-  // session at work again: island.js movedOn): its hold over at t, slowing to
-  // a stop from the speed it has as its light goes down (0.56 s), the dot
-  // coming; still (nobody could see it), gone now, the dot alone; with
-  // reduced motion, down as at its time. Anything else as it is.
+  // Held, and what it says has moved on (its session at work again: island.js
+  // movedOn): its hold over at t, down as at its time (after its turning,
+  // should it still turn), the dot coming. Anything else as it is.
   function release(state, t) {
-    const ring = live(state, t)
-    if (!ring || !(ring.hold > 0) || t >= ring.fadeAt) return state
-    if (ring.paused) return { ring: { ...ring, dotAt: t, until: t }, until: t }
-    if (ring.still) {
-      const fadeAt = Math.max(t, ring.stillAt)
-      const until = fadeAt + STILL_FADE_MS
-      return { ring: { ...ring, fade: [...ring.fade.slice(0, -2), [fadeAt, 1], [until, 0]], fadeAt, dotAt: fadeAt, until }, until }
-    }
-    const slow = { ...ramp(t, angleAt(ring, t), speedAt(ring, t), 0, FADE_OUT_MS), kind: 'slow' }
-    const up = ring.fade.slice(0, -2).filter(([ti]) => ti < t)
-    const next = { ...ring, turnings: [...ring.turnings.filter(s => s.t0 <= t), slow], fade: [...up, [t, lightAt(ring, t)], [t + FADE_OUT_MS, 0]], fadeAt: t, dotAt: t, until: t + FADE_OUT_MS }
-    return { ring: next, until: next.until }
-  }
-
-  // Nobody can see it now (island.js syncFlow): held, flowing, it holds
-  // still where it is, nothing animated, its hold going on, gone at the
-  // hold's end without fading (the dot alone); already going down, gone now.
-  // Not held, or with reduced motion (still anyway): as it is.
-  function pause(state, t) {
-    const ring = live(state, t)
-    if (!ring || !(ring.hold > 0) || ring.still || ring.paused) return state
-    const end = t >= ring.fadeAt ? t : ring.fadeAt
-    const next = { ...ring, paused: { at: t, angle: angleAt(ring, t), lit: lightAt(ring, t) }, dotAt: end, until: end }
-    return { ring: next, until: end }
-  }
-
-  // It can be seen again: flowing on from where it rests, back up to the
-  // flow's speed over RAMP_MS, until its hold is over as it was. Its hold
-  // over meanwhile: gone (at its end), as it is.
-  function resume(state, t) {
-    const ring = live(state, t)
-    if (!ring?.paused) return state
-    const { angle, lit } = ring.paused
-    const next = flowOn({ ...ring, paused: null }, t, ring.fadeAt, { angle, lit })
-    return { ring: next, until: next.until }
+    const ring = state.ring && t < state.ring.until ? state.ring : null
+    if (!ring || ring.stillAt == null || t >= ring.fadeAt) return state
+    const fadeAt = Math.max(t, ring.stillAt)
+    const until = fadeAt + (ring.still ? STILL_FADE_MS : FADE_OUT_MS)
+    const next = { ...ring, fade: [...ring.fade.slice(0, -2), [fadeAt, 1], [until, 0]], fadeAt, dotAt: fadeAt, until }
+    return { ring: next, until }
   }
 
   // A ring as the page animates it, at `now` (ms, the same clock): its
   // turning now (from, to, how long, its curve, begun `delay` ms from now:
   // less than 0 when it began before), and its light the same way, as
   // keyframes. So a ring drawn again carries on where it is.
-  //   turns  its turnings from the one it is in now, each in turn (the
-  //          flow's: linear, its iterations Infinity while held until seen,
-  //          a turn each)
-  //   turn   the one it is in now
-  //   light  its light coming up (none held at full: it is so)
-  //   out    held, its light going down at the hold's end (none until seen)
-  //   still  with reduced motion, ms from now until it is held still
-  //          (nothing animated from then), rest its angle then (°)
-  //   paused nobody can see it: held still at rest (°), lit, nothing animated
+  // Held (stillAt), the light only until it is held still; then
+  //   still  ms from now until it is held still: nothing animated from then
+  //   rest   its angle there (°, within a turn), the gradient left so
+  //   out    its light going down, as keyframes begun delay ms from now
+  //          (none while held until seen)
   // dotIn and end are Infinity while held until seen.
   function frames(ring, now) {
+    const s = ring.still ? null : turningAt(ring, now)
+    const turn = s && { from: s.a0, to: s.a1, delay: s.t0 - now, duration: s.t1 - s.t0, easing: cssEase(s.ease) }
     const keys = (points, f0, fN) => points.map(([ti, o]) => ({ offset: fN > f0 ? (ti - f0) / (fN - f0) : 1, opacity: o }))
     const at = { dotIn: ring.dotAt - now, end: ring.until - now }
-    const within = a => ((a % 360) + 360) % 360
-    if (ring.paused) return { turn: null, turns: [], light: null, out: null, still: 0, rest: within(ring.paused.angle), lit: ring.paused.lit, paused: true, ...at }
-    const segs = ring.still ? [] : ring.turnings.slice(ring.turnings.indexOf(turningAt(ring, now)))
-    const turns = segs.map(s => turnOf(s, now))
-    const turn = turns[0] || null
-    // Not held: its light as keyframes over all of it.
-    if (!(ring.hold > 0)) {
+    if (ring.stillAt == null) {
       const f0 = ring.fade[0][0]
       const fN = ring.fade[ring.fade.length - 1][0]
-      return { turn, turns, light: { keyframes: keys(ring.fade, f0, fN), delay: f0 - now, duration: fN - f0 }, still: null, rest: null, out: null, paused: false, ...at }
+      return { turn, light: { keyframes: keys(ring.fade, f0, fN), delay: f0 - now, duration: fN - f0 }, still: null, rest: null, out: null, ...at }
     }
-    const fall = ring.fade[ring.fade.length - 2][1]
-    const out = Number.isFinite(ring.fadeAt)
-      ? {
-          keyframes: [
-            { offset: 0, opacity: fall },
-            { offset: 1, opacity: 0 },
-          ],
-          delay: ring.fadeAt - now,
-          duration: ring.until - ring.fadeAt,
-        }
-      : null
-    // Reduced motion: its light up, then held still until the hold is over.
-    if (ring.still) {
-      const up = [...ring.fade.slice(0, -2).filter(([ti]) => ti < ring.stillAt), [ring.stillAt, 1]]
-      const f0 = up[0][0]
-      return { turn: null, turns: [], light: { keyframes: keys(up, f0, ring.stillAt), delay: f0 - now, duration: ring.stillAt - f0 }, still: ring.stillAt - now, rest: 0, out, paused: false, ...at }
+    const up = [...ring.fade.slice(0, -2).filter(([ti]) => ti < ring.stillAt), [ring.stillAt, 1]]
+    const f0 = up[0][0]
+    return {
+      turn,
+      light: { keyframes: keys(up, f0, ring.stillAt), delay: f0 - now, duration: ring.stillAt - f0 },
+      still: ring.stillAt - now,
+      rest: ((angleAt(ring, ring.stillAt) % 360) + 360) % 360,
+      out: Number.isFinite(ring.fadeAt)
+        ? {
+            keyframes: [
+              { offset: 0, opacity: 1 },
+              { offset: 1, opacity: 0 },
+            ],
+            delay: ring.fadeAt - now,
+            duration: ring.until - ring.fadeAt,
+          }
+        : null,
+      ...at,
     }
-    // Flowing: its light coming up, its turnings in turn, down at its end.
-    const up = ring.fade.slice(0, -2)
-    const [f0, fN] = up.length ? [up[0][0], up[up.length - 1][0]] : [0, 0]
-    const light = up.length > 1 && fN > f0 ? { keyframes: keys(up, f0, fN), delay: f0 - now, duration: fN - f0 } : null
-    return { turn, turns, light, still: null, rest: null, out, paused: false, ...at }
-  }
-
-  // A turning as the page animates it, from now (its kind: turns, ramp, flow, slow).
-  function turnOf(s, now) {
-    const delay = s.t0 - now
-    const kind = s.kind
-    if (s.w == null) return { kind, from: s.a0, to: s.a1, delay, duration: s.t1 - s.t0, easing: cssEase(s.ease), iterations: 1 }
-    if (Number.isFinite(s.t1)) return { kind, from: s.a0, to: s.a0 + s.w * (s.t1 - s.t0), delay, duration: s.t1 - s.t0, easing: 'linear', iterations: 1 }
-    return { kind, from: s.a0, to: s.a0 + 360, delay, duration: 360 / s.w, easing: 'linear', iterations: Infinity }
   }
 
   const api = {
@@ -579,10 +462,6 @@
     AGAIN_MS,
     STILL_MS,
     FADE_OUT_MS,
-    FLOW_TURN_MS,
-    FLOW_W,
-    EASE_FLOW,
-    RAMP_MS,
     DOT_IN_MS,
     HOP_MS,
     CUED,
@@ -607,8 +486,6 @@
     play,
     stop,
     release,
-    pause,
-    resume,
     angleAt,
     speedAt,
     lightAt,

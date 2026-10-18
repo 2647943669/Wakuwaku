@@ -4525,11 +4525,10 @@ body.hinting #island[data-view='compact'] .hint-dot {
   will-change: transform;
 }
 
-/* Held still (island.js holdRing, zhoupengjie/Wakuwaku#65): flowing for its
-   hold while nobody can see it (nobody about, something full screen, do
-   not disturb, her window hidden), or lit with reduced motion: nothing of
-   it animated, its light and its gradient set where they stopped, and no
-   layer kept for what does not move. */
+/* Held lit and still after its turns, for as long as the hold setting says
+   (island.js holdRing, zhoupengjie/Wakuwaku#65): nothing of it animated,
+   its light and its gradient set where they stopped, and no layer kept for
+   what does not move. */
 #flow.on.held,
 #flow.on.held .flow-spin {
   will-change: auto;
