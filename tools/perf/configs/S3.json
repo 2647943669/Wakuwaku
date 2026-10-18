@@ -1,0 +1,57 @@
+{
+  "scene": "S3",
+  "title": "taskbar, someone there",
+  "quiet": false,
+  "nudge": 10,
+  "notes": "As S2, with the mouse moved a few pixels (real input, no click) every 10 s from the start on, so she never goes quiet.",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "taskbar",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [
+      "today",
+      "tokens"
+    ],
+    "monitor": {
+      "cpu": true,
+      "mem": true,
+      "net": true,
+      "battery": false,
+      "every": 2,
+      "pin": true
+    },
+    "plugins": {
+      "weather": {
+        "on": true
+      }
+    },
+    "taskbarLayout": {
+      "left": [
+        "her"
+      ],
+      "center": [
+        "start",
+        "apps"
+      ],
+      "right": [
+        {
+          "id": "wweather",
+          "type": "plugin",
+          "of": "weather",
+          "size": "M"
+        },
+        "monitor",
+        "tray",
+        "keys",
+        "quick",
+        "clock"
+      ]
+    }
+  }
+}

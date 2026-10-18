@@ -1,0 +1,23 @@
+{
+  "scene": "S1",
+  "title": "island, at rest",
+  "quiet": true,
+  "notes": "Island home, no session, no widget, every plugin off; measured once she is quiet (90 s without input).",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "island",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [
+      "today",
+      "tokens",
+      "monitor"
+    ],
+    "plugins": {}
+  }
+}

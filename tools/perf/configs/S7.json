@@ -1,0 +1,60 @@
+{
+  "scene": "S7",
+  "title": "start-up",
+  "quiet": false,
+  "starts": {
+    "cold": 5,
+    "warm": 5
+  },
+  "notes": "Taskbar home as S2. Cold: a new copy of the exe and a new data and WebView2 folder each time; warm: the same exe and folder again. From recent.log: process start, up, both pages ready, Windows taskbar put away.",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "taskbar",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [
+      "today",
+      "tokens"
+    ],
+    "monitor": {
+      "cpu": true,
+      "mem": true,
+      "net": true,
+      "battery": false,
+      "every": 2,
+      "pin": true
+    },
+    "plugins": {
+      "weather": {
+        "on": true
+      }
+    },
+    "taskbarLayout": {
+      "left": [
+        "her"
+      ],
+      "center": [
+        "start",
+        "apps"
+      ],
+      "right": [
+        {
+          "id": "wweather",
+          "type": "plugin",
+          "of": "weather",
+          "size": "M"
+        },
+        "monitor",
+        "tray",
+        "keys",
+        "quick",
+        "clock"
+      ]
+    }
+  }
+}

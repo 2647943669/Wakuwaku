@@ -1,0 +1,112 @@
+{
+  "scene": "S8",
+  "title": "every plugin on",
+  "quiet": true,
+  "notes": "As S2, with all seven plugins she runs on the strip, each with its defaults (countdown and ci given what they need: a date, a public repo); quiet.",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "taskbar",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [
+      "today",
+      "tokens"
+    ],
+    "monitor": {
+      "cpu": true,
+      "mem": true,
+      "net": true,
+      "battery": false,
+      "every": 2,
+      "pin": true
+    },
+    "plugins": {
+      "weather": {
+        "on": true
+      },
+      "stock": {
+        "on": true
+      },
+      "pomodoro": {
+        "on": true
+      },
+      "countdown": {
+        "on": true,
+        "At": "2026-12-31 18:00"
+      },
+      "stretch": {
+        "on": true
+      },
+      "ci": {
+        "on": true,
+        "Repo": "zhoupengjie/Wakuwaku"
+      },
+      "devserver": {
+        "on": true
+      }
+    },
+    "taskbarLayout": {
+      "left": [
+        "her"
+      ],
+      "center": [
+        "start",
+        "apps"
+      ],
+      "right": [
+        {
+          "id": "wweather",
+          "type": "plugin",
+          "of": "weather",
+          "size": "S"
+        },
+        {
+          "id": "wstock",
+          "type": "plugin",
+          "of": "stock",
+          "size": "S"
+        },
+        {
+          "id": "wpomodoro",
+          "type": "plugin",
+          "of": "pomodoro",
+          "size": "S"
+        },
+        {
+          "id": "wcountdown",
+          "type": "plugin",
+          "of": "countdown",
+          "size": "S"
+        },
+        {
+          "id": "wstretch",
+          "type": "plugin",
+          "of": "stretch",
+          "size": "S"
+        },
+        {
+          "id": "wci",
+          "type": "plugin",
+          "of": "ci",
+          "size": "S"
+        },
+        {
+          "id": "wdevserver",
+          "type": "plugin",
+          "of": "devserver",
+          "size": "S"
+        },
+        "monitor",
+        "tray",
+        "keys",
+        "quick",
+        "clock"
+      ]
+    }
+  }
+}

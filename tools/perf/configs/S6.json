@@ -1,0 +1,48 @@
+{
+  "scene": "S6",
+  "title": "flow-light ring held",
+  "quiet": false,
+  "env": {
+    "WAKUWAKU_QUIET_AFTER_MS": "0"
+  },
+  "hooks": [
+    {
+      "hook_event_name": "UserPromptSubmit",
+      "session_id": "perf-1",
+      "cwd": "C:\\perf\\demo",
+      "prompt": "Run the perf scene",
+      "session_title": "perf"
+    }
+  ],
+  "event": {
+    "hooks": [
+      {
+        "hook_event_name": "Stop",
+        "session_id": "perf-1",
+        "cwd": "C:\\perf\\demo"
+      }
+    ],
+    "seconds": 10,
+    "settle": 5
+  },
+  "notes": "As S1, endCue ring, hold until seen; a session working, then \"done\" (Stop): the event window is the 10 s from just before it (the ring turning, then held), the measurement the hold after it. Never quiet (the ring does not play while quiet).",
+  "settings": {
+    "lookDefaults": 2,
+    "display": "island",
+    "out": false,
+    "onboarded": true,
+    "welcomeOpened": true,
+    "connectHintOff": true,
+    "autoUpdateCheck": false,
+    "crashReports": "off",
+    "lang": "zh",
+    "widgetsOff": [
+      "today",
+      "tokens",
+      "monitor"
+    ],
+    "plugins": {},
+    "endCue": "ring",
+    "hold": "seen"
+  }
+}
