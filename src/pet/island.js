@@ -111,8 +111,8 @@
   // At the top of the screen, the side island.rs placed her window at
   // (pet:update islandAt: left, center, right; zhoupengjie/Wakuwaku#59): the
   // island laid out at that side of it (isl-at-left, isl-at-right), and all
-  // that follows it (anchor.js). None said (island.rs not yet placing it so,
-  // phase 2), the centre, where it is.
+  // that follows it (anchor.js). None said (an older island.rs), the
+  // centre, where it is.
   let islandAt = 'center'
   const anchor = () => Anchor.anchorOf({ home: home(), at: islandAt, notch: !!screenTop?.notch })
   // Dropped open from the notch by her tray icon (setPeek), for PEEK_MS at

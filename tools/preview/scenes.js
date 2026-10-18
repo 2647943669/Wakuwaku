@@ -63,7 +63,7 @@
     bar: [0, SCREEN[1] - STRIP, SCREEN[0], STRIP],
   }
   // The island's window at a top corner (islandPos: left, right), as
-  // island.rs will put it (phase 2 of zhoupengjie/Wakuwaku#59; anchor.js
+  // island.rs puts it (zhoupengjie/Wakuwaku#59; anchor.js
   // windowLeft): at the screen's side; the island in it 8 px from that side.
   // Windows' own taskbar at the bottom, not drawn: the work area's top and
   // sides are the screen's.

@@ -254,8 +254,8 @@
   const byLabel = label => (label === 'island' ? frames.island : label.startsWith('desk') ? frames.desk : null)
 
   // Her home's window: the island's at the top where it sits (islandPos: a
-  // top corner, or the middle), as island.rs will put it (scenes.js
-  // islandWindow, phase 2 of zhoupengjie/Wakuwaku#59); the taskbar's along its edge.
+  // top corner, or the middle), as island.rs puts it (scenes.js
+  // islandWindow, zhoupengjie/Wakuwaku#59); the taskbar's along its edge.
   function homeRect() {
     if (world.home === 'island') return Scenes.islandWindow(Fake.config().islandPos)
     return { top: [0, 0, W, STRIP + ROOM], left: [0, 0, STRIP + SIDE_ROOM, H], right: [W - STRIP - SIDE_ROOM, 0, STRIP + SIDE_ROOM, H] }[world.edge] || [0, H - STRIP - ROOM, W, STRIP + ROOM]
@@ -534,7 +534,7 @@
       const moves = 'islandPos' in p && p.islandPos !== Fake.config().islandPos
       Object.assign(world.config, p)
       setTimeout(() => {
-        // Where the island sits: its window there (island.rs, phase 2).
+        // Where the island sits: its window there (island.rs side_changed).
         if (moves && world.home === 'island') moveHome()
         frames.island.win?.Fake.emit('settings:changed', frames.island.win.Fake.snapshot())
         pushAll()

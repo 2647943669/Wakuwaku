@@ -504,8 +504,8 @@ fn is_hold(v: &Value) -> bool {
 
 // Where her island sits at the top of the screen (zhoupengjie/Wakuwaku#59):
 // a top corner, or the top centre (the default). Kept here; placing the
-// window by it is island.rs's (fit: phase 2, see there), and the page lays
-// the island out at the side it is told (anchor.js, pet:update islandAt).
+// window by it is island.rs's (fit, side_changed), and the page lays the
+// island out at the side it is told (anchor.js, pet:update islandAt).
 fn is_island_pos(v: &Value) -> bool {
     matches!(v.as_str(), Some("left" | "center" | "right"))
 }
@@ -629,8 +629,13 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     let offline = rest.contains_key("mailOffline");
     let mail_way = rest.contains_key("mailProxy");
     let crash_auto = rest.get("crashReports").and_then(Value::as_str) == Some("auto");
+    let island_pos = rest.contains_key("islandPos");
     if !rest.is_empty() {
         sh.change(Value::Object(rest));
+    }
+    // The island at another side of the top of the screen: its window there now.
+    if island_pos {
+        island::side_changed(sh);
     }
     // Crash reports turned on: those waiting sent now.
     if crash_auto {

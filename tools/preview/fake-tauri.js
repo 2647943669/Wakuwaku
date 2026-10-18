@@ -338,8 +338,8 @@
       plate: true,
       ...(world.home !== 'taskbar' ? { winLight: world.mode === 'light' } : {}),
       // At the top of the screen, the side her window is at (anchor.js): as
-      // island.rs will say it once it places the window by islandPos (phase 2
-      // of zhoupengjie/Wakuwaku#59). The playground and the gallery put the
+      // island.rs says it, having placed the window by islandPos
+      // (zhoupengjie/Wakuwaku#59). The playground and the gallery put the
       // island's page there (scenes.js islandWindow).
       ...(world.home !== 'taskbar' ? { islandAt: ISLAND_POS.includes(config().islandPos) ? config().islandPos : 'center' } : {}),
       widgets: widgetsNow(),

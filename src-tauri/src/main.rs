@@ -378,6 +378,9 @@ impl Shared {
         // taskbar hears it from taskbar.rs, taskbar:look).
         if self.home() != "taskbar" {
             now["winLight"] = json!(wallpaper::look().0);
+            // The side of the top of the screen her island's window is at
+            // (islandPos, zhoupengjie/Wakuwaku#59): the page lays it out there.
+            now["islandAt"] = json!(island::side(self).name());
         }
         // The widgets that have something to say: those on take their turns
         // in the island while nothing needs you; any may be on the taskbar.

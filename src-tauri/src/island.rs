@@ -1,5 +1,5 @@
 // Her home's window (the page draws it, src/pet/island.js), by display:
-//   island  a black pill at the top centre (a top corner: phase 2 of
+//   island  a black pill at the top centre, or at a top corner (islandPos,
 //           zhoupengjie/Wakuwaku#59, see fit)
 //   taskbar a strip along the bottom in place of Windows' own, which is put
 //           away while it is up, its tray taken over (taskbar.rs); what
@@ -46,6 +46,9 @@ const TASKBAR_SEAT: f64 = 24.0;
 // The island's top edge in the window, and its compact height.
 const TOP: f64 = 8.0;
 const COMPACT_H: f64 = 36.0;
+// Half the closed capsule at its usual width: her seat at a top corner
+// before the page has said its size.
+const CAPSULE_HALF: f64 = 150.0;
 // Her middle this close to her home: it reaches out for her; this close,
 // letting go puts her back in.
 const REACH_PX: f64 = 280.0;
@@ -113,6 +116,50 @@ pub struct Island {
     // popover, her capsule's panel and the toasts (set_editing).
     pub editing: bool,
     solid: Vec<[f64; 4]>,
+    // At the top of the screen, the side its window is at (Side; islandPos,
+    // zhoupengjie/Wakuwaku#59), as fit put it there: the page is told it
+    // (pet:update islandAt) and lays the island out at that side.
+    at: Side,
+}
+
+// Where the island's window sits at the top of the screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Side {
+    Left,
+    #[default]
+    Center,
+    Right,
+}
+
+impl Side {
+    // The setting (islandPos); anything else the centre.
+    fn of(pos: &str) -> Side {
+        match pos {
+            "left" => Side::Left,
+            "right" => Side::Right,
+            _ => Side::Center,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Side::Left => "left",
+            Side::Center => "center",
+            Side::Right => "right",
+        }
+    }
+
+    // The window's place (physical) at this side of a work area, at its top:
+    // at a corner flush with it (the page lays the island TOP in from that
+    // side, as from the top); grown wider, its side kept there (the centre
+    // keeps its middle).
+    fn place(self, area: &Area, width: i32) -> (i32, i32) {
+        match self {
+            Side::Left => (area.x, area.y),
+            Side::Right => (area.x + area.w - width, area.y),
+            Side::Center => (area.x + (area.w - width) / 2, area.y),
+        }
+    }
 }
 
 // Her island at the top of the screen, up out of the way of the window
@@ -235,28 +282,30 @@ fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     let home = sh.home();
     let edge = edge(sh);
     let area = area(sh)?;
+    let wanted = Side::of(sh.setting("islandPos").as_str().unwrap_or("center"));
     let mut isl = sh.island.lock().unwrap();
     isl.sf = area.sf;
     let size = isl.size_for(home, &area, edge);
     let pos = match home {
         // The window's edge on the strip's outer one, the room inside it.
         "taskbar" => window_at(edge, isl.bar.unwrap_or_else(|| edge.strip(area.mon, (TASKBAR_H * area.sf).round() as i32)), size),
-        // On a Mac the notch's place, over the menu bar (notch.rs); elsewhere
-        // the top centre, below a taskbar that sits at the top.
-        // Phase 2 of zhoupengjie/Wakuwaku#59, the island at a top corner
-        // (settings islandPos: left, center, right; the page side is done,
-        // anchor.js): elsewhere than round a notch, the window at the work
-        // area's top left (area.x, area.y) or top right (area.x + area.w -
-        // size.0, area.y), as wide as ever; grown for a wider shape (set_room)
-        // its right edge kept there at the right, as the centre keeps its
-        // middle. Then tell the page the side it is at, in pet:update
-        // (main.rs payload: "islandAt": "left" | "center" | "right", the
-        // centre round a notch), with the move: the page lays the island out
-        // at that side of its window by it, never by the setting itself, so
-        // until then it stays where this puts the window. A change of
-        // islandPos (main.rs settings_set) places the window anew (place),
-        // and seat(), closed_rect() follow the side too (see there).
-        _ => crate::notch::at_top(area.mon, size.0).unwrap_or((area.x + (area.w - size.0) / 2, area.y)),
+        // On a Mac the notch's place, over the menu bar (notch.rs), the
+        // centre whatever the setting; elsewhere at the top of the work area
+        // (below a taskbar that sits at the top), at the side islandPos says
+        // (zhoupengjie/Wakuwaku#59): the centre, or a top corner. The page
+        // is told the side (pet:update islandAt) and lays the island out at
+        // that side of its window by it, never by the setting itself; the
+        // closed island (closed_rect) and her seat follow it too.
+        _ => match crate::notch::at_top(area.mon, size.0) {
+            Some(pos) => {
+                isl.at = Side::Center;
+                pos
+            }
+            None => {
+                isl.at = wanted;
+                wanted.place(&area, size.0)
+            }
+        },
     };
     if (pos, size) == (isl.pos, isl.size) {
         return None;
@@ -264,6 +313,25 @@ fn fit(sh: &Shared) -> Option<((i32, i32), (i32, i32))> {
     isl.pos = pos;
     isl.size = size;
     Some((pos, size))
+}
+
+// The side its window is at the top of the screen (the centre on the
+// taskbar), for the page (main.rs payload islandAt).
+pub fn side(sh: &Shared) -> Side {
+    sh.island.lock().unwrap().at
+}
+
+// The setting islandPos changed: the window put at that side now, and the
+// page told where it is (islandAt) to lay the island out there; a window
+// under it at its new place looked for at once (look_under).
+pub fn side_changed(sh: &Shared) {
+    if sh.home() == "taskbar" {
+        return;
+    }
+    place(sh);
+    sh.log(&format!("island: at the {} of the top of the screen", side(sh).name()));
+    sh.redraw();
+    crate::fullscreen::ask();
 }
 
 // The taskbar's window (physical) for its strip along an edge: its outer
@@ -660,14 +728,12 @@ const BAND_SIDE: f64 = 24.0;
 const BAND_BELOW: f64 = 12.0;
 const LEAVE_MS: u128 = 600;
 
-// The closed island on the screen (physical x, y, w, h): in the middle of
-// the window's width, TOP below its top edge; none before the page said
-// its size, or in another home.
-// Phase 2 of zhoupengjie/Wakuwaku#59 (the island at a top corner): at the
-// left, TOP in from the window's left edge (pos.0 + TOP * sf); at the right,
-// TOP in from its right edge (pos.0 + size.0 - w - TOP * sf), as the page
-// lays it out there (anchor.js, style.css isl-at-left / isl-at-right); the
-// stowed band, the edge that calls it down (call_look) follow from this.
+// The closed island on the screen (physical x, y, w, h), TOP below its
+// window's top edge: in the middle of the window's width, or at a top
+// corner (zhoupengjie/Wakuwaku#59) TOP in from the window's side there, as
+// the page lays it out (anchor.js, style.css isl-at-left / isl-at-right);
+// the stowed band and the edge that calls it down (call_look) follow from
+// this. None before the page said its size, or in another home.
 fn closed_rect(isl: &Island) -> Option<(i32, i32, i32, i32)> {
     let (w, h) = isl.stow.closed;
     if !isl.created || w <= 0.0 || h <= 0.0 {
@@ -675,7 +741,13 @@ fn closed_rect(isl: &Island) -> Option<(i32, i32, i32, i32)> {
     }
     let sf = isl.sf();
     let (w, h) = ((w * sf).round() as i32, (h * sf).round() as i32);
-    Some((isl.pos.0 + (isl.size.0 - w) / 2, isl.pos.1 + (TOP * sf).round() as i32, w, h))
+    let top = (TOP * sf).round() as i32;
+    let x = match isl.at {
+        Side::Left => isl.pos.0 + top,
+        Side::Right => isl.pos.0 + isl.size.0 - w - top,
+        Side::Center => isl.pos.0 + (isl.size.0 - w) / 2,
+    };
+    Some((x, isl.pos.1 + top, w, h))
 }
 
 // A window under the closed island, or none now: told the page as it
@@ -1170,9 +1242,9 @@ pub fn seat(sh: &Shared) -> Option<(i32, i32)> {
     let home = sh.home();
     let edge = edge(sh);
     let area = area(sh)?;
-    let (bar, seat_at) = {
+    let (bar, seat_at, closed, at) = {
         let isl = sh.island.lock().unwrap();
-        (isl.bar, isl.seat_at)
+        (isl.bar, isl.seat_at, closed_rect(&isl), isl.at)
     };
     let px = |v: f64| (v * area.sf).round() as i32;
     Some(match home {
@@ -1186,9 +1258,15 @@ pub fn seat(sh: &Shared) -> Option<(i32, i32)> {
                 Edge::Right => (x, y + at),
             }
         }
-        // Phase 2 of zhoupengjie/Wakuwaku#59: at a top corner, the middle of
-        // the closed island there (TOP in from the side, as closed_rect).
-        _ => (area.x + area.w / 2, area.y + px(TOP + COMPACT_H)),
+        // At a top corner (zhoupengjie/Wakuwaku#59), the middle of the closed
+        // island there (closed_rect), or before the page has said its size,
+        // as far in from the side as half a capsule.
+        _ => match (at, closed) {
+            (Side::Center, _) => (area.x + area.w / 2, area.y + px(TOP + COMPACT_H)),
+            (_, Some((x, y, w, h))) => (x + w / 2, y + h),
+            (Side::Left, None) => (area.x + px(TOP + CAPSULE_HALF), area.y + px(TOP + COMPACT_H)),
+            (Side::Right, None) => (area.x + area.w - px(TOP + CAPSULE_HALF), area.y + px(TOP + COMPACT_H)),
+        },
     })
 }
 
@@ -1452,6 +1530,7 @@ pub fn where_(sh: &Shared) -> Value {
         "temp": isl.temp,
         "settingsOpen": isl.settings_open,
         "bar": isl.bar.map(|b| json!([b.0, b.1, b.2, b.3])),
+        "at": isl.at.name(),
         "stow": {
             "closed": closed_rect(&isl).map(|r| json!([r.0, r.1, r.2, r.3])),
             "under": isl.stow.under,
@@ -1463,7 +1542,8 @@ pub fn where_(sh: &Shared) -> Value {
 
 #[cfg(test)]
 mod stow_tests {
-    use super::{call_look, closed_rect, Island, Stow, EDGE_MS, LEAVE_MS};
+    use super::{call_look, closed_rect, Island, Side, Stow, EDGE_MS, LEAVE_MS};
+    use crate::screen::Area;
     use std::time::{Duration, Instant};
 
     // Her island at 125 % on a 2560-wide display: the window 950 wide at
@@ -1483,6 +1563,33 @@ mod stow_tests {
         let mut isl = stowed();
         isl.stow.closed = (0.0, 0.0);
         assert_eq!(closed_rect(&isl), None, "no size said yet");
+    }
+
+    // At a top corner (islandPos, zhoupengjie/Wakuwaku#59): the window flush
+    // with the work area's side at its top, the closed island TOP (8 px, 10
+    // at 125 %) in from that side, as from the top.
+    #[test]
+    fn at_a_top_corner() {
+        let area = Area { x: 0, y: 0, w: 2560, h: 1392, sf: 1.25, mon: (0, 0, 2560, 1440) };
+        assert_eq!(Side::Left.place(&area, 950), (0, 0));
+        assert_eq!(Side::Right.place(&area, 950), (1610, 0));
+        assert_eq!(Side::Center.place(&area, 950), (805, 0));
+        // Grown wider at the right: its right edge kept.
+        assert_eq!(Side::Right.place(&area, 1200), (1360, 0));
+        // A display left of the main one, its taskbar at the top.
+        let left = Area { x: -1920, y: 48, w: 1920, h: 1032, sf: 1.0, mon: (-1920, 0, 1920, 1080) };
+        assert_eq!(Side::Right.place(&left, 760), (-760, 48));
+        assert_eq!(Side::Left.place(&left, 760), (-1920, 48));
+        let mut isl = stowed();
+        isl.at = Side::Left;
+        isl.pos = (0, 0);
+        assert_eq!(closed_rect(&isl), Some((10, 10, 375, 45)));
+        isl.at = Side::Right;
+        isl.pos = (1610, 0);
+        assert_eq!(closed_rect(&isl), Some((2175, 10, 375, 45)));
+        // The setting read: anything else the centre.
+        assert_eq!([Side::of("left"), Side::of("right"), Side::of("center"), Side::of("top")], [Side::Left, Side::Right, Side::Center, Side::Center]);
+        assert_eq!([Side::Left.name(), Side::Center.name(), Side::Right.name()], ["left", "center", "right"]);
     }
 
     // Resting at the screen's edge over it calls it down; a moment there

@@ -11,9 +11,9 @@
 // The page lays the island out in its window by the anchor island.rs placed
 // that window at (pet:update's islandAt): the window at the screen's top
 // left, top right, or top centre, as wide as ever (760, island.rs ISLAND),
-// the island in it at that side. Until island.rs places it so (phase 2: it
-// says no islandAt yet), the centre, where it puts it. In the playground,
-// fake-tauri.js says it as island.rs will (tools/preview).
+// the island in it at that side. None said (an older island.rs), the
+// centre. In the playground, fake-tauri.js says it as island.rs does
+// (tools/preview).
 //
 // Only the sums, so the tests can say them: island.js and the panels use
 // them. Loaded by the page before island.js, and required by the tests.
@@ -50,7 +50,7 @@
   }
 
   // The window's left on the screen (logical px) for an anchor, as island.rs
-  // will put it (phase 2): the work area's side at a corner, else its middle.
+  // puts it (fit): the work area's side at a corner, else its middle.
   // What the playground and the gallery place the island's page by.
   function windowLeft(anchor, area, winWidth) {
     const [x, , w] = area
