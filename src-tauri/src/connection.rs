@@ -1681,6 +1681,10 @@ pub fn write_reasonix_hooks(action: &str) -> Result<(), String> {
     write_reasonix_files(action, &reasonix_home().join("settings.json"), reasonix_legacy_file(), &launch_command())
 }
 
+fn is_empty_object(value: &Value) -> bool {
+    value.as_object().is_some_and(|o| o.is_empty())
+}
+
 // The same between its home's file and the older one (None: none read).
 fn write_reasonix_files(action: &str, home_file: &Path, legacy: Option<PathBuf>, exe: &str) -> Result<(), String> {
     let legacy = legacy.filter(|l| l.is_file());
@@ -1692,8 +1696,14 @@ fn write_reasonix_files(action: &str, home_file: &Path, legacy: Option<PathBuf>,
             }
             // Read from the disk, not as last read: nothing of someone else's is written back.
             let after = reasonix_uninstall(&read_json_bom(&file)?);
+            let backup = backup_of(&file);
+            // A copy that held nothing but hers (an older version's write
+            // over a file of hers alone): no copy of the person's, gone too.
+            if backup.exists() && read_json_bom(&backup).is_ok_and(|kept| is_empty_object(&reasonix_uninstall(&kept))) {
+                fs::remove_file(&backup).map_err(|e| e.to_string())?;
+            }
             let as_older = legacy.as_ref().filter(|_| file == home_file).and_then(|l| read_json_bom(l).ok()).is_some_and(|older| older == after);
-            if as_older && !backup_of(&file).exists() {
+            if as_older && !backup.exists() {
                 let gone = fs::remove_file(&file).map_err(|e| e.to_string());
                 forget_read(&file);
                 return gone;
@@ -1706,6 +1716,12 @@ fn write_reasonix_files(action: &str, home_file: &Path, legacy: Option<PathBuf>,
                 _ => read_json_bom(home_file)?,
             };
             let Some(after) = reasonix_install(&before, exe) else { return Err(format!("{exe}: {REASONIX_NO_NAME}")) };
+            // Its home's holding nothing but ours (a repair, ours moved): no
+            // copy of it kept, as none of it is the person's (a copy would
+            // then keep a remove from giving the file back as it was).
+            if home_file.exists() && is_empty_object(&reasonix_uninstall(&before)) {
+                return write_back(home_file, &after);
+            }
             write_json(home_file, &after)
         }
         _ => Err(format!("unknown action {action}")),
@@ -2531,6 +2547,25 @@ mod tests {
         // Nothing to remove; an action it does not know.
         write_reasonix_files("remove", &home, None, exe).unwrap();
         assert!(write_reasonix_files("frob", &home, None, exe).is_err());
+
+        // Ours moved (another copy, stale), repaired: no copy kept of a file
+        // of ours alone, and a remove gives no file back, as there was none
+        // (seen in the test VM: a repair kept one, and the remove left {}).
+        write_reasonix_files("install", &home, None, r"D:\old\wakuwaku.exe").unwrap();
+        assert_eq!(reasonix_status_of(&read(&home), exe), "stale");
+        write_reasonix_files("install", &home, None, exe).unwrap();
+        assert_eq!(reasonix_status_of(&read(&home), exe), "ok");
+        assert!(!backup_of(&home).exists());
+        // A copy an older version kept of ours alone goes with the remove.
+        fs::write(backup_of(&home), reasonix_install(&json!({}), r"D:\old\wakuwaku.exe").unwrap().to_string()).unwrap();
+        write_reasonix_files("remove", &home, None, exe).unwrap();
+        assert!(!home.exists() && !backup_of(&home).exists());
+        // One of the person's own stays, and so does their file.
+        fs::write(&home, mine.to_string()).unwrap();
+        fs::write(backup_of(&home), mine.to_string()).unwrap();
+        write_reasonix_files("install", &home, None, exe).unwrap();
+        write_reasonix_files("remove", &home, None, exe).unwrap();
+        assert_eq!((read(&home), read(&backup_of(&home))), (mine.clone(), mine));
         let _ = fs::remove_dir_all(&dir);
     }
 
