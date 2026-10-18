@@ -1592,14 +1592,16 @@ pub fn dsh_packages() -> &'static str {
     }
 }
 
-// The bridge written and DSH: waiting (DSH not running), effective (a hook
-// of it came since DSH started), firstEvent (DSH up, none yet). DSH's
-// warning when it can't import the bridge goes to its Host's stderr only
-// (the desktop app keeps no log file of it), so this is what can be told.
-pub fn dsh_bridge_load(apps: &[u64], seen_at: u64) -> &'static str {
+// The bridge written (its hook list's time: `written`) and DSH: waiting (DSH
+// not running), effective (a hook of it came since DSH started and since
+// the bridge was put in: what her plugin told before a switch is not the
+// bridge's), firstEvent (DSH up, none yet). DSH's warning when it can't
+// import the bridge goes to its Host's stderr only (the desktop app keeps no
+// log file of it), so this is what can be told.
+pub fn dsh_bridge_load(apps: &[u64], seen_at: u64, written: u64) -> &'static str {
     match apps.iter().min() {
         None => "waiting",
-        Some(&first) if seen_at >= first => "effective",
+        Some(&first) if seen_at >= first.max(written) => "effective",
         Some(_) => "firstEvent",
     }
 }
@@ -1784,7 +1786,8 @@ pub fn dsh_view(port: u16, setting: &Value, seen_at: u64) -> Value {
         return view;
     }
     if way == "bridge" {
-        view["load"] = json!({ "state": dsh_bridge_load(&crate::jump::started_named(DSH_APP), seen_at) });
+        let written = fs::metadata(dsh_hooks_file()).and_then(|m| m.modified()).map_or(0, ms_of);
+        view["load"] = json!({ "state": dsh_bridge_load(&crate::jump::started_named(DSH_APP), seen_at, written) });
         return view;
     }
     let dir = dsh_plugin_dir();
@@ -3320,10 +3323,13 @@ mod tests {
         assert_eq!(dsh_way(&Value::Null, &dsh_strip(&plugin).1), "plugin");
 
         // DSH and the bridge: an event since it started, or not yet; not running.
-        assert_eq!(dsh_bridge_load(&[], 5), "waiting");
-        assert_eq!(dsh_bridge_load(&[1_000, 900], 950), "effective");
-        assert_eq!(dsh_bridge_load(&[1_000], 500), "firstEvent");
-        assert_eq!(dsh_bridge_load(&[1_000], 0), "firstEvent");
+        assert_eq!(dsh_bridge_load(&[], 5, 0), "waiting");
+        assert_eq!(dsh_bridge_load(&[1_000, 900], 950, 0), "effective");
+        assert_eq!(dsh_bridge_load(&[1_000], 500, 0), "firstEvent");
+        assert_eq!(dsh_bridge_load(&[1_000], 0, 0), "firstEvent");
+        // Switched to while DSH ran: what came before (her plugin's) is not the bridge's.
+        assert_eq!(dsh_bridge_load(&[900], 950, 2_000), "firstEvent");
+        assert_eq!(dsh_bridge_load(&[900], 2_100, 2_000), "effective");
 
         // As she starts: 0.3.2's rows whose packages are missing, the way
         // not chosen, become the plugin; chosen, or working, the bridge's

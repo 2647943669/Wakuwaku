@@ -200,7 +200,10 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                 Some("dsh") => &sh.dsh_seen,
                 _ => &sh.claude_seen,
             };
-            seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+            // Her DSH plugin's word on loading is no session's doing.
+            if !(agent == Some("dsh") && events_dsh::is_loaded(&event)) {
+                seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
+            }
             let is_codex = agent == Some("codex");
             let msg = match agent {
                 Some("codex") => events_codex::to_message(&event),

@@ -434,6 +434,12 @@ pub fn to_message(e: &Value, home: &std::path::Path) -> Option<Value> {
 // The plugin's word as DSH loads it (her log says it: log_line).
 const LOADED: &str = "WakuwakuLoaded";
 
+// That word: not anything a session did, so not what tells the bridge's way
+// working (server.rs leaves it out of when DSH was last heard).
+pub fn is_loaded(e: &Value) -> bool {
+    s(e, "hook_event_name") == LOADED
+}
+
 // The message for an event of a session of the person's.
 fn message_of(e: &Value, home: &std::path::Path) -> Option<Value> {
     let fields: &Map<String, Value> = e.as_object()?;
@@ -861,6 +867,7 @@ mod tests {
         let loaded = json!({ "session_id": "", "hook_event_name": "WakuwakuLoaded", "version": 1, "pid": 4321, "profile": "desktop" });
         assert!(to_message(&loaded, &home).is_none());
         assert_eq!(log_line(&loaded, None, &home).as_deref(), Some("dsh: her plugin loaded (version 1, profile desktop, pid 4321)"));
+        assert!(is_loaded(&loaded) && !is_loaded(&json!({ "hook_event_name": "Stop" })));
         let _ = std::fs::remove_dir_all(&home);
     }
 }

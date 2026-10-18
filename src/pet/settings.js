@@ -2275,10 +2275,11 @@
 
   // DeepSeek Harness's way, to pick: her plugin (recommended) or DSH's own
   // hook bridge, the one in use lit (not connected yet: the one chosen for
-  // Connect), and in grey what it means (dshSwitch switches).
+  // Connect; being switched to: that one), and in grey what it means
+  // (dshSwitch switches).
   function dshWay() {
     const r = Agents.read(snap, 'dsh') || {}
-    const way = Agents.isIn(snap, 'dsh') ? r.way : r.via || 'plugin'
+    const way = dshSwitching || (Agents.isIn(snap, 'dsh') ? r.way : r.via || 'plugin')
     const options = [
       ['plugin', T('ag.dsh.viaPlugin')],
       ['bridge', T('ag.dsh.viaBridge')],
