@@ -58,6 +58,7 @@ mod events_opencode;
 mod events_omp;
 mod events_dsh;
 mod events_reasonix;
+mod dsh_bridge;
 mod events_zcode;
 mod fetch;
 mod focus;
@@ -1609,6 +1610,7 @@ fn main() {
             settings::settings_omp_hooks,
             settings::settings_zcode_hooks,
             settings::settings_dsh_hooks,
+            settings::settings_dsh_via,
             settings::settings_reasonix_hooks,
             settings::settings_cpu_sensors,
             bars::bar_ready,
@@ -1998,6 +2000,18 @@ fn main() {
                             first.log(&format!("default pet: {e}"));
                             island::open_settings(&first, Some("pets"));
                         }
+                    }
+                });
+            }
+            // DeepSeek Harness's rows and files seen to as she starts
+            // (connection.rs dsh_at_start: 0.3.2's broken bridge rows to her
+            // plugin, the bridge's hook list for where she is now, her
+            // plugin's files for this version); her own copy only.
+            if sh.keeps_login() {
+                let dsh = sh.clone();
+                spawn_named("dsh at start", move || {
+                    for line in connection::dsh_at_start(dsh.port, &dsh.setting("dshVia")) {
+                        dsh.log(&line);
                     }
                 });
             }

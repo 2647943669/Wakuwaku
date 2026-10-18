@@ -28,12 +28,14 @@ const AGENT_SITES: [(&str, &str); 8] = [
 // plugin's file as read (the Agent page shows both), and whether any event
 // of it came since she started (the plugin's word on loading is one).
 fn dsh_block(sh: &Shared) -> Value {
-    let mut block = connection::dsh_view(sh.port);
+    let mut block = connection::dsh_view(sh.port, &sh.setting("dshVia"), sh.dsh_seen.load(Ordering::SeqCst));
     let patch = connection::dsh_patch_file();
     block["file"] = json!(patch.to_string_lossy());
     block["fileShown"] = json!(connection::shown_path(&patch));
     block["backup"] = json!(connection::backup_of(&patch).exists());
     block["listShown"] = json!(connection::shown_path(&connection::dsh_plugin_file()));
+    // The hook bridge's hook list, in her data folder (the other way's).
+    block["hooksShown"] = json!(connection::shown_path(&connection::dsh_hooks_file()));
     block["seen"] = json!(sh.dsh_seen.load(Ordering::SeqCst) > 0);
     block
 }
@@ -589,6 +591,9 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // none is black, as it always was.
         "islandLook" | "islandTopLook" => v.is_null() || v.as_object().is_some_and(|m| m.iter().all(|(mode, look)| matches!(mode.as_str(), "dark" | "light") && is_island_look(look))),
         "mailAgent" => matches!(v.as_str(), Some("claude" | "codex" | "agy")),
+        // How DeepSeek Harness is followed: her own plugin, or its own hook
+        // bridge (connection.rs dsh_way); none: the plugin, or 0.3.2's rows as they are.
+        "dshVia" => matches!(v.as_str(), Some("plugin" | "bridge")),
         // The Mail page in two panes (list, letter), or one.
         "mailPanes" => matches!(v.as_str(), Some("one" | "two")),
         // How much mail is kept whole offline (mail/store.rs Offline).
@@ -836,15 +841,69 @@ pub async fn settings_omp_hooks(app: AppHandle, action: String) -> Value {
     }
 }
 
-// install, remove: her plugin for DeepSeek Harness (its folder in DSH's
-// home, its row in the home-level patch file).
+// install, remove: DeepSeek Harness, the way chosen (dshVia: her plugin,
+// its folder in DSH's home and its row in the home-level patch file; or
+// DSH's own hook bridge, its packages in DSH's profiles, its row and her
+// hook list). "install:npmmirror": the bridge's packages from npmmirror,
+// the person having picked it after the registry pnpm names could not be
+// reached. pnpm may take a while: off the async runtime's threads.
 #[tauri::command]
 pub async fn settings_dsh_hooks(app: AppHandle, action: String) -> Value {
     let sh = shared(&app);
-    match connection::write_dsh_hooks(&action, sh.port) {
-        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
-        Err(error) => json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) }),
+    let way = dsh_way(&sh);
+    dsh_write(sh, action, way).await
+}
+
+// The way DSH is followed, as chosen or as the rows have it (connection.rs dsh_way).
+fn dsh_way(sh: &Shared) -> &'static str {
+    connection::dsh_rows_status(sh.port, &sh.setting("dshVia")).0
+}
+
+async fn dsh_write(sh: Arc<Shared>, action: String, way: &'static str) -> Value {
+    let (action, registry) = match action.split_once(':') {
+        Some((action, "npmmirror")) => (action.to_string(), Some(crate::dsh_bridge::NPMMIRROR)),
+        _ => (action, None),
+    };
+    let port = sh.port;
+    let (done, log) = tauri::async_runtime::spawn_blocking(move || {
+        let mut log = Vec::new();
+        let done = connection::write_dsh_hooks(&action, way, port, registry, &mut log);
+        (done, log)
+    })
+    .await
+    .unwrap_or_else(|e| (Err(e.to_string()), Vec::new()));
+    for line in log {
+        sh.log(&line);
     }
+    match done {
+        Ok(()) => json!({ "ok": true, "snapshot": snapshot(&sh) }),
+        Err(error) => {
+            sh.log(&format!("dsh: {error}"));
+            json!({ "ok": false, "kind": connection::error_kind(&error), "error": error, "snapshot": snapshot(&sh) })
+        }
+    }
+}
+
+// The way to follow DeepSeek Harness, switched (plugin, bridge): the chosen
+// one put in, then the other taken away (connection.rs write_dsh_hooks);
+// the setting kept only once that went well. registry: "npmmirror" for the
+// bridge's packages from there.
+#[tauri::command]
+pub async fn settings_dsh_via(app: AppHandle, via: String, registry: Option<String>) -> Value {
+    let sh = shared(&app);
+    let way: &'static str = match via.as_str() {
+        "bridge" => "bridge",
+        "plugin" => "plugin",
+        _ => return json!({ "ok": false, "kind": "other", "error": format!("unknown way {via}"), "snapshot": snapshot(&sh) }),
+    };
+    let action = if registry.as_deref() == Some("npmmirror") { "install:npmmirror".to_string() } else { "install".to_string() };
+    let got = dsh_write(sh.clone(), action, way).await;
+    if got["ok"] == json!(true) {
+        sh.log(&format!("dsh: followed through {}", if way == "bridge" { "DSH's hook bridge" } else { "her plugin" }));
+        sh.change(json!({ "dshVia": way }));
+        return json!({ "ok": true, "snapshot": snapshot(&sh) });
+    }
+    got
 }
 
 // install, remove: Reasonix's global settings.json (zhoupengjie/Wakuwaku#60).
