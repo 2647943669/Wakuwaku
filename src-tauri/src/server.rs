@@ -4,8 +4,11 @@
 //                      WAKUWAKU_DEBUG=1, the windows and settings too
 //   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
 //                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook)
-//                      ?agent=agy, ?agent=zcode, ?agent=dsh, ?agent=reasonix: the same for
-//                      Antigravity's, ZCode's, DeepSeek Harness's and Reasonix's (main.rs agy_hook)
+//                      ?agent=agy, ?agent=zcode, ?agent=reasonix: the same for
+//                      Antigravity's, ZCode's and Reasonix's (main.rs agy_hook)
+//                      ?agent=dsh: a DeepSeek Harness one, from her plugin inside DSH
+//                      (integrations/dsh/wakuwaku.js, events_dsh.rs), or handed on by
+//                      this program for its old hook bridge (main.rs dsh_hook)
 //                      ?agent=opencode: an OpenCode event, from her plugin in it (events_opencode.rs)
 //                      ?agent=omp: an oh-my-pi one, from her extension inside omp
 //                      (integrations/omp/wakuwaku.ts, events_omp.rs)
@@ -71,8 +74,8 @@ fn quit_of(url: &str) -> (crate::data::Quit, &'static str) {
 // (main.rs).
 // Claude Code's come from its own process, omp's from her extension inside
 // omp.exe, OpenCode's from her plugin in its service and DeepSeek Harness's
-// from a hook in its sandbox: those she finds from the other end of the
-// connection (chain_for).
+// from her plugin in its Host (or, the old way, a hook in its sandbox):
+// those she finds from the other end of the connection (chain_for).
 fn brings_chain(agent: Option<&str>) -> bool {
     matches!(agent, Some("codex" | "agy" | "zcode" | "reasonix"))
 }
@@ -131,12 +134,14 @@ fn read_json(req: &mut Request) -> Option<Value> {
 // connection. For OpenCode that is its background service, which has no
 // window: the terminal is that of a program of OpenCode's connected to it
 // (jump.rs front_chain), or the service's own when none is (run standalone).
-// DeepSeek Harness's hook, in its sandbox, may not open the processes above
-// it, so it waits on this connection as a turn begins while she looks; the
-// nearest of them are its shell and DSH's hook runners, gone a moment later
+// DeepSeek Harness's events come from her plugin in its Host, a process of
+// the app's own (DeepSeek Harness.exe in Node's mode, under the app's main
+// one), which waits on this connection while she looks; the old bridge's
+// from a hook in its sandbox, which may not open the processes above it, its
+// nearest ones its shell and DSH's hook runners, gone a moment later
 // (wakuwaku ← pwsh ← runner ← runner ← host ← DeepSeek Harness.exe, seen
-// 2026-10-16), so the chain is the app's, the outermost by the processes'
-// list.
+// 2026-10-16). Either way the chain is the app's, the outermost by the
+// processes' list.
 fn chain_for(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> Option<jump::Chain> {
     if brings_chain(agent) {
         let chain = jump::chain_from_json(event.get(jump::CODEX_CHAIN));
@@ -226,6 +231,13 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
                     msg["chain"] = jump::chain_json(&chain);
                 }
                 sh.apply(&msg);
+            } else if agent == Some("dsh") {
+                // Her plugin's word as DSH loads it: said in her log, and the
+                // open Connect page tells it loaded (connection.rs dsh_view).
+                if let Some(line) = events_dsh::log_line(&event, None, &crate::connection::dsh_home()) {
+                    sh.log(&line);
+                    sh.push_settings();
+                }
             }
             // A prompt holds the answer until the person picks on the pet, the
             // terminal settles it, or time runs out; out of sight (her

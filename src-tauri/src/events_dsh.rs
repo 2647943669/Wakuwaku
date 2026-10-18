@@ -1,23 +1,31 @@
 // DeepSeek Harness hook events → pet messages: Claude Code's (events.rs),
 // its tools named as Claude Code's, plus agent: "dsh".
 //
-// DSH runs them through its Claude Code hook bridge
-// (@deepseek-ai/dsh-hooks-claude-code: connection.rs), each as this program
-// with connection::DSH_FLAG and the event's name, which hands it to
-// /hook?agent=dsh (main.rs dsh_hook). What there is, as the desktop app
-// 0.2.0-rc.2 and its CLI send it (2026-10-15): session_id, cwd,
-// hook_event_name and an empty transcript_path; SessionStart with source,
-// UserPromptSubmit with prompt, PreToolUse and PostToolUse with tool_name,
-// tool_input, tool_use_id (and tool_response, as text: "Error: …" for one
-// that failed, which gets no event of its own), Stop with nothing more: its
-// last reply is read from its session log, zstd-compressed (last_reply); no
-// prompt waiting on the person (its approvals stay in its own window). Its
-// tools have names of their own (read, write, edit, str_replace_editor,
-// pwsh or bash, glob, grep, web_search, web_fetch, todo_write,
-// ask_user_question), told in Claude Code's words here (claude_named). The
-// session's name is DSH's own, from its projection cache (title_of). A
-// subagent's session is told as any other's: it is no session of hers
-// (whose, #58).
+// They come to /hook?agent=dsh from her own plugin inside DSH
+// (integrations/dsh/wakuwaku.js, connection.rs), in the words of Claude
+// Code's hooks as DSH's Claude Code hook bridge
+// (@deepseek-ai/dsh-hooks-claude-code) said them, which until 0.3.2 ran this
+// program with connection::DSH_FLAG for each (main.rs dsh_hook; still read,
+// for a DSH still running those old rows). What there is, as the bridge of
+// the desktop app 0.2.0-rc.2 and its CLI sent it (2026-10-15): session_id,
+// cwd, hook_event_name and an empty transcript_path; SessionStart with
+// source, UserPromptSubmit with prompt, PreToolUse and PostToolUse with
+// tool_name, tool_input, tool_use_id (and tool_response, as text: "Error: …"
+// for one that failed, which gets no event of its own), Stop with nothing
+// more. The plugin sends every tool's (the bridge, some 0.9 s a hook, only a
+// few), and what only it sees: the turn's last words
+// (last_assistant_message: the bridge's are read from the session log,
+// zstd-compressed, last_reply), the session's name (session_title: else
+// from DSH's projection cache, title_of), whose the session is (origin,
+// parent_session, top_session: else from its log, whose), whether a tool
+// failed (is_error), and a turn that ended without finishing (Stop with
+// stop_reason "aborted" or "blocked": stopped, not done; StopFailure for
+// one that failed). Still no prompt waiting on the person (its approvals stay
+// in its own window). Its tools have names of their own (read, write, edit,
+// str_replace_editor, pwsh or bash, glob, grep, web_search, web_fetch,
+// todo_write, ask_user_question), told in Claude Code's words here
+// (claude_named). A subagent's session is told as any other's: it is no
+// session of hers (whose, #58).
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
@@ -304,7 +312,9 @@ fn last_reply_from(log: &Path, first_window: usize) -> Option<String> {
 // at rest (an idle review runs while it is at rest). Its to-do list is its
 // own. The header never changes: read once a session (the log's first line,
 // 64 KB of it at most), kept; a log not there yet tells nothing (the
-// person's, for now, and read again with the next event).
+// person's, for now, and read again with the next event). Her plugin reads
+// the same header in DSH (its session's, live) and sends it with each event:
+// then no log is read (whose_of).
 
 const MAX_HEADER: u64 = 64 * 1024;
 const MAX_LINEAGE: usize = 8;
@@ -340,6 +350,34 @@ fn parent_of(home: &Path, cwd: &str, session: &str) -> Option<Option<String>> {
     Some((header["origin"] == "subagent").then(|| s(&header, "parentSession").to_string()))
 }
 
+// The top of a lineage, from a session up by the sessions' logs.
+fn top_from(home: &Path, cwd: &str, from: String, session: &str) -> String {
+    let mut top = from;
+    for _ in 0..MAX_LINEAGE {
+        match parent_of(home, cwd, &top) {
+            Some(Some(up)) if !up.is_empty() && up != session => top = up,
+            _ => break,
+        }
+    }
+    top
+}
+
+// Whose an event's session is: as her plugin says it (origin "subagent" or
+// none; top_session, the top of its lineage as far as DSH's live sessions
+// go, else its parent followed up by their logs), else (the old bridge's
+// events) from its log.
+pub fn whose_of(e: &Value, home: &Path) -> Whose {
+    match e.get("origin").and_then(Value::as_str) {
+        None => whose(home, s(e, "cwd"), s(e, "session_id")),
+        Some("subagent") => match (s(e, "top_session"), s(e, "parent_session")) {
+            (top, _) if !top.is_empty() => Whose::Sub(top.to_string()),
+            (_, "") => Whose::Sub(String::new()),
+            (_, parent) => Whose::Sub(top_from(home, s(e, "cwd"), parent.to_string(), s(e, "session_id"))),
+        },
+        Some(_) => Whose::Own,
+    }
+}
+
 // Whose the session is, its lineage followed up to the top (its subagents'
 // logs are in its folder: they keep its cwd).
 pub fn whose(home: &Path, cwd: &str, session: &str) -> Whose {
@@ -350,16 +388,7 @@ pub fn whose(home: &Path, cwd: &str, session: &str) -> Whose {
     let whose = match parent_of(home, cwd, session) {
         None => return Whose::Own,
         Some(None) => Whose::Own,
-        Some(Some(parent)) => {
-            let mut top = parent;
-            for _ in 0..MAX_LINEAGE {
-                match parent_of(home, cwd, &top) {
-                    Some(Some(up)) if !up.is_empty() && up != session => top = up,
-                    _ => break,
-                }
-            }
-            Whose::Sub(top)
-        }
+        Some(Some(parent)) => Whose::Sub(top_from(home, cwd, parent, session)),
     };
     let mut known = KNOWN.lock().unwrap();
     let known = known.get_or_insert_with(HashMap::new);
@@ -374,7 +403,7 @@ pub fn whose(home: &Path, cwd: &str, session: &str) -> Whose {
 // tool of its, but its to-do list, is the top session's, within a turn of
 // that one's.
 fn of_subagent(e: &Value, top: &str, home: &Path) -> Option<Value> {
-    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop") {
+    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop" | "StopFailure") {
         return Some(json!({ "mood": "idle", "event": "session-end", "agent": "dsh", "session": s(e, "session_id") }));
     }
     if top.is_empty() || s(e, "tool_name") == "todo_write" {
@@ -389,29 +418,46 @@ fn of_subagent(e: &Value, top: &str, home: &Path) -> Option<Value> {
 
 // The message for an event, or None for one that changes nothing.
 pub fn to_message(e: &Value, home: &std::path::Path) -> Option<Value> {
-    if !e.is_object() {
+    if !e.is_object() || s(e, "hook_event_name") == LOADED {
         return None;
     }
-    match whose(home, s(e, "cwd"), s(e, "session_id")) {
+    match whose_of(e, home) {
         Whose::Own => message_of(e, home),
         Whose::Sub(top) => of_subagent(e, &top, home),
     }
 }
 
+// The plugin's word as DSH loads it (her log says it: log_line).
+const LOADED: &str = "WakuwakuLoaded";
+
 // The message for an event of a session of the person's.
 fn message_of(e: &Value, home: &std::path::Path) -> Option<Value> {
     let fields: &Map<String, Value> = e.as_object()?;
     let mut claude = fields.clone();
-    // A turn's end: its last words, as Claude Code gives them.
-    if s(e, "hook_event_name") == "Stop" && s(e, "last_assistant_message").is_empty() {
+    // A turn's end: its last words, as Claude Code gives them; read from its
+    // log when they did not come with it (the old bridge's).
+    if s(e, "hook_event_name") == "Stop" && e.get("last_assistant_message").is_none() {
         if let Some(reply) = session_log(home, s(e, "cwd"), s(e, "session_id")).and_then(|log| last_reply(&log)) {
             claude.insert("last_assistant_message".into(), json!(reply));
         }
     }
+    // A turn stopped by the person, or refused before it began: not done,
+    // nothing to say of it; she is there again.
+    if s(e, "hook_event_name") == "Stop" && matches!(s(e, "stop_reason"), "aborted" | "blocked") {
+        let mut message = json!({ "mood": "idle", "agent": "dsh" });
+        if !s(e, "session_id").is_empty() {
+            message["session"] = json!(s(e, "session_id"));
+        }
+        if !s(e, "cwd").is_empty() {
+            message["project"] = json!(crate::events::project_of(s(e, "cwd")));
+        }
+        return Some(message);
+    }
     // A tool that failed (an edit the person refused in DSH's own dialog
     // too) still ends in PostToolUse, its result an error's words: a
     // failure, which changed nothing.
-    if s(e, "hook_event_name") == "PostToolUse" && s(e, "tool_response").trim_start().starts_with("Error") {
+    let failed = e.get("is_error").and_then(Value::as_bool) == Some(true) || s(e, "tool_response").trim_start().starts_with("Error");
+    if s(e, "hook_event_name") == "PostToolUse" && failed {
         claude.insert("hook_event_name".into(), json!("PostToolUseFailure"));
     }
     if let Some(tool) = fields.get("tool_name").and_then(Value::as_str) {
@@ -428,7 +474,8 @@ fn message_of(e: &Value, home: &std::path::Path) -> Option<Value> {
             message["todo"] = todo;
         }
     }
-    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop") {
+    // Its name, when it did not come with the event (events.rs took one that did).
+    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop") && s(e, "session_title").is_empty() {
         if let Some(title) = title_of(home, s(e, "session_id")) {
             message["title"] = json!(title);
         }
@@ -446,11 +493,15 @@ fn short(id: &str) -> String {
 // telling why its window can't be reached; a subagent's, whose it is.
 pub fn log_line(e: &Value, found: Option<u32>, home: &Path) -> Option<String> {
     let name = s(e, "hook_event_name");
+    if name == LOADED {
+        let profile = if s(e, "profile").is_empty() { String::new() } else { format!(", profile {}", s(e, "profile")) };
+        return Some(format!("dsh: her plugin loaded (version {}{profile}, pid {})", e["version"].as_u64().unwrap_or(0), e["pid"].as_u64().unwrap_or(0)));
+    }
     if !matches!(name, "SessionStart" | "UserPromptSubmit" | "Stop") {
         return None;
     }
     let id = short(s(e, "session_id"));
-    if let Whose::Sub(top) = whose(home, s(e, "cwd"), s(e, "session_id")) {
+    if let Whose::Sub(top) = whose_of(e, home) {
         return Some(format!("dsh {name} ({id}): a subagent of {}, not shown", if top.is_empty() { "a session not named".to_string() } else { short(&top) }));
     }
     let app = found.map_or("no app found".to_string(), |pid| format!("its app found (pid {pid})"));
@@ -739,6 +790,70 @@ mod tests {
         assert_eq!(log_line(&e, None, &home).as_deref(), Some("dsh UserPromptSubmit (0e4b7d21): a subagent of 6aa5a96d, not shown"));
         let e = json!({ "session_id": orphan, "cwd": WORKSPACE, "hook_event_name": "Stop" });
         assert_eq!(log_line(&e, None, &home).as_deref(), Some("dsh Stop (7a2c5e8b): a subagent of a session not named, not shown"));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    // As her plugin sends them (integrations/dsh/wakuwaku.js): what the
+    // bridge sent, and what only it sees.
+    fn plugin(name: &str, session: &str, more: Value) -> Value {
+        let mut e = json!({ "session_id": session, "transcript_path": "", "cwd": WORKSPACE, "hook_event_name": name, "origin": "", "parent_session": "" });
+        for (k, v) in more.as_object().unwrap() {
+            e[k] = v.clone();
+        }
+        e
+    }
+
+    #[test]
+    fn what_her_plugin_tells() {
+        let home = std::env::temp_dir().join(format!("wakuwaku-dsh-plugin-ev-{}", std::process::id()));
+        let folder = home.join("sessions").join(project_key(WORKSPACE));
+        std::fs::create_dir_all(folder.join(PARENT)).unwrap();
+        std::fs::write(folder.join(PARENT).join("session.v4.jsonl.zstd"), A6A).unwrap();
+        // Its last words and its name come with it: neither the log nor the
+        // projection cache is read (the log's last words differ).
+        let stop = plugin("Stop", PARENT, json!({ "stop_hook_active": false, "last_assistant_message": "All done.", "session_title": "Create a file" }));
+        let m = to_message(&stop, &home).unwrap();
+        assert_eq!((m["mood"].as_str(), m["reply"].as_str(), m["title"].as_str()), (Some("done"), Some("All done."), Some("Create a file")));
+        // A turn with no words: none, not the log's.
+        let m = to_message(&plugin("Stop", PARENT, json!({ "last_assistant_message": "" })), &home).unwrap();
+        assert_eq!(m.get("reply"), None);
+        // Stopped by the person: there again, not done; a turn that failed: an error.
+        let m = to_message(&plugin("Stop", PARENT, json!({ "stop_reason": "aborted", "last_assistant_message": "" })), &home).unwrap();
+        assert_eq!(m, json!({ "mood": "idle", "agent": "dsh", "session": PARENT, "project": "default-workspace" }));
+        let m = to_message(&plugin("StopFailure", PARENT, json!({ "error_details": "401 Unauthorized: invalid api key" })), &home).unwrap();
+        assert_eq!((m["mood"].as_str(), m["error"].as_str()), (Some("error"), Some("401 Unauthorized: invalid api key")));
+        // A tool that failed, said so.
+        let m = to_message(&plugin("PostToolUse", PARENT, json!({ "tool_name": "pwsh", "tool_input": { "command": "exit 1" }, "tool_use_id": "c1", "tool_response": "exit code 1", "is_error": true })), &home).unwrap();
+        assert_eq!(m["event"], "tool-failed");
+        // Every tool's step, not only the few the bridge had.
+        let m = to_message(&plugin("PreToolUse", PARENT, json!({ "tool_name": "grep", "tool_input": { "pattern": "TODO" }, "tool_use_id": "c2" })), &home).unwrap();
+        assert_eq!((m["event"].as_str(), m["detail"].as_str()), (Some("tool-start"), Some("Grep")));
+
+        // Whose, as it says: a subagent's, the top of its lineage given; the
+        // person's (origin ""), with no log read at all.
+        let sub = plugin("PostToolUse", "9d1f-child", json!({ "origin": "subagent", "parent_session": "a1-mid", "top_session": PARENT, "tool_name": "write", "tool_input": { "file_path": "C:\\w\\n.md" }, "tool_use_id": "c3", "tool_response": "ok" }));
+        assert_eq!(whose_of(&sub, &home), Whose::Sub(PARENT.into()));
+        let m = to_message(&sub, &home).unwrap();
+        assert_eq!((m["session"].as_str(), m["within"].as_bool(), m["file"].as_str()), (Some(PARENT), Some(true), Some("C:\\w\\n.md")));
+        let mut start = sub.clone();
+        start["hook_event_name"] = json!("UserPromptSubmit");
+        assert_eq!(to_message(&start, &home).unwrap()["event"], "session-end");
+        let mut failed = sub.clone();
+        failed["hook_event_name"] = json!("StopFailure");
+        assert_eq!(to_message(&failed, &home).unwrap()["event"], "session-end");
+        // Its parent alone (not live in DSH): followed up by the logs (PARENT's own: the person's).
+        let mut parent_only = sub.clone();
+        parent_only["top_session"] = json!("");
+        parent_only["parent_session"] = json!(PARENT);
+        assert_eq!(whose_of(&parent_only, &home), Whose::Sub(PARENT.into()));
+        parent_only["parent_session"] = json!("");
+        assert_eq!(whose_of(&parent_only, &home), Whose::Sub(String::new()));
+        assert_eq!(whose_of(&plugin("Stop", "session-not-there", json!({})), &home), Whose::Own);
+
+        // Its word as DSH loads it: nothing for the pet, a line for her log.
+        let loaded = json!({ "session_id": "", "hook_event_name": "WakuwakuLoaded", "version": 1, "pid": 4321, "profile": "desktop" });
+        assert!(to_message(&loaded, &home).is_none());
+        assert_eq!(log_line(&loaded, None, &home).as_deref(), Some("dsh: her plugin loaded (version 1, profile desktop, pid 4321)"));
         let _ = std::fs::remove_dir_all(&home);
     }
 }

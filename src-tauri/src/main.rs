@@ -1366,8 +1366,10 @@ fn zcode_hook(port: u16, name: &str) {
     }
 }
 
-// DeepSeek Harness's hook (connection::DSH_FLAG and the event's name), run
-// by its Claude Code bridge through its PowerShell, in its sandbox: the event
+// DeepSeek Harness's hook (connection::DSH_FLAG and the event's name), as
+// her old rows had it run (until 0.3.2; her own plugin in DSH replaces them,
+// connection.rs, and they are no longer written: this stays for a DSH still
+// running them), by its Claude Code bridge through its PowerShell, in its sandbox: the event
 // handed to her port and let go. As a session starts or a turn begins it
 // waits for her answer instead (some ms), this connection held while she
 // looks up where the session runs from this process (server.rs chain_for:
