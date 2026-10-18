@@ -18,6 +18,8 @@
 # -LabelA/-LabelB, -CommitA/-CommitB: what each side is, for the table.
 # -Threads: every run broken down per thread too (bigger files).
 # -Starts n: S7's cold and warm starts n each, not the scene's (a quick look).
+# -FreshWebView: each run on a new WebView2 folder, not the side's primed one
+# (see Initialize-PerfWebView).
 #
 # Each copy: its own data folder (WAKUWAKU_USER_DATA, with the scene's
 # config.json written first; WebView2's files are kept in it), its own
@@ -51,6 +53,7 @@ param(
     [int]$PortA = 47331,
     [int]$PortB = 47332,
     [int]$Starts = 0,
+    [switch]$FreshWebView,
     [switch]$Collect
 )
 $ErrorActionPreference = 'Stop'
@@ -90,7 +93,7 @@ if ($Vm) {
         $go = '& ' + (& $q "$Work\tools\run.ps1") + ' -A ' + (& $q "$Work\A\wakuwaku.exe") + ' -B ' + (& $q "$Work\B\wakuwaku.exe") +
             ' -Scenes ' + ($Scenes -join ',') + " -Runs $Runs -Seconds $Seconds -Warm $Warm -Out " + (& $q $remoteOut) + ' -Work ' + (& $q $Work) +
             ' -LabelA ' + (& $q $LabelA) + ' -LabelB ' + (& $q $LabelB) + ' -CommitA ' + (& $q $CommitA) + ' -CommitB ' + (& $q $CommitB) +
-            " -PortA $PortA -PortB $PortB -Starts $Starts" + $(if ($Threads) { ' -Threads' } else { '' }) + " *>> " + (& $q "$remoteOut\console.log")
+            " -PortA $PortA -PortB $PortB -Starts $Starts" + $(if ($Threads) { ' -Threads' } else { '' }) + $(if ($FreshWebView) { ' -FreshWebView' } else { '' }) + " *>> " + (& $q "$remoteOut\console.log")
         $goFile = Join-Path ([IO.Path]::GetTempPath()) 'wakuwaku-perf-go.ps1'
         Write-Utf8 $goFile $go
         [void](VMPut $goFile "$Work\tools\go.ps1")
@@ -283,10 +286,16 @@ function Find-PerfLine($log, [string]$pattern, [int64]$after = 0) {
     $null
 }
 
-# The scene's settings as her config.json, in a new folder.
-function New-PerfData([string]$data, $cfg) {
+# The scene's settings as her config.json, in a new folder; with a copy of
+# the side's primed WebView2 folder unless -Fresh.
+function New-PerfData([string]$data, $cfg, [string]$side = '', [switch]$Fresh) {
     if (Test-Path -LiteralPath $data) { Remove-PerfFolder $data }
     [void][IO.Directory]::CreateDirectory($data)
+    if (-not $Fresh -and $side -and $webviews[$side]) {
+        $null = & robocopy.exe $webviews[$side] (Join-Path $data 'webview') /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP
+        if ($LASTEXITCODE -ge 8) { throw "could not copy $($webviews[$side]) (robocopy $LASTEXITCODE)" }
+        $global:LASTEXITCODE = 0
+    }
     $text = $cfg.settings | ConvertTo-Json -Depth 30
     foreach ($k in $displayKeys.Keys) { $text = $text.Replace($k, $displayKeys[$k]) }
     if ($text -match '\{(primary|other)\}') { throw "$($cfg.scene) wants a display this machine does not have ($($Matches[0]))" }
@@ -448,7 +457,7 @@ function Invoke-PerfRun($cfg, [string]$side, [int]$n) {
     if (-not (Test-WindowsTaskbar)) { $rec.notes += "Windows' taskbar not shown before the start" }
     # The pointer away from her (SetCursorPos: not input, quiet stays).
     [void][WakuPerf.Win]::Park($parkAt[0], $parkAt[1])
-    New-PerfData $data $cfg
+    New-PerfData $data $cfg $side
     $p = Start-PerfCopy $exe $data $port $cfg.env
     $nudge = $null
     try {
@@ -509,13 +518,14 @@ function Invoke-PerfRun($cfg, [string]$side, [int]$n) {
 # Start-up (S7): cold (a new copy of the exe, a new data and WebView2 folder)
 # and warm (the same exe and folder again), each side in turn; from her log,
 # process start -> up -> pages ready -> Windows' taskbar put away.
-function Measure-PerfStart($cfg, [string]$side, [string]$kind, [int]$n, [string]$exe, [string]$data, [bool]$fresh) {
+function Measure-PerfStart($cfg, [string]$side, [string]$kind, [int]$n, [string]$exe, [string]$data) {
     $port = $sides[$side].port
     $name = "S7-$kind-$side-$n"
     $rec = [ordered]@{ kind = $kind; n = $n; notes = @() }
     Assert-PerfClear @($port)
     [void][WakuPerf.Win]::Park($parkAt[0], $parkAt[1])
-    if ($fresh) { New-PerfData $data $cfg }
+    # Cold: all new. The warm folder: made by its first start (primed as the runs' are).
+    if ($kind -eq 'cold') { New-PerfData $data $cfg -Fresh } elseif ($kind -eq 'prime') { New-PerfData $data $cfg $side }
     $p = Start-PerfCopy $exe $data $port $cfg.env
     try {
         $t0 = Get-EpochMs $p.StartTime
@@ -565,7 +575,7 @@ function Invoke-PerfStarts($cfg) {
             $exe = Join-Path $dir 'wakuwaku.exe'
             Copy-Item -LiteralPath $sides[$s].exe -Destination $exe -Force
             $data = Join-Path $Work "data\S7-cold-$s-$i"
-            $results[$s].scenes[$cfg.scene].starts += (Measure-PerfStart $cfg $s 'cold' $i $exe $data $true)
+            $results[$s].scenes[$cfg.scene].starts += (Measure-PerfStart $cfg $s 'cold' $i $exe $data)
             Remove-PerfFolder $data
             Remove-PerfFolder $dir
             Save-PerfResults
@@ -576,12 +586,12 @@ function Invoke-PerfStarts($cfg) {
     $warmData = @{}
     foreach ($s in $sides.Keys) {
         $warmData[$s] = Join-Path $Work "data\S7-warm-$s"
-        [void](Measure-PerfStart $cfg $s 'prime' 0 $sides[$s].exe $warmData[$s] $true)
+        [void](Measure-PerfStart $cfg $s 'prime' 0 $sides[$s].exe $warmData[$s])
         Start-Sleep -Seconds 5
     }
     for ($i = 1; $i -le $warm; $i++) {
         foreach ($s in $sides.Keys) {
-            $results[$s].scenes[$cfg.scene].starts += (Measure-PerfStart $cfg $s 'warm' $i $sides[$s].exe $warmData[$s] $false)
+            $results[$s].scenes[$cfg.scene].starts += (Measure-PerfStart $cfg $s 'warm' $i $sides[$s].exe $warmData[$s])
             Save-PerfResults
             Start-Sleep -Seconds 5
         }
@@ -589,11 +599,52 @@ function Invoke-PerfStarts($cfg) {
     foreach ($s in $sides.Keys) { Remove-PerfFolder $warmData[$s] }
 }
 
+# Each side's WebView2 folder primed once (docs/PERFORMANCE.md section 6). A
+# new one fetches some 60 MB of WebView2's own components in its first
+# minutes (Widevine, the subresource filter, speech, hyphenation ...): in
+# some runs that landed in the window, tens of Mcyc/s in WebView2's browser
+# process on either side (2026-10-18). A copy started once and left until
+# that folder stops growing, then quit; each run starts on a copy of it, as
+# a person's long-used one would be. S7's cold starts keep a new one.
+$webviews = @{}
+function Initialize-PerfWebView([string]$side, $cfg) {
+    $data = Join-Path $Work "data\prime-$side"
+    New-PerfData $data $cfg -Fresh
+    $port = $sides[$side].port
+    $p = Start-PerfCopy $sides[$side].exe $data $port $null
+    $size = -1
+    $still = 0
+    $t0 = Get-Date
+    try {
+        [void](Wait-PerfReady $p $data $port)
+        while (((Get-Date) - $t0).TotalSeconds -lt 300) {
+            Start-Sleep -Seconds 5
+            $now = (Get-ChildItem -LiteralPath (Join-Path $data 'webview') -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+            if ($now -eq $size) { $still += 5 } else { $still = 0; $size = $now }
+            if ($still -ge 30 -and ((Get-Date) - $t0).TotalSeconds -ge 90) { break }
+        }
+    } finally {
+        [void](Stop-PerfCopy $p $port)
+    }
+    $keep = Join-Path $Work "webview-$side"
+    if (Test-Path -LiteralPath $keep) { Remove-PerfFolder $keep }
+    [IO.Directory]::Move((Join-Path $data 'webview'), $keep)
+    Remove-PerfFolder $data
+    $webviews[$side] = $keep
+    Say ("  {0}'s WebView2 folder primed: {1:N0} MB, still for 30 s after {2:N0} s" -f $side, ($size / 1MB), ((Get-Date) - $t0).TotalSeconds)
+}
+
 # --- The run ---------------------------------------------------------------------------------
 
 Say "run: $($Scenes -join ',') x $Runs, $Seconds s each after $Warm s; A $LabelA ($($results.A.exe.sha256.Substring(0, 12))), B $LabelB ($($results.B.exe.sha256.Substring(0, 12))); $($machine.name), $($machine.displays -join ' + ')"
 Assert-PerfClear @($PortA, $PortB)
 try {
+    if ($FreshWebView) {
+        Say 'each run with a new WebView2 folder (-FreshWebView)'
+    } else {
+        foreach ($s in $sides.Keys) { Initialize-PerfWebView $s (Get-PerfScene 'S1') }
+    }
+    foreach ($s in $sides.Keys) { $results[$s].webview = $(if ($FreshWebView) { 'new each run' } else { 'primed once, copied into each run' }) }
     foreach ($scene in $Scenes) {
         $cfg = Get-PerfScene $scene
         Say "$scene $($cfg.title)"
@@ -619,6 +670,7 @@ try {
     }
 } finally {
     Save-PerfResults
+    foreach ($w in $webviews.Values) { Remove-PerfFolder $w }
     try {
         $node = Get-Command node -ErrorAction SilentlyContinue
         if ($node) { & $node.Source (Join-Path $here 'report.js') (Join-Path $Out 'A.json') (Join-Path $Out 'B.json') --md (Join-Path $Out 'report.md') --json (Join-Path $Out 'report.json') | Out-Null }
