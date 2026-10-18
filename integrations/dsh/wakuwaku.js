@@ -14,8 +14,10 @@
 // program of hers is started, nothing waits on her. Each event is handed to
 // her port over HTTP, one at a time and in order, after those before it;
 // DSH's own work never waits for one (every listener returns at once, the
-// waterfalls' next() handed back as it is), a post gives up after a moment,
-// and while she is not there (no answer) nothing is sent for a few seconds.
+// waterfalls' next() handed back as it is; but for the approvals and
+// questions below, where DSH waits on the person anyway), a post gives up
+// after a moment, and while she is not there (no answer) nothing is sent for
+// a few seconds.
 // Every error is swallowed: DSH never sees one of ours.
 //
 // What it tells, in the words of Claude Code's hooks as DSH's own Claude Code
@@ -34,6 +36,26 @@
 // loaded it, and this version of it, she running or not; the file goes
 // again as the plugin is let go.
 //
+// DSH's approvals and its questions to the person (version 2): it takes the
+// first place in DSH's two waterfalls for them, approval/request (a tool's
+// call to allow: its sandbox widened for a write outside the workspace, a
+// command run with more access) and user-questions/request (its
+// ask_user_question tool, a plan to review), and tells her each as Claude
+// Code's PermissionRequest, the call's tool and input with it (DSH's request
+// carries neither but its callId: the input is the one tools/pre-execute
+// had). DSH's own dialog is shown at once all the same (next()), and the
+// first answer wins. Hers comes back on the same request, held open while
+// she shows it on her island: { decision: allow | deny } for an approval
+// (DSH's outcomes allowed-once and rejected: it has no "always"), or
+// { answers: [{ id, selected, custom? }] } for questions; {} is none (she
+// only shows it: out of sight, do not disturb, its time up, or the person
+// went to DSH for it), and DSH's dialog stays the one to answer. Hers first,
+// DSH's own dialog is withdrawn: the request's signal is made ours too
+// before next() (DSH's gateway withdraws a request from its window as that
+// signal aborts), and aborted. DSH's first, her request is let go and she is
+// told (PermissionReplied). Nothing is ever answered but by the person on
+// her island. She not there, DSH is left as it was: nothing taken over.
+//
 // The row that loads it gives its config: { port }, her port.
 
 import { createHash } from 'node:crypto'
@@ -47,12 +69,18 @@ import { fileURLToPath } from 'node:url'
 // file's own digest (sha, in the marker): DSH keeps a module it imported
 // until it restarts, so a file written again under the same name is not
 // what runs, and her Connect page compares the two.
-export const VERSION = 1
+export const VERSION = 2
 export const name = 'wakuwaku'
 
 const DEFAULT_PORT = 47213
 // How long one event may take to reach her.
 const SEND_MS = 2000
+// How long she may hold an approval or a question: past the longest she
+// waits on the person (290 s, asks.rs ASK_TIMEOUT_MS), DSH's dialog alone.
+const HOLD_MS = 300 * 1000
+// The tools whose call asks the person a question (user-questions/request
+// names no call of its own).
+const QUESTION_TOOLS = new Set(['ask_user_question', 'exit_plan_mode'])
 // Not there: tried again after this long.
 const AWAY_MS = 5000
 // Events waiting at most; past that, new ones are dropped (she is slow or gone).
@@ -111,6 +139,45 @@ function ownSha() {
 // A profile's name as a file name's part.
 const fileSafe = text => String(text || 'default').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
 
+// Her answer to an approval as DSH's outcome, or undefined for none.
+function decisionOf(reply) {
+  const decision = reply && typeof reply === 'object' ? reply.decision : undefined
+  return decision === 'allow' ? 'allowed-once' : decision === 'deny' ? 'rejected' : undefined
+}
+
+// Her answers to DSH's questions as its answer batch, or undefined for none
+// (or one that does not fit them: one answer for each, by its id).
+function answersOf(reply, questions) {
+  const given = reply && typeof reply === 'object' ? reply.answers : undefined
+  if (!Array.isArray(given) || !Array.isArray(questions) || given.length !== questions.length) return undefined
+  const answers = []
+  for (const [i, q] of questions.entries()) {
+    const a = given[i]
+    if (!a || a.id !== q?.id || !Array.isArray(a.selected) || !a.selected.every(l => typeof l === 'string')) return undefined
+    if (a.custom !== undefined && typeof a.custom !== 'string') return undefined
+    answers.push({ id: a.id, selected: [...a.selected], ...(a.custom === undefined ? {} : { custom: a.custom }) })
+  }
+  return { answers }
+}
+
+// A request's signal made ours too, so that DSH's own dialog for it goes as
+// she answers first: its gateway withdraws a request from DSH's window as
+// the signal the request carried aborts (dsh-api-gateway's
+// startRemoteEvent, 0.2.1-rc.2), and the listeners after this one get the
+// very object this one does (cordis' waterfall hands each the same
+// arguments). Readonly by DSH's types, a plain object as DSH makes it; false
+// when it cannot be made so (frozen, say), and then she only shows it.
+function takeOver(req, ours) {
+  try {
+    const was = req.signal
+    const both = was instanceof AbortSignal ? AbortSignal.any([was, ours.signal]) : ours.signal
+    req.signal = both
+    return req.signal === both
+  } catch {
+    return false
+  }
+}
+
 // The plugin for a context and its config. options: { dir } where its marker
 // goes (beside this file by default), { sha } this file's digest (its own by
 // default), for the tests.
@@ -119,12 +186,16 @@ export function make(ctx, config = {}, options = {}) {
   const path = '/hook?from=wakuwaku&agent=dsh'
   const titles = new Map()
   const replies = new Map()
+  // The tool calls under way, by callId: whose, which tool, its input.
+  const calls = new Map()
   // Sessions whose turn was told ended (Stop), until the next one begins.
   const stopped = new Set()
   let queue = Promise.resolve()
   let waiting = 0
   let awayUntil = 0
   let closed = false
+  // Approvals and questions told, for their ids.
+  let asked = 0
 
   // One event to her port; resolves when she answered, or gave none in time.
   function post(body) {
@@ -171,6 +242,174 @@ export function make(ctx, config = {}, options = {}) {
       .then(() => {
         waiting--
       })
+  }
+
+  // An event she may answer, after those before it: held open until she
+  // does. { answer, stop }: answer resolves with what she gave back (null
+  // for nothing: she not there, an answer that is no JSON, HOLD_MS gone, or
+  // stop()); stop() lets it go. Those after it go as soon as it is written:
+  // nothing of hers waits on the person.
+  function hold(body) {
+    let request = null
+    let over = false
+    let settle
+    const answer = new Promise(done => (settle = done))
+    const end = value => {
+      if (over) return
+      over = true
+      settle(value)
+    }
+    const start = () =>
+      new Promise(sent => {
+        if (over || closed || Date.now() < awayUntil) return sent(end(null))
+        let data
+        try {
+          data = JSON.stringify(body)
+          request = http.request(
+            { host: '127.0.0.1', port, path, method: 'POST', agent: false, headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } },
+            res => {
+              let text = ''
+              res.setEncoding('utf8')
+              res.on('data', chunk => (text = text.length < 1_000_000 ? text + chunk : text))
+              res.on('error', () => end(null))
+              res.on('end', () => {
+                let value = null
+                try {
+                  value = JSON.parse(text)
+                } catch {}
+                end(value)
+              })
+            },
+          )
+        } catch {
+          return sent(end(null))
+        }
+        request.on('socket', socket => socket.unref?.())
+        request.setTimeout(HOLD_MS, () => request.destroy(new Error('timeout')))
+        request.on('error', err => {
+          // No one on her port: away for a while (not when let go here).
+          if (!over && err?.message !== 'timeout') awayUntil = Date.now() + AWAY_MS
+          end(null)
+          sent()
+        })
+        request.on('finish', () => sent())
+        request.end(data)
+      })
+    if (closed || waiting >= QUEUE_MAX) {
+      end(null)
+    } else {
+      waiting++
+      queue = queue
+        .then(start)
+        .catch(() => {})
+        .then(() => {
+          waiting--
+        })
+    }
+    return {
+      answer,
+      // Whether it went out to her (so there is one of hers to close).
+      went: () => request !== null,
+      stop: () => {
+        end(null)
+        request?.destroy()
+      },
+    }
+  }
+
+  // DSH's answer (theirs: next()'s) and hers (asked), whichever comes first.
+  // Hers, read by read() (undefined: none, DSH's still to come): ours
+  // aborted, which withdraws DSH's own dialog (takeOver), and it is hers.
+  // DSH's: her request let go. Either way she is told (tell(outcome, by)),
+  // when it reached her. signal: the request's, aborted but not by us when
+  // the turn was stopped (cancelled).
+  function race(theirs, asked, ours, signal, read, tell) {
+    return new Promise((resolve, reject) => {
+      let over = false
+      const win = (outcome, by) => {
+        if (over) return false
+        over = true
+        asked.stop()
+        if (asked.went()) tell(outcome, by)
+        return true
+      }
+      const failed = error => (signal?.aborted || error?.code === 'ASK_CANCELLED' ? 'cancelled' : 'error')
+      Promise.resolve(theirs).then(
+        value => win(value, 'dsh') && resolve(value),
+        // Its dialog withdrawn as hers came: nothing more of it.
+        error => !ours.signal.aborted && win(failed(error), 'dsh') && reject(error),
+      )
+      asked.answer.then(reply => {
+        const value = read(reply)
+        if (value === undefined || !win(value, 'her')) return
+        try {
+          ours.abort(new Error('answered on Wakuwaku'))
+        } catch {}
+        resolve(value)
+      })
+    })
+  }
+
+  // What came of an approval or a question, for her (it closes hers, and the
+  // session works on).
+  function replied(session, id, callId) {
+    return (outcome, by) => send({ ...base(session, 'PermissionReplied'), permission_id: id, tool_use_id: callId, outcome: typeof outcome === 'string' ? outcome : 'answered', by })
+  }
+
+  // DSH asks the person to allow a tool's call (approval/request): its own
+  // dialog, and her island too. Its request names the call; its input is
+  // the one tools/pre-execute had.
+  function approval(req, next) {
+    if (closed || Date.now() < awayUntil || !req || typeof req !== 'object') return next()
+    let body, ours, answerable, session, id, callId
+    try {
+      session = req.agent?.session
+      callId = typeof req.callId === 'string' ? req.callId : ''
+      const call = calls.get(callId)
+      ours = new AbortController()
+      answerable = takeOver(req, ours)
+      id = `${process.pid}-${++asked}`
+      body = { ...base(session, 'PermissionRequest'), tool_name: call?.name || String(req.toolName || ''), tool_input: call?.input ?? {}, tool_use_id: callId, permission_id: id, reason: clip(String(req.reason ?? ''), 400), answerable }
+      const shown = req.displayReason
+      if (shown && typeof shown === 'object') body.display_reason = { en: clip(String(shown.en ?? ''), 400), zh: clip(String(shown.zh ?? ''), 400) }
+    } catch {
+      return next()
+    }
+    let theirs
+    try {
+      theirs = next()
+    } catch (err) {
+      theirs = Promise.reject(err)
+    }
+    // Not taken over, an answer of hers would leave DSH's dialog asking: none taken.
+    return race(theirs, hold(body), ours, req.signal, reply => (answerable ? decisionOf(reply) : undefined), replied(session, id, callId))
+  }
+
+  // DSH asks the person questions (user-questions/request): its ask_user_question
+  // tool's (the latest such call of the session's: the request names none),
+  // a plan to review; told as Claude Code's AskUserQuestion.
+  function question(req, next) {
+    if (closed || Date.now() < awayUntil || !req || typeof req !== 'object' || !Array.isArray(req.questions) || !req.agent) return next()
+    let body, ours, answerable, session, id, callId
+    try {
+      session = req.agent.session
+      const sid = idOf(session)
+      callId = typeof req.wait?.callId === 'string' ? req.wait.callId : ''
+      for (const [key, call] of calls) if (!req.wait?.callId && call.session === sid && QUESTION_TOOLS.has(call.name)) callId = key
+      ours = new AbortController()
+      answerable = takeOver(req, ours)
+      id = `${process.pid}-${++asked}`
+      body = { ...base(session, 'PermissionRequest'), tool_name: 'ask_user_question', tool_input: { questions: slim(req.questions) }, tool_use_id: callId, permission_id: id, answerable }
+    } catch {
+      return next()
+    }
+    let theirs
+    try {
+      theirs = next()
+    } catch (err) {
+      theirs = Promise.reject(err)
+    }
+    return race(theirs, hold(body), ours, req.signal, reply => (answerable ? answersOf(reply, req.questions) : undefined), replied(session, id, callId))
   }
 
   const service = key => {
@@ -226,10 +465,13 @@ export function make(ctx, config = {}, options = {}) {
   }
 
   function preTool(exec) {
-    send({ ...base(exec?.agent?.session, 'PreToolUse'), tool_name: exec?.name || '', tool_input: slim(exec?.arguments ?? {}), tool_use_id: exec?.callId || '' })
+    const input = slim(exec?.arguments ?? {})
+    if (exec?.callId) remember(calls, exec.callId, { session: idOf(exec.agent?.session), name: exec.name || '', input })
+    send({ ...base(exec?.agent?.session, 'PreToolUse'), tool_name: exec?.name || '', tool_input: input, tool_use_id: exec?.callId || '' })
   }
 
   function postTool(exec, result) {
+    calls.delete(exec?.callId)
     send({
       ...base(exec?.agent?.session, 'PostToolUse'),
       tool_name: exec?.name || '',
@@ -298,6 +540,10 @@ export function make(ctx, config = {}, options = {}) {
     ctx.on('agent/pre-step', (arg, next) => (quiet(promptSubmit)(arg), next()), true)
     ctx.on('tools/pre-execute', (exec, next) => (quiet(preTool)(exec), next()), true)
     ctx.on('tools/post-execute', (exec, result, next) => (quiet(postTool)(exec, result), next()), true)
+    // Not back at once: DSH waits on the person here anyway (its dialog
+    // shown all the while), and on whichever answer comes first.
+    ctx.on('approval/request', (req, next) => approval(req, next), true)
+    ctx.on('user-questions/request', (req, next) => question(req, next), true)
   }
 
   // Loaded: said to her, and in the marker beside this file; the marker goes
@@ -317,7 +563,7 @@ export function make(ctx, config = {}, options = {}) {
     }
   }
 
-  return { listen, hello, sessionStart, promptSubmit, preTool, postTool, stop, logged, idle: () => queue, close: () => (closed = true) }
+  return { listen, hello, sessionStart, promptSubmit, preTool, postTool, stop, logged, approval, question, idle: () => queue, close: () => (closed = true) }
 }
 
 export function apply(ctx, config) {

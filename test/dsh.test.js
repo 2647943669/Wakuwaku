@@ -3,8 +3,11 @@
 // tells her and in which words (Claude Code's hooks', as DSH's own bridge
 // said them), what only it sees (the last words, the name, whose a session
 // is, a turn that ended unfinished), its word on loading, and that nothing of
-// hers ever reaches DSH: no wait, no error. Against a stand-in for her port
-// and a stand-in for DSH's context (never DSH itself).
+// hers ever reaches DSH: no wait, no error. DSH's approvals and questions:
+// told with the call's input, the first answer winning (hers withdraws DSH's
+// own dialog through the request's signal), DSH as it was when she is not
+// there. Against a stand-in for her port and a stand-in for DSH's context
+// (never DSH itself).
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -15,20 +18,31 @@ const { test } = require('node:test')
 const SOURCE = fs.readFileSync(path.join(__dirname, '..', 'integrations', 'dsh', 'wakuwaku.js'), 'utf8')
 const load = () => import('data:text/javascript,' + encodeURIComponent(SOURCE))
 
-// Her port: what came, in order.
-async function fakeHer() {
+// Her port: what came, in order. answer(event): what she gives back for it
+// ({} by default), or a promise of it (held till then: a prompt); dropped,
+// whether a held one's connection was let go before she answered.
+async function fakeHer(answer = () => ({})) {
   const got = []
+  const dropped = []
   const server = http.createServer((req, res) => {
     let body = ''
     req.on('data', chunk => (body += chunk))
-    req.on('end', () => {
-      got.push({ url: req.url, event: JSON.parse(body) })
+    req.on('end', async () => {
+      const event = JSON.parse(body)
+      got.push({ url: req.url, event })
+      res.on('close', () => res.writableEnded || dropped.push(event.hook_event_name))
+      const out = await answer(event)
+      if (res.destroyed) return
       res.setHeader('content-type', 'application/json')
-      res.end('{}')
+      res.end(JSON.stringify(out))
     })
   })
   await new Promise(done => server.listen(0, '127.0.0.1', done))
-  return { got, port: server.address().port, close: () => new Promise(done => server.close(done)) }
+  const close = () => {
+    server.closeAllConnections()
+    return new Promise(done => server.close(done))
+  }
+  return { got, dropped, port: server.address().port, close }
 }
 
 // DSH's side: the listeners a plugin registers (and whether first in line),
@@ -74,8 +88,8 @@ test('a turn as DSH runs it, told in the words of its Claude Code bridge', async
   const plugin = make(dsh.ctx, { port: her.port }, { dir: '' })
   plugin.listen()
   // Every point, the waterfalls first in line; a waterfall's next() back as it is, at once.
-  assert.deepEqual(Object.keys(dsh.on).sort(), ['agent/created', 'agent/pre-step', 'agent/turn-stopping', 'session/event', 'tools/post-execute', 'tools/pre-execute'])
-  for (const name of ['agent/pre-step', 'tools/pre-execute', 'tools/post-execute']) assert.equal(dsh.on[name].prepend, true, name)
+  assert.deepEqual(Object.keys(dsh.on).sort(), ['agent/created', 'agent/pre-step', 'agent/turn-stopping', 'approval/request', 'session/event', 'tools/post-execute', 'tools/pre-execute', 'user-questions/request'])
+  for (const name of ['agent/pre-step', 'tools/pre-execute', 'tools/post-execute', 'approval/request', 'user-questions/request']) assert.equal(dsh.on[name].prepend, true, name)
   const s = session('session-6aa5a96d-33fc')
   const agent = agentOf(s)
   const log = e => dsh.on['session/event'].fn(s, e)
@@ -180,7 +194,7 @@ test('its word as DSH loads it, and as it is let go', async () => {
   // apply, as DSH calls it: its listeners and its letting go, as an effect.
   const real = fakeDsh({ profileContext: { name: 'web' } })
   apply(real.ctx, { port: her.port })
-  assert.equal(Object.keys(real.on).length, 6)
+  assert.equal(Object.keys(real.on).length, 8)
   assert.equal(real.effects.length, 1)
   real.effects[0].dispose()
   await her.close()
@@ -235,4 +249,204 @@ test('nothing of hers reaches DSH: she not there, odd input, errors', async () =
   // Its config's port, else her own default.
   const other = fakeDsh()
   assert.doesNotThrow(() => make(other.ctx, { port: 'x' }, { dir: '' }).listen())
+})
+
+// DSH's side of an approval or a question: next() as its gateway does it,
+// pending till DSH's own dialog is answered (answer()), withdrawn (rejected)
+// as the signal the request carries then aborts.
+function dialog(req) {
+  let answer
+  const shown = new Promise((resolve, reject) => {
+    answer = resolve
+    const signal = req.signal
+    signal?.addEventListener('abort', () => reject(new Error('cancelled by the Host')), { once: true })
+  })
+  return { next: () => shown, answer: value => answer(value) }
+}
+
+// An approval as DSH's tools pipeline asks one (dsh-tools serviceAsk, a
+// sandbox escalation): the call it is about, no input of its own.
+function approvalOf(agent, callId, signal = new AbortController().signal) {
+  return {
+    agent,
+    toolName: 'pwsh',
+    callId,
+    reason: 'escalate sandbox to danger-full-access: the user asked to read a file outside the workspace',
+    displayReason: { en: 'Allow this operation with danger-full-access permissions: …', zh: '允许本次操作使用 danger-full-access 权限：…' },
+    signal,
+  }
+}
+
+const settle = () => new Promise(done => setTimeout(done, 50))
+
+test('an approval answered on her island first: DSH takes hers, its own dialog withdrawn', async () => {
+  let decide
+  const her = await fakeHer(e => (e.hook_event_name === 'PermissionRequest' ? new Promise(done => (decide = done)) : {}))
+  const { make } = await load()
+  const dsh = fakeDsh()
+  const plugin = make(dsh.ctx, { port: her.port }, { dir: '' })
+  plugin.listen()
+  const s = session('session-ed6ad37c')
+  const agent = agentOf(s)
+  dsh.on['tools/pre-execute'].fn({ name: 'pwsh', arguments: { command: 'Get-Content -Path C:\\Windows\\win.ini', sandbox_permissions: 'danger-full-access', justification: 'asked' }, callId: 'call_01', agent }, () => NEXT)
+  const turn = new AbortController()
+  const req = approvalOf(agent, 'call_01', turn.signal)
+  const own = dialog(req)
+  const outcome = dsh.on['approval/request'].fn(req, own.next)
+  // The request's signal is ours too now, the turn's still in it.
+  assert.notEqual(req.signal, turn.signal)
+  assert.equal(req.signal.aborted, false)
+  while (!decide) await settle()
+  decide({ decision: 'allow' })
+  assert.equal(await outcome, 'allowed-once')
+  // DSH's dialog withdrawn; the turn itself untouched.
+  assert.equal(req.signal.aborted, true)
+  assert.equal(turn.signal.aborted, false)
+  await plugin.idle()
+  await settle()
+  await her.close()
+  const told = her.got.map(g => g.event)
+  assert.deepEqual(told.map(e => e.hook_event_name), ['PreToolUse', 'PermissionRequest', 'PermissionReplied'])
+  const asked = told[1]
+  assert.deepEqual([asked.tool_name, asked.tool_input.command, asked.tool_use_id, asked.answerable, asked.session_id], ['pwsh', 'Get-Content -Path C:\\Windows\\win.ini', 'call_01', true, 'session-ed6ad37c'])
+  assert.ok(asked.reason.startsWith('escalate sandbox to danger-full-access'))
+  assert.equal(asked.display_reason.zh, '允许本次操作使用 danger-full-access 权限：…')
+  assert.deepEqual([told[2].permission_id, told[2].tool_use_id, told[2].outcome, told[2].by], [asked.permission_id, 'call_01', 'allowed-once', 'her'])
+
+  // Denied on her island: DSH's outcome rejected.
+  const her2 = await fakeHer(e => (e.hook_event_name === 'PermissionRequest' ? { decision: 'deny' } : {}))
+  const plugin2 = make(dsh.ctx, { port: her2.port }, { dir: '' })
+  const req2 = approvalOf(agent, 'call_02')
+  assert.equal(await plugin2.approval(req2, dialog(req2).next), 'rejected')
+  await plugin2.idle()
+  await her2.close()
+})
+
+test('an approval answered in DSH first, or left to DSH: hers let go, she told', async () => {
+  // She holds it (the person has not answered on her island yet).
+  const her = await fakeHer(e => (e.hook_event_name === 'PermissionRequest' ? new Promise(() => {}) : {}))
+  const { make } = await load()
+  const dsh = fakeDsh()
+  const plugin = make(dsh.ctx, { port: her.port }, { dir: '' })
+  plugin.listen()
+  const agent = agentOf(session('session-1'))
+  const req = approvalOf(agent, 'call_03')
+  const own = dialog(req)
+  const outcome = dsh.on['approval/request'].fn(req, own.next)
+  while (her.got.length < 1) await settle()
+  own.answer('rejected')
+  assert.equal(await outcome, 'rejected')
+  assert.equal(req.signal.aborted, false)
+  await plugin.idle()
+  await settle()
+  assert.deepEqual(her.dropped, ['PermissionRequest'])
+  const told = her.got.map(g => g.event)
+  assert.deepEqual(told.map(e => [e.hook_event_name, e.outcome, e.by]), [['PermissionRequest', undefined, undefined], ['PermissionReplied', 'rejected', 'dsh']])
+  // Unknown to tools/pre-execute: its tool by DSH's name, no input.
+  assert.deepEqual([told[0].tool_name, told[0].tool_input], ['pwsh', {}])
+  await her.close()
+
+  // She gives none ({}: out of sight, its time up, sent to DSH): DSH's dialog answers.
+  const her2 = await fakeHer()
+  const plugin2 = make(dsh.ctx, { port: her2.port }, { dir: '' })
+  const req2 = approvalOf(agent, 'call_04')
+  const own2 = dialog(req2)
+  const outcome2 = plugin2.approval(req2, own2.next)
+  while (her2.got.length < 1) await settle()
+  await settle()
+  own2.answer('allowed-once')
+  assert.equal(await outcome2, 'allowed-once')
+  // The turn stopped meanwhile: DSH's own outcome; its error passed on as it
+  // is. Stopped before it reached her, nothing of it is told.
+  const turn = new AbortController()
+  const req3 = approvalOf(agent, 'call_05', turn.signal)
+  const outcome3 = plugin2.approval(req3, dialog(req3).next)
+  turn.abort()
+  await assert.rejects(outcome3, /cancelled by the Host/)
+  // Stopped once she has it: cancelled.
+  const turn4 = new AbortController()
+  const req4 = approvalOf(agent, 'call_09', turn4.signal)
+  const outcome4 = plugin2.approval(req4, dialog(req4).next)
+  while (her2.got.length < 3) await settle()
+  turn4.abort()
+  await assert.rejects(outcome4, /cancelled by the Host/)
+  await plugin2.idle()
+  await settle()
+  await her2.close()
+  const told2 = her2.got.map(g => [g.event.hook_event_name, g.event.tool_use_id, g.event.outcome])
+  assert.deepEqual(told2, [
+    ['PermissionRequest', 'call_04', undefined],
+    ['PermissionReplied', 'call_04', 'allowed-once'],
+    ['PermissionRequest', 'call_09', undefined],
+    ['PermissionReplied', 'call_09', 'cancelled'],
+  ])
+})
+
+test('she not there, or a request that cannot be taken over: DSH as it was', async () => {
+  const { make } = await load()
+  const closed = await fakeHer()
+  await closed.close()
+  const dsh = fakeDsh()
+  const plugin = make(dsh.ctx, { port: closed.port }, { dir: '' })
+  const agent = agentOf(session('session-1'))
+  // Not known away yet: asked, refused, DSH's dialog the one.
+  const req = approvalOf(agent, 'call_06')
+  const own = dialog(req)
+  const outcome = plugin.approval(req, own.next)
+  await plugin.idle()
+  own.answer('allowed-once')
+  assert.equal(await outcome, 'allowed-once')
+  // Known away: nothing taken over, next() handed back as it is.
+  const signal = new AbortController().signal
+  const req2 = approvalOf(agent, 'call_07', signal)
+  assert.equal(plugin.approval(req2, () => NEXT), NEXT)
+  assert.equal(req2.signal, signal)
+  const q = { questions: [{ id: 'a', question: '?', options: [{ label: 'x' }] }], agent, signal }
+  assert.equal(plugin.question(q, () => NEXT), NEXT)
+  assert.equal(q.signal, signal)
+
+  // Frozen: she is told, but her answer is not taken (DSH's dialog would stay).
+  const her = await fakeHer(e => (e.hook_event_name === 'PermissionRequest' ? { decision: 'allow' } : {}))
+  const plugin2 = make(dsh.ctx, { port: her.port }, { dir: '' })
+  const req3 = Object.freeze(approvalOf(agent, 'call_08'))
+  const own3 = dialog(req3)
+  const outcome3 = plugin2.approval(req3, own3.next)
+  while (her.got.length < 1) await settle()
+  await settle()
+  assert.equal(her.got[0].event.answerable, false)
+  own3.answer('rejected')
+  assert.equal(await outcome3, 'rejected')
+  await plugin2.idle()
+  await her.close()
+})
+
+test('a question answered on her island: its answers back to DSH, by id', async () => {
+  let reply = { answers: [{ id: 'name', selected: ['test2'] }] }
+  const her = await fakeHer(e => (e.hook_event_name === 'PermissionRequest' ? reply : {}))
+  const { make } = await load()
+  const dsh = fakeDsh()
+  const plugin = make(dsh.ctx, { port: her.port }, { dir: '' })
+  plugin.listen()
+  const agent = agentOf(session('session-q'))
+  const questions = [{ id: 'name', header: 'File Name', question: 'test1 or test2?', options: [{ label: 'test1', description: 'one' }, { label: 'test2' }] }]
+  dsh.on['tools/pre-execute'].fn({ name: 'ask_user_question', arguments: { questions }, callId: 'call_q1', agent }, () => NEXT)
+  const req = { questions, agent, signal: new AbortController().signal }
+  const answered = await dsh.on['user-questions/request'].fn(req, dialog(req).next)
+  assert.deepEqual(answered, { answers: [{ id: 'name', selected: ['test2'] }] })
+  assert.equal(req.signal.aborted, true)
+  await plugin.idle()
+  const asked = her.got.map(g => g.event).find(e => e.hook_event_name === 'PermissionRequest')
+  assert.deepEqual([asked.tool_name, asked.tool_use_id, asked.tool_input.questions[0].options[1].label], ['ask_user_question', 'call_q1', 'test2'])
+  // Answers that do not fit (another id): none taken; DSH's dialog answers.
+  reply = { answers: [{ id: 'other', selected: ['x'] }] }
+  const req2 = { questions, agent, signal: new AbortController().signal }
+  const own2 = dialog(req2)
+  const outcome2 = plugin.question(req2, own2.next)
+  await plugin.idle()
+  await settle()
+  own2.answer({ answers: [{ id: 'name', selected: [], custom: 'mine' }] })
+  assert.deepEqual(await outcome2, { answers: [{ id: 'name', selected: [], custom: 'mine' }] })
+  await plugin.idle()
+  await her.close()
+  assert.deepEqual(her.got.filter(g => g.event.hook_event_name === 'PermissionReplied').map(g => [g.event.outcome, g.event.by]), [['answered', 'her'], ['answered', 'dsh']])
 })
