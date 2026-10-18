@@ -168,13 +168,14 @@ ZCode 的 hook 只能是命令，没有 HTTP：每个事件运行一次 `wakuwak
 
 ### 8. 连上 DeepSeek Harness（可选）
 
-支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；它自带一个运行 Claude Code hooks.json 的「兼容桥」插件（`@deepseek-ai/dsh-hooks-claude-code`）。在「Agent」页 DeepSeek Harness 那一行点「连接」：她把这个桥接进 `~/.dsh/cordis.patch.yml`（所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着），桥要运行的 hook 列表写在她的数据文件夹里（`dsh-hooks.json`）。然后**重开一次 DeepSeek Harness**，它只在启动时读这些。
+支持 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）：桌面版（0.2.0-rc.2 和 0.2.1-rc.2 实测）和 `dsh` 命令行。DSH 没有自己的 hooks 文件，一切都是插件；她带着自己的一个小插件（`integrations/dsh/wakuwaku.js`，不依赖任何 npm 包，不联网）。在「Agent」页 DeepSeek Harness 那一行点「连接」：她把插件写进 DSH 的文件夹 `~/.dsh/wakuwaku/`，再在 `~/.dsh/cordis.patch.yml` 里按路径插入它（`./wakuwaku/wakuwaku.js`，所有 profile 都会叠上这一层，包括桌面版自己的；先备份，移除时只删我们加的几行，前后有 `# wakuwaku begin` / `# wakuwaku end` 标着）。按路径插入，不进 profile 的 `node_modules`，DSH 的插件管理器跑 pnpm 时也不会把它清掉。开着的 DSH 一般会马上加载它（它监视这个文件），不用重开；插件更新以后要重开一次 DSH。
 
-能做的：会话开始、干活、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、它最后说的话、改了哪些文件、任务清单，它向你提问时显示「在等你」；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。最后说的话不在桥给的事件里：一轮结束时，她从这个会话的记录（`~/.dsh/sessions/…/session.v4.jsonl.zstd`，Zstandard 压缩的 JSONL）末尾读出来，读不到就不显示。DSH 启动的子代理（它的 subagent 工具，或者插件启动的，比如 dsh-mnemon 的空闲评审）不单独占一行，也不拿它的任务当名字：它改的文件算进启动它的会话正在做的那一轮，那个会话空闲时什么都不显示。做不到的：
+插件在 DSH 自己的进程里跑，把事件直接 POST 到她的端口：不启动任何程序，DSH 从不等她（每个事件最多 2 秒，她没开就先不发）。「连接」后「Agent」页如实说插件有没有被加载：加载了写着时间和 profile；DSH 没开时写「DeepSeek Harness 启动时加载」；DSH 在装之前就开着、没有加载时写「重开后生效」；DSH 已经开了一会儿却没加载，是黄色的「DSH 插件没生效」，写着原因和「修复」。0.3.2 及以前借用 DSH 的 Claude Code 兼容桥（`@deepseek-ai/dsh-hooks-claude-code`），DSH 0.2.1 起不再自带它，于是收不到任何事件（zhoupengjie/Wakuwaku#61）：那种旧的接法会显示「需要修复：还是旧的接法」，点「修复」就换成插件。
 
-- **批准还在 DSH 自己的窗口里点**：这个桥不支持 `PermissionRequest`，她不知道它在等你批准（这时岛上显示的是「在干活」）。
-- 每一步用的什么工具不显示：DSH 用 PowerShell 跑 hook，而且是在它的沙箱里，每条大约 1 秒，所以只挂了一轮的开始和结束、改文件、任务清单、提问这几处，别的工具不挂，免得每次调用都慢一秒。
-- 新会话开始时不会把她拉起来：hook 在 DSH 的沙箱里运行，从那里启动的她什么都存不下。
+能做的：会话开始、干活、每一步的工具、做完（改过文件就是「改好了」），岛上显示会话名（DSH 自己起的）、它最后说的话、改了哪些文件、任务清单，它向你提问时显示「在等你」；你在 DSH 里停下的一轮回到空闲，出错的一轮显示出错；「今天」也算上它的轮次和时长；点会话能跳到 DSH 的窗口。DSH 启动的子代理（它的 subagent 工具，或者插件启动的，比如 dsh-mnemon 的空闲评审）不单独占一行，也不拿它的任务当名字：它改的文件算进启动它的会话正在做的那一轮，那个会话空闲时什么都不显示。做不到的：
+
+- **批准还在 DSH 自己的窗口里点**：她还不知道它在等你批准（这时岛上显示的是「在干活」）。插件能看到 DSH 的批准请求，以后可以加上在岛上回答。
+- 新会话开始时不会把她拉起来：插件只把事件发给她，不启动程序。
 
 ### 9. 连上 Reasonix（可选）
 
@@ -216,7 +217,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 - **任务栏上的 Win 键**（任务栏模式，和 Windows 自己的一样）：Win+1…9、Win+0（第十个）按她任务栏上的顺序打开那个位置的程序：没开的启动，一个窗口的切到前台（已在前台就最小化），几个窗口的每按一下换下一个；Win+Shift+数字再开一个，Win+Ctrl+Shift+数字以管理员身份再开一个，Win+Ctrl+数字切到它最后用过的窗口（Win+Alt+数字在 Windows 上是跳转列表，她的任务栏还没有）。Win+T 把键盘焦点放到程序按钮上（Win+Shift+T 从最后一个开始），Win+B 放到托盘：方向键移动，回车或空格打开，Shift+F10 是右键，Tab 在程序和托盘之间切换，Esc 把焦点还回去；读屏软件能读出按钮。以前这些键交给藏起来的 Windows 任务栏，按的是它自己的顺序，可能打开别的程序。以管理员身份运行的窗口在前台时她收不到这些键，仍由 Windows 处理。
 - **把她放出来、放回去**：按住岛里的她往下拉，岛会像水滴一样拉出一截把她托着；拉够远，水滴"啵"地断开，她就跟着鼠标走，拖到哪都行，松手的地方就是她落脚的地方。她出门后灵动岛还在，座位空着，状态、用时和确认面板照样在岛上（她在桌面上只做动作，不说话）。想让她回家，把她拖到岛下面，岛会伸出一滴去够她，靠得够近时松手，她就被吸回岛里；或者直接双击她，她会自己飞回去。右键菜单里也有「放她出来」「叫她回岛里」。
 - **设置长在岛里**：没有单独的主窗口。单击灵动岛，岛就展开成设置面板（它自己展开着的时候，单击是收起），这时它才拿键盘焦点；悬停展开、自动展开、来了确认请求都不抢焦点，不会吃掉你在终端里打的字。按 Esc、点岛外面、点 ✕ 或点面板头部就收起，焦点还给原来的窗口。五个页签：「通用」是会话列表、4 个快捷开关、提醒、开机自启和语言、更新和关于，最上面一行说连上了几个 agent（点一下去「Agent」页），还没连接时是欢迎卡片；「Agent」是连接 agent 的地方（见下）；「外观」是她的家、样子和宠物（带 codex-pets.net 图库）；「插件」「邮件」。← → 切换页签。设置开着时来了确认请求，它会以横幅插在页签下面，「通用」上出现一个小圆点；有 agent 的连接要修复时，「Agent」上也有一个。
-- **Agent 页**：这台电脑上找到的 agent 一行一个（没找到的收在下面的「其他支持的工具」里，带官网链接）。每行一个圆点说它的状态，只有四种颜色（绿：连上了、收到过事件；蓝：装好了，等它的第一轮，你什么都不用做；黄：要你动手：修复、被关掉了、在 Codex 的 /hooks 里信任、它的文件读不了或写不进去，「Agent」页签上同时有一个小圆点；灰：没连接），名字和版本（有文件写着的才显示：Codex 问 `codex --version`，Claude Code、ZCode、DeepSeek Harness 读程序文件的版本信息，OpenCode 读 npm 包的 package.json），五个图标说她能替它做什么：状态（跟着会话）、批准（在岛上答，指上去写着有哪几个按钮）、选方案（它问你问题时在岛上选答案，只有 Claude Code）、统计（算进「今天」，Claude Code、Codex、Antigravity 还算 token）、邮件（能把信交给它读）；亮的能做，半亮的只做一部分（omp 只答计划审批），暗的做不到，指上去写着为什么（比如「批准在 DeepSeek Harness 自己的窗口里」）。只有要你做点什么时行尾才有按钮：没连接是「连接」，坏了是「修复」，Codex 装好了还没信任是「怎么信任」（点开那一行，最上面写着怎么做）；别的行尾是一个淡淡的 ›，说这一行能点开。点一行在原地展开：连接方式（hooks、插件、扩展或兼容桥）、写在哪个文件（完整路径，家目录写成 ~）和备份、能做和做不到的、要注意的（Codex 要在 /hooks 里信任、DeepSeek Harness 要重开、omp 的工具批准留在 omp 里、OpenCode 要 2.0 以上），以及「重新安装」「移除」（只在这里有）；Claude Code 展开后是两种方式：插件（推荐）和直接写入 settings.json。最上面「全部连接（N）」把找到了还没连的都连上（没有可连的就不显示，鼠标停上去写着连哪几个）。只有整只宠物时，打开设置会在屏幕顶部临时升起一颗岛，收起后岛就消失。
+- **Agent 页**：这台电脑上找到的 agent 一行一个（没找到的收在下面的「其他支持的工具」里，带官网链接）。每行一个圆点说它的状态，只有四种颜色（绿：连上了、收到过事件；蓝：装好了，等它的第一轮，你什么都不用做；黄：要你动手：修复、被关掉了、在 Codex 的 /hooks 里信任、它的文件读不了或写不进去，「Agent」页签上同时有一个小圆点；灰：没连接），名字和版本（有文件写着的才显示：Codex 问 `codex --version`，Claude Code、ZCode、DeepSeek Harness 读程序文件的版本信息，OpenCode 读 npm 包的 package.json），五个图标说她能替它做什么：状态（跟着会话）、批准（在岛上答，指上去写着有哪几个按钮）、选方案（它问你问题时在岛上选答案，只有 Claude Code）、统计（算进「今天」，Claude Code、Codex、Antigravity 还算 token）、邮件（能把信交给它读）；亮的能做，半亮的只做一部分（omp 只答计划审批），暗的做不到，指上去写着为什么（比如「批准在 DeepSeek Harness 自己的窗口里」）。只有要你做点什么时行尾才有按钮：没连接是「连接」，坏了是「修复」，Codex 装好了还没信任是「怎么信任」（点开那一行，最上面写着怎么做）；别的行尾是一个淡淡的 ›，说这一行能点开。点一行在原地展开：连接方式（hooks、插件或扩展）、写在哪个文件（完整路径，家目录写成 ~）和备份、能做和做不到的、要注意的（Codex 要在 /hooks 里信任、DeepSeek Harness 有没有加载她的插件、omp 的工具批准留在 omp 里、OpenCode 要 2.0 以上），以及「重新安装」「移除」（只在这里有）；Claude Code 展开后是两种方式：插件（推荐）和直接写入 settings.json。最上面「全部连接（N）」把找到了还没连的都连上（没有可连的就不显示，鼠标停上去写着连哪几个）。只有整只宠物时，打开设置会在屏幕顶部临时升起一颗岛，收起后岛就消失。
 - 透明区域会点击穿透，不挡你操作下面的窗口。
 - **找不到她了**：再运行一次程序，她会回到右下角；窗口每 2 秒也会自查一次，跑出屏幕就自己回来。
 
@@ -263,7 +264,7 @@ cargo build --release     # target/release/wakuwaku.exe，单个文件
 ### 卸载
 
 1. 如果打开过**开机自动启动**，先在设置的「通用」页里关掉（Run 里的 `Wakuwaku` 和任务计划程序里的 `Wakuwaku at logon-…` 一起去掉）。
-2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「Agent」页点开 Claude Code，点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在「Agent」页点开 Codex，点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：点开 OpenCode，点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：点开 omp，点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：点开 ZCode，点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：点开它，点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
+2. 用插件连接的：在 Claude Code 里 `/plugin uninstall wakuwaku@wakuwaku`，再 `/plugin marketplace remove wakuwaku`。写入 settings.json 的：在「Agent」页点开 Claude Code，点「移除」，只会删掉本项目加的条目，你自己的 hooks 不受影响，第一次修改前的原文件备份在 `~/.claude/settings.json.wakuwaku.bak`。连过 Codex 的：在「Agent」页点开 Codex，点「移除」，备份在 `~/.codex/hooks.json.wakuwaku.bak`。连过 OpenCode 的：点开 OpenCode，点「移除」，删掉 `~/.config/opencode/plugins/wakuwaku.js`。连过 omp 的：点开 omp，点「移除」，删掉 `extensions/wakuwaku.ts`。连过 ZCode 的：点开 ZCode，点「移除」，备份在 `~/.zcode/cli/config.json.wakuwaku.bak`。连过 DeepSeek Harness 的：点开它，点「移除」，`~/.dsh/cordis.patch.yml` 里我们的几行会删掉（只剩我们的就整个删掉），`~/.dsh/wakuwaku/` 里的插件也删掉，原文件（如果原来有）备份在旁边的 `.wakuwaku.bak`。
 3. 退出她，然后删掉 exe 或项目文件夹。系统通知用的应用登记在注册表 `HKCU\Software\Classes\AppUserModelId\com.zhoupengjie.wakuwaku`，可以一并删掉。
 4. 删除她的设置和下载的宠物：exe 旁边的 `wakuwaku-data`，从源码运行是项目里的 `data/`。
 
@@ -278,7 +279,7 @@ Codex ──命令 hooks──▶ 程序本身 --wakuwaku-codex-hook ──▶ �
 OpenCode ──它后台服务里的插件 wakuwaku.js──▶ 宠物窗口 (/hook?agent=opencode)
 omp ──扩展 wakuwaku.ts（在 omp 进程里）──▶ 宠物窗口 (/hook?agent=omp)
 ZCode ──process hooks──▶ 程序本身 --wakuwaku-zcode-hook <事件> ──▶ 宠物窗口 (/hook?agent=zcode)
-DeepSeek Harness ──Claude Code 兼容桥（PowerShell）──▶ 程序本身 --wakuwaku-dsh-hook <事件> ──▶ 宠物窗口 (/hook?agent=dsh)
+DeepSeek Harness ──插件 wakuwaku.js（在 DSH 进程里）──▶ 宠物窗口 (/hook?agent=dsh)
 Reasonix ──command hooks（cmd）──▶ 程序本身 --wakuwaku-reasonix-hook <事件> ──▶ 宠物窗口 (/hook?agent=reasonix)
 ```
 
