@@ -295,13 +295,97 @@ impl Kept {
         }
     }
 
-    // A copy of each beside it (.wakuwaku.bak), once: there after us too.
-    fn copy_once(&self) {
+    // A copy of each beside it (.wakuwaku.bak), once: there after us too
+    // (tidy takes them away with the packages). The copies this made.
+    fn copy_once(&self) -> Vec<PathBuf> {
+        let mut made = Vec::new();
         for (path, bytes) in &self.0 {
             let backup = crate::connection::backup_of(path);
             if let (Some(bytes), false) = (bytes, backup.exists()) {
-                let _ = fs::write(&backup, bytes);
+                if fs::write(&backup, bytes).is_ok() {
+                    made.push(backup);
+                }
             }
+        }
+        made
+    }
+}
+
+// A profile's pnpm-workspace.yaml without the release-age exceptions for the
+// bridge's packages (any version), and without the list once nothing else
+// is in it: as it was before with_release_age_exclusions, where the person
+// added nothing there since.
+pub fn without_release_age_exclusions(text: &str) -> String {
+    let ours = |line: &str| {
+        let item = line.trim().trim_start_matches('-').trim().trim_matches(|c| c == '\'' || c == '"');
+        PACKAGES.iter().any(|p| item.strip_prefix(p).is_some_and(|rest| rest.starts_with('@')))
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(at) = lines.iter().position(|l| l.trim_end() == "minimumReleaseAgeExclude:") else { return text.to_string() };
+    let mut end = at + 1;
+    while end < lines.len() && lines[end].trim_start().starts_with('-') {
+        end += 1;
+    }
+    let kept: Vec<&str> = lines[at + 1..end].iter().copied().filter(|l| !ours(l)).collect();
+    if kept.len() == end - at - 1 {
+        return text.to_string();
+    }
+    let mut out: Vec<&str> = lines[..at].to_vec();
+    if !kept.is_empty() {
+        out.push(lines[at]);
+        out.extend(kept);
+    }
+    out.extend(&lines[end..]);
+    let mut out = out.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+// After the bridge's packages were taken away: what installing them changed
+// in the profile put back where nothing else changed since. The package.json
+// as its backup (pnpm leaves it written its own way, a dependencies list
+// emptied gone), the release-age exceptions out of pnpm-workspace.yaml, a
+// pnpm-lock.yaml that installing made (none was there to copy as the
+// package.json was) and that now locks nothing; then the backups, all of
+// them put back, gone too. Anything not as expected stays, backups with it.
+fn tidy(profile: &Path) {
+    let file = |name: &str| profile.join(name);
+    let backup = |name: &str| crate::connection::backup_of(&profile.join(name));
+    let json = |path: &Path| -> Option<Value> {
+        let mut v: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+        if let Some(fields) = v.as_object_mut() {
+            fields.retain(|key, value| !(key.ends_with("ependencies") && value.as_object().is_some_and(|m| m.is_empty())));
+        }
+        Some(v)
+    };
+    if !backup("package.json").exists() {
+        return;
+    }
+    let mut all = match (json(&file("package.json")), json(&backup("package.json"))) {
+        (Some(now), Some(was)) if now == was => fs::copy(backup("package.json"), file("package.json")).is_ok(),
+        _ => false,
+    };
+    let workspace = file("pnpm-workspace.yaml");
+    if let Ok(text) = fs::read_to_string(&workspace) {
+        let tidied = without_release_age_exclusions(&text);
+        if tidied != text {
+            let _ = fs::write(&workspace, &tidied);
+        }
+    }
+    let same = |a: &Path, b: &Path| matches!((fs::read_to_string(a), fs::read_to_string(b)), (Ok(x), Ok(y)) if x.replace("\r\n", "\n") == y.replace("\r\n", "\n"));
+    all &= !workspace.exists() || same(&workspace, &backup("pnpm-workspace.yaml"));
+    let lock = file("pnpm-lock.yaml");
+    if lock.exists() && !backup("pnpm-lock.yaml").exists() {
+        let empty = fs::read_to_string(&lock).is_ok_and(|t| !t.lines().any(|l| matches!(l.trim_end(), "packages:" | "snapshots:") || l.trim_start().starts_with("dependencies:")));
+        all &= empty && fs::remove_file(&lock).is_ok();
+    } else if lock.exists() {
+        all &= same(&lock, &backup("pnpm-lock.yaml"));
+    }
+    if all {
+        for name in ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"] {
+            let _ = fs::remove_file(backup(name));
         }
     }
 }
@@ -371,7 +455,7 @@ pub fn install(runtime: &Runtime, profile: &Path, version: &str, registry: Optio
     }
     let _lock = ProfileLock::take(profile)?;
     let kept = Kept::of(profile);
-    kept.copy_once();
+    let copies = kept.copy_once();
     let declared = declared(profile);
     let specs: Vec<String> = PACKAGES.iter().map(|p| format!("{p}@{version}")).collect();
     let workspace = profile.join("pnpm-workspace.yaml");
@@ -396,6 +480,9 @@ pub fn install(runtime: &Runtime, profile: &Path, version: &str, registry: Optio
     };
     if let Some(failure) = failure {
         kept.put_back();
+        for copy in copies {
+            let _ = fs::remove_file(copy);
+        }
         return Err(failure);
     }
     Ok(PACKAGES.iter().filter(|p| !declared.iter().any(|d| d == *p)).map(|p| p.to_string()).collect())
@@ -407,8 +494,9 @@ fn declared(profile: &Path) -> Vec<String> {
     ["dependencies", "devDependencies", "optionalDependencies"].iter().filter_map(|k| v.get(*k).and_then(Value::as_object)).flat_map(|m| m.keys().cloned()).collect()
 }
 
-// Take packages this added away from a profile again (pnpm remove); the
-// profile's files put back if that fails.
+// Take packages this added away from a profile again (pnpm remove), and
+// what adding them changed (tidy); the profile's files put back if that
+// fails.
 pub fn remove(runtime: &Runtime, profile: &Path, names: &[String]) -> Result<(), Failure> {
     let names: Vec<String> = names.iter().filter(|n| declared(profile).contains(n)).cloned().collect();
     if names.is_empty() {
@@ -422,7 +510,10 @@ pub fn remove(runtime: &Runtime, profile: &Path, names: &[String]) -> Result<(),
     let mut args: Vec<String> = vec!["remove".into()];
     args.extend(names);
     match run_pnpm(runtime, profile, &args)? {
-        (true, _, _) => Ok(()),
+        (true, _, _) => {
+            tidy(profile);
+            Ok(())
+        }
         (false, output, timed_out) => {
             kept.put_back();
             Err(Failure::new(classify(&output, timed_out), gist(&output)))
@@ -453,6 +544,47 @@ mod tests {
         assert_eq!(with_release_age_exclusions(Some(one), &specs), format!("{one}  - '@deepseek-ai/dsh-hook-protocol@0.2.1-rc.2'\n"));
         // No file.
         assert!(with_release_age_exclusions(None, &specs).starts_with("minimumReleaseAgeExclude:\n  - '"));
+        // Taken out again: as it was; the person's own exceptions kept; nothing of ours, untouched.
+        assert_eq!(without_release_age_exclusions(&with), desktop);
+        assert_eq!(without_release_age_exclusions(&added), "packages:\n  - .\nminimumReleaseAge: 1440\nminimumReleaseAgeExclude:\n    - some-pkg@1.0.0\nautoInstallPeers: false\n");
+        assert_eq!(without_release_age_exclusions(desktop), desktop);
+        let other = "minimumReleaseAgeExclude:\n  - '@deepseek-ai/dsh-hooks-claude-code-extra@1.0.0'\n";
+        assert_eq!(without_release_age_exclusions(other), other);
+    }
+
+    // What installing the bridge changed in a profile, put back after its
+    // packages are taken away (as pnpm 11 left the files on DSH 0.2.1-rc.2),
+    // and nothing put back where the person changed something meanwhile.
+    #[test]
+    fn a_profile_tidied_after_the_bridge() {
+        let dir = std::env::temp_dir().join(format!("wakuwaku-dsh-tidy-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let package = "{\n  \"name\": \"dsh-profile-desktop\",\n  \"private\": true,\n  \"dependencies\": {},\n  \"dsh\": {\n    \"profile\": {\n      \"bundles\": [\n        \"@deepseek-ai/dsh-base\"\n      ]\n    }\n  }\n}\n";
+        let workspace = "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n";
+        let specs = vec!["@deepseek-ai/dsh-hooks-claude-code@0.2.1-rc.2".to_string(), "@deepseek-ai/dsh-hook-protocol@0.2.1-rc.2".to_string()];
+        let lock = "lockfileVersion: '9.0'\n\nsettings:\n  autoInstallPeers: false\n  excludeLinksFromLockfile: false\n\nimporters:\n\n  .: {}\n";
+        let after = |pkg: &str| {
+            fs::write(dir.join("package.json"), pkg).unwrap();
+            fs::write(dir.join("pnpm-workspace.yaml"), with_release_age_exclusions(Some(workspace), &specs)).unwrap();
+            fs::write(dir.join("pnpm-lock.yaml"), lock).unwrap();
+            fs::write(dir.join("package.json.wakuwaku.bak"), package).unwrap();
+            fs::write(dir.join("pnpm-workspace.yaml.wakuwaku.bak"), workspace).unwrap();
+        };
+        // As pnpm remove leaves them: put back, the lock gone, no backups.
+        after("{\n  \"name\": \"dsh-profile-desktop\",\n  \"private\": true,\n  \"dsh\": {\n    \"profile\": {\n      \"bundles\": [\n        \"@deepseek-ai/dsh-base\"\n      ]\n    }\n  }\n}\n");
+        tidy(&dir);
+        assert_eq!(fs::read_to_string(dir.join("package.json")).unwrap(), package);
+        assert_eq!(fs::read_to_string(dir.join("pnpm-workspace.yaml")).unwrap(), workspace);
+        assert!(!dir.join("pnpm-lock.yaml").exists() && !dir.join("package.json.wakuwaku.bak").exists() && !dir.join("pnpm-workspace.yaml.wakuwaku.bak").exists());
+        // A bundle the person added meanwhile: their package.json stays, the backups too.
+        let theirs = package.replace("\"@deepseek-ai/dsh-base\"", "\"@deepseek-ai/dsh-base\",\n        \"@someone/else\"");
+        after(&theirs);
+        tidy(&dir);
+        assert_eq!(fs::read_to_string(dir.join("package.json")).unwrap(), theirs);
+        assert_eq!(fs::read_to_string(dir.join("pnpm-workspace.yaml")).unwrap(), workspace);
+        assert!(dir.join("package.json.wakuwaku.bak").exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -525,6 +657,8 @@ mod tests {
         assert_eq!(fs::read_to_string(profile.join("package.json")).unwrap(), manifest);
         assert_eq!(fs::read_to_string(profile.join("pnpm-workspace.yaml")).unwrap(), workspace);
         assert!(!profile.join("pnpm-lock.yaml").exists() && !profile.join("lock").exists());
+        // No backups of its own left beside them either.
+        assert!(!profile.join("package.json.wakuwaku.bak").exists() && !profile.join("pnpm-workspace.yaml.wakuwaku.bak").exists());
         let _ = fs::remove_dir_all(profile.parent().unwrap());
     }
 
