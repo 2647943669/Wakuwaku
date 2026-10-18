@@ -8,6 +8,7 @@ pub mod countdown;
 pub mod fmt;
 mod pomodoro;
 mod stretch;
+mod weather;
 pub mod web;
 
 use std::time::Duration;
