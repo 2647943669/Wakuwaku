@@ -848,6 +848,17 @@
   color: var(--fg);
 }
 
+/* Words a note stresses (Gmail's: what is Google's to decide, what to have
+   ready first): the panel's text colour, medium, underlined. */
+#island-settings .note em.key {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
 /* Under a sign-in's failure, the server's own words, small. */
 #island-settings .note .said {
   margin-top: 2px;

@@ -1147,8 +1147,12 @@
   function googleStepsHTML(address) {
     const step = (n, site) =>
       `<div class="st"><span class="n">${n}</span><span>${esc(T(`mail.google.step${n}`))}${site ? ` <span class="link" data-site="${site}" data-for="${esc(address)}">${esc(T(`mail.google.open${n}`))}</span>` : ''}</span></div>`
-    return `<div class="note">${esc(T('mail.google.why'))}</div><div class="note steps">${step(1, 'google2sv')}${step(2, 'googleAppPasswords')}${step(3)}</div><div class="note">${esc(T('mail.google.how2sv'))}</div><div class="note">${esc(T('mail.google.none'))}</div>`
+    return `<div class="note">${marked(T('mail.google.why'))}</div><div class="note steps">${step(1, 'google2sv')}${step(2, 'googleAppPasswords')}${step(3)}</div><div class="note">${marked(T('mail.google.how2sv'))}</div><div class="note">${esc(T('mail.google.none'))}</div>`
   }
+
+  // A note's words with *these* stressed (em.key: what is Google's to
+  // decide, and what to have ready before turning 2-Step Verification on).
+  const marked = text => esc(text).replace(/\*([^*]+)\*/g, '<em class="key">$1</em>')
 
   // Google's app password, as it shows it (four fours) or without the spaces.
   const APP_PASSWORD = /^[a-z]{4}(\s?[a-z]{4}){3}$/i
