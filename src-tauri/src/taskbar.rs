@@ -1964,6 +1964,7 @@ mod imp {
             let shell_hook = RegisterShellHookWindow(hwnd) != 0;
             SetTimer(hwnd, 1, 500, std::ptr::null());
             TICKS.store(0, Ordering::SeqCst);
+            *TUG.lock().unwrap() = Tug::new();
             let tray = systray::start(strip, hwnd as isize, WM_TRAY_CHANGED);
             ASK_AT.store(SETTLE_TICKS, Ordering::SeqCst);
             HELD_AT.store(0, Ordering::SeqCst);
@@ -2119,8 +2120,50 @@ mod imp {
         wake_tasks();
     }
 
+    // Windows' taskbar shown again as fast as she puts it away: another
+    // program shows or hides it too (a dock that keeps it hidden, as
+    // MyDockFinder: zhoupengjie/Wakuwaku#69), and the two fought over it
+    // some times a second, the screen stuttering. So many times within so
+    // many ticks is that; one now and then (the Start menu, Explorer started
+    // again) is nothing. The timer alone, seeing it shown at every tick,
+    // reaches it too.
+    const TUG_TICKS: u32 = 20;
+    const TUG_TIMES: u32 = 16;
+
+    struct Tug {
+        since: u32,
+        times: u32,
+        lost: bool,
+    }
+
+    impl Tug {
+        const fn new() -> Self {
+            Tug { since: 0, times: 0, lost: false }
+        }
+
+        // Shown again once more, at this tick: whether that makes it the
+        // tug of war (once; from then on it is left to the other program).
+        fn shown(&mut self, tick: u32) -> bool {
+            if self.lost {
+                return false;
+            }
+            if self.times == 0 || tick >= self.since + TUG_TICKS {
+                (self.since, self.times) = (tick, 0);
+            }
+            self.times += 1;
+            self.lost = self.times >= TUG_TIMES;
+            self.lost
+        }
+    }
+
+    static TUG: Mutex<Tug> = Mutex::new(Tug::new());
+
     fn put_away_again(how: &str) {
-        if HANDING_BACK.load(Ordering::SeqCst) {
+        if HANDING_BACK.load(Ordering::SeqCst) || TUG.lock().unwrap().lost {
+            return;
+        }
+        if TUG.lock().unwrap().shown(TICKS.load(Ordering::SeqCst)) {
+            give_up();
             return;
         }
         shell::rehide();
@@ -2128,6 +2171,63 @@ mod imp {
         if systray::keep_first() {
             log("tray: Explorer's window had come first; ours put ahead again");
             ask_soon();
+        }
+    }
+
+    // The tug of war given up: Windows' taskbar left to the other program,
+    // her home the island (kept, so the next start does not fight again),
+    // and the island saying why, its button opening 外观 to go back.
+    fn give_up() {
+        log(&format!("Windows' shown again {TUG_TIMES} times within {} s: another program shows or hides it too; home made the island", TUG_TICKS / 2));
+        let Some(sh) = sh() else { return };
+        // Not on this thread: going home stops it and waits for it (give_back).
+        std::thread::spawn(move || {
+            crate::set_display(&sh, "island");
+            // The island settled in its new home first.
+            std::thread::sleep(Duration::from_secs(2));
+            let lang = sh.lang();
+            let (words, label) = (crate::i18n::t(lang, "taskbar.tug"), crate::i18n::t(lang, "taskbar.tugTap"));
+            sh.to_pages("pet:nudge", json!({ "id": "taskbar-tug", "icon": "flag", "words": words, "label": label, "value": "", "private": false, "open": { "tab": "look" } }));
+        });
+    }
+
+    #[cfg(test)]
+    mod tug_tests {
+        use super::{Tug, TUG_TICKS, TUG_TIMES};
+
+        // Shown again now and then (once every couple of ticks, for a long
+        // while): never a tug of war.
+        #[test]
+        fn now_and_then_is_nothing() {
+            let mut tug = Tug::new();
+            assert!((0..2000).step_by(3).all(|tick| !tug.shown(tick)));
+        }
+
+        // Many times within a tick (its show events, #69's 7 or 8 a second):
+        // a tug of war, told once.
+        #[test]
+        fn a_burst_is_a_tug_of_war() {
+            let mut tug = Tug::new();
+            let told: Vec<bool> = (0..TUG_TIMES + 5).map(|i| tug.shown(100 + i / 8)).collect();
+            assert_eq!(told.iter().filter(|t| **t).count(), 1);
+            assert!(told[TUG_TIMES as usize - 1]);
+        }
+
+        // Seen by the timer at every tick, put away and shown again each
+        // time: within TUG_TICKS too.
+        #[test]
+        fn every_tick_is_a_tug_of_war() {
+            let mut tug = Tug::new();
+            let at = (0..TUG_TICKS * 2).find(|&tick| tug.shown(50 + tick));
+            assert_eq!(at, Some(TUG_TIMES - 1));
+        }
+
+        // A short burst, then quiet, then another: each counted alone.
+        #[test]
+        fn bursts_far_apart_are_apart() {
+            let mut tug = Tug::new();
+            assert!((0..TUG_TIMES - 1).all(|_| !tug.shown(10)));
+            assert!((0..TUG_TIMES - 1).all(|_| !tug.shown(10 + TUG_TICKS)));
         }
     }
 

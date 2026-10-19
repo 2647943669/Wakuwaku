@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 - **Plugins.** With no session at work, the capsule takes turns with today's usage, tokens, the weather, a pomodoro, a countdown; a system monitor stays put. One line of PowerShell makes a plugin of your own, and `waku <command>` tells you when a command is done.
 - **Make it look your way.** Mica, clear or solid, dark or light, a new wallpaper; the capsule's colour, opacity, blur and edge, and the island's at the top of the screen.
 - **Any pet you like.** Search [codex-pets.net](https://codex-pets.net) and download one. Pull her up out of the taskbar and she hops onto your desktop; double-click her and she flies home.
-- **Keep your own taskbar if you'd rather.** Make her an island at the top of the screen instead, with the system monitor pinned at its right end.
+- **Keep your own taskbar if you'd rather.** Make her an island at the top of the screen instead, with the system monitor pinned at its right end. Use the island alongside tools that run Windows' taskbar themselves, such as MyDockFinder: when she finds another program fighting her over the taskbar, she switches to the island herself and says so on it.
 
 About 11 MB, one exe, nothing to install, free and open source. Next (planned): letting AI work your desktop, and raising your pet.
 

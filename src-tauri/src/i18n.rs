@@ -57,7 +57,10 @@ pub fn t(lang: &str, key: &str) -> String {
         "menu.dateTime" => if zh { "调整日期和时间" } else { "Adjust date and time" },
         "menu.notifySettings" => if zh { "通知设置" } else { "Notifications settings" },
         "clock.local" => if zh { "本地时间" } else { "Local time" },
-        "update.out" => if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
+        // Another program fighting her over Windows' taskbar (taskbar.rs give_up, #69).
+        "taskbar.tug" => if zh { "别的程序在管任务栏" } else { "Another app runs the taskbar" },
+        "taskbar.tugTap" => if zh { "已切到灵动岛，点一下去外观设置" } else { "Switched to the island · tap for Appearance" },
+        "update.out" =>if zh { "有新版本 v{version}" } else { "A new version: v{version}" },
         "update.tap" => if zh { "点一下去更新" } else { "Tap to update" },
         // An update whose new version was stopped or taken away as it started (updates.rs).
         "update.blocked" => if zh { "v{version} 没装上，多半是杀毒软件拦下了" } else { "v{version} was stopped, likely by an antivirus" },
