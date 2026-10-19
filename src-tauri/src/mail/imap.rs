@@ -104,7 +104,38 @@ impl Fail {
             Fail::ProxyRefused(h) => return h.json("proxyRefused"),
             Fail::ProxyServer(h) => return h.json("proxyServer"),
         };
-        json!({ "kind": kind, "text": text })
+        match self {
+            Fail::Login(t) => json!({ "kind": kind, "text": text, "why": login_why(t) }),
+            _ => json!({ "kind": kind, "text": text }),
+        }
+    }
+}
+
+// Why a server said no to signing in, by its words (IMAP's, or SMTP's
+// enhanced code), for the page to say what to do: an app password asked
+// for in place of the usual one (Gmail: "Application-specific password
+// required", 534 5.7.9); a sign-in in the browser first ("Web login
+// required", "Please log in via your web browser", 5.7.14); too many
+// connections at once; IMAP turned off for the account; or the password
+// not taken (Gmail's "Invalid credentials", Dovecot's "Authentication
+// failed.", Exchange's "AUTHENTICATE failed.", 535 5.7.8). io-imap keeps a
+// NO's text without its code ([ALERT], [AUTHENTICATIONFAILED]), so the
+// words alone. "" when they say none of these.
+pub fn login_why(text: &str) -> &'static str {
+    let t = text.to_ascii_lowercase();
+    let has = |s: &str| t.contains(s);
+    if has("application-specific password") || has("5.7.9") {
+        "appPassword"
+    } else if has("web login required") || has("via your web browser") || has("5.7.14") {
+        "webLogin"
+    } else if has("too many simultaneous connections") {
+        "tooMany"
+    } else if has("imap") && (has("disabled") || has("not enabled")) {
+        "imapOff"
+    } else if has("invalid credentials") || has("authentication failed") || has("authenticate failed") || has("authentication unsuccessful") || has("5.7.8") {
+        "badPassword"
+    } else {
+        ""
     }
 }
 
@@ -570,4 +601,34 @@ pub fn session(server: &Server, password: &str, timeout: Duration) -> Result<Ses
     let mut s = Session::open(server, timeout)?;
     s.login(&server.username, password, server.auth)?;
     Ok(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_no_to_signing_in_says_why() {
+        // Gmail's words, as io-imap keeps them (no [ALERT] or [AUTHENTICATIONFAILED]).
+        assert_eq!(login_why("Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)"), "appPassword");
+        assert_eq!(login_why("Invalid credentials (Failure)"), "badPassword");
+        assert_eq!(login_why("Web login required: https://support.google.com/mail/answer/78754 (Failure)"), "webLogin");
+        assert_eq!(login_why("Please log in via your web browser: https://support.google.com/mail/accounts/answer/78754 (Failure)"), "webLogin");
+        assert_eq!(login_why("Too many simultaneous connections. (Failure)"), "tooMany");
+        assert_eq!(login_why("IMAP access is disabled for your domain. (Failure)"), "imapOff");
+        assert_eq!(login_why("Your account is not enabled for IMAP use."), "imapOff");
+        // Gmail's SMTP, by its enhanced codes.
+        assert_eq!(login_why("5.7.9 Application-specific password required. Learn more at"), "appPassword");
+        assert_eq!(login_why("5.7.8 Username and Password not accepted. For more information, go to"), "badPassword");
+        assert_eq!(login_why("5.7.14 <https://accounts.google.com/signin/continue?…> Please log in with your web browser"), "webLogin");
+        // Others' "wrong password".
+        assert_eq!(login_why("Authentication failed."), "badPassword");
+        assert_eq!(login_why("AUTHENTICATE failed."), "badPassword");
+        assert_eq!(login_why("5.7.3 Authentication unsuccessful [SN2PR00CA0018]"), "badPassword");
+        // Nothing to go on: the server's words alone.
+        assert_eq!(login_why("Login fail. Account is abnormal, service is not open, password is incorrect, login frequency limited, or system is busy."), "");
+        assert_eq!(login_why("LOGINDISABLED"), "");
+        assert_eq!(Fail::Login("Invalid credentials (Failure)".into()).json(), json!({ "kind": "login", "text": "Invalid credentials (Failure)", "why": "badPassword" }));
+        assert_eq!(Fail::Connect("refused".into()).json(), json!({ "kind": "connect", "text": "refused" }));
+    }
 }
