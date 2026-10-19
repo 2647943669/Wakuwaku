@@ -1,12 +1,18 @@
 // Proxies: Windows' own, as Settings (Network, Proxy) has it and as Clash or
-// v2rayN set it when their "system proxy" is on, read for the crash reports
-// (crash.rs: a URL for ureq) and for mail (mail/proxy.rs: an address and a
-// kind to go through); and a proxy as one is typed in. The registry's
+// v2rayN set it when their "system proxy" is on, read for the web (the
+// updates, the crash reports, LHM's download: web_ways, a URL for ureq,
+// tried before going straight) and for mail (mail/proxy.rs: an address and
+// a kind to go through); and a proxy as one is typed in. The registry's
 // ProxyServer is "host:port" for every protocol, or one for each:
 // "http=host:port;https=host:port;socks=host:port"; ProxyOverride lists the
 // hosts reached straight ("localhost;127.*;10.*;<local>", <local> being a
 // name without a dot). A PAC script (AutoConfigURL, Clash's "PAC mode") is
 // not read: as no proxy.
+
+use std::time::Duration;
+
+use ureq::config::ConfigBuilder;
+use ureq::typestate::AgentScope;
 
 // How a proxy is spoken to: HTTP's CONNECT, or SOCKS5.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -158,6 +164,94 @@ pub fn system() -> Option<System> {
     None
 }
 
+// --- The web (updates, crash reports, LHM's download) ----------------------
+
+// Every request of hers to the web goes one way: through Windows' proxy
+// first where one is set (and none in the environment, which ureq takes by
+// itself) and its list (ProxyOverride) does not name the host; then as ureq
+// would; this computer itself, and a host the list names, straight.
+// PowerShell, which ran the plugins before, went the same way.
+
+// One way to try: through a proxy (its URL), as ureq would by itself (the
+// environment's proxy if one is set there, else straight), or straight.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Way {
+    Through(String),
+    Default,
+    Straight,
+}
+
+// Connecting at most so long, and the answer's head in so long after: a
+// way that goes nowhere (one straight through a VPN's TUN may) fails in
+// seconds, not at the end of a download's ten minutes.
+const CONNECT: Duration = Duration::from_secs(15);
+const HEAD: Duration = Duration::from_secs(30);
+
+impl Way {
+    // For the log: "through Windows' proxy http://127.0.0.1:7890",
+    // "through the environment's proxy", "straight".
+    pub fn name(&self) -> String {
+        match self {
+            Way::Through(p) => format!("through Windows' proxy {p}"),
+            Way::Default if ureq::Proxy::try_from_env().is_some() => "through the environment's proxy".into(),
+            Way::Default | Way::Straight => "straight".into(),
+        }
+    }
+
+    // An agent's config for it, a whole call at most `timeout` (and CONNECT,
+    // HEAD); none for a proxy ureq cannot take.
+    pub fn config(&self, timeout: Duration) -> Option<ConfigBuilder<AgentScope>> {
+        let config = ureq::Agent::config_builder()
+            .timeout_global(Some(timeout))
+            .timeout_connect(Some(CONNECT.min(timeout)))
+            .timeout_recv_response(Some(HEAD.min(timeout)));
+        Some(match self {
+            Way::Through(p) => config.proxy(Some(ureq::Proxy::new(p).ok()?)),
+            Way::Straight => config.proxy(None),
+            Way::Default => config,
+        })
+    }
+
+    // An agent for it: redirects followed as ureq does (10), statuses from
+    // 400 errors.
+    pub fn agent(&self, timeout: Duration) -> Option<ureq::Agent> {
+        Some(self.config(timeout)?.build().new_agent())
+    }
+}
+
+// The host of an address, lower case; IPv6 without its brackets.
+pub fn host_of(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split_once(']').map(|(h, _)| h)?,
+        None => authority.rsplit_once(':').map_or(authority, |(h, _)| h),
+    };
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
+// This computer itself: never through a proxy.
+pub fn is_loopback(host: &str) -> bool {
+    host == "localhost" || host.ends_with(".localhost") || host == "::1" || host.starts_with("127.")
+}
+
+fn ways(host: &str, system: Option<System>, env_proxy: bool) -> Vec<Way> {
+    if is_loopback(host) {
+        return vec![Way::Straight];
+    }
+    match system {
+        Some(s) if s.bypasses(host) => vec![Way::Straight],
+        Some(s) if !env_proxy => s.for_web().map(Way::Through).into_iter().chain([Way::Default]).collect(),
+        _ => vec![Way::Default],
+    }
+}
+
+// The ways to try for an address, in turn, as the system has them now.
+pub fn web_ways(url: &str) -> Vec<Way> {
+    ways(&host_of(url).unwrap_or_default(), system(), ureq::Proxy::try_from_env().is_some())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +303,33 @@ mod tests {
         for bad in ["127.0.0.1", "127.0.0.1:0", "127.0.0.1:99999", ":7890", "a b:1", "::1:1080", "https://x:1", "x:1 --y"] {
             assert_eq!(p(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn hosts_are_read_from_addresses() {
+        assert_eq!(host_of("http://localhost:3000").as_deref(), Some("localhost"));
+        assert_eq!(host_of("https://API.github.com/repos/a/b").as_deref(), Some("api.github.com"));
+        assert_eq!(host_of("http://[::1]:5173/api").as_deref(), Some("::1"));
+        assert_eq!(host_of("http://user:pw@127.0.0.1:8080/x?y").as_deref(), Some("127.0.0.1"));
+        assert_eq!(host_of("https://Release-Assets.githubusercontent.com:443/a?b").as_deref(), Some("release-assets.githubusercontent.com"));
+        assert_eq!(host_of("http://").as_deref(), None);
+        assert!(is_loopback("127.0.0.1") && is_loopback("localhost") && is_loopback("::1") && is_loopback("app.localhost"));
+        assert!(!is_loopback("example.com") && !is_loopback("10.0.0.1"));
+    }
+
+    // This computer straight; Windows' proxy then as ureq would; straight
+    // for a host its list names; the environment's alone when one is set
+    // there.
+    #[test]
+    fn the_web_through_windows_proxy_first() {
+        let clash = || Some(System { server: "127.0.0.1:7890".into(), bypass: "localhost;127.*;192.168.*;<local>".into() });
+        assert_eq!(ways("localhost", clash(), false), [Way::Straight]);
+        assert_eq!(ways("github.com", clash(), false), [Way::Through("http://127.0.0.1:7890".into()), Way::Default]);
+        assert_eq!(ways("192.168.1.5", clash(), false), [Way::Straight]);
+        assert_eq!(ways("devbox", clash(), false), [Way::Straight]);
+        assert_eq!(ways("api.github.com", None, false), [Way::Default]);
+        assert_eq!(ways("api.github.com", clash(), true), [Way::Default]);
+        assert_eq!(ways("::1", None, true), [Way::Straight]);
+        assert_eq!(ways("127.0.0.1", Some(sys("127.0.0.1:7890")), false), [Way::Straight]);
     }
 }

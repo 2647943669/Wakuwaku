@@ -480,34 +480,12 @@ enum Fail {
     Refused(String),
 }
 
-fn is_loopback(url: &str) -> bool {
-    let rest = url.split("://").nth(1).unwrap_or("");
-    rest.starts_with("127.0.0.1") || rest.starts_with("localhost") || rest.starts_with("[::1]")
-}
-
-fn agent(proxy: Option<&str>) -> Option<ureq::Agent> {
-    let config = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(20)));
-    let config = match proxy {
-        Some(p) => config.proxy(Some(ureq::Proxy::new(p).ok()?)),
-        None => config,
-    };
-    Some(config.build().new_agent())
-}
-
 // One relay asked: through Windows' proxy first if one is set (and none in
-// the environment, which ureq takes by itself), then as is.
+// the environment, which ureq takes by itself), then as is (proxy::web_ways).
 fn post(url: &str, body: &str) -> Result<Value, Fail> {
-    let mut ways: Vec<Option<String>> = Vec::new();
-    #[cfg(windows)]
-    if !is_loopback(url) && ureq::Proxy::try_from_env().is_none() {
-        if let Some(p) = crate::proxy::system().and_then(|s| s.for_web()) {
-            ways.push(Some(p));
-        }
-    }
-    ways.push(None);
     let mut last = Fail::Later("no way".into());
-    for way in ways {
-        let Some(agent) = agent(way.as_deref()) else { continue };
+    for way in crate::proxy::web_ways(url) {
+        let Some(agent) = way.agent(Duration::from_secs(20)) else { continue };
         let sent = agent
             .post(url)
             .header("content-type", "application/json")
@@ -519,7 +497,7 @@ fn post(url: &str, body: &str) -> Result<Value, Fail> {
             Err(ureq::Error::StatusCode(429)) => return Err(Fail::Later("429: too many".into())),
             Err(ureq::Error::StatusCode(code)) if (400..500).contains(&code) => return Err(Fail::Refused(format!("{code}"))),
             Err(ureq::Error::StatusCode(code)) => return Err(Fail::Later(format!("{code}"))),
-            Err(e) => last = Fail::Later(format!("{}{e}", if way.is_some() { "through the proxy: " } else { "" })),
+            Err(e) => last = Fail::Later(format!("{}: {e}", way.name())),
         }
     }
     Err(last)

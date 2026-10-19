@@ -2418,7 +2418,8 @@
     if (u.stage === 'download') state = T('s.updateDownloading', { from: u.from || '', pct: u.total ? Math.min(100, Math.floor((100 * u.got) / u.total)) : 0, got: mb(u.got || 0), total: mb(u.total || 0) })
     else if (u.stage) state = T(`s.updateStage.${u.stage}`)
     else if (u.checking) state = T('s.updateChecking')
-    else if (u.error) state = T(`s.updateError.${u.error.code}`, { detail: u.error.detail || '' })
+    // Not reached with no proxy set: how a VPN's is taken (its "system proxy").
+    else if (u.error) state = T(`s.updateError.${u.error.code}`, { detail: u.error.detail || '' }) + (u.noProxy ? ' ' + T('s.updateProxyHint') : '')
     else if (newer && !latest.canInstall) state = T('s.updateError.noDigest')
     else if (newer) state = T('s.updateNewer', { version: latest.version })
     else if (latest) state = T('s.updateLatest')

@@ -1,13 +1,12 @@
 // The web for the plugins she runs (weather, stock, ci, devserver): one GET,
-// with a short time to answer in, the way her other requests go (crash.rs,
-// lhm_setup.rs): through Windows' proxy first where one is set (and none in
-// the environment, which ureq takes by itself), then straight. A host
-// Windows reaches straight (ProxyOverride: localhost, 127.*, <local> …) and
-// this computer itself are reached straight. PowerShell, which ran them
-// before, went through Windows' proxy the same way.
+// with a short time to answer in, the way her other requests go
+// (proxy::web_ways: through Windows' proxy first where one is set, then
+// straight; this computer, and a host Windows reaches straight, straight).
 use std::time::Duration;
 
 use serde_json::Value;
+
+use crate::proxy::{web_ways, Way};
 
 // How long a request may take, all told: the scripts gave 20 seconds; she
 // gives less, on a thread of the plugin's own, so nothing of hers waits.
@@ -34,75 +33,22 @@ pub enum Fail {
     Network(String),
 }
 
-// The host of an address, lower case; IPv6 without its brackets.
-pub fn host_of(url: &str) -> Option<String> {
-    let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
-    let host = match authority.strip_prefix('[') {
-        Some(v6) => v6.split_once(']').map(|(h, _)| h)?,
-        None => authority.rsplit_once(':').map_or(authority, |(h, _)| h),
-    };
-    (!host.is_empty()).then(|| host.to_ascii_lowercase())
-}
-
-// This computer itself: never through a proxy.
-pub fn is_loopback(host: &str) -> bool {
-    host == "localhost" || host.ends_with(".localhost") || host == "::1" || host.starts_with("127.")
-}
-
-// The ways to try, in turn: a proxy's URL, or None for ureq's own (the
-// environment's proxy if one is set there, else straight); `straight` for
-// none at all.
-#[derive(Debug, PartialEq)]
-enum Way {
-    Through(String),
-    Default,
-    Straight,
-}
-
-fn ways(host: &str, system: Option<crate::proxy::System>, env_proxy: bool) -> Vec<Way> {
-    if is_loopback(host) {
-        return vec![Way::Straight];
-    }
-    match system {
-        Some(s) if s.bypasses(host) => vec![Way::Straight],
-        Some(s) if !env_proxy => s.for_web().map(Way::Through).into_iter().chain([Way::Default]).collect(),
-        _ => vec![Way::Default],
-    }
-}
-
 // Redirects followed as many as PowerShell did (5), or none (devserver).
 fn agent(way: &Way, timeout: Duration, redirects: u32) -> Option<ureq::Agent> {
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(timeout))
+    let config = way
+        .config(timeout)?
         // An error page is an answer too: its status and words are read here.
         .http_status_as_error(false)
         .max_redirects(redirects)
         .max_redirects_will_error(false);
-    let config = match way {
-        Way::Through(p) => config.proxy(Some(ureq::Proxy::new(p).ok()?)),
-        Way::Straight => config.proxy(None),
-        Way::Default => config,
-    };
     Some(config.build().new_agent())
-}
-
-// The ways for an address, as the system has them now.
-fn ways_to(url: &str) -> Vec<Way> {
-    let host = host_of(url).unwrap_or_default();
-    #[cfg(windows)]
-    let system = crate::proxy::system();
-    #[cfg(not(windows))]
-    let system: Option<crate::proxy::System> = None;
-    ways(&host, system, ureq::Proxy::try_from_env().is_some())
 }
 
 // GET an address with these headers: its answer, whatever its status; or
 // why none came, the last way's (each way tried in turn).
 pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Answer, Fail> {
     let mut last = Fail::Network("no way".into());
-    for way in ways_to(url) {
+    for way in web_ways(url) {
         let Some(agent) = agent(&way, timeout, 5) else { continue };
         let mut req = agent.get(url);
         for (k, v) in headers {
@@ -126,7 +72,7 @@ pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Ans
 // servers: "any answer counts as up"), within `timeout`; never through a
 // proxy for this computer.
 pub fn answers(url: &str, timeout: Duration) -> bool {
-    for way in ways_to(url) {
+    for way in web_ways(url) {
         let Some(agent) = agent(&way, timeout, 0) else { continue };
         if agent.get(url).call().is_ok() {
             return true;
@@ -185,32 +131,6 @@ pub fn refused(answer: &Answer) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn hosts_are_read_from_addresses() {
-        assert_eq!(host_of("http://localhost:3000").as_deref(), Some("localhost"));
-        assert_eq!(host_of("https://API.github.com/repos/a/b").as_deref(), Some("api.github.com"));
-        assert_eq!(host_of("http://[::1]:5173/api").as_deref(), Some("::1"));
-        assert_eq!(host_of("http://user:pw@127.0.0.1:8080/x?y").as_deref(), Some("127.0.0.1"));
-        assert_eq!(host_of("http://").as_deref(), None);
-        assert!(is_loopback("127.0.0.1") && is_loopback("localhost") && is_loopback("::1") && is_loopback("app.localhost"));
-        assert!(!is_loopback("example.com") && !is_loopback("10.0.0.1"));
-    }
-
-    // As her other requests go: this computer straight; Windows' proxy then
-    // straight; straight for a host its list names; the environment's alone
-    // when one is set there.
-    #[test]
-    fn the_ways_are_her_other_requests_ways() {
-        let clash = || Some(crate::proxy::System { server: "127.0.0.1:7890".into(), bypass: "localhost;127.*;192.168.*;<local>".into() });
-        assert_eq!(ways("localhost", clash(), false), [Way::Straight]);
-        assert_eq!(ways("api.open-meteo.com", clash(), false), [Way::Through("http://127.0.0.1:7890".into()), Way::Default]);
-        assert_eq!(ways("192.168.1.5", clash(), false), [Way::Straight]);
-        assert_eq!(ways("devbox", clash(), false), [Way::Straight]);
-        assert_eq!(ways("api.github.com", None, false), [Way::Default]);
-        assert_eq!(ways("api.github.com", clash(), true), [Way::Default]);
-        assert_eq!(ways("::1", None, true), [Way::Straight]);
-    }
 
     #[test]
     fn an_error_page_says_what_it_is() {
