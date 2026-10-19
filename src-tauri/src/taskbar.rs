@@ -2123,22 +2123,25 @@ mod imp {
     // Windows' taskbar shown again as fast as she puts it away: another
     // program shows or hides it too (a dock that keeps it hidden, as
     // MyDockFinder: zhoupengjie/Wakuwaku#69), and the two fought over it
-    // some times a second, the screen stuttering. So many times within so
-    // many ticks is that; one now and then (the Start menu, Explorer started
-    // again) is nothing. The timer alone, seeing it shown at every tick,
-    // reaches it too.
+    // some times a second, the screen stuttering. So many times within any
+    // so many ticks is that: about a second of #69's, some four seconds of
+    // the timer alone seeing it shown at every tick, at most ten of one
+    // showing it once a second or so. In normal use it is next to never
+    // shown again (none in 71 hours of the taskbar home, 2026-10-20); a few
+    // at once (Explorer started again on several displays) is nothing.
     const TUG_TICKS: u32 = 20;
-    const TUG_TIMES: u32 = 16;
+    const TUG_TIMES: usize = 8;
 
     struct Tug {
-        since: u32,
-        times: u32,
+        // The ticks of the last TUG_TIMES times (a ring), and how many in all.
+        at: [u32; TUG_TIMES],
+        seen: usize,
         lost: bool,
     }
 
     impl Tug {
         const fn new() -> Self {
-            Tug { since: 0, times: 0, lost: false }
+            Tug { at: [0; TUG_TIMES], seen: 0, lost: false }
         }
 
         // Shown again once more, at this tick: whether that makes it the
@@ -2147,11 +2150,10 @@ mod imp {
             if self.lost {
                 return false;
             }
-            if self.times == 0 || tick >= self.since + TUG_TICKS {
-                (self.since, self.times) = (tick, 0);
-            }
-            self.times += 1;
-            self.lost = self.times >= TUG_TIMES;
+            self.at[self.seen % TUG_TIMES] = tick;
+            self.seen += 1;
+            // The oldest of the last TUG_TIMES: the next to be written over.
+            self.lost = self.seen >= TUG_TIMES && tick.saturating_sub(self.at[self.seen % TUG_TIMES]) < TUG_TICKS;
             self.lost
         }
     }
@@ -2195,8 +2197,8 @@ mod imp {
     mod tug_tests {
         use super::{Tug, TUG_TICKS, TUG_TIMES};
 
-        // Shown again now and then (once every couple of ticks, for a long
-        // while): never a tug of war.
+        // Shown again now and then (once every three ticks, for a long
+        // while: TUG_TIMES of them never within TUG_TICKS): never a tug of war.
         #[test]
         fn now_and_then_is_nothing() {
             let mut tug = Tug::new();
@@ -2208,18 +2210,39 @@ mod imp {
         #[test]
         fn a_burst_is_a_tug_of_war() {
             let mut tug = Tug::new();
-            let told: Vec<bool> = (0..TUG_TIMES + 5).map(|i| tug.shown(100 + i / 8)).collect();
+            let told: Vec<bool> = (0..TUG_TIMES as u32 + 5).map(|i| tug.shown(100 + i / 8)).collect();
             assert_eq!(told.iter().filter(|t| **t).count(), 1);
-            assert!(told[TUG_TIMES as usize - 1]);
+            assert!(told[TUG_TIMES - 1]);
         }
 
         // Seen by the timer at every tick, put away and shown again each
-        // time: within TUG_TICKS too.
+        // time: the TUG_TIMES-th tick (four seconds).
         #[test]
         fn every_tick_is_a_tug_of_war() {
             let mut tug = Tug::new();
             let at = (0..TUG_TICKS * 2).find(|&tick| tug.shown(50 + tick));
-            assert_eq!(at, Some(TUG_TIMES - 1));
+            assert_eq!(at, Some(TUG_TIMES as u32 - 1));
+        }
+
+        // Shown again once a second (every other tick), on and on: caught
+        // within TUG_TICKS.
+        #[test]
+        fn once_a_second_is_a_tug_of_war() {
+            let mut tug = Tug::new();
+            let at = (0..200).step_by(2).find(|&tick| tug.shown(tick));
+            assert_eq!(at, Some(2 * (TUG_TIMES as u32 - 1)));
+        }
+
+        // Any TUG_TICKS, not from the first time: a lone one, then half of
+        // them just before the first one's TUG_TICKS are up and half just
+        // after (counted from the first, both halves would fall short).
+        #[test]
+        fn the_window_slides() {
+            let mut tug = Tug::new();
+            assert!(!tug.shown(0));
+            assert!((0..TUG_TIMES / 2).all(|_| !tug.shown(TUG_TICKS - 2)));
+            let told: Vec<bool> = (0..TUG_TIMES / 2).map(|_| tug.shown(TUG_TICKS + 2)).collect();
+            assert_eq!(told.last(), Some(&true));
         }
 
         // A short burst, then quiet, then another: each counted alone.
