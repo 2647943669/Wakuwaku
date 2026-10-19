@@ -2441,9 +2441,12 @@
   // Their names as one says them: 「A、B 或 C」, "A, B and C".
   const toolNames = (tools, kind = 'or') => nameList(lang, tools.map(tool => Agents.byId(tool).name), kind)
 
+  // Codex trusts her hooks as they are, by its own settings (zhoupengjie/Wakuwaku#66).
+  const codexTrusted = () => Agents.read(snap, 'codex')?.trusted === true
+
   // How one stands on the card: busy, seen (a session's event came, or the
-  // plugin in), set (written, no session yet: Codex's to be trusted first;
-  // ours there to repair counts as written), failed, none.
+  // plugin in), set (written, no session yet: Codex's to be trusted first,
+  // unless they are; ours there to repair counts as written), failed, none.
   function toolState(tool) {
     const state = Agents.stateOf(snap, tool, known())
     if (state === 'on') return 'seen'
@@ -2468,7 +2471,7 @@
     const line = text => `<span class="wt-state">${text}</span>`
     if (state === 'busy') return `<button class="wc-tool" disabled>${name}${line(`<span class="spin"></span>${esc(T('wc.busy'))}`)}</button>`
     if (state === 'seen') return `<button class="wc-tool done" disabled>${name}${line(esc(T('wc.toolOn')))}</button>`
-    if (state === 'set' && tool === 'codex') return `<button class="wc-tool warn" disabled>${name}${line(esc(T('wc.toolStep')))}</button>`
+    if (state === 'set' && tool === 'codex' && !codexTrusted()) return `<button class="wc-tool warn" disabled>${name}${line(esc(T('wc.toolStep')))}</button>`
     if (state === 'set') return `<button class="wc-tool done" disabled>${name}${line(esc(T('wc.toolSet')))}</button>`
     return `<button class="wc-tool" data-agent="${tool}:install">${name}${line(esc(T(state === 'failed' ? 'wc.toolRetry' : 'wc.toolGo')))}</button>`
   }
@@ -2506,7 +2509,7 @@
       const where = backup ? T('wc.written', { path: mono(file), backup: mono(`${file.split(/[\\/]/).pop()}.wakuwaku.bak`) }) : T('wc.created', { path: mono(file) })
       return `<div class="wc-tnote"><div>${T(`wc.${tool}Left`)}</div><div class="wc-where">${where}${undo}</div></div>`
     }
-    if (tool === 'codex' && state === 'set') return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
+    if (tool === 'codex' && state === 'set' && !codexTrusted()) return `<div class="wc-tnote warn">${T('wc.codexLeft')}</div>`
     if (tool === 'opencode' && state === 'set') return `<div class="wc-tnote"><div>${T('wc.opencodeLeft')}</div><div class="wc-where">${T('wc.created', { path: mono(file) })}${undo}</div></div>`
     // omp: a file of our own in its agent folder, nothing of omp's changed.
     if (tool === 'omp' && state === 'set') return `<div class="wc-tnote"><div>${T('wc.ompLeft')}</div><div class="wc-where">${T('wc.ompWritten', { path: mono(file) })}${undo}</div></div>`

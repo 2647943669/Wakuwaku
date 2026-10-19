@@ -116,7 +116,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 
 ### 3. 连上 Codex（可选）
 
-在「Agent」页 Codex 那一行点「连接」，会写入 `~/.codex/hooks.json`（会先备份，移除时只删我们加的条目）。然后**在 Codex 里输入 `/hooks`，信任 Wakuwaku 的 hook**：Codex 只运行信任过的 hook，收到第一个事件前「Agent」页会一直提醒这一步。程序换了位置要点「修复」并重新信任。
+在「Agent」页 Codex 那一行点「连接」，会写入 `~/.codex/hooks.json`（会先备份，移除时只删我们加的条目）。然后**在 Codex 里输入 `/hooks`，信任 Wakuwaku 的 hook**：Codex 只运行信任过的 hook。她会读 Codex 自己的信任记录（只读，不改），直到它记下信任了现在这几条，「Agent」页都会提醒这一步；信任过以后重启她不会再提醒。程序换了位置要点「修复」并重新信任。
 
 和 Claude Code 的区别：
 

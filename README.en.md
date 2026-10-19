@@ -118,7 +118,7 @@ If you'd rather not use a plugin, Connect in Claude Code's row of the Agents pag
 
 ### 3. Connect Codex (optional)
 
-Click Connect in Codex's row of the Agents page. It writes `~/.codex/hooks.json` (backed up first; removing takes out only our entries). Then **enter `/hooks` in Codex and trust Wakuwaku's hooks**: Codex runs only hooks you trusted, and the Agents page reminds you until the first event arrives. If the app moves, click Repair and trust them again.
+Click Connect in Codex's row of the Agents page. It writes `~/.codex/hooks.json` (backed up first; removing takes out only our entries). Then **enter `/hooks` in Codex and trust Wakuwaku's hooks**: Codex runs only hooks you trusted. She reads Codex's own record of what it trusts (only reads it, never changes it), and the Agents page reminds you until that record trusts these hooks as they are now; once they are trusted, restarting her doesn't bring the reminder back. If the app moves, click Repair and trust them again.
 
 How it differs from Claude Code:
 
