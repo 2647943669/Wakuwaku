@@ -87,12 +87,14 @@ pub fn snapshot(sh: &Shared) -> Value {
         "settingsBackup": connection::backup_of(&connection::claude_settings_file()).exists(),
         "claudeHere": connection::claude_here(),
         // Codex's hooks.json, whether any Codex event came (they run once
-        // trusted), and its version: one before 0.148 gets no background hooks.
+        // trusted), whether Codex trusts them as they are (null: not known),
+        // and its version: one before 0.148 gets no background hooks.
         "codex": {
             "hooks": connection::codex_hooks_status(),
             "file": connection::codex_hooks_file().to_string_lossy(),
             "fileShown": connection::shown_path(&connection::codex_hooks_file()),
             "seen": sh.codex_seen.load(Ordering::SeqCst) > 0,
+            "trusted": connection::codex_trusted(),
             "version": connection::codex_version().map(|(a, b, c)| format!("{a}.{b}.{c}")),
             "async": connection::codex_runs_async(),
         },

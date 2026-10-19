@@ -31,10 +31,12 @@
   // and the same as read (~ for the home folder), whether a copy was kept,
   // whether an event came since she started; its version (Codex's in its
   // block, the others' where a file says it: agentVersions, connection.rs
-  // versions). Claude Code's is spread over the snapshot, as it was first.
+  // versions); whether it trusts ours as they are (Codex's, from its own
+  // settings: true, false, null when not known). Claude Code's is spread
+  // over the snapshot, as it was first.
   const block = key => snap => {
     const b = snap[key] || {}
-    return { status: b[key === 'opencode' ? 'plugin' : 'hooks'], file: b.file || '', shown: b.fileShown || b.file || '', backup: !!b.backup, seen: !!b.seen, version: b.version || (snap.agentVersions || {})[key] || '' }
+    return { status: b[key === 'opencode' ? 'plugin' : 'hooks'], file: b.file || '', shown: b.fileShown || b.file || '', backup: !!b.backup, seen: !!b.seen, version: b.version || (snap.agentVersions || {})[key] || '', trusted: b.trusted ?? null }
   }
 
   // The table, in the order they are shown.
@@ -47,7 +49,8 @@
   //   good    the ones of those that need nothing
   //   words   its own words for a status that wants something (wordOf)
   //   step    written, a step of the person's left before its first event
-  //           (Codex: trusting the hooks in its /hooks): its button's words
+  //           (Codex: trusting the hooks in its /hooks; none once its own
+  //           settings say they are trusted as they are): its button's words
   //   setLine written, no event yet: its line's words, from its read, where
   //           they depend on more than its id (ag.st.set.<id>)
   //   caps    [level, the words' key] for each of CAPS
@@ -95,6 +98,8 @@
       // Its standing note while the step's own words show above it: the
       // rest of it, not the trust twice.
       stepNote: 'ag.note.codexWake',
+      // Trusted already (zhoupengjie/Wakuwaku#66): only its next turn to wait for.
+      setLine: r => (r.trusted === true ? 'ag.st.set.codexTrusted' : 'ag.st.set.codex'),
       caps: {
         status: ['yes', 'ag.cap.status.codex'],
         approve: ['yes', 'ag.cap.approve.codex'],
@@ -304,7 +309,8 @@
   //   on       connected, an event seen (a session came)
   //   set      written, no event yet: nothing for the person to do but use it
   //   step     written, no event yet, and a step of the person's first
-  //            (Codex: trusting the hooks; the table's step)
+  //            (Codex: trusting the hooks; the table's step), not known
+  //            to be taken already (Codex's trust read from its settings)
   //   repair   ours there but not as this copy would write it (moved, an
   //            older version, a part missing, turned off, both of Claude
   //            Code's ways at once)
@@ -319,7 +325,7 @@
     const a = byId(id)
     const r = read(snap, id)
     if (!a || !r) return 'none'
-    if (a.in.includes(r.status)) return !a.good.includes(r.status) ? 'repair' : r.seen ? 'on' : a.step ? 'step' : 'set'
+    if (a.in.includes(r.status)) return !a.good.includes(r.status) ? 'repair' : r.seen ? 'on' : a.step && r.trusted !== true ? 'step' : 'set'
     if (r.status === 'off') return 'repair'
     if (r.status === 'unsupported') return 'unsupported'
     if (failed[id]) return 'failed'

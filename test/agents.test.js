@@ -138,6 +138,17 @@ test('how each stands, and its one button', () => {
   assert.deepEqual(action({ codex: { hooks: 'ok', seen: false } }, 'codex'), { act: 'open', label: 'ag.do.trust' })
   assert.equal(state({ codex: { hooks: 'ok', seen: true } }, 'codex'), 'on')
   assert.equal(action({ codex: { hooks: 'ok', seen: true } }, 'codex'), null)
+  // Trusted as they are by Codex's own settings (zhoupengjie/Wakuwaku#66):
+  // no event since she started is no step; not trusted, or not known, is.
+  assert.equal(state({ codex: { hooks: 'ok', seen: false, trusted: true } }, 'codex'), 'set')
+  assert.equal(action({ codex: { hooks: 'ok', seen: false, trusted: true } }, 'codex'), null)
+  assert.equal(Agents.setLineOf(snapshot({ codex: { hooks: 'ok', trusted: true } }), 'codex'), 'ag.st.set.codexTrusted')
+  for (const trusted of [false, null]) {
+    assert.equal(state({ codex: { hooks: 'ok', seen: false, trusted } }, 'codex'), 'step', String(trusted))
+    assert.equal(Agents.setLineOf(snapshot({ codex: { hooks: 'ok', trusted } }), 'codex'), 'ag.st.set.codex')
+  }
+  // Ours to repair is a repair, trusted or not.
+  assert.equal(state({ codex: { hooks: 'upgradable', seen: false, trusted: true } }, 'codex'), 'repair')
   assert.deepEqual(Agents.TABLE.filter(a => a.step).map(a => a.id), ['codex'])
   // Its standing note: while the trust shows in amber above it, only its
   // second half (the trust not said twice); once trusted, all of it.

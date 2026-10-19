@@ -578,6 +578,152 @@ pub fn codex_hooks_status() -> &'static str {
     }
 }
 
+// Whether Codex trusts our hooks as they are in hooks.json now
+// (zhoupengjie/Wakuwaku#66), read from its config.toml and never written:
+// it keeps each hook it trusted as [hooks.state.'<hooks.json>:<event>:<group>:<index>']
+// with trusted_hash, the hash of the hook as it was then (enabled = false
+// turns one off). The hash is Codex's own (codex-rs hooks discovery.rs
+// hook_hash, config fingerprint.rs version_for_toml): "sha256:" and the hex
+// of the hook's identity as JSON, keys sorted, nothing between:
+// { event_name, hooks: [the hook], matcher } with the timeout as Codex runs
+// it and no empty field. Some(true): every one of ours trusted and on;
+// Some(false): one is not (new, changed, moved, turned off); None: none of
+// ours, or Codex's settings not to be read.
+pub fn codex_trusted() -> Option<bool> {
+    let hooks = read_json(&codex_hooks_file()).ok()?;
+    let config = std::fs::read_to_string(codex_home().join("config.toml")).ok()?;
+    codex_trust_of(&codex_hooks_file().to_string_lossy(), &hooks, &config)
+}
+
+fn codex_trust_of(hooks_path: &str, hooks: &Value, config: &str) -> Option<bool> {
+    let states = codex_hook_states(config);
+    let mut any = false;
+    for (event, groups) in hooks.get("hooks").and_then(Value::as_object).into_iter().flatten() {
+        let label = snake(event);
+        for (g, group) in groups.as_array().into_iter().flatten().enumerate() {
+            for (h, hook) in group.get("hooks").and_then(Value::as_array).into_iter().flatten().enumerate() {
+                if !is_ours(hook) {
+                    continue;
+                }
+                any = true;
+                let key = same_key(&format!("{hooks_path}:{label}:{g}:{h}"));
+                let trusted = states.get(&key).is_some_and(|(hash, enabled)| *enabled && *hash == codex_hook_hash(&label, group, hook));
+                if !trusted {
+                    return Some(false);
+                }
+            }
+        }
+    }
+    any.then_some(true)
+}
+
+// SessionStart → session_start.
+fn snake(name: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in name.chars().enumerate() {
+        if c.is_ascii_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    out
+}
+
+// A key as Codex's and ours both name it: Windows' paths in any case.
+fn same_key(key: &str) -> String {
+    if cfg!(windows) {
+        key.replace('/', "\\").to_lowercase()
+    } else {
+        key.to_string()
+    }
+}
+
+// Codex's hash of one hook of a group (codex_trusted).
+fn codex_hook_hash(event: &str, group: &Value, hook: &Value) -> String {
+    use sha2::Digest;
+    let timeout = hook.get("timeout").and_then(Value::as_u64);
+    let timeout = if matches!(event, "session_end" | "interrupt") { timeout.unwrap_or(1).clamp(1, 3) } else { timeout.unwrap_or(600).max(1) };
+    let mut handler = json!({
+        "type": hook.get("type").cloned().unwrap_or(json!("command")),
+        "command": hook.get("command").cloned().unwrap_or(json!("")),
+        "timeout": timeout,
+        "async": hook.get("async").and_then(Value::as_bool).unwrap_or(false),
+    });
+    for (from, to) in [("commandWindows", "commandWindows"), ("command_windows", "commandWindows"), ("statusMessage", "statusMessage"), ("additionalContextLimit", "additionalContextLimit")] {
+        if let Some(v) = hook.get(from).filter(|v| !v.is_null()) {
+            handler[to] = v.clone();
+        }
+    }
+    let mut identity = json!({ "event_name": event, "hooks": [handler] });
+    if let Some(m) = group.get("matcher").filter(|m| !m.is_null()) {
+        identity["matcher"] = m.clone();
+    }
+    let digest = sha2::Sha256::digest(sorted_json(&identity).as_bytes());
+    format!("sha256:{}", digest.iter().map(|b| format!("{b:02x}")).collect::<String>())
+}
+
+// JSON with every object's keys sorted, nothing between (serde_json's
+// sort_all_objects and to_vec, as Codex hashes it).
+fn sorted_json(v: &Value) -> String {
+    match v {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let parts: Vec<String> = keys.iter().map(|k| format!("{}:{}", Value::String((*k).clone()), sorted_json(&map[*k]))).collect();
+            format!("{{{}}}", parts.join(","))
+        }
+        Value::Array(items) => format!("[{}]", items.iter().map(sorted_json).collect::<Vec<_>>().join(",")),
+        other => other.to_string(),
+    }
+}
+
+// The hooks Codex trusted, by key (same_key): their hash, and whether on.
+// Read from its config.toml as Codex writes it: a [hooks.state.'…'] table
+// for each, trusted_hash and enabled within.
+fn codex_hook_states(config: &str) -> std::collections::HashMap<String, (String, bool)> {
+    let mut states = std::collections::HashMap::new();
+    let mut at: Option<String> = None;
+    for line in config.lines().map(str::trim) {
+        if line.starts_with('[') {
+            at = line.strip_prefix("[hooks.state.").and_then(|rest| rest.strip_suffix(']')).and_then(toml_key).map(|k| same_key(&k));
+            if let Some(key) = &at {
+                states.insert(key.clone(), (String::new(), true));
+            }
+            continue;
+        }
+        let (Some(key), Some((name, value))) = (&at, line.split_once('=')) else { continue };
+        let Some(state) = states.get_mut(key) else { continue };
+        match name.trim() {
+            "trusted_hash" => state.0 = toml_key(value.trim()).unwrap_or_default(),
+            "enabled" => state.1 = value.trim() != "false",
+            _ => {}
+        }
+    }
+    states
+}
+
+// A quoted TOML key or string: 'literal', or "basic" with its escapes.
+fn toml_key(text: &str) -> Option<String> {
+    if let Some(rest) = text.strip_prefix('\'') {
+        return rest.strip_suffix('\'').map(str::to_string);
+    }
+    let rest = text.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next()? {
+            'n' => out.push('\n'),
+            't' => out.push('\t'),
+            other => out.push(other),
+        }
+    }
+    Some(out)
+}
+
 pub fn is_codex_connected() -> bool {
     matches!(codex_hooks_status(), "ok" | "stale" | "upgradable" | "partial")
 }
@@ -3640,6 +3786,73 @@ mod tests {
         let after = codex_install(&before, &cmd, "w", true);
         assert_eq!(codex_status_of(&after, &cmd, true), "ok");
         assert_eq!(after, codex_install(&json!({}), &cmd, "w", true));
+    }
+
+    // Codex's own hashes of these hooks (the ones its trust keeps).
+    #[test]
+    fn codex_hashes_a_hook_as_codex_does() {
+        let cmd = codex_command(r"D:\pet\wakuwaku.exe");
+        let hook = |more: Value| {
+            let mut h = json!({ "type": "command", "command": cmd, "timeout": 10 });
+            for (k, v) in more.as_object().unwrap() {
+                h[k] = v.clone();
+            }
+            h
+        };
+        let none = json!({});
+        assert_eq!(codex_hook_hash("session_end", &none, &hook(json!({ "timeout": 3 }))), "sha256:16edcbf293c15c5ee4fb0676738d9120abacbe1847b436a5cb228fe4e7eab2a4");
+        // As Codex runs it: SessionEnd's timeout 3 at most.
+        assert_eq!(codex_hook_hash("session_end", &none, &hook(json!({ "timeout": 10 }))), codex_hook_hash("session_end", &none, &hook(json!({ "timeout": 3 }))));
+        let ask = hook(json!({ "timeout": 300, "statusMessage": "等她" }));
+        assert_eq!(codex_hook_hash("permission_request", &none, &ask), "sha256:6be114b27c0c0f23cf1c67e5ee6df5f203500bd1922bee8bf07ed42e87689358");
+        assert_eq!(codex_hook_hash("pre_tool_use", &none, &hook(json!({ "async": true }))), "sha256:c663281847ce4e2d721144353a7c412486f17c9c56ca6146c6d75dba1c3d4178");
+        let question = json!({ "matcher": "^request_user_input$" });
+        assert_eq!(codex_hook_hash("pre_tool_use", &question, &hook(json!({}))), "sha256:9924d21717040e6d0e1d416b7b63f52481e509233655651f512ff85297a788e3");
+    }
+
+    // Trusted as they are, or not (new, changed, moved, off): never the
+    // events she has or has not heard since she started.
+    #[test]
+    fn codex_trust_is_read_from_its_config() {
+        let cmd = codex_command(r"D:\pet\wakuwaku.exe");
+        let path = r"C:\Users\someone\.codex\hooks.json";
+        let hooks = codex_install(&json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "notify-me" }] }] } }), &cmd, "等她", true);
+        // What Codex writes on trusting them all (keys in another case too),
+        // each key quoted as given.
+        let config_with = |quote: &dyn Fn(&str) -> String| {
+            let mut config = String::from("model = \"x\"\n\n[hooks.state]\n\n");
+            for (event, groups) in hooks["hooks"].as_object().unwrap() {
+                for (g, group) in groups.as_array().unwrap().iter().enumerate() {
+                    let key = format!("{}:{}:{g}:0", if cfg!(windows) { path.to_uppercase() } else { path.to_string() }, snake(event));
+                    config.push_str(&format!("[hooks.state.{}]\ntrusted_hash = \"{}\"\n\n", quote(&key), codex_hook_hash(&snake(event), group, &group["hooks"][0])));
+                }
+            }
+            config
+        };
+        let config = config_with(&|k| format!("'{k}'"));
+        assert_eq!(codex_trust_of(path, &hooks, &config), Some(true));
+        // Only someone else's trusted, or nothing of ours there.
+        assert_eq!(codex_trust_of(path, &hooks, "[hooks.state]\n"), Some(false));
+        assert_eq!(codex_trust_of(path, &json!({ "hooks": {} }), &config), None);
+        // One turned off in Codex.
+        let off = config.replacen("trusted_hash", "enabled = false\ntrusted_hash", 1);
+        assert_eq!(codex_trust_of(path, &hooks, &off), Some(false));
+        // One changed since (another copy of the program): not trusted as it is.
+        let mut changed = hooks.clone();
+        changed["hooks"]["SessionEnd"][0]["hooks"][0]["command"] = json!(codex_command(r"E:\elsewhere\wakuwaku.exe"));
+        assert_eq!(codex_trust_of(path, &changed, &config), Some(false));
+        // Another hooks.json: none of these keys are its.
+        assert_eq!(codex_trust_of(r"D:\other\hooks.json", &hooks, &config), Some(false));
+        // A key written as a basic string, its backslashes escaped.
+        let basic = config_with(&|k| format!("\"{}\"", k.replace('\\', "\\\\")));
+        assert_eq!(codex_trust_of(path, &hooks, &basic), Some(true));
+    }
+
+    // Whether this computer's Codex trusts her hooks (cargo test -- --ignored --nocapture).
+    #[test]
+    #[ignore]
+    fn codex_trust_here() {
+        println!("codex trusted: {:?}", codex_trusted());
     }
 
     #[test]
