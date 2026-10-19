@@ -398,12 +398,15 @@ impl Pet {
                         s.ended_turns.remove(0);
                     }
                 }
-                // A turn starting anew (Codex may report a step of it first).
+                // A turn starting anew: its start, or a step of it heard first
+                // (Codex reports both in the background, connection.rs).
                 let is_new_turn = turn.is_empty() || turn != s.turn;
+                let is_step = matches!(event, "tool-start" | "tool-done" | "tool-failed");
+                let starts = is_new_turn && (event == "turn-start" || (!turn.is_empty() && is_step));
                 if !turn.is_empty() {
                     s.turn = turn;
                 }
-                if event == "turn-start" && is_new_turn {
+                if starts {
                     out.turns += 1;
                     // The turn before never said it ended (stopped without a
                     // word, or Antigravity's still waiting on a task of its
@@ -823,6 +826,22 @@ mod tests {
         // The next turn works as ever.
         pet.apply(&codex("t4", json!({ "mood": "working", "event": "turn-start" })), 30, Hold::Seen);
         assert_eq!(pet.get(31)["mood"], "working");
+    }
+
+    #[test]
+    fn a_codex_turn_heard_first_by_a_step_starts_anew() {
+        let mut pet = Pet::default();
+        pet.apply(&codex("t1", json!({ "mood": "working", "event": "turn-start" })), 1_000, Hold::Seen);
+        pet.apply(&codex("t1", json!({ "mood": "working", "detail": "apply_patch", "event": "tool-done", "file": "a.rs" })), 2_000, Hold::Seen);
+        pet.apply(&codex("t1", json!({ "mood": "done", "event": "turn-end" })), 3_000, Hold::Seen);
+        // The next turn's first step before its start: the edit and file before are gone, the turn counted once.
+        let out = pet.apply(&codex("t2", json!({ "mood": "working", "detail": "Bash", "event": "tool-start" })), 10_000, Hold::Seen).unwrap();
+        assert_eq!(out.turns, 1);
+        let out = pet.apply(&codex("t2", json!({ "mood": "working", "event": "turn-start" })), 10_100, Hold::Seen).unwrap();
+        assert_eq!(out.turns, 0);
+        assert_eq!(pet.get(10_200)["files"], 0);
+        pet.apply(&codex("t2", json!({ "mood": "done", "event": "turn-end" })), 12_000, Hold::Seen);
+        assert_eq!(pet.get(12_100)["mood"], "done");
     }
 
     #[test]

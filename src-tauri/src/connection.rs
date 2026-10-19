@@ -370,11 +370,13 @@ pub fn write_hooks(action: &str, port: u16) -> Result<(), String> {
 // Codex runs hooks only as commands, through the session's shell (on Windows
 // `pwsh -NoProfile -Command`, about 0.3 s to start): this program with
 // CODEX_FLAG, which hands the event to her port and prints her answer to a
-// prompt (main.rs). So few hooks make Codex wait: the turn starting and
-// ending, a prompt, an edit (apply_patch) or a question, the session. Each
-// tool call's step comes from hooks run in the background (async), which
-// Codex has from 0.148 on; older ones skip async hooks with a warning, so
-// those are left out for them.
+// prompt (main.rs). So few hooks make Codex wait: the session starting and
+// ending, a prompt, the turn ending (Codex runs no Stop or Interrupt hook in
+// the background: none ran in 0.162.1, a slow SessionEnd keeping it up). The
+// turn starting and each tool call come from hooks run in the background
+// (async), which Codex has from 0.148 on; older ones skip async hooks with a
+// warning, so they get those few in the foreground instead: the turn
+// starting, an edit (apply_patch), a question.
 //
 // Codex runs a hook only once the person trusts it (/hooks in Codex), and
 // again after it changes, such as this program moving: we never trust them
@@ -387,31 +389,35 @@ pub type Version = (u64, u64, u64);
 const CODEX_ASYNC_SINCE: Version = (0, 148, 0);
 
 // One hook we add: its event, the tools it is for (a regex, None for all),
-// how long it may run (s), and whether in the background.
+// how long it may run (s), whether in the background (only for a Codex that
+// runs those), and whether only for one that does not.
 struct CodexHook {
     event: &'static str,
     matcher: Option<&'static str>,
     timeout: u64,
     is_async: bool,
+    is_older: bool,
 }
 
 // A prompt waits for the person; Codex gives Interrupt and SessionEnd 3 s at most.
-const CODEX_HOOKS: [CodexHook; 10] = [
-    CodexHook { event: "SessionStart", matcher: None, timeout: 10, is_async: false },
-    CodexHook { event: "UserPromptSubmit", matcher: None, timeout: 10, is_async: false },
-    CodexHook { event: "PreToolUse", matcher: Some("^request_user_input$"), timeout: 10, is_async: false },
-    CodexHook { event: "PostToolUse", matcher: Some("^(apply_patch|request_user_input)$"), timeout: 10, is_async: false },
-    CodexHook { event: "PermissionRequest", matcher: None, timeout: CODEX_PROMPT_TIMEOUT, is_async: false },
-    CodexHook { event: "Stop", matcher: None, timeout: 10, is_async: false },
-    CodexHook { event: "Interrupt", matcher: None, timeout: 3, is_async: false },
-    CodexHook { event: "SessionEnd", matcher: None, timeout: 3, is_async: false },
-    // Every step, in the background.
-    CodexHook { event: "PreToolUse", matcher: None, timeout: 10, is_async: true },
-    CodexHook { event: "PostToolUse", matcher: None, timeout: 10, is_async: true },
+const CODEX_HOOKS: [CodexHook; 11] = [
+    CodexHook { event: "SessionStart", matcher: None, timeout: 10, is_async: false, is_older: false },
+    CodexHook { event: "PermissionRequest", matcher: None, timeout: CODEX_PROMPT_TIMEOUT, is_async: false, is_older: false },
+    CodexHook { event: "Stop", matcher: None, timeout: 10, is_async: false, is_older: false },
+    CodexHook { event: "Interrupt", matcher: None, timeout: 3, is_async: false, is_older: false },
+    CodexHook { event: "SessionEnd", matcher: None, timeout: 3, is_async: false, is_older: false },
+    // The turn starting and every step, in the background.
+    CodexHook { event: "UserPromptSubmit", matcher: None, timeout: 10, is_async: true, is_older: false },
+    CodexHook { event: "PreToolUse", matcher: None, timeout: 10, is_async: true, is_older: false },
+    CodexHook { event: "PostToolUse", matcher: None, timeout: 10, is_async: true, is_older: false },
+    // Or, for a Codex without those, the few steps that matter most, waited on.
+    CodexHook { event: "UserPromptSubmit", matcher: None, timeout: 10, is_async: false, is_older: true },
+    CodexHook { event: "PreToolUse", matcher: Some("^request_user_input$"), timeout: 10, is_async: false, is_older: true },
+    CodexHook { event: "PostToolUse", matcher: Some("^(apply_patch|request_user_input)$"), timeout: 10, is_async: false, is_older: true },
 ];
 
 fn codex_hooks_for(with_async: bool) -> impl Iterator<Item = &'static CodexHook> {
-    CODEX_HOOKS.iter().filter(move |h| with_async || !h.is_async)
+    CODEX_HOOKS.iter().filter(move |h| if with_async { !h.is_older } else { !h.is_async })
 }
 
 pub fn codex_home() -> PathBuf {
@@ -540,7 +546,8 @@ fn is_codex_hook(found: &(String, Option<String>, Value), want: &CodexHook, comm
 
 // How our entries stand against what this copy would install: missing / ok /
 // stale (another copy of the program, or another version's hooks) /
-// upgradable (only the background ones lack: Codex was updated since) /
+// upgradable (only background ones lack: Codex was updated since, or put in
+// before the turn starting moved there) /
 // partial (others lack).
 pub fn codex_status_of(file: &Value, command: &str, with_async: bool) -> &'static str {
     let ours = codex_ours(file);
@@ -3558,17 +3565,20 @@ mod tests {
         assert_eq!(with["hooks"]["Stop"].as_array().unwrap().len(), 2);
         let ask = &with["hooks"]["PermissionRequest"][0]["hooks"][0];
         assert_eq!((ask["timeout"].as_u64(), ask.get("async"), ask["statusMessage"].as_str()), (Some(300), None, Some("waiting")));
-        // A question waits in the foreground; every step in the background.
-        let pre = with["hooks"]["PreToolUse"].as_array().unwrap();
-        assert_eq!((pre[0]["matcher"].as_str(), pre[0]["hooks"][0].get("async")), (Some("^request_user_input$"), None));
-        assert_eq!((pre[1].get("matcher"), &pre[1]["hooks"][0]["async"]), (None, &json!(true)));
-        assert_eq!(with["hooks"]["PostToolUse"][0]["matcher"], "^(apply_patch|request_user_input)$");
+        // The turn starting and every step in the background, nothing else
+        // for them; the turn ending waited on (Codex runs no Stop in the background).
+        for event in ["UserPromptSubmit", "PreToolUse", "PostToolUse"] {
+            let groups = with["hooks"][event].as_array().unwrap();
+            assert_eq!(groups.len(), 1, "{event}");
+            assert_eq!((groups[0].get("matcher"), &groups[0]["hooks"][0]["async"]), (None, &json!(true)), "{event}");
+        }
+        assert_eq!(with["hooks"]["Stop"][1]["hooks"][0].get("async"), None);
         // Another copy of the program: a repair.
         assert_eq!(codex_status_of(&with, &codex_command(r"E:\elsewhere\wakuwaku.exe"), true), "stale");
 
         let again = codex_install(&with, &cmd, "waiting", true);
         assert_eq!(again["hooks"]["Stop"].as_array().unwrap().len(), 2);
-        assert_eq!(again["hooks"]["PreToolUse"].as_array().unwrap().len(), 2);
+        assert_eq!(again["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
         let mut part = again.clone();
         part["hooks"].as_object_mut().unwrap().remove("Interrupt");
         assert_eq!(codex_status_of(&part, &cmd, true), "partial");
@@ -3584,14 +3594,52 @@ mod tests {
         let all: Vec<&Value> = old["hooks"].as_object().unwrap().values().flat_map(|g| g.as_array().unwrap()).collect();
         assert_eq!(all.len(), 8);
         assert!(all.iter().all(|g| g["hooks"][0].get("async").is_none()));
+        assert_eq!(old["hooks"]["PreToolUse"][0]["matcher"], "^request_user_input$");
+        assert_eq!(old["hooks"]["PostToolUse"][0]["matcher"], "^(apply_patch|request_user_input)$");
         assert_eq!(codex_status_of(&old, &cmd, false), "ok");
         // Codex updated since: only the background ones lack.
         assert_eq!(codex_status_of(&old, &cmd, true), "upgradable");
         let mut part = old.clone();
         part["hooks"].as_object_mut().unwrap().remove("Stop");
         assert_eq!(codex_status_of(&part, &cmd, true), "partial");
-        // Installed for a newer Codex, read for an older one: still ours, nothing stale.
-        assert_eq!(codex_status_of(&codex_install(&json!({}), &cmd, "w", true), &cmd, false), "ok");
+        // Installed for a newer Codex, read for an older one: still ours,
+        // nothing stale, but the turn starting it would not run.
+        assert_eq!(codex_status_of(&codex_install(&json!({}), &cmd, "w", true), &cmd, false), "partial");
+    }
+
+    // As put in before the turn starting moved to the background (0.3.3):
+    // still working, the background one to be had by a repair, which leaves
+    // no foreground one for it or the steps.
+    #[test]
+    fn hooks_from_before_the_turn_moved_are_upgradable() {
+        let cmd = codex_command(r"D:\pet\wakuwaku.exe");
+        let hook = |is_async: bool, timeout: u64| {
+            let mut h = json!({ "type": "command", "command": cmd, "timeout": timeout });
+            if is_async {
+                h["async"] = json!(true);
+            }
+            h
+        };
+        let group = |matcher: Option<&str>, h: Value| match matcher {
+            Some(m) => json!({ "matcher": m, "hooks": [h] }),
+            None => json!({ "hooks": [h] }),
+        };
+        let mut ask = hook(false, CODEX_PROMPT_TIMEOUT);
+        ask["statusMessage"] = json!("w");
+        let before = json!({ "hooks": {
+            "SessionStart": [group(None, hook(false, 10))],
+            "UserPromptSubmit": [group(None, hook(false, 10))],
+            "PreToolUse": [group(Some("^request_user_input$"), hook(false, 10)), group(None, hook(true, 10))],
+            "PostToolUse": [group(Some("^(apply_patch|request_user_input)$"), hook(false, 10)), group(None, hook(true, 10))],
+            "PermissionRequest": [group(None, ask)],
+            "Stop": [group(None, hook(false, 10))],
+            "Interrupt": [group(None, hook(false, 3))],
+            "SessionEnd": [group(None, hook(false, 3))],
+        } });
+        assert_eq!(codex_status_of(&before, &cmd, true), "upgradable");
+        let after = codex_install(&before, &cmd, "w", true);
+        assert_eq!(codex_status_of(&after, &cmd, true), "ok");
+        assert_eq!(after, codex_install(&json!({}), &cmd, "w", true));
     }
 
     #[test]

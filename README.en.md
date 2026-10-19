@@ -130,7 +130,7 @@ How it differs from Claude Code:
 | Answer on the panel | Allow / Always allow / Deny, questions, plans | Allow / Deny |
 | New sessions start the pet | With the settings.json way | Yes |
 
-Codex hooks can only be commands: `wakuwaku.exe --wakuwaku-codex-hook` runs once and hands the event to her. On Windows Codex runs hooks in PowerShell, about 0.3 s to start each time, so Codex waits for it only when a turn starts and ends, on an edit (`apply_patch`), on a prompt, and when a session starts and ends; each step's tool is reported in the background. Background hooks need Codex 0.148 or later; an older one gets only the essential hooks, and the bubble doesn't name each tool.
+Codex hooks can only be commands: `wakuwaku.exe --wakuwaku-codex-hook` runs once and hands the event to her. On Windows Codex runs hooks in PowerShell, about 0.3 s to start each time, so Codex waits for it only when a turn ends, on a prompt, and when a session starts and ends (Codex runs no turn-end hook in the background); a turn starting and each step are reported in the background. Background hooks need Codex 0.148 or later; an older one gets only the essential hooks (waiting on a turn starting and on an edit too), and the bubble doesn't name each tool.
 
 The pets in Codex's desktop app (`~/.codex/pets`) use the same format, so they show up on the Pets page, marked From Codex.
 
