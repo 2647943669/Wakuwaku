@@ -800,6 +800,7 @@
   const MAIL_SERVERS = {
     'example.com': { source: 'autoconfig', user: 'local', imap: ['mail.example.com', 993, 'ssl'], smtp: ['mail.example.com', 587, 'starttls'] },
     'example.org': { source: 'ispdb', user: 'address', imap: ['imap.example.org', 993, 'ssl'], smtp: ['smtp.example.org', 465, 'ssl'] },
+    'gmail.com': { source: 'ispdb', user: 'address', imap: ['imap.gmail.com', 993, 'ssl'], smtp: ['smtp.gmail.com', 465, 'ssl'] },
   }
 
   // What an agent says about a letter here, where none runs (agent.rs: what
@@ -971,7 +972,9 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address) || !host || !(Number(a.port) > 0) || !String(a.username || '').trim()) return mailFail('fields')
       const known = mailAccount(a.id)
       if (!known && !password) return mailFail('password')
-      if (password === 'wrong') return { ...mailFail('login', 'AUTHENTICATE failed: invalid credentials'), auths: ['plain', 'login'] }
+      // Gmail's words for an app password it does not take (imap.rs login_why: badPassword).
+      if (password === 'wrong') return { ok: false, error: { kind: 'login', text: 'AUTHENTICATE failed: invalid credentials', why: 'badPassword' }, auths: ['plain', 'login'] }
+      if (/gmail\.com$/.test(host) && password === 'wrongwrongwrongw') return { ok: false, error: { kind: 'login', text: 'Invalid credentials (Failure)', why: 'badPassword' } }
       const way = s => (['ssl', 'starttls', 'plain'].includes(s) ? s : 'ssl')
       const smtp = a.smtp && String(a.smtp.host || '').trim() ? { host: String(a.smtp.host).trim().toLowerCase(), port: Number(a.smtp.port), security: way(a.smtp.security), username: String(a.smtp.username || a.username).trim(), auth: a.smtp.auth || 'auto' } : null
       let id = known?.id

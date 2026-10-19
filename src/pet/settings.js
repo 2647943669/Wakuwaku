@@ -1055,11 +1055,43 @@
   // hop (mail/proxy.rs), and what to try then.
   function mailError(err, server) {
     const kind = err?.kind || 'other'
+    const why = loginWhy(err)
+    if (why) return T(whyKey(why, server?.host))
     const where = server ? `${server.host}:${server.port}` : ''
     // The server's own words (or the proxy's), where they say why.
     const detail = err?.text && ['login', 'refused', 'other', 'recipient', 'notProxy', 'proxyRefused', 'proxyServer'].includes(kind) ? (lang === 'zh' ? '：' : ': ') + err.text : ''
     const hint = err?.hint ? (lang === 'zh' ? '。' : '. ') + T(`mail.err.${kind === 'notProxy' ? 'kind' : 'try'}.${err.hint}`) : ''
-    return T(`mail.err.${kind}`, { where, proxy: err?.proxy || '' }) + detail + hint
+    // Gmail not reached with no proxy on the way: from China it takes one.
+    const gmail = kind === 'connect' && providerOf(server?.host) === 'google' && straight(server?.proxy) ? ' ' + T('mail.err.gmailProxy') : ''
+    return T(`mail.err.${kind}`, { where, proxy: err?.proxy || '' }) + detail + hint + gmail
+  }
+
+  // Why a server said no to signing in, as imap.rs login_why read its
+  // words: said in the page's words for it (the provider's, where it has
+  // its own), with the server's words under them (mailSaid), and where to
+  // put it right (mailFix).
+  const WHYS = ['appPassword', 'badPassword', 'webLogin', 'tooMany', 'imapOff']
+  const loginWhy = err => (err?.kind === 'login' && WHYS.includes(err.why) ? err.why : '')
+  function whyKey(why, host) {
+    const p = providerOf(host)
+    if (why === 'badPassword' && p) return `mail.why.badPassword.${p === 'netease' ? 'qq' : p === 'yahoo' ? 'apple' : p}`
+    if ((why === 'appPassword' || why === 'webLogin') && p === 'google') return `mail.why.${why}.google`
+    return `mail.why.${why}`
+  }
+  const mailSaid = err => (loginWhy(err) && err.text ? err.text : '')
+  function mailFix(err, host) {
+    const why = loginWhy(err)
+    const p = providerOf(host)
+    if (why === 'webLogin' && p === 'google') return { site: 'gmailWeb', label: T('mail.openGmail') }
+    const site = (why === 'appPassword' || why === 'badPassword') && HINT_SITE[p]
+    return site ? { site, label: T('mail.hint.open') } : null
+  }
+
+  // Whether an account reaches its servers with no proxy on the way: its
+  // own setting, else the Mail page's (Windows' proxy, while there is one).
+  function straight(own) {
+    const mode = own?.mode || proxySetting().mode
+    return mode === 'none' || (mode === 'system' && !snap.mailSystemProxy)
   }
 
   // An account's line: how its inbox is, or why it is not.
@@ -1106,6 +1138,17 @@
   }
   const HINT_SITE = { google: 'googleAppPasswords', apple: 'appleAppPasswords', yahoo: 'yahooAppPasswords' }
 
+  // Gmail's app password in three steps, the first two with their page:
+  // 2-Step Verification on, an app password made, pasted above.
+  function googleStepsHTML() {
+    const step = (n, site) =>
+      `<div class="st"><span class="n">${n}</span><span>${esc(T(`mail.google.step${n}`))}${site ? ` <span class="link" data-site="${site}">${esc(T(`mail.google.open${n}`))}</span>` : ''}</span></div>`
+    return `<div class="note steps">${step(1, 'google2sv')}${step(2, 'googleAppPasswords')}${step(3)}</div><div class="note">${esc(T('mail.google.admin'))}</div>`
+  }
+
+  // Google's app password, as it shows it (four fours) or without the spaces.
+  const APP_PASSWORD = /^[a-z]{4}(\s?[a-z]{4}){3}$/i
+
   function hintHTML(host) {
     const p = providerOf(host)
     if (!p) return ''
@@ -1144,12 +1187,15 @@
     const f = mailForm
     const field = (key, label, attrs = '') =>
       `<label class="fr"><span class="fl">${esc(label)}</span><input class="in" data-mf="${key}" value="${esc(f[key] ?? '')}" spellcheck="false" ${attrs}></label>`
+    // Gmail (found, or typed in): its app password asked for by name, and how to make one.
+    const google = f.step !== 'start' && providerOf(f.host) === 'google'
+    const keep = f.id ? T('mail.passwordKeep') : google ? T('mail.appPasswordPlaceholder') : ''
     const head = [
       field('address', T('mail.address'), `placeholder="you@example.com" autocomplete="off"${f.id ? ' disabled' : ''}`),
       field('name', T('mail.name'), `placeholder="${esc(T('mail.namePlaceholder'))}" autocomplete="off"`),
-      field('password', T('mail.password'), `type="password" autocomplete="off" placeholder="${esc(f.id ? T('mail.passwordKeep') : '')}"`),
-      `<div class="note">${esc(T('mail.passwordNote'))}</div>`,
-      f.step === 'start' ? '' : hintHTML(f.host),
+      field('password', T(google ? 'mail.appPassword' : 'mail.password'), `type="password" autocomplete="off" placeholder="${esc(keep)}"`),
+      google ? googleStepsHTML() : `<div class="note">${esc(T('mail.passwordNote'))}</div>`,
+      f.step === 'start' || google ? '' : hintHTML(f.host),
     ].join('')
     const line = (proto, host, port, security, auth) => `${proto} · ${host}:${port} · ${labelOf(SECURITIES(), security)}${auth && auth !== 'auto' ? ` · ${labelOf(AUTHS(), auth)}` : ''}`
     const out = f.smtpHost ? `<div class="ellip">${esc(line('SMTP', f.smtpHost, f.smtpPort, f.smtpSecurity, f.smtpAuth))}</div>` : ''
@@ -1161,7 +1207,9 @@
     const notFound = f.step === 'manual' && f.notFound ? `<div class="note">${esc(T(f.oauth ? 'mail.oauth' : 'mail.notFound'))}</div>` : ''
     const adv = f.step === 'start' ? '' : advancedHTML(field)
     const busy = f.busy ? `<div class="note">${esc(T({ find: 'mail.finding', probe: 'mail.adv.testing' }[f.busy] || 'mail.signingIn'))}</div>` : ''
-    const result = f.result ? `<div class="note${f.result.bad ? ' err' : ''}">${esc(f.result.text)}</div>` : ''
+    const fix = f.result?.fix ? ` <span class="link" data-site="${esc(f.result.fix.site)}">${esc(f.result.fix.label)}</span>` : ''
+    const said = f.result?.said ? `<div class="said">${esc(f.result.said)}</div>` : ''
+    const result = f.result ? `<div class="note${f.result.bad ? ' err' : ''}">${esc(f.result.text)}${fix}${said}</div>` : ''
     const off = f.busy ? 'disabled' : ''
     const go = f.step === 'start' ? `<button class="pbtn al" data-mail-find ${off}>${esc(T('mail.continue'))}</button>` : `<button class="pbtn al" data-mail-save ${off}>${esc(T('mail.done'))}</button>`
     const again = f.step === 'manual' && !f.id ? `<button class="pbtn" data-mail-find ${off}>${esc(T('mail.findAgain'))}</button>` : ''
@@ -1671,8 +1719,8 @@
     if (own.includes(err.kind)) return T(`mail.err.${err.kind}`, { what: err.text || '' })
     const a = accountOf(draft?.account)
     if (!got.out) return mailError(err, a)
-    const hint = err.kind === 'login' && providerOf(a?.host) ? ` ${T(`mail.hint.${providerOf(a.host)}`)}` : ''
-    return T('mail.w.outPrefix') + mailError(err, a?.smtp || { host: '?', port: '' }) + hint
+    const hint = err.kind === 'login' && !loginWhy(err) && providerOf(a?.host) ? ` ${T(`mail.hint.${providerOf(a.host)}`)}` : ''
+    return T('mail.w.outPrefix') + mailError(err, a?.smtp ? { ...a.smtp, proxy: a.proxy } : { host: '?', port: '' }) + hint
   }
 
   // Sent: the letter gone from here, back where one was, and what came of
@@ -3515,7 +3563,7 @@
       Object.assign(f, { smtpSecurity: got.security, smtpPort: got.port })
       f.probedOut = { security: got.security, port: got.port, auths: got.auths || [] }
     } else {
-      f.result = { bad: true, text: T('mail.w.outPrefix') + mailError(got.error, { host: String(f.smtpHost).trim(), port: String(f.smtpPort || '').trim() || '465 / 587' }) }
+      f.result = { bad: true, text: T('mail.w.outPrefix') + mailError(got.error, { host: String(f.smtpHost).trim(), port: String(f.smtpPort || '').trim() || '465 / 587', proxy: formProxy(f) }) }
     }
     redrawMail()
     return !!f.probedOut
@@ -3541,7 +3589,7 @@
       Object.assign(f, { security: got.security, port: got.port })
       f.probed = { security: got.security, port: got.port, auths: got.auths || [] }
     } else {
-      f.result = { bad: true, text: mailError(got.error, { host: String(f.host).trim(), port: String(f.port || '').trim() || '993 / 143' }) }
+      f.result = { bad: true, text: mailError(got.error, { host: String(f.host).trim(), port: String(f.port || '').trim() || '993 / 143', proxy: formProxy(f) }) }
     }
     redrawMail()
     return !!f.probed
@@ -3554,6 +3602,13 @@
     const f = mailForm
     if (!f.id && !f.password) {
       f.result = { bad: true, text: T('mail.err.password') }
+      return redrawMail('[data-mf="password"]')
+    }
+    // Gmail takes an app password alone: anything else (the usual Google
+    // password, most likely) is not tried, which Google might hold against
+    // the account.
+    if (providerOf(f.host) === 'google' && f.password && !APP_PASSWORD.test(String(f.password).trim())) {
+      f.result = { bad: true, text: T('mail.err.notAppPassword') }
       return redrawMail('[data-mf="password"]')
     }
     if ((f.security === 'auto' || !String(f.port ?? '').trim()) && !(await probeServer())) return
@@ -3569,7 +3624,7 @@
     const account = { id: f.id, address: f.address.trim(), name: String(f.name || '').trim(), host: String(f.host).trim(), port: Number(f.port), security: f.security, auth: f.auth || 'auto', username, smtp, proxy: formProxy(f) }
     // Google's app password as it shows it, in fours: the spaces left out.
     const typed = String(f.password || '')
-    const password = providerOf(account.host) === 'google' && /^[a-z]{4}(\s?[a-z]{4}){3}$/i.test(typed.trim()) ? typed.replace(/\s/g, '') : typed
+    const password = providerOf(account.host) === 'google' && APP_PASSWORD.test(typed.trim()) ? typed.replace(/\s/g, '') : typed
     const got = await window.pet.mail.save(account, password)
     if (mailForm !== f) return
     f.busy = ''
@@ -3578,8 +3633,13 @@
       snap = got.snapshot
     } else {
       const domain = got.error?.kind === 'login' && (got.auths || []).some(a => a === 'ntlm' || a === 'gssapi')
-      const where = got.out ? { host: outHost, port: f.smtpPort } : account
-      f.result = { bad: true, text: (got.out ? T('mail.w.outPrefix') : '') + mailError(got.error, where) + (domain ? ` ${T('mail.adv.domain')}` : '') }
+      const where = got.out ? { host: outHost, port: f.smtpPort, proxy: account.proxy } : account
+      f.result = {
+        bad: true,
+        text: (got.out ? T('mail.w.outPrefix') : '') + mailError(got.error, where) + (domain ? ` ${T('mail.adv.domain')}` : ''),
+        said: mailSaid(got.error),
+        fix: mailFix(got.error, account.host),
+      }
     }
     redrawMail()
   }

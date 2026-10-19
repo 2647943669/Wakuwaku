@@ -1044,7 +1044,9 @@ pub async fn settings_crash(app: AppHandle, what: String) -> Value {
 }
 
 // Only these places, whatever the page asks: the project, codex-pets.net,
-// where a mail provider makes app passwords (the Mail page's hint), or how
+// where a mail provider makes app passwords (the Mail page's hint; for
+// Gmail also 2-Step Verification, and Gmail on the web to confirm a
+// sign-in Google held back), or how
 // Antigravity's command line agy is installed (the Mail page, with
 // Antigravity here but not agy).
 #[tauri::command]
@@ -1053,6 +1055,8 @@ pub async fn settings_open_site(app: AppHandle, place: String) {
         "repo" => REPO,
         "agyCli" => "https://antigravity.google/docs/cli/install",
         "googleAppPasswords" => "https://myaccount.google.com/apppasswords",
+        "google2sv" => "https://myaccount.google.com/signinoptions/two-step-verification",
+        "gmailWeb" => "https://mail.google.com/",
         "appleAppPasswords" => "https://account.apple.com/account/manage",
         "yahooAppPasswords" => "https://login.yahoo.com/account/security",
         "lhm" => "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases",
