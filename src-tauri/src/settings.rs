@@ -1048,10 +1048,22 @@ pub async fn settings_crash(app: AppHandle, what: String) -> Value {
 // Gmail also 2-Step Verification, and Gmail on the web to confirm a
 // sign-in Google held back), or how
 // Antigravity's command line agy is installed (the Mail page, with
-// Antigravity here but not agy).
+// Antigravity here but not agy). Google's own pages for the address being
+// added (`account`), so a browser signed in to several Google accounts
+// opens that one's.
 #[tauri::command]
-pub async fn settings_open_site(app: AppHandle, place: String) {
-    let url = match place.as_str() {
+pub async fn settings_open_site(app: AppHandle, place: String, account: Option<String>) {
+    let url = site_url(&place, account.as_deref());
+    // By ShellExecute, not `cmd /c start`: run from the installed pet (no
+    // console), cmd got handles that were none and never started ("the
+    // handle is invalid").
+    if !crate::jump::open_url(&url) {
+        shared(&app).log(&format!("open {url}: ShellExecute failed"));
+    }
+}
+
+fn site_url(place: &str, account: Option<&str>) -> String {
+    let url = match place {
         "repo" => REPO,
         "agyCli" => "https://antigravity.google/docs/cli/install",
         "googleAppPasswords" => "https://myaccount.google.com/apppasswords",
@@ -1066,17 +1078,37 @@ pub async fn settings_open_site(app: AppHandle, place: String) {
             None => fetch::SITE,
         },
     };
-    // By ShellExecute, not `cmd /c start`: run from the installed pet (no
-    // console), cmd got handles that were none and never started ("the
-    // handle is invalid").
-    if !crate::jump::open_url(url) {
-        shared(&app).log(&format!("open {url}: ShellExecute failed"));
+    // Google's account pages take whose they are as authuser: only an
+    // address as one is written goes in, its @ and + escaped.
+    let google = url.starts_with("https://myaccount.google.com/") || url.starts_with("https://mail.google.com/");
+    match account.map(str::trim) {
+        Some(a) if google && is_address(a) => format!("{url}?authuser={}", a.replace('%', "%25").replace('+', "%2B").replace('@', "%40")),
+        _ => url.to_string(),
     }
+}
+
+// One local part, one @, a dotted domain; nothing a URL would read otherwise.
+fn is_address(a: &str) -> bool {
+    let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "._%+-".contains(c));
+    matches!(a.split_once('@'), Some((local, domain)) if ok(local) && ok(domain) && domain.contains('.') && !domain.contains('@'))
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    #[test]
+    fn google_pages_open_for_the_address() {
+        use super::site_url;
+        assert_eq!(site_url("googleAppPasswords", Some("me+pet@gmail.com")), "https://myaccount.google.com/apppasswords?authuser=me%2Bpet%40gmail.com");
+        assert_eq!(site_url("google2sv", Some(" me@example.org ")), "https://myaccount.google.com/signinoptions/two-step-verification?authuser=me%40example.org");
+        assert_eq!(site_url("gmailWeb", Some("me@gmail.com")), "https://mail.google.com/?authuser=me%40gmail.com");
+        // Not an address, or not Google's page: as it is.
+        assert_eq!(site_url("googleAppPasswords", Some("me@gmail.com&x=1")), "https://myaccount.google.com/apppasswords");
+        assert_eq!(site_url("googleAppPasswords", Some("a@b@gmail.com")), "https://myaccount.google.com/apppasswords");
+        assert_eq!(site_url("googleAppPasswords", None), "https://myaccount.google.com/apppasswords");
+        assert_eq!(site_url("yahooAppPasswords", Some("me@yahoo.com")), "https://login.yahoo.com/account/security");
+    }
 
     #[test]
     fn island_looks() {

@@ -1138,12 +1138,16 @@
   }
   const HINT_SITE = { google: 'googleAppPasswords', apple: 'appleAppPasswords', yahoo: 'yahooAppPasswords' }
 
-  // Gmail's app password in three steps, the first two with their page:
-  // 2-Step Verification on, an app password made, pasted above.
-  function googleStepsHTML() {
+  // Why Gmail takes an app password here (Google's review for its browser
+  // sign-in, no need of it for a one-person project); then the app password
+  // in three steps, the first two with their page (the address's own, where
+  // several Google accounts are signed in): 2-Step Verification on, an app
+  // password made, pasted above; what 2-Step Verification takes (an
+  // authenticator app will do); and why Google may not make one.
+  function googleStepsHTML(address) {
     const step = (n, site) =>
-      `<div class="st"><span class="n">${n}</span><span>${esc(T(`mail.google.step${n}`))}${site ? ` <span class="link" data-site="${site}">${esc(T(`mail.google.open${n}`))}</span>` : ''}</span></div>`
-    return `<div class="note steps">${step(1, 'google2sv')}${step(2, 'googleAppPasswords')}${step(3)}</div><div class="note">${esc(T('mail.google.admin'))}</div>`
+      `<div class="st"><span class="n">${n}</span><span>${esc(T(`mail.google.step${n}`))}${site ? ` <span class="link" data-site="${site}" data-for="${esc(address)}">${esc(T(`mail.google.open${n}`))}</span>` : ''}</span></div>`
+    return `<div class="note">${esc(T('mail.google.why'))}</div><div class="note steps">${step(1, 'google2sv')}${step(2, 'googleAppPasswords')}${step(3)}</div><div class="note">${esc(T('mail.google.how2sv'))}</div><div class="note">${esc(T('mail.google.none'))}</div>`
   }
 
   // Google's app password, as it shows it (four fours) or without the spaces.
@@ -1194,7 +1198,7 @@
       field('address', T('mail.address'), `placeholder="you@example.com" autocomplete="off"${f.id ? ' disabled' : ''}`),
       field('name', T('mail.name'), `placeholder="${esc(T('mail.namePlaceholder'))}" autocomplete="off"`),
       field('password', T(google ? 'mail.appPassword' : 'mail.password'), `type="password" autocomplete="off" placeholder="${esc(keep)}"`),
-      google ? googleStepsHTML() : `<div class="note">${esc(T('mail.passwordNote'))}</div>`,
+      google ? googleStepsHTML(String(f.address || '').trim()) : `<div class="note">${esc(T('mail.passwordNote'))}</div>`,
       f.step === 'start' || google ? '' : hintHTML(f.host),
     ].join('')
     const line = (proto, host, port, security, auth) => `${proto} · ${host}:${port} · ${labelOf(SECURITIES(), security)}${auth && auth !== 'auto' ? ` · ${labelOf(AUTHS(), auth)}` : ''}`
@@ -1207,7 +1211,7 @@
     const notFound = f.step === 'manual' && f.notFound ? `<div class="note">${esc(T(f.oauth ? 'mail.oauth' : 'mail.notFound'))}</div>` : ''
     const adv = f.step === 'start' ? '' : advancedHTML(field)
     const busy = f.busy ? `<div class="note">${esc(T({ find: 'mail.finding', probe: 'mail.adv.testing' }[f.busy] || 'mail.signingIn'))}</div>` : ''
-    const fix = f.result?.fix ? ` <span class="link" data-site="${esc(f.result.fix.site)}">${esc(f.result.fix.label)}</span>` : ''
+    const fix = f.result?.fix ? ` <span class="link" data-site="${esc(f.result.fix.site)}" data-for="${esc(String(f.address || '').trim())}">${esc(f.result.fix.label)}</span>` : ''
     const said = f.result?.said ? `<div class="said">${esc(f.result.said)}</div>` : ''
     const result = f.result ? `<div class="note${f.result.bad ? ' err' : ''}">${esc(f.result.text)}${fix}${said}</div>` : ''
     const off = f.busy ? 'disabled' : ''
@@ -3182,7 +3186,8 @@
       return relayout()
     }
     const site = at('[data-site]')
-    if (site) return window.pet.settings.openSite(site.dataset.site)
+    // Google's pages for the address being added (data-for), when it says.
+    if (site) return window.pet.settings.openSite(site.dataset.site, site.dataset.for)
   })
 
   // A mail account's setup: what was clicked, if it was its. True when it was.
