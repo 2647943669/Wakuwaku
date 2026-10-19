@@ -128,7 +128,7 @@ https://github.com/user-attachments/assets/7814d71a-77f0-43af-97a6-210d2cbb31dc
 | 在面板上确认 | 允许 / 以后都允许 / 拒绝，回答问题，批准计划 | 允许 / 拒绝 |
 | 新会话自动启动宠物 | settings.json 方式可以 | 可以 |
 
-Codex 的 hook 只能是命令：运行一次 `wakuwaku.exe --wakuwaku-codex-hook`，把事件转给她。Codex 在 Windows 上用 PowerShell 运行 hook，每次启动约 0.3 秒，所以只有一轮对话的开始和结束、改文件（`apply_patch`）、确认请求、会话开始和结束这几处让 Codex 等它；每一步用的工具放在后台报告。后台 hook 要 Codex 0.148 或更新的版本，旧版本只装必要的几个，气泡里不显示具体工具。
+Codex 的 hook 只能是命令：运行一次 `wakuwaku.exe --wakuwaku-codex-hook`，把事件转给她。Codex 在 Windows 上用 PowerShell 运行 hook，每次启动约 0.3 秒，所以只有一轮对话的结束、确认请求、会话开始和结束这几处让 Codex 等它（Codex 不在后台运行一轮结束的 hook）；一轮的开始和每一步都放在后台报告。后台 hook 要 Codex 0.148 或更新的版本，旧版本只装必要的几个（一轮的开始和改文件也要等），气泡里不显示具体工具。
 
 Codex 桌面版里装过的宠物（`~/.codex/pets`）格式相同，会直接出现在「宠物」页里，标着「来自 Codex」。
 

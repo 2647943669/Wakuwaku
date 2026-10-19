@@ -1238,8 +1238,8 @@
       's.noPetYet': '还没有宠物：在「宠物」页下载一只',
 
       // Each agent's own words on the Agent page (agents.js words, settings.js agentNotes)
-      's.codexUpgradable': '可以补上后台 hook（Codex 已升级）',
-      's.codexUpgradeNote': '现在的 hook 都正常。修复只会加上 2 个在后台报告每一步的 hook，加完在 Codex 的 /hooks（桌面版：设置 → 钩子）里信任这 2 个，原来的不用再信任。',
+      's.codexUpgradable': '可以改用后台 hook（Codex 少等）',
+      's.codexUpgradeNote': '现在的 hook 都正常。修复会把开始一轮和每一步的 hook 改到后台运行，Codex 每轮、每次改文件各少等约 0.3 秒；改完在 Codex 的 /hooks（桌面版：设置 → 钩子）里信任这 3 个（UserPromptSubmit、PreToolUse、PostToolUse），别的不用再信任。',
       's.agyOff': '在 hooks.json 里被关掉了',
       's.agyUnreadable': '读不了 hooks.json',
       's.ompStale': '需要修复（程序被移动过、端口变了，或是旧版本装的）',
@@ -2665,9 +2665,9 @@
       'hint.off': "Don't remind me",
       's.noPetYet': 'No pet yet: get one on the Pets page',
 
-      's.codexUpgradable': 'Background hooks can be added (Codex was updated)',
+      's.codexUpgradable': 'Hooks can run in the background (less waiting in Codex)',
       's.codexUpgradeNote':
-        "The hooks in now all work. Repair only adds 2 that report each step in the background; then trust those 2 in Codex's /hooks (desktop app: Settings → Hooks). The others need no new trust.",
+        "The hooks in now all work. Repair moves the ones for a turn starting and each step to the background, so Codex waits some 0.3 s less each turn and each edit; then trust those 3 (UserPromptSubmit, PreToolUse, PostToolUse) in Codex's /hooks (desktop app: Settings → Hooks). The others need no new trust.",
       's.agyOff': 'Turned off in hooks.json',
       's.agyUnreadable': "Can't read hooks.json",
       's.ompStale': 'Needs a repair (the app moved, the port changed, or an older version installed it)',
