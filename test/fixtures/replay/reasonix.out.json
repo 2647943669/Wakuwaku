@@ -1,5 +1,11 @@
 [
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -53,6 +59,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "prompt": "Create note.txt and push it.",
+      "session": "replay-rx",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -101,6 +114,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "call": {
+        "id": "rx_c1",
+        "input": {
+          "content": "hi\n",
+          "file_path": "Z:\\replay\\rx\\note.txt"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "toolStart"
+    },
     "at": 2500,
     "event": "PreToolUse",
     "message": {
@@ -158,6 +185,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "call": {
+        "file": "Z:\\replay\\rx\\note.txt",
+        "id": "rx_c1",
+        "input": {
+          "content": "hi\n",
+          "file_path": "Z:\\replay\\rx\\note.txt"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "toolDone"
+    },
     "at": 3000,
     "event": "PostToolUse",
     "message": {
@@ -208,6 +250,28 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "app",
+          "name": "Reasonix"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "input": {
+              "command": "git push"
+            },
+            "tool": "Bash"
+          }
+        }
+      }
+    },
     "at": 5000,
     "event": "PermissionRequest",
     "message": {
@@ -279,6 +343,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 5050,
     "event": "Notification",
     "message": null,
@@ -322,6 +387,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "call": {
+        "input": {
+          "pattern": "TODO"
+        },
+        "tool": "Grep"
+      },
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "toolStart",
+      "within": true
+    },
     "at": 8000,
     "event": "PreToolUse",
     "message": {
@@ -379,6 +457,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "call": {
+        "file": "Z:\\replay\\rx\\todo.md",
+        "input": {
+          "file_path": "Z:\\replay\\rx\\todo.md"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "toolDone",
+      "within": true
+    },
     "at": 8500,
     "event": "PostToolUse",
     "message": {
@@ -429,6 +521,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 8600,
     "event": "Stop",
     "message": null,
@@ -464,6 +557,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "call": {
+        "input": {
+          "file_path": "Z:\\replay\\rx\\a.rs"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\rx",
+      "quiet": false,
+      "session": "replay-rx",
+      "type": "toolFailed"
+    },
     "at": 9000,
     "event": "PostToolUseFailure",
     "message": {
@@ -527,6 +633,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 9001,
     "event": "PostToolUse",
     "message": null,
@@ -562,10 +669,18 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "reply": "## Done\nCreated **note.txt** and pushed it.",
+      "session": "replay-rx",
+      "type": "done"
+    },
     "at": 10000,
     "event": "Stop",
     "message": {
       "agent": "reasonix",
+      "event": "turn-end",
       "mood": "done",
       "project": "rx",
       "reply": "Done: Created note.txt and pushed it.",
@@ -642,6 +757,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "prompt": "Now tag a release",
+      "session": "replay-rx",
+      "type": "turnStart"
+    },
     "at": 21000,
     "event": "UserPromptSubmit",
     "message": {
@@ -690,11 +812,22 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "error": {
+        "as": "said",
+        "said": "deepseek: 402 Insufficient Balance"
+      },
+      "session": "replay-rx",
+      "type": "failed"
+    },
     "at": 22000,
     "event": "StopFailure",
     "message": {
       "agent": "reasonix",
       "error": "deepseek: 402 Insufficient Balance",
+      "event": "turn-end",
       "mood": "error",
       "project": "rx",
       "session": "replay-rx"
@@ -739,6 +872,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 22001,
     "event": "Stop",
     "message": null,
@@ -802,6 +936,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "prompt": "Try once more",
+      "session": "replay-rx",
+      "type": "turnStart"
+    },
     "at": 31000,
     "event": "UserPromptSubmit",
     "message": {
@@ -850,6 +991,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "stopped"
+    },
     "at": 32000,
     "event": "StopFailure",
     "message": {
@@ -894,6 +1041,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 32001,
     "event": "Stop",
     "message": null,
@@ -926,6 +1074,23 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "app",
+          "name": "Reasonix"
+        },
+        "for": "approval",
+        "what": {
+          "as": "said",
+          "said": "Auto Guard: confirm the next action"
+        }
+      }
+    },
     "at": 100000,
     "event": "Notification",
     "message": {
@@ -987,6 +1152,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 101000,
     "event": "SubagentStart",
     "message": null,
@@ -1025,6 +1191,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "reasonix",
+      "cwd": "Z:\\replay\\rx",
+      "session": "replay-rx",
+      "type": "sessionEnd"
+    },
     "at": 102000,
     "event": "SessionEnd",
     "message": {

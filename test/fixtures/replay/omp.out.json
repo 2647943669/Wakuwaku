@@ -1,5 +1,11 @@
 [
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -53,6 +59,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "prompt": "Change hi to bye in a.txt",
+      "session": "replay-omp",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -101,6 +114,24 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "call": {
+        "id": "call_1",
+        "input": {
+          "file_path": "a.txt"
+        },
+        "intent": "Reading a.txt",
+        "own": "read",
+        "raw": {
+          "path": "a.txt"
+        },
+        "tool": "Read"
+      },
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "toolStart"
+    },
     "at": 2500,
     "event": "PreToolUse",
     "message": {
@@ -158,6 +189,23 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "call": {
+        "id": "call_1",
+        "input": {
+          "file_path": "a.txt"
+        },
+        "own": "read",
+        "raw": {
+          "path": "a.txt"
+        },
+        "tool": "Read"
+      },
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "toolDone"
+    },
     "at": 2700,
     "event": "PostToolUse",
     "message": {
@@ -207,6 +255,26 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "call": {
+        "id": "call_2",
+        "input": {
+          "file_path": "a.txt"
+        },
+        "intent": "Changing hi to bye",
+        "own": "edit",
+        "raw": {
+          "new_string": "bye",
+          "old_string": "hi",
+          "path": "a.txt"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "toolStart"
+    },
     "at": 3000,
     "event": "PreToolUse",
     "message": {
@@ -264,6 +332,24 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "call": {
+        "file": "Z:\\replay\\omp\\a.txt",
+        "id": "call_2",
+        "input": {
+          "file_path": "a.txt"
+        },
+        "own": "edit",
+        "raw": {
+          "path": "a.txt"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "toolDone"
+    },
     "at": 3500,
     "event": "PostToolUse",
     "message": {
@@ -314,6 +400,32 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "terminal"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "input": {
+              "command": "rm -rf build",
+              "description": ""
+            },
+            "own": "bash",
+            "raw": {
+              "command": "rm -rf build"
+            },
+            "tool": "Bash"
+          }
+        }
+      }
+    },
     "at": 4000,
     "event": "ApprovalRequested",
     "message": {
@@ -383,6 +495,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "working"
+    },
     "at": 6000,
     "event": "ApprovalResolved",
     "message": {
@@ -429,6 +547,25 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "call": {
+        "id": "call_3",
+        "input": {
+          "command": "rm -rf build",
+          "description": "Removing the build folder"
+        },
+        "intent": "Removing the build folder",
+        "own": "bash",
+        "raw": {
+          "command": "rm -rf build"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "toolStart"
+    },
     "at": 6500,
     "event": "PreToolUse",
     "message": {
@@ -486,6 +623,25 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "call": {
+        "id": "call_3",
+        "input": {
+          "command": "rm -rf build",
+          "description": ""
+        },
+        "own": "bash",
+        "raw": {
+          "command": "rm -rf build"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\omp",
+      "quiet": false,
+      "session": "replay-omp",
+      "type": "toolFailed"
+    },
     "at": 7000,
     "event": "PostToolUseFailure",
     "message": {
@@ -550,6 +706,15 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "waiting",
+      "wait": {
+        "for": "plan"
+      }
+    },
     "at": 7500,
     "event": "PermissionRequest",
     "message": {
@@ -604,10 +769,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "reply": "Done.\nChanged hi to bye.",
+      "session": "replay-omp",
+      "title": "Change a greeting",
+      "type": "done"
+    },
     "at": 9000,
     "event": "Stop",
     "message": {
       "agent": "omp",
+      "event": "turn-end",
       "mood": "done",
       "project": "omp",
       "reply": "Done. Changed hi to bye.",
@@ -685,6 +859,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "prompt": "Run it again",
+      "session": "replay-omp",
+      "type": "turnStart"
+    },
     "at": 21000,
     "event": "UserPromptSubmit",
     "message": {
@@ -733,11 +914,22 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "error": {
+        "as": "said",
+        "said": "Connection error.\nretry later"
+      },
+      "session": "replay-omp",
+      "type": "failed"
+    },
     "at": 22000,
     "event": "StopFailure",
     "message": {
       "agent": "omp",
       "error": "Connection error.",
+      "event": "turn-end",
       "mood": "error",
       "project": "omp",
       "session": "replay-omp"
@@ -782,6 +974,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "prompt": "Once more please",
+      "session": "replay-omp",
+      "type": "turnStart"
+    },
     "at": 23000,
     "event": "UserPromptSubmit",
     "message": {
@@ -830,6 +1029,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "stopped"
+    },
     "at": 24000,
     "event": "Interrupt",
     "message": {
@@ -874,6 +1079,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "omp",
+      "cwd": "Z:\\replay\\omp",
+      "session": "replay-omp",
+      "type": "sessionEnd"
+    },
     "at": 25000,
     "event": "SessionEnd",
     "message": {

@@ -1,10 +1,11 @@
 // Agents' sessions replayed. Each fixture (test/fixtures/replay/<name>.json)
 // is a list of events as an agent sends them to /hook, run through what the
-// server does with one (server.rs read_event and message_for) and into her
-// sessions (state.rs), with now and then what time does to them. Every step's
-// message and the sessions after it are kept beside it (<name>.out.json):
-// what an agent's events come to changes only on purpose. REPLAY_BLESS=1
-// writes them anew; then `git diff` shows what changed.
+// server does with one (server.rs read_event and event_for: agent-core's
+// AgentEvent; events.rs message_of) and into her sessions (state.rs), with
+// now and then what time does to them. Every step's AgentEvent, message and
+// the sessions after it are kept beside it (<name>.out.json): what an
+// agent's events come to changes only on purpose. REPLAY_BLESS=1 writes them
+// anew; then `git diff` shows what changed.
 //
 // A fixture:
 //   agent    whose events (codex, agy, opencode, omp, zcode, reasonix, dsh;
@@ -17,14 +18,15 @@
 //            { at, do: seen | tick | stale | hide, min? (hide's minutes) }
 // "$REPLAY/<file>" in an event's text is that file in the fixtures' folder.
 //
-// Each session's id is the fixture's own (replay-...): what events.rs,
-// events_dsh.rs and events_reasonix.rs remember of a session is kept for
-// the whole test run.
+// Each session's id is the fixture's own (replay-...): what agent-core
+// remembers of a session (its project, DSH's whose, Reasonix's asks) is kept
+// for the whole test run.
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-use crate::server::{message_for, read_event};
+use crate::events;
+use crate::server::{event_for, read_event};
 use crate::state::{Hold, Pet, IDLE_HIDE_MIN};
 
 fn fixtures() -> PathBuf {
@@ -105,8 +107,11 @@ fn run(name: &str) -> Value {
                         kept.insert("read".into(), event.clone());
                     }
                     let held = step["held"].as_bool() == Some(true);
-                    let message = message_for(agent, &mut event, held, at, &home);
+                    // What it says the session is doing (agent-core), and her message for it.
+                    let read = event_for(agent, &mut event, held, at, &home);
+                    let message = read.as_ref().map(events::message_of);
                     let outcome = message.as_ref().and_then(|m| pet.apply(m, at, hold));
+                    kept.insert("agentEvent".into(), read.map_or(Value::Null, |ev| serde_json::to_value(ev).unwrap()));
                     kept.insert("message".into(), message.unwrap_or(Value::Null));
                     let outcome = outcome.map_or(Value::Null, |o| json!({ "changed": o.changed, "react": o.react, "alerts": o.alerts, "turns": o.turns, "workedMs": o.worked_ms }));
                     kept.insert("outcome".into(), outcome);

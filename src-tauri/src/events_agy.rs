@@ -1,110 +1,18 @@
-// Antigravity hook events → pet messages, the same messages as events.rs makes
-// (state.rs has the format), plus agent: "agy". The words for a task, a reply
-// and the project are events.rs's.
-//
-// Antigravity (agy, and its 2.0 app) runs its hooks as commands: this program
-// with connection::AGY_FLAG and the event's name, which its payload does not
-// carry, hands each to /hook?agent=agy (main.rs agy_hook). What there is, as
-// agy 1.3.4 sends it (2026-10-13): camelCase; conversationId the session,
-// workspacePaths the folders it works in, transcriptPath its transcript.
-// SessionStart; PreInvocation before each call of the model, the first of a
-// turn invocationNum 0; PostToolUse with toolCall { name, args }, the args
-// saying what was done in words of their own (toolAction: "Creating
-// hello.txt"); Stop with fullyIdle, terminationReason and error. No prompt
-// waiting on the person, no tool starting (PreToolUse would have to answer
-// for every tool, and an answer missing denies it): she follows the work and
-// its end. The person's words and the last reply come from the transcript
-// (with_transcript), as the payload has neither.
-//
-// A command it leaves running in the background (run_command's
-// WaitMsBeforeAsync), as agy 1.3.4 does it (2026-10-14): the model answers,
-// Stop with fullyIdle false (still at work, for her); the command ends, its
-// PostToolUse comes, a SYSTEM_MESSAGE step says so and the model is called
-// again from invocationNum 0, then Stop, fully idle. That second start is the
-// same turn: a turn is known by the person's USER_INPUT step it answers
-// (turn), else she counted it twice and its time from the second start.
-use serde_json::{json, Value};
+// Antigravity's hook events, handed to her port by this program with
+// connection::AGY_FLAG and the event's name (main.rs agy_hook): agent-core
+// reads them (agy.rs to_event, with the person's words and the reply from
+// its transcript), events.rs tells them in her words. Here, her log's line
+// for a turn.
+use serde_json::Value;
 
-use crate::events::{clip, project_of, reply_of, step, task_of};
+#[cfg(test)]
+use serde_json::json;
 
-// The person's words and the last reply, from its transcript (agent-core).
-pub use agent_core::agy::with_transcript;
+#[cfg(test)]
+use agent_core::agy::with_transcript;
 
 fn s<'a>(e: &'a Value, key: &str) -> &'a str {
     e.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-// What a tool did, in plain words: its own, else its name.
-fn step_of_agy(tool: &str, args: &Value) -> Value {
-    match [s(args, "toolAction"), s(args, "toolSummary")].into_iter().find(|w| !w.trim().is_empty()) {
-        Some(words) => step("step.run", json!({ "what": clip(words.trim(), 60) })),
-        None => step("step.tool", json!({ "tool": tool })),
-    }
-}
-
-// The mood part of the message for an event, or None for one that changes nothing.
-fn mood_of(e: &Value) -> Option<Value> {
-    let call = e.get("toolCall").unwrap_or(&Value::Null);
-    let tool = s(call, "name");
-    let args = call.get("args").unwrap_or(&Value::Null);
-    let m = match s(e, "hook_event_name") {
-        "SessionStart" => json!({ "mood": "idle", "react": "wave", "say": { "key": "say.hello" } }),
-        // The turn's first call of the model: a turn begins.
-        "PreInvocation" if e.get("invocationNum").and_then(Value::as_u64) == Some(0) => {
-            let mut m = json!({ "mood": "working", "event": "turn-start" });
-            if let Some(task) = task_of(s(e, "prompt")) {
-                m["task"] = json!(task);
-            }
-            if let Some(step) = e.get("userStep").and_then(Value::as_u64) {
-                m["turn"] = json!(step.to_string());
-            }
-            m
-        }
-        "PreInvocation" => json!({ "mood": "working" }),
-        "PostToolUse" if !s(e, "error").is_empty() => json!({
-            "mood": "working", "detail": tool, "event": "tool-failed", "react": "failed",
-            "say": { "key": "say.toolFailed", "vars": { "tool": tool } },
-        }),
-        "PostToolUse" => {
-            let mut m = json!({ "mood": "working", "detail": tool, "event": "tool-done", "step": step_of_agy(tool, args) });
-            // A file it wrote (write_to_file's, the edits' TargetFile): what
-            // the turn changed. (A file read is view_file's AbsolutePath.)
-            if !s(args, "TargetFile").is_empty() {
-                m["file"] = json!(s(args, "TargetFile"));
-            }
-            m
-        }
-        "Stop" if !s(e, "error").is_empty() => json!({ "mood": "error", "error": clip(s(e, "error").lines().next().unwrap_or(""), 80) }),
-        // Stopped by the person: nothing to come and see.
-        "Stop" if ["CANCEL", "INTERRUPT", "ABORT"].iter().any(|w| s(e, "terminationReason").to_uppercase().contains(w)) => json!({ "mood": "idle", "event": "turn-end" }),
-        // Not done yet (something of it still runs).
-        "Stop" if e.get("fullyIdle").and_then(Value::as_bool) == Some(false) => return None,
-        "Stop" => {
-            let mut m = json!({ "mood": "done", "event": "turn-end" });
-            if let Some(reply) = reply_of(s(e, "last_assistant_message")) {
-                m["reply"] = json!(reply);
-            }
-            m
-        }
-        _ => return None,
-    };
-    Some(m)
-}
-
-// The message for an event, or None for one that changes nothing.
-pub fn to_message(e: &Value) -> Option<Value> {
-    if !e.is_object() {
-        return None;
-    }
-    let mut message = mood_of(e)?;
-    message["agent"] = json!("agy");
-    if !s(e, "conversationId").is_empty() {
-        message["session"] = json!(s(e, "conversationId"));
-    }
-    if let Some(folder) = e.get("workspacePaths").and_then(Value::as_array).and_then(|w| w.first()).and_then(Value::as_str).filter(|w| !w.is_empty()) {
-        message["project"] = json!(project_of(folder));
-    }
-    Some(message)
 }
 
 // A line for her log as a turn begins or ends: what Antigravity said, to
@@ -120,6 +28,11 @@ pub fn log_line(e: &Value) -> Option<String> {
     Some(format!("agy {name}{what} ({})", s(e, "conversationId").chars().take(8).collect::<String>()))
 }
 
+#[cfg(test)]
+fn to_message(e: &Value) -> Option<Value> {
+    let mut e = e.clone();
+    agent_core::agy::to_event(&mut e).map(|ev| crate::events::message_of(&ev))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,9 +61,14 @@ mod tests {
         let m = to_message(&event("PreInvocation", json!({ "invocationNum": 1, "initialNumSteps": 3 }))).unwrap();
         assert_eq!((m["mood"].as_str(), m.get("event")), (Some("working"), None));
         let call = json!({ "name": "write_to_file", "args": { "CodeContent": "hi", "TargetFile": "Z:\\nowhere\\agyws\\hello.txt", "toolAction": "Creating hello.txt", "toolSummary": "Create hello.txt" } });
-        let m = to_message(&event("PostToolUse", json!({ "stepIdx": 2, "error": "", "toolCall": call }))).unwrap();
-        assert_eq!(m["step"], json!({ "key": "step.run", "vars": { "what": "Creating hello.txt" } }));
+        let mut done = event("PostToolUse", json!({ "stepIdx": 2, "error": "", "toolCall": call }));
+        let m = to_message(&done).unwrap();
         assert_eq!((m["event"].as_str(), m["file"].as_str()), (Some("tool-done"), Some("Z:\\nowhere\\agyws\\hello.txt")));
+        // Its own words for what it did go with the call.
+        match agent_core::agy::to_event(&mut done).unwrap().kind {
+            agent_core::event::Kind::ToolDone { call } => assert_eq!(call.intent.as_deref(), Some("Creating hello.txt")),
+            other => panic!("{other:?}"),
+        }
         let m = to_message(&event("PostToolUse", json!({ "error": "exit status 1", "toolCall": { "name": "run_command", "args": {} } }))).unwrap();
         assert_eq!((m["event"].as_str(), m["react"].as_str()), (Some("tool-failed"), Some("failed")));
         let m = to_message(&event("Stop", json!({ "executionNum": 0, "fullyIdle": true, "terminationReason": "NO_TOOL_CALL", "error": "", "last_assistant_message": "done" }))).unwrap();

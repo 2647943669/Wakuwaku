@@ -1,5 +1,11 @@
 [
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -53,6 +59,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "prompt": "Read note.txt, then create copy.txt",
+      "session": "replay-dsh-main",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -101,6 +114,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "id": "call_00_A",
+        "input": {
+          "command": "Get-Content note.txt",
+          "description": "Read note.txt"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "toolStart"
+    },
     "at": 2500,
     "event": "PreToolUse",
     "message": {
@@ -158,6 +185,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "id": "call_00_A",
+        "input": {
+          "command": "Get-Content note.txt",
+          "description": ""
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "toolDone"
+    },
     "at": 2800,
     "event": "PostToolUse",
     "message": {
@@ -207,6 +248,28 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "here"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "id": "call_00_B",
+            "input": {
+              "file_path": "Z:\\replay\\dsh-ws\\copy.txt"
+            },
+            "tool": "Write"
+          }
+        }
+      }
+    },
     "at": 3000,
     "event": "PermissionRequest",
     "message": {
@@ -276,6 +339,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "session": "replay-dsh-main",
+      "type": "working",
+      "within": true
+    },
     "at": 6000,
     "event": "PermissionReplied",
     "message": {
@@ -322,6 +391,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "file": "Z:\\replay\\dsh-ws\\copy.txt",
+        "id": "call_00_B",
+        "input": {
+          "file_path": "Z:\\replay\\dsh-ws\\copy.txt"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "toolDone"
+    },
     "at": 6500,
     "event": "PostToolUse",
     "message": {
@@ -372,6 +455,11 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "session": "replay-dsh-sub",
+      "type": "sessionEnd"
+    },
     "at": 7000,
     "event": "SessionStart",
     "message": {
@@ -418,6 +506,11 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "session": "replay-dsh-sub",
+      "type": "sessionEnd"
+    },
     "at": 7100,
     "event": "UserPromptSubmit",
     "message": {
@@ -464,6 +557,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "file": "Z:\\replay\\dsh-ws\\notes.md",
+        "id": "call_01",
+        "input": {
+          "file_path": "Z:\\replay\\dsh-ws\\notes.md"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "toolDone",
+      "within": true
+    },
     "at": 7500,
     "event": "PostToolUse",
     "message": {
@@ -515,6 +623,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 7600,
     "event": "PostToolUse",
     "message": null,
@@ -550,6 +659,11 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "session": "replay-dsh-sub",
+      "type": "sessionEnd"
+    },
     "at": 7800,
     "event": "Stop",
     "message": {
@@ -596,6 +710,30 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "app",
+          "name": "DeepSeek Harness"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "id": "call_00_C",
+            "input": {
+              "command": "Remove-Item build -Recurse",
+              "description": "Remove the build folder"
+            },
+            "tool": "Bash"
+          }
+        }
+      }
+    },
     "at": 8000,
     "event": "PermissionRequest",
     "message": {
@@ -667,6 +805,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "session": "replay-dsh-main",
+      "type": "working",
+      "within": true
+    },
     "at": 9000,
     "event": "PermissionReplied",
     "message": {
@@ -713,6 +857,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "id": "call_00_C",
+        "input": {
+          "command": "Remove-Item build -Recurse",
+          "description": ""
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\dsh-ws",
+      "quiet": false,
+      "session": "replay-dsh-main",
+      "type": "toolFailed"
+    },
     "at": 9500,
     "event": "PostToolUse",
     "message": {
@@ -777,6 +936,43 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "id": "call_00_D",
+        "input": {
+          "todos": [
+            {
+              "content": "Read note.txt",
+              "status": "completed"
+            },
+            {
+              "content": "Write copy.txt",
+              "status": "completed"
+            }
+          ]
+        },
+        "todo": {
+          "change": "set",
+          "items": [
+            {
+              "active": "",
+              "status": "completed",
+              "text": "Read note.txt"
+            },
+            {
+              "active": "",
+              "status": "completed",
+              "text": "Write copy.txt"
+            }
+          ]
+        },
+        "tool": "TodoWrite"
+      },
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "toolDone"
+    },
     "at": 9800,
     "event": "PostToolUse",
     "message": {
@@ -844,10 +1040,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "reply": "Done — copy.txt has `hi`.",
+      "session": "replay-dsh-main",
+      "title": "Copy a note",
+      "type": "done"
+    },
     "at": 10000,
     "event": "Stop",
     "message": {
       "agent": "dsh",
+      "event": "turn-end",
       "mood": "done",
       "project": "dsh-ws",
       "reply": "Done — copy.txt has hi.",
@@ -933,6 +1138,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "prompt": "And a second copy",
+      "session": "replay-dsh-main",
+      "type": "turnStart"
+    },
     "at": 21000,
     "event": "UserPromptSubmit",
     "message": {
@@ -981,6 +1193,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "session": "replay-dsh-main",
+      "type": "rest"
+    },
     "at": 22000,
     "event": "Stop",
     "message": {
@@ -1024,6 +1242,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "prompt": "Try the second copy again",
+      "session": "replay-dsh-main",
+      "type": "turnStart"
+    },
     "at": 23000,
     "event": "UserPromptSubmit",
     "message": {
@@ -1072,11 +1297,22 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-ws",
+      "error": {
+        "as": "said",
+        "said": "401 Unauthorized: invalid api key"
+      },
+      "session": "replay-dsh-main",
+      "type": "failed"
+    },
     "at": 24000,
     "event": "StopFailure",
     "message": {
       "agent": "dsh",
       "error": "401 Unauthorized: invalid api key",
+      "event": "turn-end",
       "mood": "error",
       "project": "dsh-ws",
       "session": "replay-dsh-main"
@@ -1121,6 +1357,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 25000,
     "event": "WakuwakuLoaded",
     "message": null,

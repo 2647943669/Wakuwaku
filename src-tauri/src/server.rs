@@ -32,7 +32,9 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server};
 
-use crate::{events, events_agy, events_codex, events_dsh, events_omp, events_opencode, events_reasonix, events_zcode, island, jump, now_ms, pet, Responder, Shared};
+use agent_core::event::{Agent, AgentEvent};
+
+use crate::{events, events_agy, events_dsh, island, jump, now_ms, pet, Responder, Shared};
 
 // Hook events carry whole files (an Edit's PostToolUse has the file before
 // the edit), so this is generous.
@@ -97,7 +99,7 @@ fn answers_none(agent: Option<&str>, event: &Value) -> bool {
 // that is nothing to her.
 pub(crate) fn read_event(agent: Option<&str>, mut event: Value) -> Option<Value> {
     if agent == Some("opencode") {
-        event = events_opencode::normalize(&event);
+        event = agent_core::opencode::normalize(&event);
         if event.is_null() {
             return None;
         }
@@ -108,28 +110,22 @@ pub(crate) fn read_event(agent: Option<&str>, mut event: Value) -> Option<Value>
     Some(event)
 }
 
-// The message for an event she took (read_event), each agent's read its own
-// way, at `now`: Antigravity's given the person's words and its reply from
-// its transcript first; a DSH prompt she does not hold (`held`) to be
-// approved in DSH. Also the replay tests' way in (replay.rs).
-pub(crate) fn message_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<Value> {
-    let mut msg = match agent {
-        Some("codex") => events_codex::to_message(event),
-        Some("agy") => {
-            events_agy::with_transcript(event);
-            events_agy::to_message(event)
-        }
-        Some("opencode") => events_opencode::to_message(event),
-        Some("omp") => events_omp::to_message(event),
-        Some("zcode") => events_zcode::to_message(event),
-        Some("reasonix") => events_reasonix::to_message_at(event, now),
-        Some("dsh") => events_dsh::to_message(event, dsh_home),
-        _ => events::to_message(event),
-    }?;
+// What an event she took (read_event) says a session is doing, each agent's
+// read its own way (agent-core) at `now`: Antigravity's given the person's
+// words and its reply from its transcript first; a DSH prompt she does not
+// hold (`held`) to be approved in DSH. Also the replay tests' way in
+// (replay.rs).
+pub(crate) fn event_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<AgentEvent> {
+    let mut ev = agent_core::read(Agent::from_tag(agent), event, &agent_core::Context { now, dsh_home })?;
     if agent == Some("dsh") && event["hook_event_name"] == "PermissionRequest" && !held {
-        events_dsh::answered_in_dsh(&mut msg);
+        agent_core::dsh::answered_in_dsh(&mut ev);
     }
-    Some(msg)
+    Some(ev)
+}
+
+// The message for it (events.rs), for her.
+pub(crate) fn message_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<Value> {
+    event_for(agent, event, held, now, dsh_home).map(|ev| events::message_of(&ev))
 }
 
 // True the first time a line comes; a few kinds are kept, and past them

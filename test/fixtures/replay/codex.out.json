@@ -1,5 +1,11 @@
 [
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -53,6 +59,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "prompt": "Add a health endpoint",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -102,6 +116,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c1",
+        "input": {
+          "command": "rg -n health src"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolStart"
+    },
     "at": 2100,
     "event": "PreToolUse",
     "message": {
@@ -160,6 +188,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c1",
+        "input": {
+          "command": "rg -n health src"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolDone"
+    },
     "at": 2600,
     "event": "PostToolUse",
     "message": {
@@ -210,6 +252,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c2",
+        "input": {
+          "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\src\\main.rs\n@@ fn routes()\n-    .route(\"/\", root)\n+    .route(\"/\", root)\n+    .route(\"/health\", health)\n*** End Patch"
+        },
+        "tool": "apply_patch"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolStart"
+    },
     "at": 3000,
     "event": "PreToolUse",
     "message": {
@@ -268,6 +324,28 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "here"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "input": {
+              "command": "cargo test"
+            },
+            "tool": "Bash"
+          }
+        }
+      }
+    },
     "at": 3500,
     "event": "PermissionRequest",
     "message": {
@@ -338,6 +416,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "file": "Z:\\replay\\svc\\src\\main.rs",
+        "id": "c2",
+        "input": {
+          "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\src\\main.rs\n@@ fn routes()\n+    .route(\"/health\", health)\n*** End Patch"
+        },
+        "tool": "apply_patch"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolDone"
+    },
     "at": 6000,
     "event": "PostToolUse",
     "message": {
@@ -389,6 +482,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c3",
+        "input": {
+          "command": "cargo test"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolStart"
+    },
     "at": 6500,
     "event": "PreToolUse",
     "message": {
@@ -447,6 +554,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c3",
+        "input": {
+          "command": "cargo test"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolDone"
+    },
     "at": 9000,
     "event": "PostToolUse",
     "message": {
@@ -497,6 +618,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "reply": "Added `/health`; the tests pass.",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "done"
+    },
     "at": 9500,
     "event": "Stop",
     "message": {
@@ -548,6 +677,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c9",
+        "input": {
+          "command": "git status"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t1",
+      "type": "toolDone"
+    },
     "at": 9600,
     "event": "PostToolUse",
     "message": {
@@ -626,6 +769,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "prompt": "Bump the version",
+      "session": "replay-codex",
+      "turn": "t2",
+      "type": "turnStart"
+    },
     "at": 20000,
     "event": "UserPromptSubmit",
     "message": {
@@ -675,6 +826,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c5",
+        "input": {
+          "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\Cargo.toml\n@@\n-version = \"0.1.0\"\n+version = \"0.1.1\"\n*** End Patch"
+        },
+        "tool": "apply_patch"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t2",
+      "type": "toolStart"
+    },
     "at": 20100,
     "event": "PreToolUse",
     "message": {
@@ -733,6 +898,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "reply": "Bumped to 0.1.1.",
+      "session": "replay-codex",
+      "turn": "t2",
+      "type": "done"
+    },
     "at": 20200,
     "event": "Stop",
     "message": {
@@ -784,6 +957,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "file": "Z:\\replay\\svc\\Cargo.toml",
+        "id": "c5",
+        "input": {
+          "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\Cargo.toml\n@@\n+version = \"0.1.1\"\n*** End Patch"
+        },
+        "tool": "apply_patch"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t2",
+      "type": "toolDone"
+    },
     "at": 20300,
     "event": "PostToolUse",
     "message": {
@@ -863,6 +1051,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "prompt": "Run the linter",
+      "session": "replay-codex",
+      "turn": "t3",
+      "type": "turnStart"
+    },
     "at": 31000,
     "event": "UserPromptSubmit",
     "message": {
@@ -912,6 +1108,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "call": {
+        "id": "c6",
+        "input": {
+          "command": "cargo clippy"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t3",
+      "type": "toolStart"
+    },
     "at": 31100,
     "event": "PreToolUse",
     "message": {
@@ -970,6 +1180,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t3",
+      "type": "stopped"
+    },
     "at": 32000,
     "event": "Interrupt",
     "message": {
@@ -1015,6 +1232,16 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "turn": "t4",
+      "type": "waiting",
+      "wait": {
+        "for": "question"
+      }
+    },
     "at": 33000,
     "event": "PreToolUse",
     "message": {
@@ -1025,7 +1252,6 @@
       "mood": "waiting",
       "project": "svc",
       "session": "replay-codex",
-      "toolId": "c7",
       "turn": "t4"
     },
     "outcome": {
@@ -1071,6 +1297,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "codex",
+      "cwd": "Z:\\replay\\svc",
+      "session": "replay-codex",
+      "type": "sessionEnd"
+    },
     "at": 34000,
     "event": "SessionEnd",
     "message": {

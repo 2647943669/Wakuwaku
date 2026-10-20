@@ -1,5 +1,11 @@
 [
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "session": "replay-agy",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -53,6 +59,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "prompt": "Create hello.txt, then ping in the background",
+      "session": "replay-agy",
+      "turn": "0",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "PreInvocation",
     "message": {
@@ -102,6 +116,23 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "call": {
+        "file": "Z:\\replay\\agyws\\hello.txt",
+        "input": {
+          "CodeContent": "hi",
+          "TargetFile": "Z:\\replay\\agyws\\hello.txt",
+          "toolAction": "Creating hello.txt",
+          "toolSummary": "Create hello.txt"
+        },
+        "intent": "Creating hello.txt",
+        "tool": "write_to_file"
+      },
+      "cwd": "Z:/replay/agyws",
+      "session": "replay-agy",
+      "type": "toolDone"
+    },
     "at": 4000,
     "event": "PostToolUse",
     "message": {
@@ -111,13 +142,7 @@
       "file": "Z:\\replay\\agyws\\hello.txt",
       "mood": "working",
       "project": "agyws",
-      "session": "replay-agy",
-      "step": {
-        "key": "step.run",
-        "vars": {
-          "what": "Creating hello.txt"
-        }
-      }
+      "session": "replay-agy"
     },
     "outcome": {
       "alerts": [],
@@ -157,6 +182,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "session": "replay-agy",
+      "type": "working"
+    },
     "at": 5000,
     "event": "PreInvocation",
     "message": {
@@ -203,6 +234,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 9000,
     "event": "Stop",
     "message": null,
@@ -238,6 +270,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "call": {
+        "input": {
+          "toolAction": "Running ping"
+        },
+        "intent": "Running ping",
+        "tool": "run_command"
+      },
+      "cwd": "Z:/replay/agyws",
+      "session": "replay-agy",
+      "type": "toolDone"
+    },
     "at": 15000,
     "event": "PostToolUse",
     "message": {
@@ -246,13 +291,7 @@
       "event": "tool-done",
       "mood": "working",
       "project": "agyws",
-      "session": "replay-agy",
-      "step": {
-        "key": "step.run",
-        "vars": {
-          "what": "Running ping"
-        }
-      }
+      "session": "replay-agy"
     },
     "outcome": {
       "alerts": [],
@@ -292,6 +331,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "prompt": "Create hello.txt, then ping in the background",
+      "session": "replay-agy",
+      "turn": "0",
+      "type": "turnStart"
+    },
     "at": 16000,
     "event": "PreInvocation",
     "message": {
@@ -341,6 +388,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "reply": "Created hello.txt; the ping is done.",
+      "session": "replay-agy",
+      "type": "done"
+    },
     "at": 18000,
     "event": "Stop",
     "message": {
@@ -422,6 +476,17 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "call": {
+        "input": {},
+        "tool": "run_command"
+      },
+      "cwd": "Z:/replay/agyws",
+      "quiet": false,
+      "session": "replay-agy",
+      "type": "toolFailed"
+    },
     "at": 26000,
     "event": "PostToolUse",
     "message": {
@@ -485,11 +550,22 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "error": {
+        "as": "said",
+        "said": "quota exceeded\nmore"
+      },
+      "session": "replay-agy",
+      "type": "failed"
+    },
     "at": 27000,
     "event": "Stop",
     "message": {
       "agent": "agy",
       "error": "quota exceeded",
+      "event": "turn-end",
       "mood": "error",
       "project": "agyws",
       "session": "replay-agy"
@@ -565,6 +641,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "agy",
+      "cwd": "Z:/replay/agyws",
+      "session": "replay-agy",
+      "type": "stopped"
+    },
     "at": 29000,
     "event": "Stop",
     "message": {
@@ -609,6 +691,7 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 30000,
     "event": "PostInvocation",
     "message": null,

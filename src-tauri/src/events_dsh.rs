@@ -1,153 +1,26 @@
-// DeepSeek Harness hook events → pet messages: Claude Code's (events.rs),
-// its tools named as Claude Code's, plus agent: "dsh".
-//
-// They come to /hook?agent=dsh from her own plugin inside DSH
-// (integrations/dsh/wakuwaku.js, connection.rs), in the words of Claude
-// Code's hooks as DSH's Claude Code hook bridge
-// (@deepseek-ai/dsh-hooks-claude-code) said them, which until 0.3.2 ran this
-// program with connection::DSH_FLAG for each (main.rs dsh_hook; still read,
-// for a DSH still running those old rows). What there is, as the bridge of
-// the desktop app 0.2.0-rc.2 and its CLI sent it (2026-10-15): session_id,
-// cwd, hook_event_name and an empty transcript_path; SessionStart with
-// source, UserPromptSubmit with prompt, PreToolUse and PostToolUse with
-// tool_name, tool_input, tool_use_id (and tool_response, as text: "Error: …"
-// for one that failed, which gets no event of its own), Stop with nothing
-// more. The plugin sends every tool's (the bridge, some 0.9 s a hook, only a
-// few), and what only it sees: the turn's last words
-// (last_assistant_message: the bridge's are read from the session log,
-// zstd-compressed, last_reply), the session's name (session_title: else
-// from DSH's projection cache, title_of), whose the session is (origin,
-// parent_session, top_session: else from its log, whose), whether a tool
-// failed (is_error), and a turn that ended without finishing (Stop with
-// stop_reason "aborted" or "blocked": stopped, not done; StopFailure for
-// one that failed). Its approvals and questions come as PermissionRequest
-// (her plugin's version 2; never from the bridge): told as Claude Code's
-// (waiting, what for), and held for her answer where the plugin can take one
+// DeepSeek Harness's events, from her own plugin inside DSH
+// (integrations/dsh/wakuwaku.js, connection.rs), or, from a DSH still running
+// its Claude Code hook bridge's rows, handed on by this program with
+// connection::DSH_FLAG (main.rs dsh_hook): agent-core reads them (dsh.rs
+// to_event: its tools by Claude Code's names, the turn's last words and the
+// session's name from DSH's folder when they did not come, a subagent's as
+// its session's), events.rs tells them in her words. Its approvals and
+// questions are held for her answer where the plugin can take one
 // (answerable) and she is in sight (server.rs; for_ask makes them asks.rs's,
 // side by side, each closed by its own PermissionReplied); else told only,
-// answered in DSH (answered_in_dsh). PermissionReplied, what came of one,
-// lets the session work on. Its tools have names of their own (read, write, edit,
-// str_replace_editor, pwsh or bash, glob, grep, web_search, web_fetch,
-// todo_write, ask_user_question), told in Claude Code's words here
-// (claude_named). A subagent's session is told as any other's: it is no
-// session of hers (whose, #58).
+// to be answered in DSH (answered_in_dsh). Here, her log's lines for them.
 use std::path::Path;
 
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 
-// What DSH's own names and its folder tell (agent-core): its tools by Claude
-// Code's names, a prompt as asks.rs reads one, a session's name, its log and
-// the turn's last words in it, whose the session is.
-use agent_core::dsh::{claude_named, last_reply, session_log, whose_of, Whose, LOADED};
-pub use agent_core::dsh::{for_ask, is_loaded, title_of};
+#[cfg(test)]
+use serde_json::json;
+
+use agent_core::dsh::{whose_of, Whose, LOADED};
+pub use agent_core::dsh::{for_ask, is_loaded};
 
 fn s<'a>(e: &'a Value, key: &str) -> &'a str {
     e.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-// The message for a prompt of DSH's she does not hold (her plugin cannot
-// take her answer to it, or she is out of sight): waiting, to be approved
-// in DSH's own window.
-pub fn answered_in_dsh(message: &mut Value) {
-    if message["detail"]["key"] == "detail.approve" {
-        let what = message["detail"]["vars"]["what"].clone();
-        message["detail"] = json!({ "key": "detail.approveIn", "vars": { "app": "DeepSeek Harness", "what": what } });
-    }
-}
-
-// A subagent's event: its own start, turns and end take its line away; a
-// tool of its, but its to-do list, is the top session's, within a turn of
-// that one's.
-fn of_subagent(e: &Value, top: &str, home: &Path) -> Option<Value> {
-    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop" | "StopFailure") {
-        return Some(json!({ "mood": "idle", "event": "session-end", "agent": "dsh", "session": s(e, "session_id") }));
-    }
-    if top.is_empty() || s(e, "tool_name") == "todo_write" {
-        return None;
-    }
-    let mut theirs = e.clone();
-    theirs["session_id"] = json!(top);
-    // Its own name (made of its task) is not the session's it works for.
-    if let Some(fields) = theirs.as_object_mut() {
-        fields.remove("session_title");
-    }
-    let mut message = message_of(&theirs, home)?;
-    message["within"] = json!(true);
-    Some(message)
-}
-
-// The message for an event, or None for one that changes nothing.
-pub fn to_message(e: &Value, home: &std::path::Path) -> Option<Value> {
-    if !e.is_object() || s(e, "hook_event_name") == LOADED {
-        return None;
-    }
-    match whose_of(e, home) {
-        Whose::Own => message_of(e, home),
-        Whose::Sub(top) => of_subagent(e, &top, home),
-    }
-}
-
-// The message for an event of a session of the person's.
-fn message_of(e: &Value, home: &std::path::Path) -> Option<Value> {
-    let fields: &Map<String, Value> = e.as_object()?;
-    let mut claude = fields.clone();
-    // A turn's end: its last words, as Claude Code gives them; read from its
-    // log when they did not come with it (the old bridge's).
-    if s(e, "hook_event_name") == "Stop" && e.get("last_assistant_message").is_none() {
-        if let Some(reply) = session_log(home, s(e, "cwd"), s(e, "session_id")).and_then(|log| last_reply(&log)) {
-            claude.insert("last_assistant_message".into(), json!(reply));
-        }
-    }
-    // A prompt answered (in DSH or on her island) or withdrawn: the session
-    // works on, its tool's end or its turn's to come; only into a turn
-    // still under way (within), never waking one.
-    if s(e, "hook_event_name") == "PermissionReplied" {
-        let mut message = json!({ "mood": "working", "agent": "dsh", "within": true });
-        if !s(e, "session_id").is_empty() {
-            message["session"] = json!(s(e, "session_id"));
-        }
-        return Some(message);
-    }
-    // A turn stopped by the person, or refused before it began: not done,
-    // nothing to say of it; she is there again.
-    if s(e, "hook_event_name") == "Stop" && matches!(s(e, "stop_reason"), "aborted" | "blocked") {
-        let mut message = json!({ "mood": "idle", "agent": "dsh" });
-        if !s(e, "session_id").is_empty() {
-            message["session"] = json!(s(e, "session_id"));
-        }
-        if !s(e, "cwd").is_empty() {
-            message["project"] = json!(crate::events::project_of(s(e, "cwd")));
-        }
-        return Some(message);
-    }
-    // A tool that failed (an edit the person refused in DSH's own dialog
-    // too) still ends in PostToolUse, its result an error's words: a
-    // failure, which changed nothing.
-    let failed = e.get("is_error").and_then(Value::as_bool) == Some(true) || s(e, "tool_response").trim_start().starts_with("Error");
-    if s(e, "hook_event_name") == "PostToolUse" && failed {
-        claude.insert("hook_event_name".into(), json!("PostToolUseFailure"));
-    }
-    if let Some(tool) = fields.get("tool_name").and_then(Value::as_str) {
-        let (name, input) = claude_named(tool, fields.get("tool_input").unwrap_or(&Value::Null));
-        claude.insert("tool_name".into(), json!(name));
-        claude.insert("tool_input".into(), input);
-    }
-    let claude = Value::Object(claude);
-    let mut message = crate::events::to_message(&claude)?;
-    message["agent"] = json!("dsh");
-    // The to-do list as its tool ends: the one hook it has (connection.rs).
-    if s(e, "hook_event_name") == "PostToolUse" {
-        if let Some(todo) = crate::events::todo_of(s(&claude, "tool_name"), claude.get("tool_input").unwrap_or(&Value::Null)) {
-            message["todo"] = todo;
-        }
-    }
-    // Its name, when it did not come with the event (events.rs took one that did).
-    if matches!(s(e, "hook_event_name"), "SessionStart" | "UserPromptSubmit" | "Stop") && s(e, "session_title").is_empty() {
-        if let Some(title) = title_of(home, s(e, "session_id")) {
-            message["title"] = json!(title);
-        }
-    }
-    Some(message)
 }
 
 // A session's id, short: its first 8 after "session-".
@@ -184,9 +57,21 @@ pub fn log_line(e: &Value, found: Option<u32>, home: &Path) -> Option<String> {
 }
 
 #[cfg(test)]
+fn to_message(e: &Value, home: &Path) -> Option<Value> {
+    agent_core::dsh::to_event(e, home).map(|ev| crate::events::message_of(&ev))
+}
+
+// The message for a prompt she does not hold: to be answered in DSH.
+#[cfg(test)]
+fn not_held(e: &Value, home: &Path) -> Value {
+    let mut ev = agent_core::dsh::to_event(e, home).unwrap();
+    agent_core::dsh::answered_in_dsh(&mut ev);
+    crate::events::message_of(&ev)
+}
+#[cfg(test)]
 mod tests {
     use super::*;
-    use agent_core::dsh::{project_key, whose};
+    use agent_core::dsh::{project_key, session_log, title_of, whose};
 
     // As the CLI 0.2.0-rc.2's bridge sends them (from the test VM), in a
     // folder that is no git repository.
@@ -272,7 +157,7 @@ mod tests {
         // Another session's, or none: no words, nothing else changed.
         let mut other = stop.clone();
         other["session_id"] = json!("session-none");
-        assert_eq!(to_message(&other, &home).unwrap(), json!({ "mood": "done", "agent": "dsh", "session": "session-none", "project": "dsh" }));
+        assert_eq!(to_message(&other, &home).unwrap(), json!({ "mood": "done", "event": "turn-end", "agent": "dsh", "session": "session-none", "project": "dsh" }));
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -469,9 +354,9 @@ mod tests {
         // island when she holds it, else in DSH; what came of it lets the
         // session work on, only within a turn under way.
         let asked = plugin("PermissionRequest", PARENT, json!({ "tool_name": "pwsh", "tool_input": { "command": "Get-Content -Path C:\\Windows\\win.ini", "description": "" }, "tool_use_id": "c4", "permission_id": "9-1", "answerable": true }));
-        let mut m = to_message(&asked, &home).unwrap();
+        let m = to_message(&asked, &home).unwrap();
         assert_eq!((m["mood"].as_str(), m["detail"]["key"].as_str(), m["detail"]["vars"]["what"]["vars"]["what"].as_str()), (Some("waiting"), Some("detail.approve"), Some("Get-Content -Path C:\\Windows\\win.ini")));
-        answered_in_dsh(&mut m);
+        let m = not_held(&asked, &home);
         assert_eq!((m["detail"]["key"].as_str(), m["detail"]["vars"]["app"].as_str()), (Some("detail.approveIn"), Some("DeepSeek Harness")));
         assert_eq!(m["detail"]["vars"]["what"]["key"], "step.command");
         let write = plugin("PermissionRequest", PARENT, json!({ "tool_name": "write", "tool_input": { "file_path": "C:\\waku\\note.txt" }, "answerable": false }));
@@ -479,9 +364,7 @@ mod tests {
         assert_eq!(log_line(&write, None, &home).as_deref(), Some("dsh PermissionRequest (6aa5a96d): her plugin cannot take an answer to it, told only"));
         // A question: waiting with it, said so whoever answers.
         let question = plugin("PermissionRequest", PARENT, json!({ "tool_name": "ask_user_question", "tool_input": { "questions": [] }, "answerable": true }));
-        let mut m = to_message(&question, &home).unwrap();
-        answered_in_dsh(&mut m);
-        assert_eq!(m["detail"], json!({ "key": "detail.asksQuestion" }));
+        assert_eq!(not_held(&question, &home)["detail"], json!({ "key": "detail.asksQuestion" }));
         let replied = plugin("PermissionReplied", PARENT, json!({ "permission_id": "9-1", "tool_use_id": "c4", "outcome": "allowed-once", "by": "her" }));
         assert_eq!(to_message(&replied, &home).unwrap(), json!({ "mood": "working", "agent": "dsh", "within": true, "session": PARENT }));
         assert_eq!(log_line(&replied, None, &home).as_deref(), Some("dsh PermissionReplied (6aa5a96d): allowed-once, on her island"));

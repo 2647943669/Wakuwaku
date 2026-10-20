@@ -660,7 +660,7 @@ mod tests {
             "type": "permission.asked", "id": id, "sessionID": "ses_1", "directory": "D:\\work\\oc3", "action": "shell",
             "resources": ["echo hi"], "save": save, "source": { "type": "tool", "id": format!("call_{id}") }, "tool": "shell", "input": { "command": "echo hi" }
         });
-        let mut e = crate::events_opencode::normalize(&raw);
+        let mut e = agent_core::opencode::normalize(&raw);
         e["agent"] = json!("opencode");
         e
     }
@@ -694,14 +694,14 @@ mod tests {
         assert_eq!(asks.views().as_array().unwrap().len(), 2);
         // The second answered in OpenCode: that one goes, the first stays.
         let replied = |id: &str| {
-            let mut e = crate::events_opencode::normalize(&json!({ "type": "permission.replied", "sessionID": "ses_1", "requestID": id, "reply": "once" }));
+            let mut e = agent_core::opencode::normalize(&json!({ "type": "permission.replied", "sessionID": "ses_1", "requestID": id, "reply": "once" }));
             e["agent"] = json!("opencode");
             e
         };
         assert_eq!(asks.seen(&replied("per_2")), vec![two]);
         assert_eq!(asks.seen(&replied("per_9")), Vec::<u64>::new());
         // Its call done (by its id): the first goes too.
-        let mut done = crate::events_opencode::normalize(&json!({ "type": "session.tool.success", "sessionID": "ses_1", "id": "call_per_1", "tool": "shell", "input": { "command": "echo hi" } }));
+        let mut done = agent_core::opencode::normalize(&json!({ "type": "session.tool.success", "sessionID": "ses_1", "id": "call_per_1", "tool": "shell", "input": { "command": "echo hi" } }));
         done["agent"] = json!("opencode");
         assert_eq!(asks.seen(&done), vec![one]);
         assert_eq!(got.borrow().as_slice(), &[Some(json!({})), Some(json!({}))]);
