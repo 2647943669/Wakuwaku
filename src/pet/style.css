@@ -997,7 +997,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.tb-light #bar-rest,
+.tb-ink-light #bar-rest,
 .isl-light #island {
   --cell-ink: #1b1b1b;
   --cell-high: #c25400;
@@ -1486,7 +1486,7 @@ body.home-taskbar {
   color: #fff;
 }
 
-.tb-light #bar-rest .fi {
+.tb-ink-light #bar-rest .fi {
   color: #1b1b1b;
 }
 
@@ -1557,11 +1557,11 @@ body.home-taskbar {
   color: #d92c2c;
 }
 
-.tb-light #bar-rest .tquick .bat[data-tint='green'] .fill {
+.tb-ink-light #bar-rest .tquick .bat[data-tint='green'] .fill {
   color: #107c10;
 }
 
-.tb-light #bar-rest .tquick .bat[data-tint='red'] .fill {
+.tb-ink-light #bar-rest .tquick .bat[data-tint='red'] .fill {
   color: #c50f1f;
 }
 
@@ -1575,7 +1575,7 @@ body.home-taskbar {
   color: #fff;
 }
 
-.tb-light #bar-rest .tquick .bat .pct {
+.tb-ink-light #bar-rest .tquick .bat .pct {
   color: #1b1b1b;
 }
 
@@ -1598,7 +1598,7 @@ body.home-taskbar {
   cursor: pointer;
 }
 
-.tb-light #bar-rest .tpriv .fi {
+.tb-ink-light #bar-rest .tpriv .fi {
   color: var(--win-accent, #0067c0);
 }
 
@@ -1606,7 +1606,7 @@ body.home-taskbar {
   background: rgba(255, 255, 255, 0.11);
 }
 
-.tb-light #bar-rest .tpriv .fi:hover {
+.tb-ink-light #bar-rest .tpriv .fi:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
@@ -1947,7 +1947,7 @@ body.home-taskbar {
   box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.7) !important;
 }
 
-.tb-light #bar-rest .kfocus {
+.tb-ink-light #bar-rest .kfocus {
   outline-color: rgba(0, 0, 0, 0.9);
   box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7) !important;
 }
@@ -2226,7 +2226,12 @@ body.home-taskbar {
    The strip and what opens from it light, her island too (a capsule in
    it, island.js isCapsule; its settings too). The programs draw
    their tray icons for the light taskbar themselves. Under the pointer
-   and in front: a white wash, as on Windows' own. */
+   and in front: a white wash, as on Windows' own. What is drawn on the
+   strip itself (its words, icons, washes) goes by tb-ink-light: as
+   tb-light, but on the clear strip as the desktop under it wants
+   (island.js isStripLight), so dark words on a light picture in Windows'
+   dark mode and light ones on a dark picture in its light mode, while what
+   opens from it stays as Windows' mode (#bar-rest's popups, below). */
 .tb-light #island-row {
   background: #eeeeee;
   box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(0, 0, 0, 0.08);
@@ -2240,56 +2245,59 @@ body.home-taskbar {
   box-shadow: inset var(--hair-x, 0) var(--hair-y, 1px) 0 rgba(0, 0, 0, 0.06);
 }
 
-.tb-light #bar-rest,
-.tb-light #bar-rest .win,
-.tb-light #bar-rest .mon.rows,
-.tb-light #bar-rest .tclock b,
-.tb-light #bar-rest .kbd .ime {
+.tb-ink-light #bar-rest,
+.tb-ink-light #bar-rest .win,
+.tb-ink-light #bar-rest .mon.rows,
+.tb-ink-light #bar-rest .tclock b,
+.tb-ink-light #bar-rest .kbd .ime {
   color: #1b1b1b;
 }
 
-.tb-light #bar-rest .tclock i,
+.tb-ink-light #bar-rest .tclock i {
+  color: #5d5d5d;
+}
+
 .tb-light #bar-rest .wpop .wx,
 .tb-light #bar-rest .wpop .whead,
 .tb-light #bar-rest .wpop .irow .iname {
   color: #5d5d5d;
 }
 
-.tb-light #bar-rest .win.min,
-.tb-light #bar-rest .kbd .ime.unknown {
+.tb-ink-light #bar-rest .win.min,
+.tb-ink-light #bar-rest .kbd .ime.unknown {
   color: #8a8a8a;
 }
 
-.tb-light #bar-rest .start:hover,
-.tb-light #bar-rest .ticon:hover,
-.tb-light #bar-rest .tquick:hover,
-.tb-light #bar-rest .tclock:hover,
-.tb-light #bar-rest .win:hover,
-.tb-light #bar-rest .kbd .ime:hover,
-.tb-light #bar-rest .tchev:hover {
+.tb-ink-light #bar-rest .start:hover,
+.tb-ink-light #bar-rest .tout .ticon:hover,
+.tb-ink-light #bar-rest .tquick:hover,
+.tb-ink-light #bar-rest .tclock:hover,
+.tb-ink-light #bar-rest .win:hover,
+.tb-ink-light #bar-rest .kbd .ime:hover,
+.tb-ink-light #bar-rest .tchev:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
-.tb-light #bar-rest .win.front {
+.tb-ink-light #bar-rest .win.front {
   background: rgba(255, 255, 255, 0.78);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
-.tb-light #bar-rest .win::after {
+.tb-ink-light #bar-rest .win::after {
   background: #868686;
 }
 
-.tb-light #bar-rest .win.front::after {
+.tb-ink-light #bar-rest .win.front::after {
   background: var(--win-accent, #0067c0);
 }
 
-.tb-light #bar-rest .win .letter,
-.tb-light #bar-rest .win .count {
+.tb-ink-light #bar-rest .win .letter,
+.tb-ink-light #bar-rest .win .count {
   background: #d6d6d6;
   color: #1b1b1b;
 }
 
-.tb-light #bar-rest.icons .win .count {
+.tb-ink-light #bar-rest.icons .win .count {
   background: var(--win-accent, #0067c0);
   color: #fff;
   box-shadow: 0 0 0 1.5px #f3f3f3;
@@ -2323,8 +2331,36 @@ body.home-taskbar {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.tb-light #bar-rest .tdesk:hover {
+.tb-ink-light #bar-rest .tdesk:hover {
   border-left-color: rgba(0, 0, 0, 0.3);
+}
+
+/* What opens from the strip (the windows' list, the tray's flyout, a
+   widget's card, a stack, a menu) is as Windows' mode, its ground, words
+   and cells, whichever way the strip's own words (tb-ink-light) went: what
+   it would take from #bar-rest put back. */
+#bar-rest :is(.wpop, .tfly, .wgpop, .wstk, .wmenu) {
+  --cell-ink: initial;
+  --cell-high: initial;
+}
+
+.tb-light #bar-rest :is(.wpop, .tfly, .wgpop, .wstk, .wmenu) {
+  --cell-ink: #1b1b1b;
+  --cell-high: #c25400;
+}
+
+body:not(.tb-light) #bar-rest .tfly .ticon:hover {
+  background: #2c2c2e;
+}
+
+body:not(.tb-light) #bar-rest :is(.wpop, .tfly) .kfocus {
+  outline-color: #fff;
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.7) !important;
+}
+
+.tb-light #bar-rest :is(.wpop, .tfly) .kfocus {
+  outline-color: rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7) !important;
 }
 
 /* Her island, light as Windows' own flyouts are: the capsule a light pill
@@ -2473,9 +2509,12 @@ body.home-taskbar {
 
 /* A tray icon in one colour drawn for the other kind of taskbar (island.js
    markMono): turned over to read, white to black on the light taskbar,
-   black to white on the dark. */
-.tb-light #bar-rest .ticon[data-mono='light'] img,
-body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
+   black to white on the dark: on the strip as its words are, in the
+   tray's flyout as Windows' mode. */
+.tb-ink-light #bar-rest .tout .ticon[data-mono='light'] img,
+body:not(.tb-ink-light) #bar-rest .tout .ticon[data-mono='dark'] img,
+.tb-light #bar-rest .tfly .ticon[data-mono='light'] img,
+body:not(.tb-light) #bar-rest .tfly .ticon[data-mono='dark'] img {
   filter: invert(1);
 }
 
@@ -2492,11 +2531,11 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   stop-color: #0c9eff;
 }
 
-.tb-light #bar-rest .start .s0 {
+.tb-ink-light #bar-rest .start .s0 {
   stop-color: #4bcffe;
 }
 
-.tb-light #bar-rest .start .s1 {
+.tb-ink-light #bar-rest .start .s1 {
   stop-color: #0179d4;
 }
 
@@ -2524,7 +2563,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   background: rgba(255, 255, 255, 0.17);
 }
 
-.tb-light #bar-rest .start.open {
+.tb-ink-light #bar-rest .start.open {
   background: rgba(255, 255, 255, 0.78);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
@@ -2572,7 +2611,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   }
 }
 
-.tb-light.home-taskbar #bar-rest .hdrop {
+.tb-ink-light.home-taskbar #bar-rest .hdrop {
   background: rgba(255, 255, 255, 0.55);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
@@ -2670,7 +2709,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
     0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
-.tb-light.tb-clear:not(.tb-filled) #bar-rest {
+.tb-ink-light.tb-clear:not(.tb-filled) #bar-rest {
   --halo: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55));
   text-shadow:
     0 0 1px rgba(255, 255, 255, 0.6),
@@ -2681,8 +2720,8 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   filter: var(--halo);
 }
 
-.tb-light.tb-clear:not(.tb-filled) #bar-rest .ticon[data-mono='light'] img,
-.tb-clear:not(.tb-light):not(.tb-filled) #bar-rest .ticon[data-mono='dark'] img {
+.tb-ink-light.tb-clear:not(.tb-filled) #bar-rest .tout .ticon[data-mono='light'] img,
+.tb-clear:not(.tb-ink-light):not(.tb-filled) #bar-rest .tout .ticon[data-mono='dark'] img {
   filter: invert(1) var(--halo);
 }
 
@@ -2691,7 +2730,7 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   color: #e5e5ea;
 }
 
-.tb-light.tb-clear:not(.tb-filled) #bar-rest .tclock i {
+.tb-ink-light.tb-clear:not(.tb-filled) #bar-rest .tclock i {
   color: #2b2b2b;
 }
 
@@ -3015,7 +3054,7 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   font-size: 11px;
 }
 
-.tb-light.tb-editing #bar-rest [data-part]:empty:not(.tslot)::before {
+.tb-ink-light.tb-editing #bar-rest [data-part]:empty:not(.tslot)::before {
   color: rgba(0, 0, 0, 0.55);
 }
 
@@ -3264,24 +3303,24 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   background: rgba(255, 255, 255, 0.22);
 }
 
-.tb-light #bar-rest .tw .twv,
-.tb-light #bar-rest .tw .twg,
-.tb-light #bar-rest .tw .wgl {
+.tb-ink-light #bar-rest .tw .twv,
+.tb-ink-light #bar-rest .tw .twg,
+.tb-ink-light #bar-rest .tw .wgl {
   color: #1b1b1b;
 }
 
-.tb-light #bar-rest .tw .twt i,
-.tb-light #bar-rest .tw.empty .twv {
+.tb-ink-light #bar-rest .tw .twt i,
+.tb-ink-light #bar-rest .tw.empty .twv {
   color: #5d5d5d;
 }
 
-.tb-light #bar-rest .tw-widget:hover,
-.tb-light #bar-rest .tw-plugin:hover,
-.tb-light #bar-rest .tw-group:hover {
+.tb-ink-light #bar-rest .tw-widget:hover,
+.tb-ink-light #bar-rest .tw-plugin:hover,
+.tb-ink-light #bar-rest .tw-group:hover {
   background: rgba(255, 255, 255, 0.5);
 }
 
-.tb-light #bar-rest .tw-sep {
+.tb-ink-light #bar-rest .tw-sep {
   background: rgba(0, 0, 0, 0.18);
 }
 
@@ -3290,7 +3329,7 @@ body.isl-right.home-taskbar #island[data-view='settings'] {
   color: #e5e5ea;
 }
 
-.tb-light.tb-clear:not(.tb-filled) #bar-rest .tw .twt i {
+.tb-ink-light.tb-clear:not(.tb-filled) #bar-rest .tw .twt i {
   color: #2b2b2b;
 }
 
@@ -4041,7 +4080,7 @@ html.handoff-wait body.home-taskbar #island-row {
   border-top-color: rgba(255, 255, 255, 0.35);
 }
 
-.tb-light.tb-side #bar-rest .tdesk:hover {
+.tb-ink-light.tb-side #bar-rest .tdesk:hover {
   border-top-color: rgba(0, 0, 0, 0.3);
 }
 
@@ -4722,12 +4761,25 @@ body.has-news #island[data-view='compact'] .news-dot {
   --wg-amber: #b25e00;
 }
 
+/* The widgets on the strip itself as its words are (tb-ink-light), what
+   opens from them as Windows' mode (above). */
+#bar-rest .tw {
+  --wg-track: rgba(255, 255, 255, 0.12);
+  --wg-amber: #ffb340;
+}
+
+.tb-ink-light #bar-rest .tw {
+  --wg-track: rgba(0, 0, 0, 0.09);
+  --wg-amber: #b25e00;
+}
+
 /* Her face for Claude 今天 (a still frame, never played). */
 .still-her.badge {
   vertical-align: middle;
 }
 
-.tb-light #bar-rest .still-her.badge {
+.tb-ink-light #bar-rest .tw .still-her.badge,
+.tb-light #bar-rest :is(.wgpop, .wstk, .wmenu) .still-her.badge {
   background-color: #e8e8e8;
 }
 
@@ -4856,7 +4908,7 @@ body.has-news #island[data-view='compact'] .news-dot {
   background: rgba(255, 255, 255, 0.11);
 }
 
-.tb-light #bar-rest .tw-stack.open {
+.tb-ink-light #bar-rest .tw-stack.open {
   background: rgba(255, 255, 255, 0.5);
 }
 

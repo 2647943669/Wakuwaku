@@ -220,6 +220,13 @@
   // does (their contrast ratios even at about 0.18).
   const wantsDarkInk = y => (y + 0.05) / 0.05 > 1.05 / (y + 0.05)
 
+  // The strip's own words dark (island.js isStripLight, style.css
+  // tb-ink-light): on the clear strip with the desktop showing through
+  // (not filled in), as the desktop under them wants (backdrop: wantsDarkInk,
+  // null while not known); else as Windows' mode (light). Only them: the
+  // settings, what opens from the strip and her island go by Windows' mode.
+  const stripInkLight = ({ light, clear, filled, backdrop }) => (clear && !filled && backdrop != null ? backdrop : !!light)
+
   // The Mica in box (the strip's own size): set to a picture (taskbar.rs's
   // paper), the strip's size and Windows' mode, drawn anew only when one
   // changes, the new faded in over the old; cleared.
@@ -266,7 +273,7 @@
     }
   }
 
-  const api = { place, draw, mount, glassPaper, lightness, wantsDarkInk }
+  const api = { place, draw, mount, glassPaper, lightness, wantsDarkInk, stripInkLight }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api
