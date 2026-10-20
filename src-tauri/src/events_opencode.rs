@@ -121,7 +121,7 @@ mod tests {
     fn an_opencode_round_counts_its_turn_and_its_time() {
         let mut pet = crate::state::Pet::default();
         let mut feed = |kind: &str, more: Value, at: u64| {
-            message(kind, more).and_then(|m| pet.apply(&m, at, crate::state::Hold::Seen)).map_or((0, 0), |out| (out.turns, out.worked_ms))
+            agent_core::opencode::to_event(&normalize(&event(kind, more))).and_then(|ev| pet.apply(&ev, None, at, crate::state::Hold::Seen)).map_or((0, 0), |out| (out.turns, out.worked_ms))
         };
         assert_eq!(feed("session.created", json!({}), 0), (0, 0));
         assert_eq!(feed("session.execution.started", json!({ "prompt": "Run the shell command: echo hi" }), 1_000), (1, 0));

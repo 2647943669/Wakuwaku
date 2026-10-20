@@ -9,16 +9,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "mood": "idle",
-      "project": "web",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-cc-1",
-      "title": "Login fix"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -90,14 +80,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "event": "turn-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "task": "Fix the login page and add a test",
-      "title": "Login fix"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -197,32 +179,6 @@
     },
     "at": 3000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "TodoWrite",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "step": {
-        "key": "step.plan",
-        "vars": {}
-      },
-      "todo": {
-        "set": [
-          {
-            "active": "Fixing the form",
-            "status": "in_progress",
-            "text": "Fix the form"
-          },
-          {
-            "active": "Adding a test",
-            "status": "pending",
-            "text": "Add a test"
-          }
-        ]
-      },
-      "toolId": "toolu_01"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -350,14 +306,6 @@
     },
     "at": 3100,
     "event": "PostToolUse",
-    "message": {
-      "detail": "TodoWrite",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "toolId": "toolu_01"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -450,20 +398,6 @@
     },
     "at": 4000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "Read",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "step": {
-        "key": "step.read",
-        "vars": {
-          "file": "login.ts"
-        }
-      },
-      "toolId": "toolu_02"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -569,14 +503,6 @@
     },
     "at": 4500,
     "event": "PostToolUse",
-    "message": {
-      "detail": "Read",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "toolId": "toolu_02"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -669,20 +595,6 @@
     },
     "at": 5000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "Edit",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "step": {
-        "key": "step.edit",
-        "vars": {
-          "file": "login.ts"
-        }
-      },
-      "toolId": "toolu_03"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -791,15 +703,6 @@
     },
     "at": 6000,
     "event": "PostToolUse",
-    "message": {
-      "detail": "Edit",
-      "event": "tool-done",
-      "file": "Z:\\replay\\web\\src\\login.ts",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "toolId": "toolu_03"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -893,20 +796,6 @@
     },
     "at": 7000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "step": {
-        "key": "step.run",
-        "vars": {
-          "what": "Run the tests"
-        }
-      },
-      "toolId": "toolu_04"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1014,21 +903,6 @@
     },
     "at": 9000,
     "event": "PostToolUseFailure",
-    "message": {
-      "detail": "Bash",
-      "event": "tool-failed",
-      "mood": "working",
-      "project": "web",
-      "react": "failed",
-      "say": {
-        "key": "say.toolFailed",
-        "vars": {
-          "tool": "Bash"
-        }
-      },
-      "session": "replay-cc-1",
-      "toolId": "toolu_04"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1137,22 +1011,6 @@
     },
     "at": 10000,
     "event": "PermissionRequest",
-    "message": {
-      "detail": {
-        "key": "detail.approve",
-        "vars": {
-          "what": {
-            "key": "step.command",
-            "vars": {
-              "what": "git push origin fix-login"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "web",
-      "session": "replay-cc-1"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1272,20 +1130,6 @@
     },
     "at": 15000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "step": {
-        "key": "step.command",
-        "vars": {
-          "what": "git push origin fix-login"
-        }
-      },
-      "toolId": "toolu_05"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1391,14 +1235,6 @@
     },
     "at": 16000,
     "event": "PostToolUse",
-    "message": {
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "toolId": "toolu_05"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1486,14 +1322,6 @@
     },
     "at": 20000,
     "event": "Stop",
-    "message": {
-      "event": "turn-end",
-      "mood": "done",
-      "project": "web",
-      "reply": "Done: Fixed the login page; the tests pass.",
-      "session": "replay-cc-1",
-      "title": "Login fix"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1655,13 +1483,6 @@
     },
     "at": 40000,
     "event": "UserPromptSubmit",
-    "message": {
-      "event": "turn-start",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "title": "Login fix"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1748,14 +1569,6 @@
     },
     "at": 41000,
     "event": "PreToolUse",
-    "message": {
-      "detail": {
-        "key": "detail.asksQuestion"
-      },
-      "mood": "waiting",
-      "project": "web",
-      "session": "replay-cc-1"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1854,14 +1667,6 @@
     },
     "at": 50000,
     "event": "PostToolUse",
-    "message": {
-      "detail": "AskUserQuestion",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "web",
-      "session": "replay-cc-1",
-      "toolId": "toolu_06"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1950,17 +1755,6 @@
     },
     "at": 52000,
     "event": "StopFailure",
-    "message": {
-      "error": {
-        "key": "error.rate_limit",
-        "vars": {}
-      },
-      "event": "turn-end",
-      "mood": "error",
-      "project": "web",
-      "session": "replay-cc-1",
-      "title": "Login fix"
-    },
     "outcome": {
       "alerts": [
         [
@@ -2241,12 +2035,6 @@
     },
     "at": 9100000,
     "event": "SessionEnd",
-    "message": {
-      "event": "session-end",
-      "mood": "idle",
-      "project": "web",
-      "session": "replay-cc-1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,

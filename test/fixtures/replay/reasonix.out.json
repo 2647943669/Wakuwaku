@@ -8,16 +8,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "agent": "reasonix",
-      "mood": "idle",
-      "project": "rx",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -88,14 +78,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "reasonix",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "task": "Create note.txt and push it."
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -170,21 +152,6 @@
     },
     "at": 2500,
     "event": "PreToolUse",
-    "message": {
-      "agent": "reasonix",
-      "detail": "Write",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "step": {
-        "key": "step.write",
-        "vars": {
-          "file": "note.txt"
-        }
-      },
-      "toolId": "rx_c1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -274,16 +241,6 @@
     },
     "at": 3000,
     "event": "PostToolUse",
-    "message": {
-      "agent": "reasonix",
-      "detail": "Write",
-      "event": "tool-done",
-      "file": "Z:\\replay\\rx\\note.txt",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "toolId": "rx_c1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -368,24 +325,6 @@
     },
     "at": 5000,
     "event": "PermissionRequest",
-    "message": {
-      "agent": "reasonix",
-      "detail": {
-        "key": "detail.approveIn",
-        "vars": {
-          "app": "Reasonix",
-          "what": {
-            "key": "step.command",
-            "vars": {
-              "what": "git push"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "rx",
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [
         [
@@ -478,7 +417,6 @@
     "agentEvent": null,
     "at": 5050,
     "event": "Notification",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -572,21 +510,6 @@
     },
     "at": 8000,
     "event": "PreToolUse",
-    "message": {
-      "agent": "reasonix",
-      "detail": "Grep",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "step": {
-        "key": "step.search",
-        "vars": {
-          "what": "TODO"
-        }
-      },
-      "within": true
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -675,16 +598,6 @@
     },
     "at": 8500,
     "event": "PostToolUse",
-    "message": {
-      "agent": "reasonix",
-      "detail": "Write",
-      "event": "tool-done",
-      "file": "Z:\\replay\\rx\\todo.md",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "within": true
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -749,7 +662,6 @@
     "agentEvent": null,
     "at": 8600,
     "event": "Stop",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -820,21 +732,6 @@
     },
     "at": 9000,
     "event": "PostToolUseFailure",
-    "message": {
-      "agent": "reasonix",
-      "detail": "Edit",
-      "event": "tool-failed",
-      "mood": "working",
-      "project": "rx",
-      "react": "failed",
-      "say": {
-        "key": "say.toolFailed",
-        "vars": {
-          "tool": "Edit"
-        }
-      },
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -907,7 +804,6 @@
     "agentEvent": null,
     "at": 9001,
     "event": "PostToolUse",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -972,14 +868,6 @@
     },
     "at": 10000,
     "event": "Stop",
-    "message": {
-      "agent": "reasonix",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "rx",
-      "reply": "Done: Created note.txt and pushed it.",
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1108,14 +996,6 @@
     },
     "at": 21000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "reasonix",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "task": "Now tag a release"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1186,14 +1066,6 @@
     },
     "at": 22000,
     "event": "StopFailure",
-    "message": {
-      "agent": "reasonix",
-      "error": "deepseek: 402 Insufficient Balance",
-      "event": "turn-end",
-      "mood": "error",
-      "project": "rx",
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1261,7 +1133,6 @@
     "agentEvent": null,
     "at": 22001,
     "event": "Stop",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -1379,14 +1250,6 @@
     },
     "at": 31000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "reasonix",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "rx",
-      "session": "replay-rx",
-      "task": "Try once more"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1453,13 +1316,6 @@
     },
     "at": 32000,
     "event": "StopFailure",
-    "message": {
-      "agent": "reasonix",
-      "event": "turn-end",
-      "mood": "idle",
-      "project": "rx",
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1518,7 +1374,6 @@
     "agentEvent": null,
     "at": 32001,
     "event": "Stop",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -1587,19 +1442,6 @@
     },
     "at": 100000,
     "event": "Notification",
-    "message": {
-      "agent": "reasonix",
-      "detail": {
-        "key": "detail.approveIn",
-        "vars": {
-          "app": "Reasonix",
-          "what": "Auto Guard: confirm the next action"
-        }
-      },
-      "mood": "waiting",
-      "project": "rx",
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1680,7 +1522,6 @@
     "agentEvent": null,
     "at": 101000,
     "event": "SubagentStart",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -1755,13 +1596,6 @@
     },
     "at": 102000,
     "event": "SessionEnd",
-    "message": {
-      "agent": "reasonix",
-      "event": "session-end",
-      "mood": "idle",
-      "project": "rx",
-      "session": "replay-rx"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,

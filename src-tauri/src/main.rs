@@ -443,10 +443,13 @@ impl Shared {
             let mut asks = self.asks.lock().unwrap();
             (asks.views(), asks.is_empty(), asks.take_handed())
         };
-        // DeepSeek Harness's handed back to its own window: its session's
-        // line says to answer there (asks.rs handed_message).
+        // DeepSeek Harness's handed back to its own window: its session waits
+        // to be answered there (asks.rs handed_event), as her line says and
+        // the apps listening are told.
         for handed in &handed {
-            self.apply(&asks::handed_message(handed));
+            let ev = asks::handed_event(handed);
+            self.hub.publish(&ev, now_ms());
+            self.apply_event(&ev, None);
         }
         self.to_pages("pet:asks", views);
         self.push_settings();
@@ -471,15 +474,23 @@ impl Shared {
         });
     }
 
-    // A message from the hooks (or a reaction of our own).
-    pub fn apply(&self, msg: &Value) -> bool {
-        let out = self.pet.lock().unwrap().apply(msg, now_ms(), self.hold());
+    // A reaction of her own, played once over her mood: { react, say }.
+    pub fn react(&self, react: &str, say: Value) {
+        self.to_pages("pet:react", json!({ "react": react, "say": say }));
+    }
+
+    // An agent's event (from its hook, or POST /state) into her sessions,
+    // with where its session runs when that was looked up (server.rs); false
+    // when it is nothing to a session she shows.
+    pub fn apply_event(&self, ev: &agent_core::event::AgentEvent, chain: Option<jump::Chain>) -> bool {
+        use agent_core::event::Agent;
+        let out = self.pet.lock().unwrap().apply(ev, chain, now_ms(), self.hold());
         let Some(out) = out else { return false };
         if out.turns > 0 || out.worked_ms > 0 {
             // Antigravity's and Reasonix's approvals never come to her, nor
             // DeepSeek Harness's through its hook bridge (through her plugin
             // they may: those given on her are counted all the same).
-            let is_agy = msg["agent"] == "agy" || msg["agent"] == "dsh" || msg["agent"] == "reasonix";
+            let is_agy = matches!(ev.agent, Agent::Agy | Agent::Dsh | Agent::Reasonix);
             self.count_today(|t| {
                 t.begun(out.turns);
                 if is_agy {
@@ -606,7 +617,7 @@ impl Shared {
             return;
         }
         let is_stale = connection::hooks_status(self.port) == "stale" || connection::codex_hooks_status() == "stale" || connection::opencode_status(self.port) == "stale";
-        self.apply(&json!({ "react": "wave", "say": { "key": if is_stale { "say.hooksStale" } else { "say.arrived" } } }));
+        self.react("wave", json!({ "key": if is_stale { "say.hooksStale" } else { "say.arrived" }, "vars": {} }));
     }
 
     pub fn change(self: &Arc<Self>, patch: Value) {
@@ -1958,13 +1969,12 @@ fn main() {
                 for n in 1u64.. {
                     std::thread::sleep(Duration::from_millis(500));
                     let now = now_ms();
-                    let hold = ticker.hold();
                     if n % 2 == 0 {
                         ticker.check_quiet();
                         let hide = ticker.idle_hide_ms();
-                        let mut changed = ticker.pet.lock().unwrap().tick(now, hold);
+                        let mut changed = ticker.pet.lock().unwrap().tick(now);
                         if n % 120 == 0 {
-                            changed |= ticker.pet.lock().unwrap().check_stale(now, hold);
+                            changed |= ticker.pet.lock().unwrap().check_stale(now);
                             // The hub's sessions the same, the apps listening told.
                             ticker.hub.tick(now);
                         }

@@ -51,7 +51,7 @@ src-tauri/
     settings.rs           设置看到的快照、校验后的设置补丁、设置的各个命令
     pointer.rs            两个窗口共用的点击穿透
     screen.rs             各个显示器的工作区
-    asks.rs               确认请求：交还 DeepSeek Harness 自己窗口后，会话那一行说到哪里去答（handed_message）；确认请求本身（显示什么、每个选择回给各家 hook 什么、什么时候算在别处答过、排队和超时）在 agent-core 的 asks.rs，拒绝时说的话由她传进去
+    asks.rs               确认请求：交还 DeepSeek Harness 自己窗口后，那个会话改成等你去 DSH 里答（handed_event，一个 AgentEvent，也发给 /v1 的订阅者）；确认请求本身（显示什么、每个选择回给各家 hook 什么、什么时候算在别处答过、排队和超时）在 agent-core 的 asks.rs，拒绝时说的话由她传进去
     connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json、Antigravity 的 hooks.json、OpenCode 的插件文件、omp 的扩展、ZCode 的 config.json、DeepSeek Harness 的插件和补丁文件（安装 / 移除 / 状态，插件有没有被加载）、Reasonix 的全局 settings.json（安装 / 移除 / 状态）、各 agent 文件里写着的版本、开机自启
     logon.rs              开机自启的计划任务（任务栏和岛都有，Task Scheduler 的 COM）、这次登录是什么时候
     lhm.rs, lhm_setup.rs  监控的 LibreHardwareMonitor 来源：读它的网页服务器；用户点了时下载，以管理员身份装进 Program Files、配置、启动它，它自己的开机任务
@@ -70,10 +70,10 @@ src-tauri/
     notify.rs             系统通知（登记 AppUserModelId 后发 toast）
     tray.rs               托盘图标（随心情变脸）和菜单；任务栏上音量、网络、时钟的右键菜单（照 Windows 的）
     server.rs             127.0.0.1:47213 上的 HTTP 接口
-    state.rs              状态机：按会话记 mood、名字、在跑的工具、任务清单、改过的文件、结果，挑最需要你的那个显示
-    events.rs             AgentEvent（agent-core 读出来的：哪家、哪个会话、在做什么）→ 给她的消息：心情、步骤、等什么、说的话怎么写（message_of）；每家各自的写法（Codex 和 OpenCode 的补丁、omp 的 intent、OpenCode 失败时报它自己的工具名）在 step_for 里
+    state.rs              宠物怎么显示会话：会话本身在做什么用 agent-core 的 registry（Pet 里有一份），这里只记显示用的（Look）：心情（做完时改过文件就是「改好了」；看过、停留时间到了的结束算空闲）、旁边那行字、名字、进程链、隐藏；挑最需要你的那个显示
+    events.rs             AgentEvent（agent-core 读出来的：哪家、哪个会话、在做什么）用她的话怎么说：旁边那行字（detail_of）、步骤（step_for）、反应（reaction_of）、任务名、回复、出错原因；测试里的 message_of 把这些拼成一个值，给各家的测试看；每家各自的写法（Codex 和 OpenCode 的补丁、omp 的 intent、OpenCode 失败时报它自己的工具名）在 step_for 里
     events_codex.rs 等    每家 agent 一个：她怎么用它的事件（agy、dsh 的日志行），和它的测试；读事件本身在 agent-core 对应的模块里
-    replay.rs             重放测试：test/fixtures/replay 里每家 agent 的一串事件，走 /hook 的那段（server.rs 的 read_event、event_for，events.rs 的 message_of）进 state.rs，每一步的 AgentEvent、消息和之后的会话（她的，和 agent-core 的 registry）和存着的比，并且每一步都核对 registry 和她的会话对得上（同样的会话、状态、文件数、待办、开始的时间）
+    replay.rs             重放测试：test/fixtures/replay 里每家 agent 的一串事件，走 /hook 的那段（server.rs 的 read_event、event_for）进 state.rs，每一步的 AgentEvent、它对她的会话做了什么（outcome）、之后她的会话和显示的那个、单独一份 registry（/v1/sessions 看到的：没有「看过」）和存着的比
     data.rs               数据目录、设置读写、已下载的宠物和 Codex 的宠物
     detach.rs             她启动的进程：更新、重启、守护进程按普通方式启动；hook 拉起她、启动时自查要脱离启动者的作业，作业不放行时才以资源管理器为父进程
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
@@ -83,7 +83,7 @@ src-tauri/
                           每家的事件读成 AgentEvent（event.rs：会话开始和结束、一轮开始、工具开始/结束/失败、等人（批准在哪儿批、提问、计划、
                           MCP 要输入）、回到工作、一轮完成/失败/被停下，带着工具调用的名字、Claude Code 说法的输入、原始输入、改了哪个文件、待办的变化），
                           哪些事件不算、回合号、子代理归到哪个会话、是不是本人说的话都在这里定（claude.rs、codex.rs、agy.rs、opencode.rs、omp.rs、
-                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；asks.rs 是等人回答的确认请求（面板要的数据、各家 hook 要的回复、什么时候算在别处答过、超时）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半，她自己的心情、看过没有、留多久在 state.rs；以后的 /v1 用它）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
+                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；asks.rs 是等人回答的确认请求（面板要的数据、各家 hook 要的回复、什么时候算在别处答过、超时）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半：宠物的 state.rs 和 /v1 都建在它上面，她自己的心情、看过没有、留多久在 state.rs）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
                           补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、target、profile 和 patch 都还在那里；crate 放在它下面，
                           rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
   crates/agent-hub/       把会话告诉本机别的应用（编辑器、脚本）：agent-core 的 registry、每个事件编号后留最近 512 个（最多 8 MB）、订阅的人各自的队列
@@ -166,7 +166,7 @@ Codex（CLI 0.114 起）的 hooks 和 Claude Code 很像，但**只有 command �
 - `Stop` 和 `Interrupt` 不能放后台：0.162.1 实测后台的 `Stop` 根本不运行（没有警告；`codex exec` 里让 `SessionEnd` 多等 2 秒也一样），后台的 `UserPromptSubmit` / `PreToolUse` / `PostToolUse` 都正常。`SessionStart` 留在前台，免得 `codex exec` 时它晚于一轮的开始到达，把干活中的会话改回空闲。
 - 不能跑后台 hook 的旧版本（见下一条）改装前台的 `UserPromptSubmit`、只对 `request_user_input` 的 `PreToolUse`、只对 `apply_patch|request_user_input` 的 `PostToolUse`（matcher 是正则）。
 - **async hook 从 Codex 0.148 开始才有**；0.146.1 实测会跳过它们（`skipping async hook …: async hooks are not supported yet`），而且是整条跳过，不会改成同步运行。所以安装时用 `codex --version` 判断（缓存一分钟），旧版本不装后台的那三条，改装上一条说的前台的三条；之后 Codex 升级了，或者是 0.3.3 及以前装的（那时一轮的开始还在前台），状态会变成 `upgradable`（只缺后台的；设置「通用」页的连接部分说"可以改用后台 hook"而不是"需要修复"），点「修复」换成后台的，`SessionStart`、`Stop` 等的内容和位置都不变，Codex 里只需信任 `UserPromptSubmit`、`PreToolUse`、`PostToolUse` 这三条（信任按 `hooks.json:<事件>:<组>:<序号>` 和内容的 hash 记在 `config.toml` 的 `[hooks.state]`，那两条后台的从第 1 组挪到了第 0 组，所以也要重新信任）。缺别的才是 `partial`。问不到版本（只有桌面版）时当作新版本。
-- 后台运行的 hook 可能乱序到达：每个事件都带 `turn_id`，`state.rs` 记住最近结束的几个回合（`Stop` / `Interrupt` 的消息带 `event: "turn-end"`），之后到达的同一回合的事件不再改状态，只有迟到的 `apply_patch` 会把「做完」改成「改好了」。一轮的开始也在后台，可能晚于这一轮的第一步到达（`state.rs` 照样当作新的一轮）。
+- 后台运行的 hook 可能乱序到达：每个事件都带 `turn_id`，agent-core 的 registry 记住最近结束的几个回合（`Stop` / `Interrupt` 是带回合号的 `done` / `stopped`），之后到达的同一回合的事件不再改状态，只有迟到的 `apply_patch` 会把「做完」改成「改好了」。一轮的开始也在后台，可能晚于这一轮的第一步到达（registry 照样当作新的一轮）。
 - 事件字段：`session_id`、`turn_id`、`cwd`、`hook_event_name`、`model`、`permission_mode`；shell 工具叫 `Bash`，改文件都是 `apply_patch`，两者的 `tool_input` 都只有 `command`（补丁全文）。失败的工具调用没有 `PostToolUse`；请求失败（比如模型不可用）连 `Stop` 都没有，所以 Codex 会话不会显示出错，干活状态靠 15 分钟的超时收尾。
 - Codex 只运行**信任过**的 hook（按 hash 记在 `config.toml`），新装或改动后要在 Codex 里 `/hooks` 信任。我们不替用户信任。她只读 Codex 的信任记录，从不写（`connection.rs` 的 `codex_trusted`，zhoupengjie/Wakuwaku#66）：`config.toml` 里每条信任过的 hook 是一节 `[hooks.state.'<hooks.json 的路径>:<事件，如 session_start>:<组>:<序号>']`，里面有 `trusted_hash`（`enabled = false` 是在 Codex 里关掉了）。hash 和 Codex 自己算的一样（codex-rs 的 hooks `discovery.rs` 里的 `hook_hash`，以及 config `fingerprint.rs` 里的 `version_for_toml`）：把 `{ event_name, hooks: [这一条], matcher }` 写成 JSON，键排好序、不留空白，取 sha256，前面加 `sha256:`。`timeout` 按 Codex 实际用的算：`SessionEnd` / `Interrupt` 缺省 1、最多 3，别的缺省 600；没有的字段不写。在一台装好又信任过的电脑上，10 条 hook 都和 Codex 记的对得上。我们的每一条都信任过且没关掉才算信任（设置快照 `codex.trusted`：`true` / `false`，读不到是 `null`）。Agent 页和欢迎卡片据此决定要不要提示去信任；只看"本次启动后收到过 Codex 的事件"（`Shared.codex_seen`）的话，每次重启她都会再提示一遍。不是 `true` 时照旧提示：新装、改了、换了位置都要重新信任。
 - `PermissionRequest` 在 Codex 弹自己的确认框**之前**同步运行，hook 不回答 Codex 就不弹框。所以 Codex 的确认在面板上最多等 60 秒（`server.rs` 的 `CODEX_ASK_MS`），"去终端处理"或超时回 `{}` 后 Codex 才弹框。Codex 只接受 allow / deny，不接受 `updatedPermissions` / `updatedInput`，所以没有"以后都允许"（事件里也没有 `permission_suggestions`）。`hookSpecificOutput.decision` 的格式和 Claude Code 相同。
@@ -208,27 +208,26 @@ omp（`can1357/oh-my-pi`，zhoupengjie/Wakuwaku#47）没有 Claude Code 那样�
 - **工具批准没做**：omp 默认 `yolo`，不问；`always-ask` / `write` 时扩展只收得到通知（`tool_approval_requested` 只有工具名和 id），没有回答它的接口。在 `tool_call` 里自己当一道闸（像官方例子 `permission-gate.ts`）会和 omp 自己的批准问两次，`tool_call` 还有 30 秒的预算，所以没做；「Agent」页写明工具批准留在 omp 里。等上游有 `resolveToolApproval` 这样的接口再接。
 - **测试**（VM，不用键盘）：`omp -p "…" --model deepseek-flash --thinking off` 看状态和回复（`-p` 结束后马上 `SessionEnd`，做完只闪一下）；交互模式用 `conhost.exe --headless omp.exe … "第一句话"`（不开窗口）；`--config <yml>` 叠一层配置：`plan: { defaultOnStartup: true }` 直接进计划模式，`retry: { enabled: false }` 加上指向关着的端口的 `HTTPS_PROXY`，很快就出错。工具批准用 `--mode rpc --approval-mode always-ask`：stdin 发 `{"type":"prompt","message":"…"}`，批准请求是 `extension_ui_request`（`method: "select"`，选项 Approve / Deny），回 `{"type":"extension_ui_response","id":…,"value":"Approve"}`，关掉 stdin 就正常退出。交互模式没有终端输入，用一个只在测试时 `-e` 加载的扩展按文件调 `ctx.resolvePlanReview`（扮演终端里的回答）和 `ctx.shutdown()`（正常退出）；有对话框开着（工具批准、`ask`）时 `shutdown()`、`abort()` 都等它，只能结束进程，她那边的会话就要等 15 分钟的超时（和 Claude Code 被强行结束一样）。设了 `BUN_BE_BUN=1` 的 `omp.exe` 就是 bun 本身（试 Bun 的行为用；它的 `Bun.serve` 监听所有网卡，会让防火墙弹窗）。
 
-## 消息
+## 会话事件
 
-hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块里），再由 `events.rs` 的 `message_of` 换算成消息，`/state` 也收这个格式：
+hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块里，`crates/agent-core/src/event.rs`），宠物的会话（`state.rs`，建在 agent-core 的 registry 上）和 `/v1` 都从它来；`/v1/events` 发的、`POST /state` 收的也是它（JSON，camelCase；`/v1/events` 多带的 `seq`、`at` 收的时候不管）：
 
 ```json
-{ "session": "…", "project": "wakuwaku", "mood": "working", "detail": "Bash", "event": "tool-start", "toolId": "toolu_…", "step": { "key": "step.run", "vars": { "what": "Run the tests" } } }
+{ "agent": "claude", "session": "…", "cwd": "D:\\work\\notes", "type": "toolStart", "call": { "id": "toolu_…", "tool": "Bash", "input": { "command": "npm test", "description": "Run the tests" } } }
 ```
 
 | 字段 | 取值 |
 | --- | --- |
-| `session` / `project` | 会话 id、项目文件夹名；每个会话单独记状态 |
-| `mood` | `idle` / `working` / `waiting` / `done` / `review` / `error` |
-| `detail` | 工具名，或 `{ key, vars }`（按当前语言显示；vars 里可以再套一层 `{ key, vars }`，比如「要批准：$ git push」） |
-| `event` | `turn-start` / `tool-start` / `tool-done` / `tool-failed` / `turn-end`（Codex 的回合结束）/ `session-end` |
-| `react` / `say` | `wave` / `jump` / `failed`，在当前 mood 上播一次，岛展开说 `say` |
-| `title` / `task` | 会话名；你发的第一句话（只认 `source` 是用户的，少于 4 个字的「继续」「好的」不算）。有 title 就用 title |
-| `step` / `toolId` | 工具在做什么（`step.*`，`events.rs` 的 `step_of`）；`toolId` 把开始和结束配成对，子 agent 的工具也能对上 |
-| `todo` | 任务清单的变化：TodoWrite 给 `{ set }`，TaskCreate / TaskUpdate 给 `{ add }` / `{ update }` |
-| `file` | 刚改过的文件（这一轮改了几个文件） |
-| `reply` / `error` | Stop / StopFailure 的 `last_assistant_message` 摘前一两句；StopFailure 的 `error`（`error.*`）或 `error_details` |
-| `agent` / `turn` | Codex 的消息带 `agent: "codex"` 和回合 id（见上面的 Codex 一节）；Antigravity 的 `"agy"`，OpenCode 的 `"opencode"`，omp 的 `"omp"` |
+| `agent` | `claude` / `codex` / `agy` / `opencode` / `omp` / `zcode` / `reasonix` / `dsh` |
+| `session` | 会话 id；每个会话单独记状态 |
+| `within` | `true`：子 agent 的事件，算在它所属的会话里：只进那个会话正在进行的一轮，不新建会话，也不唤醒空闲或已结束的 |
+| `cwd` / `turn` / `title` / `reply` | 工作文件夹（项目名从它来）；回合 id（Codex 的 `turn_id` 等：后台的 hook 可能晚到，同一回合结束后到的只有改文件的才算）；会话名；agent 最后说的话（整段，宠物只显示开头一两句） |
+| `type` | `sessionStart`、`sessionEnd`、`turnStart`（`prompt`：本人说的话）、`toolStart` / `toolDone` / `toolFailed`（`call`；`toolFailed` 的 `quiet`：不播反应）、`waiting`（`wait`）、`working`、`rest`、`stopped`（本人停下这一轮）、`done`、`failed`（`error`）、`taskDone`（`subject`：清单里一项做完，只播反应） |
+| `call` | `{ id, tool, own, input, raw, intent, file, todo }`：工具名按 Claude Code 的叫法（`own` 是 agent 自己的叫法），`input` 也是 Claude Code 的参数（`raw` 是原样的），`file` 是改完的文件，`todo` 是清单的变化：`{ change: "set", items }`、`{ change: "add", item }`、`{ change: "update", id, status, text, active }`（`item` 是 `{ text, active, status }`） |
+| `wait` | `{ for: "approval", what, answerIn }`（`what`：`{ as: "call", call }` / `{ as: "action", name }` / `{ as: "said", said }`；`answerIn`：`{ in: "here" }` / `{ in: "app", name }` / `{ in: "terminal" }`）、`{ for: "question", question?, answerIn? }`、`{ for: "plan" }`、`{ for: "input", server }`、`{ for: "notice", said? }` |
+| `error` | `{ as: "kind", kind }`（Claude Code 的 `rate_limit` 等，按语言显示）/ `{ as: "said", said }` |
+
+宠物在 registry 之外自己记的（`state.rs` 的 `Look`）：心情（registry 的状态：做完时这一轮改过文件就是 `review`；她看过、或停留时间到了的结束算空闲，从那时起算安静）、旁边那行字（`events.rs` 的 `detail_of`：工具名，或者等什么）、名字（会话名，没有就用你那一轮说的话：只认本人说的、少于 4 个字的「继续」「好的」不算）、进程链、隐藏。她自己的反应（起来时挥手、被点时跳一下）不经过会话，直接给页面（`main.rs` 的 `react`）。
 
 **会话名**：hook 自带的 `session_title`（只有 UserPromptSubmit、SessionStart 带，而且只是自定义标题：`/rename` 或桌面版起的名字）；没有时，在一轮开始和结束时读 `transcript_path` 末尾 256 KB 里最后一条 `custom-title`，没有再用 `ai-title`。**项目名**：从 `cwd` 往上找 `.git`，是目录就取它所在文件夹的名字；是文件（worktree）就按里面的 `gitdir: <仓库>/.git/worktrees/<名字>` 取仓库名；不在 git 里就用 `cwd` 的文件夹名。按 `cwd` 缓存。
 
@@ -247,7 +246,7 @@ hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块�
 | `GET /v1/info` | 给本机别的应用的会话接口（见下一节）：API 版本、能给什么、在哪个应用里、什么时候起来的、最新事件的编号、令牌文件在哪儿。不用令牌 |
 | `GET /v1/sessions` | 现在有哪些会话（agent-core 的 registry）；`?cwd=<文件夹>`、`?agent=codex,dsh` 筛选。要令牌 |
 | `GET /v1/events` | Server-Sent Events：每个 AgentEvent 带编号和时间，一来就发；`?since=<n>` 或 `Last-Event-ID` 先补上漏掉的。要令牌 |
-| `POST /state` | 一条消息 |
+| `POST /state` | 一个 AgentEvent（见「会话事件」）：进她的会话，也发给 /v1 的订阅者，和 hook 来的一样；回 `{ ok: true }`，格式不对回 400 和 `{ error }` |
 | `POST /widget` | 岛上的一个插件（见"岛上的插件"）；回 `{ ok: true }`，或者 400 和 `{ error }` |
 | `POST /come-home` | 再次启动时用：她重新出现 |
 | `POST /after-update` | `{ pid, version }`：更新或重启时她启动的新版说自己起来了；她收到后再看 3 秒才退出（见"软件更新"） |
@@ -291,7 +290,7 @@ omp 的计划审批也走这里（`tool_name: "ExitPlanMode"`，面板上标着 
 
 在哪里点：展开的岛里的会话（`island.js` 的 `data-jump`）、设置「通用」页的会话行、确认面板的「去终端处理」（先交还给终端再跳）、单击她（等 500ms 确认不是双击；去的是指针刚移到她身上时她显示的那个会话，因为移上去就算看过，结束的状态会变回空闲）。都走 `session_jump` 命令 → `main.rs` 的 `jump_to` → `jump.rs` 的 `go`。
 
-**会话在哪个进程里**（`state.rs` 的 `chain`，消息里是 `[[pid, 启动时间], …]`）：
+**会话在哪个进程里**（`state.rs` 的 `chain`，`[[pid, 启动时间], …]`；不在 AgentEvent 里，`server.rs` 随事件一起交给她）：
 - Claude Code 的 HTTP hook：`server.rs` 用请求的对端端口查 TCP 表（`GetExtendedTcpTable`），连接另一头就是 Claude Code 自己的进程，再往上找父进程。会话还没有进程链、或者一轮开始（UserPromptSubmit / SessionStart，可能换了进程续上）时才查。
 - omp：她的扩展在 omp.exe 里发 HTTP 请求，和 Claude Code 一样查 TCP 表，连接另一头就是 omp.exe。
 - Codex：hook 命令（`--wakuwaku-codex-hook`）在自己里面算好父进程链，跳过它自己和 Codex 用来跑它的 shell，从 Codex 开始，放进事件的 `wakuwaku_chain` 字段。

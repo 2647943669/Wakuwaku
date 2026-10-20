@@ -8,16 +8,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "agent": "dsh",
-      "mood": "idle",
-      "project": "dsh-ws",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-dsh-main"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -88,14 +78,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "dsh",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "task": "Read note.txt, then create copy.txt"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -170,21 +152,6 @@
     },
     "at": 2500,
     "event": "PreToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "step": {
-        "key": "step.run",
-        "vars": {
-          "what": "Read note.txt"
-        }
-      },
-      "toolId": "call_00_A"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -273,15 +240,6 @@
     },
     "at": 2800,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "toolId": "call_00_A"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -364,23 +322,6 @@
     },
     "at": 3000,
     "event": "PermissionRequest",
-    "message": {
-      "agent": "dsh",
-      "detail": {
-        "key": "detail.approve",
-        "vars": {
-          "what": {
-            "key": "step.write",
-            "vars": {
-              "file": "copy.txt"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main"
-    },
     "outcome": {
       "alerts": [
         [
@@ -475,12 +416,6 @@
     },
     "at": 6000,
     "event": "PermissionReplied",
-    "message": {
-      "agent": "dsh",
-      "mood": "working",
-      "session": "replay-dsh-main",
-      "within": true
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -555,16 +490,6 @@
     },
     "at": 6500,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Write",
-      "event": "tool-done",
-      "file": "Z:\\replay\\dsh-ws\\copy.txt",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "toolId": "call_00_B"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -632,12 +557,6 @@
     },
     "at": 7000,
     "event": "SessionStart",
-    "message": {
-      "agent": "dsh",
-      "event": "session-end",
-      "mood": "idle",
-      "session": "replay-dsh-sub"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -705,12 +624,6 @@
     },
     "at": 7100,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "dsh",
-      "event": "session-end",
-      "mood": "idle",
-      "session": "replay-dsh-sub"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -788,17 +701,6 @@
     },
     "at": 7500,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Write",
-      "event": "tool-done",
-      "file": "Z:\\replay\\dsh-ws\\notes.md",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "toolId": "call_01",
-      "within": true
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -863,7 +765,6 @@
     "agentEvent": null,
     "at": 7600,
     "event": "PostToolUse",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -926,12 +827,6 @@
     },
     "at": 7800,
     "event": "Stop",
-    "message": {
-      "agent": "dsh",
-      "event": "session-end",
-      "mood": "idle",
-      "session": "replay-dsh-sub"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1019,24 +914,6 @@
     },
     "at": 8000,
     "event": "PermissionRequest",
-    "message": {
-      "agent": "dsh",
-      "detail": {
-        "key": "detail.approveIn",
-        "vars": {
-          "app": "DeepSeek Harness",
-          "what": {
-            "key": "step.run",
-            "vars": {
-              "what": "Remove the build folder"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1137,12 +1014,6 @@
     },
     "at": 9000,
     "event": "PermissionReplied",
-    "message": {
-      "agent": "dsh",
-      "mood": "working",
-      "session": "replay-dsh-main",
-      "within": true
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1221,22 +1092,6 @@
     },
     "at": 9500,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Bash",
-      "event": "tool-failed",
-      "mood": "working",
-      "project": "dsh-ws",
-      "react": "failed",
-      "say": {
-        "key": "say.toolFailed",
-        "vars": {
-          "tool": "Bash"
-        }
-      },
-      "session": "replay-dsh-main",
-      "toolId": "call_00_C"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1345,29 +1200,6 @@
     },
     "at": 9800,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "TodoWrite",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "todo": {
-        "set": [
-          {
-            "active": "",
-            "status": "completed",
-            "text": "Read note.txt"
-          },
-          {
-            "active": "",
-            "status": "completed",
-            "text": "Write copy.txt"
-          }
-        ]
-      },
-      "toolId": "call_00_D"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1456,15 +1288,6 @@
     },
     "at": 10000,
     "event": "Stop",
-    "message": {
-      "agent": "dsh",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "dsh-ws",
-      "reply": "Done — copy.txt has hi.",
-      "session": "replay-dsh-main",
-      "title": "Copy a note"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1627,14 +1450,6 @@
     },
     "at": 21000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "dsh",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "task": "And a second copy"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1701,12 +1516,6 @@
     },
     "at": 22000,
     "event": "Stop",
-    "message": {
-      "agent": "dsh",
-      "mood": "idle",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1771,14 +1580,6 @@
     },
     "at": 23000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "dsh",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main",
-      "task": "Try the second copy again"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1849,14 +1650,6 @@
     },
     "at": 24000,
     "event": "StopFailure",
-    "message": {
-      "agent": "dsh",
-      "error": "401 Unauthorized: invalid api key",
-      "event": "turn-end",
-      "mood": "error",
-      "project": "dsh-ws",
-      "session": "replay-dsh-main"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1924,7 +1717,6 @@
     "agentEvent": null,
     "at": 25000,
     "event": "WakuwakuLoaded",
-    "message": null,
     "outcome": null,
     "registry": [
       {

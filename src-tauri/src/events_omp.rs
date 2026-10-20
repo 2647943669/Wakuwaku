@@ -87,7 +87,7 @@ mod tests {
         // The edit made the turn's done a review.
         let mut pet = crate::state::Pet::default();
         for (e, at) in [(event("UserPromptSubmit", json!({ "prompt": "fix it" })), 1), (event("PostToolUse", json!({ "tool_name": "write", "tool_input": { "path": "b.txt" } })), 2), (event("Stop", json!({})), 3)] {
-            pet.apply(&to_message(&e).unwrap(), at, crate::state::Hold::Seen);
+            pet.apply(&agent_core::omp::to_event(&e).unwrap(), None, at, crate::state::Hold::Seen);
         }
         assert_eq!((pet.get(4)["mood"].as_str(), pet.get(4)["agent"].as_str()), (Some("review"), Some("omp")));
     }

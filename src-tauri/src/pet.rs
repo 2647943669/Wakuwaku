@@ -605,7 +605,7 @@ pub fn hover(sh: &Shared, is_over: bool) {
         }
     }
     // The pointer on her: you have seen what she had to say.
-    if is_over && sh.pet.lock().unwrap().seen(now_ms(), sh.hold()) {
+    if is_over && sh.pet.lock().unwrap().seen(now_ms()) {
         sh.redraw();
     }
 }
@@ -662,7 +662,7 @@ pub fn let_go(sh: &Arc<Shared>) {
     }
     // A click: a jump. Carried out of the island: she lands with one.
     if !drag.moved || drag.carried {
-        sh.apply(&json!({ "react": "jump" }));
+        sh.react("jump", json!(""));
     }
     // A click, and no second one after it: to the window of the session she
     // was showing (jump.rs).

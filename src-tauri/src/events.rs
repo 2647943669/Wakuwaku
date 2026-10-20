@@ -1,23 +1,25 @@
-// An agent's event (agent-core's AgentEvent: what a session is doing) → a
-// message for her (state.rs has the format), with texts as { key, vars } for
-// src/shared/i18n.js, so the page says them in her language. Every agent's
-// events come here so: agent-core reads each its own way (its hook's names,
-// its quirks, whose a session is), and here they are told in her words.
-//
-// Besides the mood, a message says what the session is about and where it is:
-//   title    the session's name (given, or read from the agent's files)
+// An agent's event (agent-core's AgentEvent: what a session is doing) in her
+// words, as texts { key, vars } for src/shared/i18n.js, so the page says them
+// in her language. Every agent's events come here so: agent-core reads each
+// its own way (its hook's names, its quirks, whose a session is) and keeps
+// the sessions (its registry, which her state.rs is built on); here they are
+// told in her words:
+//   detail   beside the mood: the tool, or what the session waits on (detail_of)
+//   step     what a running tool does (step_for)
 //   task     the person's words that started the turn, when there is no title
-//   step     the tool running, in plain words ({ key, vars }); toolId pairs
-//            its start (tool-start) with its end (tool-done, tool-failed)
-//   todo     a change to its to-do list: { set: [...] }, { add }, { update }
-//   file     a file a tool just edited
 //   reply    how the last turn ended, in the agent's words
 //   error    why a turn failed
-use serde_json::{json, Map, Value};
+//   reaction what she plays once over the mood (reaction_of)
+use serde_json::{json, Value};
 
 use agent_core::codex::patched;
-use agent_core::event::{Agent, AgentEvent, AnswerIn, Call, Failure, Kind, Todo, TodoItem, Wait, What};
-pub(crate) use agent_core::project::project_of;
+use agent_core::event::{Agent, AgentEvent, AnswerIn, Call, Failure, Kind, Wait, What};
+#[cfg(test)]
+use agent_core::event::{Todo, TodoItem};
+#[cfg(test)]
+use agent_core::project::project_of;
+#[cfg(test)]
+use serde_json::Map;
 pub(crate) use agent_core::text::{base, clip};
 
 fn s<'a>(e: &'a Value, key: &str) -> &'a str {
@@ -97,7 +99,7 @@ fn step_of_omp(tool: &str, input: &Value, intent: &str) -> Value {
 }
 
 // What a call is doing, in plain words, as each agent's calls say it best.
-fn step_for(agent: Agent, call: &Call) -> Value {
+pub(crate) fn step_for(agent: Agent, call: &Call) -> Value {
     match agent {
         Agent::Codex | Agent::Opencode if call.tool == "apply_patch" => patch_step(call),
         Agent::Omp => step_of_omp(call.own.as_deref().unwrap_or(&call.tool), call.raw.as_ref().unwrap_or(&call.input), call.intent.as_deref().unwrap_or("")),
@@ -163,14 +165,15 @@ fn unlink(line: &str) -> String {
 
 // Why a turn failed: one of the kinds she has words for, or the agent's own
 // words (their first line).
-fn error_of(error: &Failure) -> Value {
+pub(crate) fn error_of(error: &Failure) -> Value {
     match error {
         Failure::Kind { kind } => json!({ "key": format!("error.{kind}"), "vars": {} }),
         Failure::Said { said } => json!(clip(said.lines().next().unwrap_or(""), 80)),
     }
 }
 
-// A change to the to-do list as state.rs takes it.
+// A change to the to-do list, in the agents' tests' words.
+#[cfg(test)]
 fn todo_json(todo: &Todo) -> Value {
     let item = |t: &TodoItem| json!({ "text": clip(&t.text, 80), "active": clip(&t.active, 80), "status": t.status });
     match todo {
@@ -192,7 +195,9 @@ fn todo_json(todo: &Todo) -> Value {
 // What a session waits on, in her words.
 fn wait_of(agent: Agent, wait: &Wait) -> Value {
     match wait {
-        Wait::Question => json!({ "key": "detail.asksQuestion" }),
+        // Handed back to the agent's own window (asks.rs handed_event).
+        Wait::Question { question: Some(question), answer_in: Some(AnswerIn::App { name }) } => json!({ "key": "detail.answerIn", "vars": { "app": name, "what": clip(question, 40) } }),
+        Wait::Question { .. } => json!({ "key": "detail.asksQuestion" }),
         Wait::Plan => json!({ "key": "detail.planToConfirm" }),
         Wait::Input { server } => json!({ "key": "detail.needsInput", "vars": { "server": server } }),
         Wait::Notice { said: None } => json!({ "key": "detail.needsYou" }),
@@ -212,11 +217,44 @@ fn wait_of(agent: Agent, wait: &Wait) -> Value {
     }
 }
 
-// The message for an event.
+// What a session's line says beside its mood after an event: the tool, or
+// what it waits on; nothing for the rest (state.rs keeps it till the next).
+pub(crate) fn detail_of(ev: &AgentEvent) -> Value {
+    match &ev.kind {
+        Kind::ToolStart { call } | Kind::ToolDone { call } | Kind::ToolFailed { call, .. } => json!(call.tool),
+        Kind::Waiting { wait } => wait_of(ev.agent, wait),
+        _ => json!(""),
+    }
+}
+
+// What she plays once over the mood for an event, { react, say }: a wave as
+// a session starts, a start as a tool fails (OpenCode's by its own name; a
+// subagent's quietly), a jump as a task of its list is done.
+pub(crate) fn reaction_of(ev: &AgentEvent) -> Option<Value> {
+    match &ev.kind {
+        Kind::SessionStart => Some(json!({ "react": "wave", "say": { "key": "say.hello" } })),
+        Kind::ToolFailed { call, quiet: false } => {
+            let name = if ev.agent == Agent::Opencode { call.own.as_deref().unwrap_or(&call.tool) } else { &call.tool };
+            Some(json!({ "react": "failed", "say": { "key": "say.toolFailed", "vars": { "tool": name } } }))
+        }
+        Kind::TaskDone { subject } => Some(json!({
+            "react": "jump",
+            "say": match subject {
+                Some(task) => json!({ "key": "say.taskDone", "vars": { "task": task } }),
+                None => json!({ "key": "say.taskDoneGeneric" }),
+            },
+        })),
+        _ => None,
+    }
+}
+
+// An event in her words, all in one value (the mood it comes to, before a
+// turn's edits make "done" "review"; the words above; what it carries), for
+// the agents' tests (events_*.rs): what an agent's event says, at a look.
+#[cfg(test)]
 pub fn message_of(ev: &AgentEvent) -> Value {
-    let tool = |call: &Call| json!(call.tool);
     let mut m = match &ev.kind {
-        Kind::SessionStart => json!({ "mood": "idle", "react": "wave", "say": { "key": "say.hello" } }),
+        Kind::SessionStart | Kind::Rest => json!({ "mood": "idle" }),
         Kind::SessionEnd => json!({ "mood": "idle", "event": "session-end" }),
         Kind::TurnStart { prompt } => {
             let mut m = json!({ "mood": "working", "event": "turn-start" });
@@ -225,33 +263,25 @@ pub fn message_of(ev: &AgentEvent) -> Value {
             }
             m
         }
-        Kind::ToolStart { call } => json!({ "mood": "working", "detail": tool(call), "event": "tool-start", "step": step_for(ev.agent, call) }),
-        Kind::ToolDone { call } => json!({ "mood": "working", "detail": tool(call), "event": "tool-done" }),
-        Kind::ToolFailed { call, quiet } => {
-            let mut m = json!({ "mood": "working", "detail": tool(call), "event": "tool-failed" });
-            if !quiet {
-                // OpenCode's tool by its own name.
-                let name = if ev.agent == Agent::Opencode { call.own.as_deref().unwrap_or(&call.tool) } else { &call.tool };
-                m["react"] = json!("failed");
-                m["say"] = json!({ "key": "say.toolFailed", "vars": { "tool": name } });
-            }
-            m
-        }
-        Kind::Waiting { wait } => json!({ "mood": "waiting", "detail": wait_of(ev.agent, wait) }),
+        Kind::ToolStart { call } => json!({ "mood": "working", "event": "tool-start", "step": step_for(ev.agent, call) }),
+        Kind::ToolDone { .. } => json!({ "mood": "working", "event": "tool-done" }),
+        Kind::ToolFailed { .. } => json!({ "mood": "working", "event": "tool-failed" }),
+        Kind::Waiting { .. } => json!({ "mood": "waiting" }),
         Kind::Working => json!({ "mood": "working" }),
-        Kind::Rest => json!({ "mood": "idle" }),
         // Stopped by the person: nothing to come and see.
         Kind::Stopped => json!({ "mood": "idle", "event": "turn-end" }),
         Kind::Done => json!({ "mood": "done", "event": "turn-end" }),
         Kind::Failed { error } => json!({ "mood": "error", "event": "turn-end", "error": error_of(error) }),
-        Kind::TaskDone { subject } => json!({
-            "react": "jump",
-            "say": match subject {
-                Some(task) => json!({ "key": "say.taskDone", "vars": { "task": task } }),
-                None => json!({ "key": "say.taskDoneGeneric" }),
-            },
-        }),
+        Kind::TaskDone { .. } => json!({}),
     };
+    let detail = detail_of(ev);
+    if detail != json!("") {
+        m["detail"] = detail;
+    }
+    if let Some(reaction) = reaction_of(ev) {
+        m["react"] = reaction["react"].clone();
+        m["say"] = reaction["say"].clone();
+    }
     if let Kind::ToolStart { call } | Kind::ToolDone { call } | Kind::ToolFailed { call, .. } = &ev.kind {
         if let Some(id) = &call.id {
             m["toolId"] = json!(id);
