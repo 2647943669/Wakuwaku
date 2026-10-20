@@ -52,7 +52,7 @@ fn dsh_home(name: &str, dsh: &Value) -> PathBuf {
     let _ = std::fs::remove_dir_all(&home);
     for log in dsh["logs"].as_array().into_iter().flatten() {
         let (cwd, session, file) = (log["cwd"].as_str().unwrap(), log["session"].as_str().unwrap(), log["file"].as_str().unwrap());
-        let dir = home.join("sessions").join(crate::events_dsh::project_key(cwd)).join(session);
+        let dir = home.join("sessions").join(agent_core::dsh::project_key(cwd)).join(session);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::copy(fixtures().join(file), dir.join("session.v4.jsonl.zstd")).unwrap();
     }

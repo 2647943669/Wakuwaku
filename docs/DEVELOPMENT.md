@@ -77,12 +77,17 @@ src-tauri/
     events_omp.rs         omp（oh-my-pi）扩展发来的事件 → 消息：小写的工具名、`path` 参数换成 Claude Code 的，再交给 events.rs
     events_reasonix.rs    Reasonix 的 hook 事件（它自己的驼峰字段）→ 换成 Claude Code 的字段和工具名（照它导入 Claude hook 时用的那张表）→ events.rs；批准请求只显示「在 Reasonix 里批准」
     events_zcode.rs       ZCode 的 hook 事件 → 消息：就是 Claude Code 的格式，用 events.rs 的，加上 agent: "zcode"
-    events_dsh.rs         DeepSeek Harness 的事件（她自己的插件 integrations/dsh/wakuwaku.js 发的，也认旧的 Claude Code 兼容桥发的）→ 消息：工具名换成 Claude Code 的再交给 events.rs；插件没带的会话名读它的投影缓存，最后说的话读它的会话记录（Zstandard，ruzstd）；它的批准和提问（插件的 PermissionRequest）换成 Claude Code 的说法交给 asks.rs（for_ask），她不接的只显示「在 DeepSeek Harness 里批准」（answered_in_dsh）
+    events_dsh.rs         DeepSeek Harness 的事件（她自己的插件 integrations/dsh/wakuwaku.js 发的，也认旧的 Claude Code 兼容桥发的）→ 消息：工具名换成 Claude Code 的再交给 events.rs；插件没带的会话名、最后说的话、谁的会话从 DSH 的文件夹读（agent-core 的 dsh.rs）；它的批准和提问（插件的 PermissionRequest）换成 Claude Code 的说法交给 asks.rs（for_ask），她不接的只显示「在 DeepSeek Harness 里批准」（answered_in_dsh）
+    replay.rs             重放测试：test/fixtures/replay 里每家 agent 的一串事件，走 /hook 的那段（server.rs 的 read_event、message_for）进 state.rs，每一步的结果和存着的比
     data.rs               数据目录、设置读写、已下载的宠物和 Codex 的宠物
     detach.rs             她启动的进程：更新、重启、守护进程按普通方式启动；hook 拉起她、启动时自查要脱离启动者的作业，作业不放行时才以资源管理器为父进程
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
   capabilities/           页面能用的 Tauri 权限：两个窗口都要列进去
   vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic（见 README.md）
+  crates/agent-core/      各家 agent 的会话在做什么，只从 agent 发来的事件和它留下的文件读，不管怎么显示（不依赖 Tauri、窗口、端口）：
+                          各家事件换成 Claude Code 的说法（OpenCode、Reasonix、DSH 的工具名）、会话记录里的会话名和最后说的话（Claude Code、
+                          Antigravity、DSH）、DSH 的会话日志和谁的会话、补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、
+                          target、profile 和 patch 都还在那里；crate 放在它下面，rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装时写上端口放进 OpenCode 的插件文件夹）
 integrations/omp/         omp 的扩展 wakuwaku.ts（connection.rs 填上端口、程序路径后写进 omp 的 agent 文件夹）
@@ -90,6 +95,7 @@ integrations/omp/         omp 的扩展 wakuwaku.ts（connection.rs 填上端口
 scripts/make-icons.js     画图标（node + ImageMagick），输出提交在 src-tauri/icons
 scripts/build-release.ps1 编译发布用的 exe，不带本机路径（见「构建和运行」）；scripts/gitee-release.ps1 把发布复制到 Gitee
 test/                     页面的单元测试（node --test，不需要 npm install）；fake-imap.js、fake-smtp.js 是试邮件用的假 IMAP、SMTP 服务器；fake-relay.js 是假的崩溃报告中转；fake-lhm.js 是假的 LibreHardwareMonitor 网页服务器
+test/fixtures/replay/     重放测试（replay.rs）：<名字>.json 是一家 agent 的一串事件，<名字>.out.json 是每一步的消息和之后的会话；改了 agent 那边的代码，结果变了测试就报出是哪一步。有意改变时 REPLAY_BLESS=1 cargo test replay 重写，再看 git diff
 relay/                    崩溃报告中转（Cloudflare Worker → GitHub issue；阿里云函数计算 → Gitee issue），部署步骤在 relay/README.md
 examples/widgets/         岛上插件的示例脚本：waku、邮件……，以及她替你跑的那几个插件的脚本版（样例，她不运行）
 integrations/thunderbird/ Thunderbird 扩展：未读邮件发到岛上（build.ps1 打包成 .xpi）
@@ -105,7 +111,7 @@ art/                      美术和调查资料，只在本地（只有 art/READ
 cd src-tauri
 cargo run                 # 调试版：有控制台窗口
 cargo build --release     # target/release/wakuwaku.exe：单个文件，约 5 MB，没有控制台
-cargo test                # Rust 单元测试
+cargo test                # Rust 单元测试（她和 src-tauri/crates/agent-core 两个 crate，含重放测试）
 cd .. && node --test "test/*.test.js"   # 页面的单元测试
 pwsh scripts/build-release.ps1 [-Out <文件夹>]   # 发布用的 exe：wakuwaku-v<版本>-windows-x64.exe，不带本机路径
 ```

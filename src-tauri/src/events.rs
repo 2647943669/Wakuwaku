@@ -11,35 +11,16 @@
 //   file     a file a tool just edited
 //   reply    how the last turn ended, in Claude's words
 //   error    why a turn failed
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
-use std::sync::Mutex;
-
 use serde_json::{json, Map, Value};
 
-// How much of a transcript's end is read for its title: Claude Code writes
-// the title again near the end as it goes.
-const TITLE_TAIL: u64 = 256 * 1024;
+// What an event's session is called and where it works, read the agents'
+// way (agent-core); here for the agents' files that use them.
+use agent_core::claude::transcript_title;
+pub(crate) use agent_core::project::project_of;
+pub(crate) use agent_core::text::{base, clip};
 
 fn s<'a>(e: &'a Value, key: &str) -> &'a str {
     e.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-pub(crate) fn clip(text: &str, max: usize) -> String {
-    let text = text.trim();
-    if text.chars().count() <= max {
-        return text.to_string();
-    }
-    let mut out: String = text.chars().take(max.saturating_sub(1)).collect();
-    out.push('…');
-    out
-}
-
-// The last part of a path, either slash.
-pub(crate) fn base(path: &str) -> &str {
-    path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
 // The part of a command that says what it does: its first line, without the
@@ -199,68 +180,6 @@ fn error_of(e: &Value) -> Value {
     }
     let details = s(e, "error_details");
     json!(clip(details.lines().next().unwrap_or(""), 80))
-}
-
-// Claude Code's name for the session from its transcript: the last name the
-// person (or the app) gave it, else the last one Claude made up.
-pub fn transcript_title(path: &str) -> Option<String> {
-    let mut file = File::open(path).ok()?;
-    let len = file.metadata().ok()?.len();
-    file.seek(SeekFrom::Start(len.saturating_sub(TITLE_TAIL))).ok()?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).ok()?;
-    let text = String::from_utf8_lossy(&bytes);
-    let (mut custom, mut ai) = (None, None);
-    for line in text.lines().rev() {
-        if custom.is_some() {
-            break;
-        }
-        let is_custom = line.contains("\"custom-title\"");
-        if !is_custom && (ai.is_some() || !line.contains("\"ai-title\"")) {
-            continue;
-        }
-        let Ok(entry) = serde_json::from_str::<Value>(line) else { continue };
-        match s(&entry, "type") {
-            "custom-title" => custom = Some(s(&entry, "customTitle").to_string()),
-            "ai-title" => ai = Some(s(&entry, "aiTitle").to_string()),
-            _ => {}
-        }
-    }
-    custom.or(ai).map(|t| clip(&t, 80)).filter(|t| !t.is_empty())
-}
-
-// The project a folder belongs to: the repository's own folder, so a session
-// in a git worktree (.claude/worktrees/<name>, or anywhere) still says whose;
-// outside git, the folder itself. Remembered per folder.
-pub(crate) fn project_of(cwd: &str) -> String {
-    static KNOWN: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
-    if let Some(name) = KNOWN.lock().unwrap().as_ref().and_then(|m| m.get(cwd)) {
-        return name.clone();
-    }
-    let name = repo_name(Path::new(cwd)).unwrap_or_else(|| base(cwd).to_string());
-    KNOWN.lock().unwrap().get_or_insert_with(HashMap::new).insert(cwd.to_string(), name.clone());
-    name
-}
-
-fn repo_name(cwd: &Path) -> Option<String> {
-    let name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_string());
-    for dir in cwd.ancestors().take(16) {
-        let git = dir.join(".git");
-        if git.is_dir() {
-            return name(dir);
-        }
-        if git.is_file() {
-            // A worktree's .git says where its repository keeps it:
-            // gitdir: <repo>/.git/worktrees/<name>
-            let text = std::fs::read_to_string(&git).ok()?;
-            let gitdir = text.trim().strip_prefix("gitdir:")?.trim().replace('\\', "/");
-            return match gitdir.find("/.git/worktrees/") {
-                Some(at) => Some(base(&gitdir[..at]).to_string()),
-                None => name(dir),
-            };
-        }
-    }
-    None
 }
 
 // What a tool that stops for the person is waiting on.
@@ -434,31 +353,5 @@ mod tests {
         assert_eq!(set, json!({ "set": [{ "text": "Run tests", "active": "Running tests", "status": "in_progress" }] }));
         assert_eq!(todo("TaskCreate", json!({ "subject": "A", "description": "…" })), json!({ "add": { "text": "A", "active": "" } }));
         assert_eq!(todo("TaskUpdate", json!({ "taskId": "2", "status": "completed" })), json!({ "update": { "id": "2", "status": "completed" } }));
-    }
-
-    #[test]
-    fn titles_and_projects() {
-        let dir = std::env::temp_dir().join(format!("wakuwaku-events-{}", std::process::id()));
-        let wt = dir.join("repo").join(".claude").join("worktrees").join("brave-otter");
-        std::fs::create_dir_all(dir.join("repo").join(".git")).unwrap();
-        std::fs::create_dir_all(wt.join("src")).unwrap();
-        let gitdir = dir.join("repo").join(".git").join("worktrees").join("brave-otter");
-        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
-        assert_eq!(project_of(&wt.join("src").to_string_lossy()), "repo");
-        assert_eq!(project_of(&dir.join("repo").to_string_lossy()), "repo");
-
-        let transcript = dir.join("t.jsonl");
-        let lines = [
-            r#"{"type":"ai-title","aiTitle":"Made up","sessionId":"s"}"#,
-            r#"{"type":"custom-title","customTitle":"Given","sessionId":"s"}"#,
-            r#"{"type":"user","message":"hi"}"#,
-            r#"{"type":"ai-title","aiTitle":"Made up later","sessionId":"s"}"#,
-        ];
-        std::fs::write(&transcript, lines.join("\n")).unwrap();
-        assert_eq!(transcript_title(&transcript.to_string_lossy()).as_deref(), Some("Given"));
-        std::fs::write(&transcript, [lines[0], lines[3]].join("\n")).unwrap();
-        assert_eq!(transcript_title(&transcript.to_string_lossy()).as_deref(), Some("Made up later"));
-        assert_eq!(transcript_title("Z:\\no\\such\\file.jsonl"), None);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

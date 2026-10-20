@@ -28,33 +28,15 @@
 // server's look for where a session runs (jump.rs) read them so. A tool by
 // Claude Code's name for it (shell is Bash, edit Edit, patch apply_patch),
 // for the words of its step and the edits a turn made.
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
+
+use agent_core::opencode::as_claude;
 
 use crate::events::{base, clip, project_of, reply_of, step, step_of, task_of};
 use crate::events_codex::patched;
 
 fn s<'a>(e: &'a Value, key: &str) -> &'a str {
     e.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-// A tool as Claude Code names it, with its input as Claude Code's has it.
-fn as_claude(tool: &str, input: &Value) -> (String, Value) {
-    let i = |key: &str| json!(s(input, key));
-    let (name, input) = match tool {
-        "shell" => ("Bash", json!({ "command": i("command"), "description": i("description") })),
-        "read" => ("Read", json!({ "file_path": i("path") })),
-        "edit" => ("Edit", json!({ "file_path": i("path") })),
-        "write" => ("Write", json!({ "file_path": i("path") })),
-        "patch" => ("apply_patch", json!({ "command": i("patchText") })),
-        "glob" => ("Glob", json!({ "pattern": i("pattern") })),
-        "grep" => ("Grep", json!({ "pattern": i("pattern") })),
-        "webfetch" => ("WebFetch", json!({ "url": i("url") })),
-        "websearch" => ("WebSearch", json!({ "query": i("query") })),
-        "subagent" => ("Agent", json!({ "description": i("description"), "subagent_type": i("agent") })),
-        "skill" => ("Skill", json!({ "skill": i("id") })),
-        _ => return (tool.to_string(), input.clone()),
-    };
-    (name.to_string(), input)
 }
 
 // What a tool is doing, in plain words: a patch by the files it edits.
@@ -80,72 +62,16 @@ fn edited(tool: &str, input: &Value) -> Option<String> {
 }
 
 // OpenCode's event under the name Claude Code's hook has for it, with the
-// fields its hooks have (the plugin's kept too), or Null for one that is
-// nothing to her.
+// fields its hooks have (agent-core), or Null for one that is nothing to her;
+// a permission asked for a call says what the call does, in plain words
+// (call_step).
 pub fn normalize(e: &Value) -> Value {
-    let error = e.get("error").unwrap_or(&Value::Null);
-    let name = match s(e, "type") {
-        "session.created" => "SessionStart",
-        "session.execution.started" => "UserPromptSubmit",
-        "session.tool.called" => "PreToolUse",
-        "session.tool.success" => "PostToolUse",
-        // Turned down by the person ("The user declined this tool call",
-        // aborted, as 2.0.29 says it), or stopped: no failure of the tool's.
-        "session.tool.failed" if matches!(s(error, "type"), "aborted" | "permission.rejected") => "PostToolUse",
-        "session.tool.failed" => "PostToolUseFailure",
-        "permission.asked" => "PermissionRequest",
-        "permission.replied" => "PermissionReplied",
-        "form.created" => "Question",
-        "form.replied" | "form.cancelled" => "Answered",
-        "session.execution.succeeded" => "Stop",
-        // A turn ended by a permission turned down, or cut short, is stopped, not failed.
-        "session.execution.failed" if matches!(s(error, "type"), "aborted" | "permission.rejected") => "Interrupt",
-        "session.execution.failed" => "StopFailure",
-        // Another turn took its place: that one goes on.
-        "session.execution.interrupted" if s(e, "reason") == "superseded" => return Value::Null,
-        "session.execution.interrupted" => "Interrupt",
-        "session.deleted" => "SessionEnd",
-        _ => return Value::Null,
-    };
-    let mut out: Map<String, Value> = e.as_object().cloned().unwrap_or_default();
-    out.insert("hook_event_name".into(), json!(name));
-    out.insert("session_id".into(), json!(s(e, "sessionID")));
-    out.insert("cwd".into(), json!(s(e, "directory")));
-    out.insert("agent_id".into(), json!(s(e, "agentID")));
-    if !s(e, "title").is_empty() {
-        out.insert("session_title".into(), json!(s(e, "title")));
+    let mut out = agent_core::opencode::normalize(e);
+    if out["hook_event_name"] == "PermissionRequest" && !s(e, "tool").is_empty() {
+        let (tool, input) = as_claude(s(e, "tool"), e.get("input").unwrap_or(&json!({})));
+        out["call_step"] = step_of_opencode(&tool, &input);
     }
-    let input = e.get("input").cloned().unwrap_or_else(|| json!({}));
-    match name {
-        "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => {
-            let (tool, input) = as_claude(s(e, "tool"), &input);
-            out.insert("tool_name".into(), json!(tool));
-            out.insert("tool_input".into(), input);
-            out.insert("tool_use_id".into(), json!(s(e, "id")));
-        }
-        // The permission asked, by OpenCode's own name for it (shell, edit,
-        // external_directory, …), with the call's input as Claude Code's has it.
-        "PermissionRequest" => {
-            let action = if s(e, "action").is_empty() { s(e, "tool") } else { s(e, "action") };
-            let (tool, input) = as_claude(s(e, "tool"), &input);
-            out.insert("tool_name".into(), json!(action));
-            out.insert("tool_use_id".into(), json!(s(e.get("source").unwrap_or(&Value::Null), "id")));
-            out.insert("permission_id".into(), json!(s(e, "id")));
-            // What the call it asks for does, in plain words.
-            if !s(e, "tool").is_empty() {
-                out.insert("call_step".into(), step_of_opencode(&tool, &input));
-            }
-            out.insert("tool_input".into(), input);
-        }
-        "PermissionReplied" => {
-            out.insert("permission_id".into(), json!(s(e, "requestID")));
-        }
-        "Stop" => {
-            out.insert("last_assistant_message".into(), json!(s(e, "text")));
-        }
-        _ => {}
-    }
-    Value::Object(out)
+    out
 }
 
 // Why a turn failed: one of her error kinds, or OpenCode's own words.
