@@ -31,6 +31,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 1000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -85,6 +105,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 2000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -155,6 +195,37 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 2100,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 2100,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "c1",
+              "input": {
+                "command": "rg -n health src"
+              },
+              "tool": "Bash"
+            },
+            "since": 2100
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -221,6 +292,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 2600,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 2600,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -291,6 +382,37 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 3000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 3000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "c2",
+              "input": {
+                "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\src\\main.rs\n@@ fn routes()\n-    .route(\"/\", root)\n+    .route(\"/\", root)\n+    .route(\"/health\", health)\n*** End Patch"
+              },
+              "tool": "apply_patch"
+            },
+            "since": 3000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -378,6 +500,52 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 3500,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 3500,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "c2",
+              "input": {
+                "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\src\\main.rs\n@@ fn routes()\n-    .route(\"/\", root)\n+    .route(\"/\", root)\n+    .route(\"/health\", health)\n*** End Patch"
+              },
+              "tool": "apply_patch"
+            },
+            "since": 3000
+          }
+        ],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1",
+        "wait": {
+          "answerIn": {
+            "in": "here"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "input": {
+                "command": "cargo test"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -451,6 +619,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 6000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 6000,
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -521,6 +711,39 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 6500,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 6500,
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "c3",
+              "input": {
+                "command": "cargo test"
+              },
+              "tool": "Bash"
+            },
+            "since": 6500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -587,6 +810,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 9000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -649,6 +894,29 @@
       "turns": 0,
       "workedMs": 7500
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 9500,
+        "cwd": "Z:\\replay\\svc",
+        "edited": true,
+        "eventAt": 9500,
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": "Added `/health`; the tests pass.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 7500,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -710,6 +978,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 9500,
+        "cwd": "Z:\\replay\\svc",
+        "edited": true,
+        "eventAt": 9500,
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": "Added `/health`; the tests pass.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 7500,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -741,6 +1032,29 @@
     "at": 15000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 9500,
+        "cwd": "Z:\\replay\\svc",
+        "edited": true,
+        "eventAt": 9500,
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Add a health endpoint",
+        "reply": "Added `/health`; the tests pass.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 7500,
+        "turn": "t1"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -795,6 +1109,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 20000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 20000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Bump the version",
+        "reply": null,
+        "running": [],
+        "since": 20000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t2"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -865,6 +1199,37 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 20100,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 20100,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Bump the version",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "c5",
+              "input": {
+                "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\Cargo.toml\n@@\n-version = \"0.1.0\"\n+version = \"0.1.1\"\n*** End Patch"
+              },
+              "tool": "apply_patch"
+            },
+            "since": 20100
+          }
+        ],
+        "since": 20000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t2"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -929,6 +1294,27 @@
       "turns": 0,
       "workedMs": 200
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 20200,
+        "cwd": "Z:\\replay\\svc",
+        "edited": false,
+        "eventAt": 20200,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Bump the version",
+        "reply": "Bumped to 0.1.1.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 200,
+        "turn": "t2"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -992,6 +1378,27 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 20200,
+        "cwd": "Z:\\replay\\svc",
+        "edited": true,
+        "eventAt": 20200,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Bump the version",
+        "reply": "Bumped to 0.1.1.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 200,
+        "turn": "t2"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -1023,6 +1430,27 @@
     "at": 30000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 20200,
+        "cwd": "Z:\\replay\\svc",
+        "edited": true,
+        "eventAt": 20200,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Bump the version",
+        "reply": "Bumped to 0.1.1.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 200,
+        "turn": "t2"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -1077,6 +1505,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 31000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 31000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Run the linter",
+        "reply": null,
+        "running": [],
+        "since": 31000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t3"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -1147,6 +1595,37 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 31100,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 31100,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Run the linter",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "c6",
+              "input": {
+                "command": "cargo clippy"
+              },
+              "tool": "Bash"
+            },
+            "since": 31100
+          }
+        ],
+        "since": 31000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t3"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -1204,6 +1683,26 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 32000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 32000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Run the linter",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t3"
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -1266,6 +1765,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "codex",
+        "at": 33000,
+        "cwd": "Z:\\replay\\svc",
+        "eventAt": 33000,
+        "files": [],
+        "id": "replay-codex",
+        "project": "svc",
+        "prompt": "Run the linter",
+        "reply": null,
+        "running": [],
+        "since": 33000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "t4",
+        "wait": {
+          "for": "question"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "codex",
@@ -1319,6 +1841,7 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [],
     "sessions": [],
     "shown": {
       "id": "",

@@ -31,6 +31,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 1000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -83,6 +103,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 2000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -152,6 +192,38 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 2500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 2500,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_00_A",
+              "input": {
+                "command": "Get-Content note.txt",
+                "description": "Read note.txt"
+              },
+              "tool": "Bash"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -217,6 +289,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 2800,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 2800,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -301,6 +393,42 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 3000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 3000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "here"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "id": "call_00_B",
+              "input": {
+                "file_path": "Z:\\replay\\dsh-ws\\copy.txt"
+              },
+              "tool": "Write"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -360,6 +488,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 6000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -424,6 +572,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 6500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 6500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -475,6 +645,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 6500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 6500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -526,6 +718,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 6500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 6500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -592,6 +806,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 7500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 7500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -628,6 +865,29 @@
     "event": "PostToolUse",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 7500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 7500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -679,6 +939,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 7500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 7500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -766,6 +1049,47 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 8000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 8000,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "app",
+            "name": "DeepSeek Harness"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "id": "call_00_C",
+              "input": {
+                "command": "Remove-Item build -Recurse",
+                "description": "Remove the build folder"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -826,6 +1150,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 9000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -905,6 +1252,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 9500,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 9500,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1005,6 +1375,42 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 9800,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 9800,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [
+          {
+            "active": "",
+            "id": "1",
+            "status": "completed",
+            "text": "Read note.txt"
+          },
+          {
+            "active": "",
+            "id": "2",
+            "status": "completed",
+            "text": "Write copy.txt"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1071,6 +1477,43 @@
       "turns": 0,
       "workedMs": 8000
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 10000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": "Done — copy.txt has `hi`.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Copy a note",
+        "todos": [
+          {
+            "active": "",
+            "id": "1",
+            "status": "completed",
+            "text": "Read note.txt"
+          },
+          {
+            "active": "",
+            "id": "2",
+            "status": "completed",
+            "text": "Write copy.txt"
+          }
+        ],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1106,6 +1549,43 @@
     "at": 20000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 10000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\dsh-ws\\copy.txt",
+          "Z:\\replay\\dsh-ws\\notes.md"
+        ],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": "Done — copy.txt has `hi`.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Copy a note",
+        "todos": [
+          {
+            "active": "",
+            "id": "1",
+            "status": "completed",
+            "text": "Read note.txt"
+          },
+          {
+            "active": "",
+            "id": "2",
+            "status": "completed",
+            "text": "Write copy.txt"
+          }
+        ],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1162,6 +1642,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 21000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 21000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "And a second copy",
+        "reply": null,
+        "running": [],
+        "since": 21000,
+        "status": "working",
+        "title": "Copy a note",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1214,6 +1714,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 22000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 22000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "And a second copy",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Copy a note",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1266,6 +1786,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 23000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "eventAt": 23000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Try the second copy again",
+        "reply": null,
+        "running": [],
+        "since": 23000,
+        "status": "working",
+        "title": "Copy a note",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1329,6 +1869,30 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 24000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "error": {
+          "as": "said",
+          "said": "401 Unauthorized: invalid api key"
+        },
+        "eventAt": 24000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Try the second copy again",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": "Copy a note",
+        "todos": [],
+        "took": 1000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -1362,6 +1926,30 @@
     "event": "WakuwakuLoaded",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 24000,
+        "cwd": "Z:\\replay\\dsh-ws",
+        "error": {
+          "as": "said",
+          "said": "401 Unauthorized: invalid api key"
+        },
+        "eventAt": 24000,
+        "files": [],
+        "id": "replay-dsh-main",
+        "project": "dsh-ws",
+        "prompt": "Try the second copy again",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": "Copy a note",
+        "todos": [],
+        "took": 1000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",

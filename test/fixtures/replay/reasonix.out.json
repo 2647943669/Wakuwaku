@@ -31,6 +31,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 1000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -83,6 +103,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 2000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -152,6 +192,38 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 2500,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 2500,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "rx_c1",
+              "input": {
+                "content": "hi\n",
+                "file_path": "Z:\\replay\\rx\\note.txt"
+              },
+              "tool": "Write"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -219,6 +291,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 3000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 3000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -304,6 +398,44 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 5000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 5000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "app",
+            "name": "Reasonix"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "input": {
+                "command": "git push"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -348,6 +480,44 @@
     "event": "Notification",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 5000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 5000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "app",
+            "name": "Reasonix"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "input": {
+                "command": "git push"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -424,6 +594,38 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 8000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 8000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "input": {
+                "pattern": "TODO"
+              },
+              "tool": "Grep"
+            },
+            "since": 8000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -490,6 +692,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 8500,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 8500,
+        "files": [
+          "Z:\\replay\\rx\\note.txt",
+          "Z:\\replay\\rx\\todo.md"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -526,6 +751,29 @@
     "event": "Stop",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 8500,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 8500,
+        "files": [
+          "Z:\\replay\\rx\\note.txt",
+          "Z:\\replay\\rx\\todo.md"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -602,6 +850,29 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 9000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt",
+          "Z:\\replay\\rx\\todo.md"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -638,6 +909,29 @@
     "event": "PostToolUse",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 9000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt",
+          "Z:\\replay\\rx\\todo.md"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -698,6 +992,30 @@
       "turns": 0,
       "workedMs": 8000
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 10000,
+        "cwd": "Z:\\replay\\rx",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt",
+          "Z:\\replay\\rx\\todo.md"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": "## Done\nCreated **note.txt** and pushed it.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -729,6 +1047,30 @@
     "at": 20000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 10000,
+        "cwd": "Z:\\replay\\rx",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\rx\\note.txt",
+          "Z:\\replay\\rx\\todo.md"
+        ],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Create note.txt and push it.",
+        "reply": "## Done\nCreated **note.txt** and pushed it.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -781,6 +1123,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 21000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 21000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Now tag a release",
+        "reply": null,
+        "running": [],
+        "since": 21000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -844,6 +1206,30 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 22000,
+        "cwd": "Z:\\replay\\rx",
+        "error": {
+          "as": "said",
+          "said": "deepseek: 402 Insufficient Balance"
+        },
+        "eventAt": 22000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Now tag a release",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -877,6 +1263,30 @@
     "event": "Stop",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 22000,
+        "cwd": "Z:\\replay\\rx",
+        "error": {
+          "as": "said",
+          "said": "deepseek: 402 Insufficient Balance"
+        },
+        "eventAt": 22000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Now tag a release",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -908,6 +1318,30 @@
     "at": 30000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 22000,
+        "cwd": "Z:\\replay\\rx",
+        "error": {
+          "as": "said",
+          "said": "deepseek: 402 Insufficient Balance"
+        },
+        "eventAt": 22000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Now tag a release",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -960,6 +1394,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 31000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 31000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Try once more",
+        "reply": null,
+        "running": [],
+        "since": 31000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -1013,6 +1467,26 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 32000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 32000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Try once more",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -1046,6 +1520,26 @@
     "event": "Stop",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 32000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 32000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Try once more",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -1118,6 +1612,37 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 100000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 100000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Try once more",
+        "reply": null,
+        "running": [],
+        "since": 100000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "app",
+            "name": "Reasonix"
+          },
+          "for": "approval",
+          "what": {
+            "as": "said",
+            "said": "Auto Guard: confirm the next action"
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -1157,6 +1682,37 @@
     "event": "SubagentStart",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "reasonix",
+        "at": 100000,
+        "cwd": "Z:\\replay\\rx",
+        "eventAt": 100000,
+        "files": [],
+        "id": "replay-rx",
+        "project": "rx",
+        "prompt": "Try once more",
+        "reply": null,
+        "running": [],
+        "since": 100000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "app",
+            "name": "Reasonix"
+          },
+          "for": "approval",
+          "what": {
+            "as": "said",
+            "said": "Auto Guard: confirm the next action"
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "reasonix",
@@ -1213,6 +1769,7 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [],
     "sessions": [],
     "shown": {
       "id": "",

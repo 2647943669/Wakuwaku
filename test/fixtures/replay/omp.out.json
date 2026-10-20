@@ -31,6 +31,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 1000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -83,6 +103,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 2000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -156,6 +196,42 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 2500,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 2500,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_1",
+              "input": {
+                "file_path": "a.txt"
+              },
+              "intent": "Reading a.txt",
+              "own": "read",
+              "raw": {
+                "path": "a.txt"
+              },
+              "tool": "Read"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -224,6 +300,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 2700,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 2700,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -299,6 +395,44 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 3000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 3000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_2",
+              "input": {
+                "file_path": "a.txt"
+              },
+              "intent": "Changing hi to bye",
+              "own": "edit",
+              "raw": {
+                "new_string": "bye",
+                "old_string": "hi",
+                "path": "a.txt"
+              },
+              "tool": "Edit"
+            },
+            "since": 3000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -369,6 +503,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 3500,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 3500,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -457,6 +613,48 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 4000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 4000,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "terminal"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "input": {
+                "command": "rm -rf build",
+                "description": ""
+              },
+              "own": "bash",
+              "raw": {
+                "command": "rm -rf build"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -516,6 +714,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 6000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 6000,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -590,6 +810,45 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 6500,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 6500,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_3",
+              "input": {
+                "command": "rm -rf build",
+                "description": "Removing the build folder"
+              },
+              "intent": "Removing the build folder",
+              "own": "bash",
+              "raw": {
+                "command": "rm -rf build"
+              },
+              "tool": "Bash"
+            },
+            "since": 6500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -675,6 +934,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 7000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 7000,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -738,6 +1019,31 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 7500,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 7500,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "for": "plan"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -800,6 +1106,29 @@
       "turns": 0,
       "workedMs": 7000
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 9000,
+        "cwd": "Z:\\replay\\omp",
+        "edited": true,
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": "Done.\nChanged hi to bye.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Change a greeting",
+        "todos": [],
+        "took": 7000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -831,6 +1160,29 @@
     "at": 20000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 9000,
+        "cwd": "Z:\\replay\\omp",
+        "edited": true,
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\omp\\a.txt"
+        ],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Change hi to bye in a.txt",
+        "reply": "Done.\nChanged hi to bye.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Change a greeting",
+        "todos": [],
+        "took": 7000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -883,6 +1235,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 21000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 21000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Run it again",
+        "reply": null,
+        "running": [],
+        "since": 21000,
+        "status": "working",
+        "title": "Change a greeting",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -946,6 +1318,30 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 22000,
+        "cwd": "Z:\\replay\\omp",
+        "error": {
+          "as": "said",
+          "said": "Connection error.\nretry later"
+        },
+        "eventAt": 22000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Run it again",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": "Change a greeting",
+        "todos": [],
+        "took": 1000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -998,6 +1394,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 23000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 23000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Once more please",
+        "reply": null,
+        "running": [],
+        "since": 23000,
+        "status": "working",
+        "title": "Change a greeting",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -1051,6 +1467,26 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "omp",
+        "at": 24000,
+        "cwd": "Z:\\replay\\omp",
+        "eventAt": 24000,
+        "files": [],
+        "id": "replay-omp",
+        "project": "omp",
+        "prompt": "Once more please",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Change a greeting",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "omp",
@@ -1101,6 +1537,7 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [],
     "sessions": [],
     "shown": {
       "id": "",

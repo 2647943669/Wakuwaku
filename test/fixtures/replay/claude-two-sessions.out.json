@@ -32,6 +32,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 1000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "API refactor",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -90,6 +110,44 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 1000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "API refactor",
+        "todos": [],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -159,6 +217,44 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 2000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -257,6 +353,71 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 2500,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 2500,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a1",
+              "input": {
+                "activeForm": "Splitting the client",
+                "subject": "Split the client"
+              },
+              "todo": {
+                "change": "add",
+                "item": {
+                  "active": "Splitting the client",
+                  "status": "",
+                  "text": "Split the client"
+                }
+              },
+              "tool": "TaskCreate"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "pending",
+            "text": "Split the client"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -340,6 +501,51 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 2600,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 2600,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "pending",
+            "text": "Split the client"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -442,6 +648,77 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 2700,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 2700,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a2",
+              "input": {
+                "activeForm": "Adding retries",
+                "subject": "Add retries"
+              },
+              "todo": {
+                "change": "add",
+                "item": {
+                  "active": "Adding retries",
+                  "status": "",
+                  "text": "Add retries"
+                }
+              },
+              "tool": "TaskCreate"
+            },
+            "since": 2700
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "pending",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -525,6 +802,57 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 2800,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 2800,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "pending",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -626,6 +954,76 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 3000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a3",
+              "input": {
+                "status": "in_progress",
+                "taskId": "1"
+              },
+              "todo": {
+                "active": null,
+                "change": "update",
+                "id": "1",
+                "status": "in_progress",
+                "text": null
+              },
+              "tool": "TaskUpdate"
+            },
+            "since": 3000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -710,6 +1108,57 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3100,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 3100,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -800,6 +1249,68 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3500,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 3500,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a4",
+              "input": {
+                "issue_number": 12
+              },
+              "tool": "mcp__github__get_issue"
+            },
+            "since": 3500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 1500,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 1500,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -879,6 +1390,68 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3500,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 3500,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a4",
+              "input": {
+                "issue_number": 12
+              },
+              "tool": "mcp__github__get_issue"
+            },
+            "since": 3500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 4000,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 4000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -976,6 +1549,81 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3500,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 3500,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a4",
+              "input": {
+                "issue_number": 12
+              },
+              "tool": "mcp__github__get_issue"
+            },
+            "since": 3500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 4100,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 4100,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_b1",
+              "input": {
+                "description": "Explore the docs",
+                "prompt": "Find stale sections",
+                "subagent_type": "Explore"
+              },
+              "tool": "Agent"
+            },
+            "since": 4100
+          }
+        ],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1072,6 +1720,85 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3500,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 3500,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a4",
+              "input": {
+                "issue_number": 12
+              },
+              "tool": "mcp__github__get_issue"
+            },
+            "since": 3500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 4200,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 4200,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_b1",
+              "input": {
+                "description": "Explore the docs",
+                "prompt": "Find stale sections",
+                "subagent_type": "Explore"
+              },
+              "tool": "Agent"
+            },
+            "since": 4100
+          }
+        ],
+        "since": 4000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "for": "input",
+          "server": "linear"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1163,6 +1890,74 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 5000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 5000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 4200,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 4200,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_b1",
+              "input": {
+                "description": "Explore the docs",
+                "prompt": "Find stale sections",
+                "subagent_type": "Explore"
+              },
+              "tool": "Agent"
+            },
+            "since": 4100
+          }
+        ],
+        "since": 4000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "for": "input",
+          "server": "linear"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1226,6 +2021,74 @@
     "event": "SessionStart",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 5000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 5000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 4200,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 4200,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_b1",
+              "input": {
+                "description": "Explore the docs",
+                "prompt": "Find stale sections",
+                "subagent_type": "Explore"
+              },
+              "tool": "Agent"
+            },
+            "since": 4100
+          }
+        ],
+        "since": 4000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "for": "input",
+          "server": "linear"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1314,6 +2177,57 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 5000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 5000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 6000,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1405,6 +2319,57 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 5000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 5000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 6000,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1509,6 +2474,76 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 7000,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 7000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_a5",
+              "input": {
+                "status": "completed",
+                "taskId": "1"
+              },
+              "todo": {
+                "active": null,
+                "change": "update",
+                "id": "1",
+                "status": "completed",
+                "text": null
+              },
+              "tool": "TaskUpdate"
+            },
+            "since": 7000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 6000,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1596,6 +2631,57 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 7100,
+        "cwd": "Z:\\replay\\api",
+        "eventAt": 7100,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": null,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 6000,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1680,6 +2766,58 @@
       "turns": 0,
       "workedMs": 6000
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 8000,
+        "cwd": "Z:\\replay\\api",
+        "edited": false,
+        "eventAt": 8000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": "Done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": 6000,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 6000,
+        "cwd": "Z:\\replay\\docs",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": null,
+        "running": [],
+        "since": 4000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1761,6 +2899,59 @@
       "turns": 0,
       "workedMs": 5000
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 8000,
+        "cwd": "Z:\\replay\\api",
+        "edited": false,
+        "eventAt": 8000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": "Done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": 6000,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 9000,
+        "cwd": "Z:\\replay\\docs",
+        "edited": false,
+        "eventAt": 9000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": "The README is up to date.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 5000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1814,6 +3005,59 @@
     "at": 20000,
     "changed": false,
     "do": "tick",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 8000,
+        "cwd": "Z:\\replay\\api",
+        "edited": false,
+        "eventAt": 8000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": "Done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": 6000,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 9000,
+        "cwd": "Z:\\replay\\docs",
+        "edited": false,
+        "eventAt": 9000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": "The README is up to date.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 5000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1867,6 +3111,59 @@
     "at": 38500,
     "changed": true,
     "do": "tick",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 8000,
+        "cwd": "Z:\\replay\\api",
+        "edited": false,
+        "eventAt": 8000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": "Done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": 6000,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 9000,
+        "cwd": "Z:\\replay\\docs",
+        "edited": false,
+        "eventAt": 9000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": "The README is up to date.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 5000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1920,6 +3217,59 @@
     "at": 39500,
     "changed": true,
     "do": "tick",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 8000,
+        "cwd": "Z:\\replay\\api",
+        "edited": false,
+        "eventAt": 8000,
+        "files": [],
+        "id": "replay-cc-a",
+        "project": "api",
+        "prompt": "Refactor the API client",
+        "reply": "Done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "API refactor",
+        "todos": [
+          {
+            "active": "Splitting the client",
+            "id": "1",
+            "status": "completed",
+            "text": "Split the client"
+          },
+          {
+            "active": "Adding retries",
+            "id": "2",
+            "status": "pending",
+            "text": "Add retries"
+          }
+        ],
+        "took": 6000,
+        "turn": null
+      },
+      {
+        "agent": "claude",
+        "at": 9000,
+        "cwd": "Z:\\replay\\docs",
+        "edited": false,
+        "eventAt": 9000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": "The README is up to date.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 5000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1991,6 +3341,27 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 9000,
+        "cwd": "Z:\\replay\\docs",
+        "edited": false,
+        "eventAt": 9000,
+        "files": [],
+        "id": "replay-cc-b",
+        "project": "docs",
+        "prompt": "Update the README",
+        "reply": "The README is up to date.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 5000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",

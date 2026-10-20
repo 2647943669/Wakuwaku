@@ -73,7 +73,7 @@ src-tauri/
     state.rs              状态机：按会话记 mood、名字、在跑的工具、任务清单、改过的文件、结果，挑最需要你的那个显示
     events.rs             AgentEvent（agent-core 读出来的：哪家、哪个会话、在做什么）→ 给她的消息：心情、步骤、等什么、说的话怎么写（message_of）；每家各自的写法（Codex 和 OpenCode 的补丁、omp 的 intent、OpenCode 失败时报它自己的工具名）在 step_for 里
     events_codex.rs 等    每家 agent 一个：她怎么用它的事件（agy、dsh 的日志行），和它的测试；读事件本身在 agent-core 对应的模块里
-    replay.rs             重放测试：test/fixtures/replay 里每家 agent 的一串事件，走 /hook 的那段（server.rs 的 read_event、event_for，events.rs 的 message_of）进 state.rs，每一步的 AgentEvent、消息和之后的会话和存着的比
+    replay.rs             重放测试：test/fixtures/replay 里每家 agent 的一串事件，走 /hook 的那段（server.rs 的 read_event、event_for，events.rs 的 message_of）进 state.rs，每一步的 AgentEvent、消息和之后的会话（她的，和 agent-core 的 registry）和存着的比，并且每一步都核对 registry 和她的会话对得上（同样的会话、状态、文件数、待办、开始的时间）
     data.rs               数据目录、设置读写、已下载的宠物和 Codex 的宠物
     detach.rs             她启动的进程：更新、重启、守护进程按普通方式启动；hook 拉起她、启动时自查要脱离启动者的作业，作业不放行时才以资源管理器为父进程
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
@@ -83,7 +83,7 @@ src-tauri/
                           每家的事件读成 AgentEvent（event.rs：会话开始和结束、一轮开始、工具开始/结束/失败、等人（批准在哪儿批、提问、计划、
                           MCP 要输入）、回到工作、一轮完成/失败/被停下，带着工具调用的名字、Claude Code 说法的输入、原始输入、改了哪个文件、待办的变化），
                           哪些事件不算、回合号、子代理归到哪个会话、是不是本人说的话都在这里定（claude.rs、codex.rs、agy.rs、opencode.rs、omp.rs、
-                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
+                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半，她自己的心情、看过没有、留多久在 state.rs；以后的 /v1 用它）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
                           补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、target、profile 和 patch 都还在那里；crate 放在它下面，
                           rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）

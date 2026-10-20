@@ -31,6 +31,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 1000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -85,6 +105,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 2000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -151,6 +191,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 4000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 4000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -203,6 +265,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 5000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 5000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -239,6 +323,28 @@
     "event": "Stop",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 5000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 5000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -300,6 +406,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 15000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 15000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -357,6 +485,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 16000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 16000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -417,6 +567,29 @@
       "turns": 0,
       "workedMs": 16000
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 18000,
+        "cwd": "Z:/replay/agyws",
+        "edited": true,
+        "eventAt": 18000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 16000,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -448,6 +621,29 @@
     "at": 25000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 18000,
+        "cwd": "Z:/replay/agyws",
+        "edited": true,
+        "eventAt": 18000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 16000,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -519,6 +715,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 26000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 26000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": 26000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -582,6 +800,32 @@
       "turns": 0,
       "workedMs": 1000
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 27000,
+        "cwd": "Z:/replay/agyws",
+        "error": {
+          "as": "said",
+          "said": "quota exceeded\nmore"
+        },
+        "eventAt": 27000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -613,6 +857,32 @@
     "at": 28000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 27000,
+        "cwd": "Z:/replay/agyws",
+        "error": {
+          "as": "said",
+          "said": "quota exceeded\nmore"
+        },
+        "eventAt": 27000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -663,6 +933,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 29000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 29000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
@@ -696,6 +988,28 @@
     "event": "PostInvocation",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "agy",
+        "at": 29000,
+        "cwd": "Z:/replay/agyws",
+        "eventAt": 29000,
+        "files": [
+          "Z:\\replay\\agyws\\hello.txt"
+        ],
+        "id": "replay-agy",
+        "project": "agyws",
+        "prompt": "Create hello.txt, then ping in the background",
+        "reply": "Created hello.txt; the ping is done.",
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": 1000,
+        "turn": "0"
+      }
+    ],
     "sessions": [
       {
         "agent": "agy",
