@@ -79,15 +79,7 @@ src-tauri/
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
   capabilities/           页面能用的 Tauri 权限：两个窗口都要列进去
   vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic；没有长度的正文读到一段就发一段（/v1/events 要）（见 README.md）
-  crates/agent-core/      各家 agent 的会话在做什么，只从 agent 发来的事件和它留下的文件读，不管怎么显示（不依赖 Tauri、窗口、端口）：
-                          每家的事件读成 AgentEvent（event.rs：会话开始和结束、一轮开始、工具开始/结束/失败、等人（批准在哪儿批、提问、计划、
-                          MCP 要输入）、回到工作、一轮完成/失败/被停下，带着工具调用的名字、Claude Code 说法的输入、原始输入、改了哪个文件、待办的变化），
-                          哪些事件不算、回合号、子代理归到哪个会话、是不是本人说的话都在这里定（claude.rs、codex.rs、agy.rs、opencode.rs、omp.rs、
-                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；asks.rs 是等人回答的确认请求（面板要的数据、各家 hook 要的回复、什么时候算在别处答过、超时）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半：宠物的 state.rs 和 /v1 都建在它上面，她自己的心情、看过没有、留多久在 state.rs）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
-                          补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、target、profile 和 patch 都还在那里；crate 放在它下面，
-                          rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
-  crates/agent-hub/       把会话告诉本机别的应用（编辑器、脚本）：agent-core 的 registry、每个事件编号后留最近 512 个（最多 8 MB）、订阅的人各自的队列
-                          （读不动的放掉，不拖住 hook）、本机令牌、SSE 的写法；不带 HTTP 服务器，/v1 的请求由 server.rs 接（见「给别的应用：/v1」）
+                          agent-core、agent-hub 不在这里：在它们自己的仓库 github.com/zhoupengjie/agent-hub，Cargo.toml 按 tag 依赖（见「agent-core 和 agent-hub」）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装时写上端口放进 OpenCode 的插件文件夹）
 integrations/omp/         omp 的扩展 wakuwaku.ts（connection.rs 填上端口、程序路径后写进 omp 的 agent 文件夹）
@@ -111,7 +103,7 @@ art/                      美术和调查资料，只在本地（只有 art/READ
 cd src-tauri
 cargo run                 # 调试版：有控制台窗口
 cargo build --release     # target/release/wakuwaku.exe：单个文件，约 5 MB，没有控制台
-cargo test --workspace    # Rust 单元测试（她和 src-tauri/crates 下的 agent-core、agent-hub，含重放测试）
+cargo test                # Rust 单元测试（含重放测试；agent-core、agent-hub 的测试在它们自己的仓库里跑）
 cd .. && node --test "test/*.test.js"   # 页面的单元测试
 pwsh scripts/build-release.ps1 [-Out <文件夹>]   # 发布用的 exe：wakuwaku-v<版本>-windows-x64.exe，不带本机路径
 ```
@@ -124,6 +116,22 @@ pwsh scripts/build-release.ps1 [-Out <文件夹>]   # 发布用的 exe：wakuwak
   - 设 `WAKUWAKU_ASSET=1`：`build.rs` 不再把源码目录交给 `data.rs`（`WAKUWAKU_SOURCE_TREE`）。这样的 exe 不会认为自己是从源码运行，也不会去找源码树里的 `pets/`。
   - 编进 `src-tauri/target/asset`：参数和普通构建不同，共用 `target/release` 的话每次切换都要全部重编，还会覆盖从源码运行的那个 exe。
   - 编完后在 exe 里找有没有本机路径（仓库、cargo、工具链、用户目录、任何 `X:\Users\`），有就报错停下。最后给出文件、大小和 SHA-256。
+
+### agent-core 和 agent-hub
+
+读各家 agent 事件、记会话（agent-core）和把会话告诉本机别的应用（agent-hub）的两个 crate，在它们自己的仓库 [zhoupengjie/agent-hub](https://github.com/zhoupengjie/agent-hub)（公开，MIT；以后的 Markdown 编辑器也用它们），`src-tauri/Cargo.toml` 按 git tag 依赖它们，`Cargo.lock` 记着那个 tag 的提交。cargo 第一次编译时从 GitHub 拉取（放在 `<CARGO_HOME>\git`），之后不用联网。
+
+- **改它们**：把那个仓库克隆到这个仓库旁边（`../agent-hub`），在 `src-tauri/.cargo/config.toml`（不进仓库）里让她用本地的那份：
+
+  ```toml
+  [patch."https://github.com/zhoupengjie/agent-hub"]
+  agent-core = { path = "../../agent-hub/agent-core" }
+  agent-hub = { path = "../../agent-hub/agent-hub" }
+  ```
+
+  两边一起改、一起测（那边 `cargo test --workspace`，这边 `cargo test`）。
+- **发出去**：在 agent-hub 仓库提交、推送，打新的 tag（`vX.Y.Z`，它的 CI 在 Windows 上跑测试），再把这边 `Cargo.toml` 里两个 tag 改成它、删掉本地的 `config.toml`，`cargo build` 更新 `Cargo.lock`，和她的改动一起提交。`/v1` 只加字段；不兼容的改动换成 `/v2`。
+- 改 crate 的提交不要和她的改动混在一起：那边的历史只有那边的事。
 
 页面是打进 exe 的：改了 `src/` 要重新编译（cargo 会发现）。不需要 Node 和 Tauri CLI；`Cargo.toml` 默认开着 `custom-protocol`，所以 `cargo run` 也直接用打进去的页面，不找开发服务器。
 
@@ -210,7 +218,7 @@ omp（`can1357/oh-my-pi`，zhoupengjie/Wakuwaku#47）没有 Claude Code 那样�
 
 ## 会话事件
 
-hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块里，`crates/agent-core/src/event.rs`），宠物的会话（`state.rs`，建在 agent-core 的 registry 上）和 `/v1` 都从它来；`/v1/events` 发的、`POST /state` 收的也是它（JSON，camelCase；`/v1/events` 多带的 `seq`、`at` 收的时候不管）：
+hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块里，agent-hub 仓库的 `agent-core/src/event.rs`），宠物的会话（`state.rs`，建在 agent-core 的 registry 上）和 `/v1` 都从它来；`/v1/events` 发的、`POST /state` 收的也是它（JSON，camelCase；`/v1/events` 多带的 `seq`、`at` 收的时候不管）：
 
 ```json
 { "agent": "claude", "session": "…", "cwd": "D:\\work\\notes", "type": "toolStart", "call": { "id": "toolu_…", "tool": "Bash", "input": { "command": "npm test", "description": "Run the tests" } } }
@@ -256,7 +264,7 @@ hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块�
 
 ## 给别的应用：/v1
 
-本机别的应用（以后的 Markdown 编辑器、脚本）想知道 agent 在做什么时，不用自己装 hook，问她的端口就行。会话和事件由 `crates/agent-hub` 管（`lib.rs` 开头写了每个接口），`server.rs` 只管 HTTP；同一套代码以后也编进编辑器，谁先占着 47213 谁当 hub。
+本机别的应用（以后的 Markdown 编辑器、脚本）想知道 agent 在做什么时，不用自己装 hook，问她的端口就行。会话和事件由 agent-hub 管（它的仓库里 `agent-hub/src/lib.rs` 开头写了每个接口），`server.rs` 只管 HTTP；同一套代码以后也编进编辑器，谁先占着 47213 谁当 hub。
 
 - **令牌**：`/v1/sessions` 和 `/v1/events` 要带 `Authorization: Bearer <令牌>`，令牌在数据目录的 `agent-hub\token`（第一次启动时生成，32 个十六进制字符，以后一直用它），文件在哪儿 `/v1/info` 会说。事件里有你问 agent 的话、Edit 前后的文件内容，没有令牌的话本机浏览器里的网页也能来读。另外 `Host` 不是 `127.0.0.1` / `localhost` / `[::1]` 的请求一概 404（防 DNS rebinding）。数据目录写不进去时令牌只在内存里，这次运行 /v1 谁也用不了（日志里有一行）。
 - **`/v1/info`**：`{ api: 1, hub, app: "wakuwaku", appVersion, boot, seq, capabilities: ["sessions", "events"], token: { header, file } }`。`boot` 是 hub 起来的时间（毫秒），变了就说明事件编号重新从 1 开始。

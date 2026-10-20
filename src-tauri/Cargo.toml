@@ -8,20 +8,15 @@ authors = ["Pengjie Zhou"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-# The agents' side of things, a crate of its own (crates/agent-core): what
-# an agent's session is doing, read from its events and the files it
-# leaves, with nothing of how she shows it; one day of other apps' too.
-# This folder stays the workspace's root, so its lock, its target folder,
-# its profile and its patch stay where they were; the crate is under it, so
-# rustc is given its files by paths relative to it (one outside it gets
-# whole paths, which go into the exe's panic messages).
-[workspace]
-members = [".", "crates/agent-core", "crates/agent-hub"]
-default-members = [".", "crates/agent-core", "crates/agent-hub"]
-
 [dependencies]
-agent-core = { path = "crates/agent-core" }
-agent-hub = { path = "crates/agent-hub" }
+# The agents' side of things, in a repository of their own
+# (github.com/zhoupengjie/agent-hub), by tag: agent-core, what an agent's
+# session is doing, read from its events and the files it leaves, with
+# nothing of how she shows it; agent-hub, those sessions told to other apps
+# on this machine (/v1). Changing them: docs/DEVELOPMENT.md (their checkout
+# beside this one, patched in for a build of hers meanwhile).
+agent-core = { git = "https://github.com/zhoupengjie/agent-hub", tag = "v0.1.0" }
+agent-hub = { git = "https://github.com/zhoupengjie/agent-hub", tag = "v0.1.0" }
 # macos-private-api: her windows see-through on macOS (tauri.conf.json
 # macOSPrivateApi); nothing elsewhere.
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset", "macos-private-api"] }
