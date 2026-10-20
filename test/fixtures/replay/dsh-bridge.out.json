@@ -1,5 +1,12 @@
 [
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-bridge",
+      "session": "replay-dsh-c96",
+      "title": "Read note.txt and copy it",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -26,6 +33,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 1000,
+        "cwd": "Z:\\replay\\dsh-bridge",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-dsh-c96",
+        "project": "dsh-bridge",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Read note.txt and copy it",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -54,6 +81,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-bridge",
+      "prompt": "Read note.txt, then create copy.txt",
+      "session": "replay-dsh-c96",
+      "title": "Read note.txt and copy it",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -72,6 +107,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 2000,
+        "cwd": "Z:\\replay\\dsh-bridge",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-dsh-c96",
+        "project": "dsh-bridge",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Read note.txt and copy it",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -103,6 +158,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "id": "call_00_R",
+        "input": {
+          "file_path": "Z:\\replay\\dsh-bridge\\note.txt"
+        },
+        "tool": "Read"
+      },
+      "cwd": "Z:\\replay\\dsh-bridge",
+      "session": "replay-dsh-c96",
+      "type": "toolStart"
+    },
     "at": 3000,
     "event": "PreToolUse",
     "message": {
@@ -127,6 +195,37 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 3000,
+        "cwd": "Z:\\replay\\dsh-bridge",
+        "eventAt": 3000,
+        "files": [],
+        "id": "replay-dsh-c96",
+        "project": "dsh-bridge",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_00_R",
+              "input": {
+                "file_path": "Z:\\replay\\dsh-bridge\\note.txt"
+              },
+              "tool": "Read"
+            },
+            "since": 3000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Read note.txt and copy it",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -160,6 +259,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "id": "call_00_R",
+        "input": {
+          "file_path": "Z:\\replay\\dsh-bridge\\note.txt"
+        },
+        "tool": "Read"
+      },
+      "cwd": "Z:\\replay\\dsh-bridge",
+      "session": "replay-dsh-c96",
+      "type": "toolDone"
+    },
     "at": 3500,
     "event": "PostToolUse",
     "message": {
@@ -178,6 +290,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 3500,
+        "cwd": "Z:\\replay\\dsh-bridge",
+        "eventAt": 3500,
+        "files": [],
+        "id": "replay-dsh-c96",
+        "project": "dsh-bridge",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Read note.txt and copy it",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -209,6 +341,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "call": {
+        "file": "Z:\\replay\\dsh-bridge\\copy.txt",
+        "id": "call_00_W",
+        "input": {
+          "file_path": "Z:\\replay\\dsh-bridge\\copy.txt"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\dsh-bridge",
+      "session": "replay-dsh-c96",
+      "type": "toolDone"
+    },
     "at": 4000,
     "event": "PostToolUse",
     "message": {
@@ -228,6 +374,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 4000,
+        "cwd": "Z:\\replay\\dsh-bridge",
+        "eventAt": 4000,
+        "files": [
+          "Z:\\replay\\dsh-bridge\\copy.txt"
+        ],
+        "id": "replay-dsh-c96",
+        "project": "dsh-bridge",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Read note.txt and copy it",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",
@@ -259,10 +427,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "dsh",
+      "cwd": "Z:\\replay\\dsh-bridge",
+      "reply": "Done — note.txt contained `hi`, and copy.txt now has the same text.",
+      "session": "replay-dsh-c96",
+      "title": "Read note.txt and copy it",
+      "type": "done"
+    },
     "at": 5000,
     "event": "Stop",
     "message": {
       "agent": "dsh",
+      "event": "turn-end",
       "mood": "done",
       "project": "dsh-bridge",
       "reply": "Done — note.txt contained hi, and copy.txt now has the same text.",
@@ -281,6 +458,29 @@
       "turns": 0,
       "workedMs": 3000
     },
+    "registry": [
+      {
+        "agent": "dsh",
+        "at": 5000,
+        "cwd": "Z:\\replay\\dsh-bridge",
+        "edited": true,
+        "eventAt": 5000,
+        "files": [
+          "Z:\\replay\\dsh-bridge\\copy.txt"
+        ],
+        "id": "replay-dsh-c96",
+        "project": "dsh-bridge",
+        "prompt": "Read note.txt, then create copy.txt",
+        "reply": "Done — note.txt contained `hi`, and copy.txt now has the same text.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Read note.txt and copy it",
+        "todos": [],
+        "took": 3000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "dsh",

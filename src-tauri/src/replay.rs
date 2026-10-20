@@ -1,10 +1,11 @@
 // Agents' sessions replayed. Each fixture (test/fixtures/replay/<name>.json)
 // is a list of events as an agent sends them to /hook, run through what the
-// server does with one (server.rs read_event and message_for) and into her
-// sessions (state.rs), with now and then what time does to them. Every step's
-// message and the sessions after it are kept beside it (<name>.out.json):
-// what an agent's events come to changes only on purpose. REPLAY_BLESS=1
-// writes them anew; then `git diff` shows what changed.
+// server does with one (server.rs read_event and event_for: agent-core's
+// AgentEvent; events.rs message_of) and into her sessions (state.rs), with
+// now and then what time does to them. Every step's AgentEvent, message and
+// the sessions after it are kept beside it (<name>.out.json): what an
+// agent's events come to changes only on purpose. REPLAY_BLESS=1 writes them
+// anew; then `git diff` shows what changed.
 //
 // A fixture:
 //   agent    whose events (codex, agy, opencode, omp, zcode, reasonix, dsh;
@@ -17,14 +18,17 @@
 //            { at, do: seen | tick | stale | hide, min? (hide's minutes) }
 // "$REPLAY/<file>" in an event's text is that file in the fixtures' folder.
 //
-// Each session's id is the fixture's own (replay-...): what events.rs,
-// events_dsh.rs and events_reasonix.rs remember of a session is kept for
-// the whole test run.
+// Each session's id is the fixture's own (replay-...): what agent-core
+// remembers of a session (its project, DSH's whose, Reasonix's asks) is kept
+// for the whole test run.
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-use crate::server::{message_for, read_event};
+use agent_core::registry::{SessionRegistry, Status};
+
+use crate::events;
+use crate::server::{event_for, read_event};
 use crate::state::{Hold, Pet, IDLE_HIDE_MIN};
 
 fn fixtures() -> PathBuf {
@@ -79,16 +83,24 @@ fn run(name: &str) -> Value {
     let hold = fixture["hold"].as_u64().map_or(Hold::Seen, Hold::Secs);
     let home = dsh_home(name, &fixture["dsh"]);
     let mut pet = Pet::default();
+    // The sessions as agent-core keeps them, beside hers (cross_check).
+    let mut registry = SessionRegistry::default();
+    let (mut seen, mut hidden) = (false, false);
     let mut out = Vec::new();
     for step in fixture["steps"].as_array().unwrap_or_else(|| panic!("{name}: no steps")) {
         let at = step["at"].as_u64().unwrap_or_else(|| panic!("{name}: a step with no at"));
         let mut kept = Map::new();
         kept.insert("at".into(), json!(at));
         if let Some(what) = step["do"].as_str() {
+            seen |= matches!(what, "seen" | "tick");
+            hidden |= what == "hide";
             let changed = match what {
                 "seen" => pet.seen(at, hold),
                 "tick" => pet.tick(at, hold),
-                "stale" => pet.check_stale(at, hold),
+                "stale" => {
+                    registry.check_stale(at);
+                    pet.check_stale(at, hold)
+                }
                 "hide" => pet.hide_quiet(at, step["min"].as_u64().unwrap_or(IDLE_HIDE_MIN) * 60_000),
                 _ => panic!("{name}: no step {what}"),
             };
@@ -105,8 +117,14 @@ fn run(name: &str) -> Value {
                         kept.insert("read".into(), event.clone());
                     }
                     let held = step["held"].as_bool() == Some(true);
-                    let message = message_for(agent, &mut event, held, at, &home);
+                    // What it says the session is doing (agent-core), and her message for it.
+                    let read = event_for(agent, &mut event, held, at, &home);
+                    let message = read.as_ref().map(events::message_of);
                     let outcome = message.as_ref().and_then(|m| pet.apply(m, at, hold));
+                    if let Some(ev) = &read {
+                        registry.apply(ev, at);
+                    }
+                    kept.insert("agentEvent".into(), read.map_or(Value::Null, |ev| serde_json::to_value(ev).unwrap()));
                     kept.insert("message".into(), message.unwrap_or(Value::Null));
                     let outcome = outcome.map_or(Value::Null, |o| json!({ "changed": o.changed, "react": o.react, "alerts": o.alerts, "turns": o.turns, "workedMs": o.worked_ms }));
                     kept.insert("outcome".into(), outcome);
@@ -117,11 +135,68 @@ fn run(name: &str) -> Value {
         kept.insert("shown".into(), json!({ "id": top["id"], "mood": top["mood"], "others": top["others"], "sessions": top["sessions"] }));
         let mut sessions = pet.list().as_array().cloned().unwrap_or_default();
         sessions.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+        if let Err(why) = cross_check(&sessions, &registry, seen, hidden) {
+            panic!("{name}: at {at}, agent-core's sessions are not hers: {why}");
+        }
         kept.insert("sessions".into(), Value::Array(sessions));
+        let mut known: Vec<Value> = registry.list().into_iter().map(|s| serde_json::to_value(s).unwrap()).collect();
+        known.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+        kept.insert("registry".into(), Value::Array(known));
         out.push(Value::Object(kept));
     }
     let _ = std::fs::remove_dir_all(&home);
     Value::Array(out)
+}
+
+// Whether agent-core's sessions (registry.rs) are hers (state.rs), as far as
+// they keep the same things: the same sessions (but hers out of sight, once
+// a step hid some), each of the same agent and project, at the same status
+// (hers at rest after she saw an ending, or its time ran out, being still
+// ended there), with as many files, the same to-do list, the same times.
+fn cross_check(hers: &[Value], registry: &SessionRegistry, seen: bool, hidden: bool) -> Result<(), String> {
+    let known = registry.list();
+    let ids = |v: Vec<&str>| v.into_iter().map(str::to_string).collect::<std::collections::BTreeSet<_>>();
+    let (theirs, ours) = (ids(known.iter().map(|s| s.id.as_str()).collect()), ids(hers.iter().filter_map(|s| s["id"].as_str()).collect()));
+    if !ours.is_subset(&theirs) || (!hidden && ours != theirs) {
+        return Err(format!("sessions {ours:?} against {theirs:?}"));
+    }
+    for view in hers {
+        let id = view["id"].as_str().unwrap_or("");
+        let s = registry.get(id).ok_or(format!("{id} missing"))?;
+        let status = match (&s.status, view["mood"].as_str().unwrap_or("")) {
+            (Status::Working, "working") | (Status::Waiting { .. }, "waiting") | (Status::Failed { .. }, "error") | (Status::Idle, "idle") => true,
+            (Status::Done { edited }, "done") => !edited,
+            (Status::Done { edited }, "review") => *edited,
+            (Status::Done { .. } | Status::Failed { .. }, "idle") => seen,
+            _ => false,
+        };
+        if !status {
+            return Err(format!("{id}: {:?} against her {}", s.status, view["mood"]));
+        }
+        let todo = if s.todos.is_empty() {
+            Value::Null
+        } else {
+            let active = s.todos.iter().find(|t| t.status == "in_progress").map_or("", |t| if t.active.is_empty() { &t.text } else { &t.active });
+            json!({ "done": s.todos.iter().filter(|t| t.status == "completed").count(), "total": s.todos.len(), "active": active })
+        };
+        let same = [
+            ("agent", json!(s.agent.tag().unwrap_or("")), view["agent"].clone()),
+            ("project", json!(s.project.as_deref().unwrap_or("")), view["project"].clone()),
+            ("files", json!(s.files.len()), view["files"].clone()),
+            ("todo", todo, view["todo"].clone()),
+            ("since", json!(s.since), view["since"].clone()),
+        ];
+        for (what, theirs, hers) in same {
+            if theirs != hers {
+                return Err(format!("{id}: {what} {theirs} against her {hers}"));
+            }
+        }
+        // Her ending's time, until she saw it.
+        if !seen && view["took"] != json!(s.took) {
+            return Err(format!("{id}: took {:?} against her {}", s.took, view["took"]));
+        }
+    }
+    Ok(())
 }
 
 fn pretty(v: Option<&Value>) -> String {

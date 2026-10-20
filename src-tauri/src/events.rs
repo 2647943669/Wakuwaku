@@ -1,21 +1,22 @@
-// Claude Code hook events → pet messages, and texts as { key, vars } for
-// src/shared/i18n.js, so the page says them in her language.
+// An agent's event (agent-core's AgentEvent: what a session is doing) → a
+// message for her (state.rs has the format), with texts as { key, vars } for
+// src/shared/i18n.js, so the page says them in her language. Every agent's
+// events come here so: agent-core reads each its own way (its hook's names,
+// its quirks, whose a session is), and here they are told in her words.
 //
 // Besides the mood, a message says what the session is about and where it is:
-//   title    Claude Code's name for the session (session_title, or the last
-//            title in its transcript)
+//   title    the session's name (given, or read from the agent's files)
 //   task     the person's words that started the turn, when there is no title
 //   step     the tool running, in plain words ({ key, vars }); toolId pairs
 //            its start (tool-start) with its end (tool-done, tool-failed)
 //   todo     a change to its to-do list: { set: [...] }, { add }, { update }
 //   file     a file a tool just edited
-//   reply    how the last turn ended, in Claude's words
+//   reply    how the last turn ended, in the agent's words
 //   error    why a turn failed
 use serde_json::{json, Map, Value};
 
-// What an event's session is called and where it works, read the agents'
-// way (agent-core); here for the agents' files that use them.
-use agent_core::claude::transcript_title;
+use agent_core::codex::patched;
+use agent_core::event::{Agent, AgentEvent, AnswerIn, Call, Failure, Kind, Todo, TodoItem, Wait, What};
 pub(crate) use agent_core::project::project_of;
 pub(crate) use agent_core::text::{base, clip};
 
@@ -42,7 +43,7 @@ pub(crate) fn step(key: &str, vars: Value) -> Value {
     json!({ "key": key, "vars": vars })
 }
 
-// What a tool is doing, in plain words.
+// What a tool is doing, in plain words (by Claude Code's names for tools).
 pub(crate) fn step_of(tool: &str, input: &Value) -> Value {
     let i = |key: &str| s(input, key);
     match tool {
@@ -71,36 +72,36 @@ pub(crate) fn step_of(tool: &str, input: &Value) -> Value {
     }
 }
 
-// A change to the session's to-do list, from the tools that keep it.
-pub(crate) fn todo_of(tool: &str, input: &Value) -> Option<Value> {
-    let i = |key: &str| s(input, key);
-    match tool {
-        "TodoWrite" => {
-            let items: Vec<Value> = input
-                .get("todos")?
-                .as_array()?
-                .iter()
-                .map(|t| json!({ "text": clip(s(t, "content"), 80), "active": clip(s(t, "activeForm"), 80), "status": s(t, "status") }))
-                .collect();
-            Some(json!({ "set": items }))
+// A patch (Codex's apply_patch, OpenCode's patch) by the files it edits.
+fn patch_step(call: &Call) -> Value {
+    match patched(s(&call.input, "command")).as_slice() {
+        [] => step("step.tool", json!({ "tool": call.own.as_deref().unwrap_or(&call.tool) })),
+        [one] => step("step.edit", json!({ "file": base(one) })),
+        [first, rest @ ..] => step("step.edit", json!({ "file": format!("{} +{}", base(first), rest.len()) })),
+    }
+}
+
+// An omp call's step: ours for the tools Claude Code has too, else the
+// model's intent, else its name.
+fn step_of_omp(tool: &str, input: &Value, intent: &str) -> Value {
+    let said = || step("step.run", json!({ "what": clip(intent, 60) }));
+    match agent_core::omp::as_claude(tool, input, intent) {
+        // A tool of ours with nothing to name (no file, no pattern): its intent.
+        Some((name, args)) => {
+            let blank = args.as_object().is_some_and(|a| !a.is_empty() && a.values().all(|v| v.as_str().is_some_and(|t| t.trim().is_empty())));
+            if blank && !intent.is_empty() { said() } else { step_of(name, &args) }
         }
-        "TaskCreate" => Some(json!({ "add": { "text": clip(i("subject"), 80), "active": clip(i("activeForm"), 80) } })),
-        "TaskUpdate" => {
-            let id = match input.get("taskId") {
-                Some(Value::String(id)) => id.clone(),
-                Some(Value::Number(n)) => n.to_string(),
-                _ => return None,
-            };
-            let mut update = Map::new();
-            update.insert("id".into(), json!(id));
-            for (from, to) in [("status", "status"), ("subject", "text"), ("activeForm", "active")] {
-                if !i(from).is_empty() {
-                    update.insert(to.into(), json!(clip(i(from), 80)));
-                }
-            }
-            Some(json!({ "update": update }))
-        }
-        _ => None,
+        None if tool.starts_with("mcp__") || intent.is_empty() => step_of(tool, input),
+        None => said(),
+    }
+}
+
+// What a call is doing, in plain words, as each agent's calls say it best.
+fn step_for(agent: Agent, call: &Call) -> Value {
+    match agent {
+        Agent::Codex | Agent::Opencode if call.tool == "apply_patch" => patch_step(call),
+        Agent::Omp => step_of_omp(call.own.as_deref().unwrap_or(&call.tool), call.raw.as_ref().unwrap_or(&call.input), call.intent.as_deref().unwrap_or("")),
+        _ => step_of(&call.tool, &call.input),
     }
 }
 
@@ -111,8 +112,8 @@ pub(crate) fn task_of(prompt: &str) -> Option<String> {
     (line.chars().count() >= 4 && !line.starts_with('<')).then(|| clip(line, 80))
 }
 
-// How a turn ended, from Claude's last message: its first lines, without the
-// marks of markdown, up to the end of a sentence (or about 40 characters).
+// How a turn ended, from the agent's last message: its first lines, without
+// the marks of markdown, up to the end of a sentence (or about 40 characters).
 pub(crate) fn reply_of(message: &str) -> Option<String> {
     let mut out = String::new();
     let mut after_heading = false;
@@ -160,131 +161,136 @@ fn unlink(line: &str) -> String {
     out
 }
 
-// Why a turn failed: one of Claude Code's error kinds, or its own words.
-fn error_of(e: &Value) -> Value {
-    const KINDS: [&str; 10] = [
-        "authentication_failed",
-        "oauth_org_not_allowed",
-        "account_on_hold",
-        "billing_error",
-        "rate_limit",
-        "overloaded",
-        "invalid_request",
-        "model_not_found",
-        "server_error",
-        "max_output_tokens",
-    ];
-    let kind = s(e, "error");
-    if KINDS.contains(&kind) {
-        return json!({ "key": format!("error.{kind}"), "vars": {} });
-    }
-    let details = s(e, "error_details");
-    json!(clip(details.lines().next().unwrap_or(""), 80))
-}
-
-// What a tool that stops for the person is waiting on.
-fn asks_person(tool: &str) -> Option<Value> {
-    match tool {
-        "AskUserQuestion" => Some(json!({ "key": "detail.asksQuestion" })),
-        "ExitPlanMode" => Some(json!({ "key": "detail.planToConfirm" })),
-        _ => None,
+// Why a turn failed: one of the kinds she has words for, or the agent's own
+// words (their first line).
+fn error_of(error: &Failure) -> Value {
+    match error {
+        Failure::Kind { kind } => json!({ "key": format!("error.{kind}"), "vars": {} }),
+        Failure::Said { said } => json!(clip(said.lines().next().unwrap_or(""), 80)),
     }
 }
 
-const EDITS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
-
-// The mood part of the message for an event, or None for one that changes nothing.
-fn mood_of(e: &Value) -> Option<Value> {
-    let tool = s(e, "tool_name");
-    let input = e.get("tool_input").unwrap_or(&Value::Null);
-    let mut m = match s(e, "hook_event_name") {
-        // A compaction starts a new context mid-work: nothing changed for the pet.
-        "SessionStart" if s(e, "source") == "compact" => return None,
-        "SessionStart" => json!({ "mood": "idle", "react": "wave", "say": { "key": "say.hello" } }),
-        "SessionEnd" => json!({ "mood": "idle", "event": "session-end" }),
-        "UserPromptSubmit" => {
-            let mut m = json!({ "mood": "working", "event": "turn-start" });
-            // Only the person's words name the work, not a turn the system began.
-            if matches!(s(e, "source"), "" | "user") {
-                if let Some(task) = task_of(s(e, "prompt")) {
-                    m["task"] = json!(task);
+// A change to the to-do list as state.rs takes it.
+fn todo_json(todo: &Todo) -> Value {
+    let item = |t: &TodoItem| json!({ "text": clip(&t.text, 80), "active": clip(&t.active, 80), "status": t.status });
+    match todo {
+        Todo::Set { items } => json!({ "set": items.iter().map(item).collect::<Vec<_>>() }),
+        Todo::Add { item } => json!({ "add": { "text": clip(&item.text, 80), "active": clip(&item.active, 80) } }),
+        Todo::Update { id, status, text, active } => {
+            let mut update = Map::new();
+            update.insert("id".into(), json!(id));
+            for (key, value) in [("status", status), ("text", text), ("active", active)] {
+                if let Some(value) = value {
+                    update.insert(key.into(), json!(clip(value, 80)));
                 }
+            }
+            json!({ "update": update })
+        }
+    }
+}
+
+// What a session waits on, in her words.
+fn wait_of(agent: Agent, wait: &Wait) -> Value {
+    match wait {
+        Wait::Question => json!({ "key": "detail.asksQuestion" }),
+        Wait::Plan => json!({ "key": "detail.planToConfirm" }),
+        Wait::Input { server } => json!({ "key": "detail.needsInput", "vars": { "server": server } }),
+        Wait::Notice { said: None } => json!({ "key": "detail.needsYou" }),
+        Wait::Notice { said: Some(said) } => json!(clip(said, 80)),
+        Wait::Approval { what, answer_in } => {
+            let what = match what {
+                What::Call { call } => step_for(agent, call),
+                What::Action { name } => step("step.tool", json!({ "tool": name })),
+                What::Said { said } => json!(clip(said, 80)),
+            };
+            match answer_in {
+                AnswerIn::Here => json!({ "key": "detail.approve", "vars": { "what": what } }),
+                AnswerIn::App { name } => json!({ "key": "detail.approveIn", "vars": { "app": name, "what": what } }),
+                AnswerIn::Terminal => json!({ "key": "detail.approveInTerminal", "vars": { "what": what } }),
+            }
+        }
+    }
+}
+
+// The message for an event.
+pub fn message_of(ev: &AgentEvent) -> Value {
+    let tool = |call: &Call| json!(call.tool);
+    let mut m = match &ev.kind {
+        Kind::SessionStart => json!({ "mood": "idle", "react": "wave", "say": { "key": "say.hello" } }),
+        Kind::SessionEnd => json!({ "mood": "idle", "event": "session-end" }),
+        Kind::TurnStart { prompt } => {
+            let mut m = json!({ "mood": "working", "event": "turn-start" });
+            if let Some(task) = prompt.as_deref().and_then(task_of) {
+                m["task"] = json!(task);
             }
             m
         }
-        "PreToolUse" => match asks_person(tool) {
-            Some(detail) => json!({ "mood": "waiting", "detail": detail }),
-            None => {
-                let mut m = json!({ "mood": "working", "detail": tool, "event": "tool-start", "step": step_of(tool, input) });
-                if let Some(todo) = todo_of(tool, input) {
-                    m["todo"] = todo;
-                }
-                m
+        Kind::ToolStart { call } => json!({ "mood": "working", "detail": tool(call), "event": "tool-start", "step": step_for(ev.agent, call) }),
+        Kind::ToolDone { call } => json!({ "mood": "working", "detail": tool(call), "event": "tool-done" }),
+        Kind::ToolFailed { call, quiet } => {
+            let mut m = json!({ "mood": "working", "detail": tool(call), "event": "tool-failed" });
+            if !quiet {
+                // OpenCode's tool by its own name.
+                let name = if ev.agent == Agent::Opencode { call.own.as_deref().unwrap_or(&call.tool) } else { &call.tool };
+                m["react"] = json!("failed");
+                m["say"] = json!({ "key": "say.toolFailed", "vars": { "tool": name } });
             }
-        },
-        "PostToolUse" => json!({ "mood": "working", "detail": tool, "event": "tool-done" }),
-        // An interrupt is the person stopping it, not the tool failing.
-        "PostToolUseFailure" if e.get("is_interrupt").and_then(Value::as_bool) == Some(true) => return None,
-        "PostToolUseFailure" => json!({
-            "mood": "working", "detail": tool, "event": "tool-failed", "react": "failed",
-            "say": { "key": "say.toolFailed", "vars": { "tool": tool } },
-        }),
-        "PermissionRequest" => json!({
-            "mood": "waiting",
-            "detail": asks_person(tool).unwrap_or_else(|| json!({ "key": "detail.approve", "vars": { "what": step_of(tool, input) } })),
-        }),
-        "Elicitation" => json!({ "mood": "waiting", "detail": { "key": "detail.needsInput", "vars": { "server": s(e, "mcp_server_name") } } }),
-        "TaskCompleted" => json!({
+            m
+        }
+        Kind::Waiting { wait } => json!({ "mood": "waiting", "detail": wait_of(ev.agent, wait) }),
+        Kind::Working => json!({ "mood": "working" }),
+        Kind::Rest => json!({ "mood": "idle" }),
+        // Stopped by the person: nothing to come and see.
+        Kind::Stopped => json!({ "mood": "idle", "event": "turn-end" }),
+        Kind::Done => json!({ "mood": "done", "event": "turn-end" }),
+        Kind::Failed { error } => json!({ "mood": "error", "event": "turn-end", "error": error_of(error) }),
+        Kind::TaskDone { subject } => json!({
             "react": "jump",
-            "say": if s(e, "task_subject").is_empty() {
-                json!({ "key": "say.taskDoneGeneric" })
-            } else {
-                json!({ "key": "say.taskDone", "vars": { "task": s(e, "task_subject") } })
+            "say": match subject {
+                Some(task) => json!({ "key": "say.taskDone", "vars": { "task": task } }),
+                None => json!({ "key": "say.taskDoneGeneric" }),
             },
         }),
-        "Stop" => json!({ "mood": "done" }),
-        "StopFailure" => json!({ "mood": "error", "error": error_of(e) }),
-        _ => return None,
     };
-    if s(e, "hook_event_name") == "PostToolUse" && EDITS.contains(&tool) {
-        let path = if tool == "NotebookEdit" { s(input, "notebook_path") } else { s(input, "file_path") };
-        if !path.is_empty() {
-            m["file"] = json!(path);
+    if let Kind::ToolStart { call } | Kind::ToolDone { call } | Kind::ToolFailed { call, .. } = &ev.kind {
+        if let Some(id) = &call.id {
+            m["toolId"] = json!(id);
+        }
+        if let Some(file) = &call.file {
+            m["file"] = json!(file);
+        }
+        if let Some(todo) = &call.todo {
+            m["todo"] = todo_json(todo);
         }
     }
-    if matches!(s(e, "hook_event_name"), "PreToolUse" | "PostToolUse" | "PostToolUseFailure") && !s(e, "tool_use_id").is_empty() {
-        m["toolId"] = json!(s(e, "tool_use_id"));
-    }
-    if let Some(reply) = reply_of(s(e, "last_assistant_message")) {
+    if let Some(reply) = ev.reply.as_deref().and_then(reply_of) {
         m["reply"] = json!(reply);
     }
-    Some(m)
+    if let Some(agent) = ev.agent.tag() {
+        m["agent"] = json!(agent);
+    }
+    if !ev.session.is_empty() {
+        m["session"] = json!(ev.session);
+    }
+    if let Some(turn) = &ev.turn {
+        m["turn"] = json!(turn);
+    }
+    if let Some(cwd) = &ev.cwd {
+        m["project"] = json!(project_of(cwd));
+    }
+    if let Some(title) = &ev.title {
+        m["title"] = json!(clip(title, 80));
+    }
+    if ev.within {
+        m["within"] = json!(true);
+    }
+    m
 }
 
-// The message for an event, or None for one that changes nothing.
+// A Claude Code hook event's message (the agents' files' tests read theirs so).
+#[cfg(test)]
 pub fn to_message(e: &Value) -> Option<Value> {
-    if !e.is_object() {
-        return None;
-    }
-    let mut message = mood_of(e)?;
-    if let Some(id) = e.get("session_id").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        message["session"] = json!(id);
-    }
-    if let Some(cwd) = e.get("cwd").and_then(Value::as_str).filter(|s| !s.is_empty()) {
-        message["project"] = json!(project_of(cwd));
-    }
-    // The session's name: given with the event, or else, at the moments it
-    // may have changed (a turn begins or ends), read from the transcript.
-    let event = s(e, "hook_event_name");
-    let title = match s(e, "session_title") {
-        "" if matches!(event, "UserPromptSubmit" | "Stop" | "StopFailure" | "SessionStart") => transcript_title(s(e, "transcript_path")),
-        "" => None,
-        given => Some(clip(given, 80)),
-    };
-    if let Some(title) = title {
-        message["title"] = json!(title);
-    }
-    Some(message)
+    agent_core::claude::to_event(e, Agent::Claude).map(|ev| message_of(&ev))
 }
 
 #[cfg(test)]
@@ -302,7 +308,7 @@ mod tests {
         assert_eq!(m["mood"], "waiting");
         assert!(to_message(&json!({ "hook_event_name": "SessionStart", "source": "compact" })).is_none());
         assert!(to_message(&json!({ "hook_event_name": "PostToolUseFailure", "is_interrupt": true })).is_none());
-        assert_eq!(to_message(&json!({ "hook_event_name": "Stop" })).unwrap(), json!({ "mood": "done" }));
+        assert_eq!(to_message(&json!({ "hook_event_name": "Stop" })).unwrap(), json!({ "mood": "done", "event": "turn-end" }));
         assert!(to_message(&json!("nope")).is_none());
     }
 

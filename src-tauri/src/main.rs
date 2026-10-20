@@ -441,9 +441,9 @@ impl Shared {
             (asks.views(), asks.is_empty(), asks.take_handed())
         };
         // DeepSeek Harness's handed back to its own window: its session's
-        // line says to answer there (asks.rs handed_back).
-        for message in &handed {
-            self.apply(message);
+        // line says to answer there (asks.rs handed_message).
+        for handed in &handed {
+            self.apply(&asks::handed_message(handed));
         }
         self.to_pages("pet:asks", views);
         self.push_settings();
@@ -933,7 +933,7 @@ async fn pet_panel(app: AppHandle, window: WebviewWindow, measured: Value) {
 async fn pet_answer(app: AppHandle, id: u64, choice: Value) -> bool {
     let sh = shared(&app);
     let lang = sh.lang();
-    let ok = sh.asks.lock().unwrap().answer(id, &choice, lang);
+    let ok = sh.asks.lock().unwrap().answer(id, &choice, &i18n::t(lang, "deny.message"));
     sh.log(&format!("answer {id}: {choice} -> {ok}"));
     if ok {
         sh.push_asks();

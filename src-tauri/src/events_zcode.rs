@@ -1,26 +1,19 @@
-// ZCode hook events → pet messages: Claude Code's (events.rs), plus agent:
-// "zcode". ZCode (Z.ai's agent, its desktop app and CLI) runs its hooks as
-// this program with connection::ZCODE_FLAG and the event's name, which hands
-// each to /hook?agent=zcode (main.rs zcode_hook). Each comes with Claude
-// Code's fields (session_id, hook_event_name, tool_name, tool_input,
-// tool_use_id, prompt, last_assistant_message, permission_mode) beside its
-// own camelCase ones (sessionId, turnId, toolName, responseText...), and its
-// tools by Claude Code's names (Bash, Read, Write, Edit, Agent or Task), so
-// events.rs reads them as they are. What differs, as the desktop app 3.15.3
-// sends them (2026-10-15): 7 events, no SessionEnd or StopFailure; a
-// failed tool's PostToolUseFailure carries error as its words; a call the
-// person refused in ZCode's own dialog gets no PostToolUse(Failure), and its
-// turn goes on to Stop; transcript_path is a file of its own made for each
-// hook (and gone after it) with no session name in it; no permission
-// suggestions, so her prompt for it is allow or deny (asks.rs).
+// ZCode's hook events: Claude Code's, its tools by Claude Code's names too
+// (agent-core's claude.rs reads them, as the desktop app 3.15.3 sends them:
+// 7 events, no SessionEnd or StopFailure; a failed tool's
+// PostToolUseFailure carries error as its words; a call the person refused
+// in ZCode's own dialog gets no PostToolUse(Failure), and its turn goes on to
+// Stop; transcript_path is a file of its own made for each hook, with no
+// session name in it; no permission suggestions, so a prompt for it is allow
+// or deny: asks.rs), events.rs tells them in her words. Here, what she makes
+// of them.
+#[cfg(test)]
 use serde_json::{json, Value};
 
-pub fn to_message(e: &Value) -> Option<Value> {
-    let mut message = crate::events::to_message(e)?;
-    message["agent"] = json!("zcode");
-    Some(message)
+#[cfg(test)]
+fn to_message(e: &Value) -> Option<Value> {
+    agent_core::claude::to_event(e, agent_core::event::Agent::Zcode).map(|ev| crate::events::message_of(&ev))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

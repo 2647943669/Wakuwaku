@@ -1,5 +1,12 @@
 [
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "title": "Login fix",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -25,6 +32,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 1000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Login fix",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -53,6 +80,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "prompt": "Fix the login page and add a test",
+      "session": "replay-cc-1",
+      "title": "Login fix",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -70,6 +105,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 2000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -101,6 +156,45 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_01",
+        "input": {
+          "todos": [
+            {
+              "activeForm": "Fixing the form",
+              "content": "Fix the form",
+              "status": "in_progress"
+            },
+            {
+              "activeForm": "Adding a test",
+              "content": "Add a test",
+              "status": "pending"
+            }
+          ]
+        },
+        "todo": {
+          "change": "set",
+          "items": [
+            {
+              "active": "Fixing the form",
+              "status": "in_progress",
+              "text": "Fix the form"
+            },
+            {
+              "active": "Adding a test",
+              "status": "pending",
+              "text": "Add a test"
+            }
+          ]
+        },
+        "tool": "TodoWrite"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolStart"
+    },
     "at": 3000,
     "event": "PreToolUse",
     "message": {
@@ -136,6 +230,76 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 3000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_01",
+              "input": {
+                "todos": [
+                  {
+                    "activeForm": "Fixing the form",
+                    "content": "Fix the form",
+                    "status": "in_progress"
+                  },
+                  {
+                    "activeForm": "Adding a test",
+                    "content": "Add a test",
+                    "status": "pending"
+                  }
+                ]
+              },
+              "todo": {
+                "change": "set",
+                "items": [
+                  {
+                    "active": "Fixing the form",
+                    "status": "in_progress",
+                    "text": "Fix the form"
+                  },
+                  {
+                    "active": "Adding a test",
+                    "status": "pending",
+                    "text": "Add a test"
+                  }
+                ]
+              },
+              "tool": "TodoWrite"
+            },
+            "since": 3000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -171,6 +335,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_01",
+        "input": {
+          "todos": []
+        },
+        "tool": "TodoWrite"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolDone"
+    },
     "at": 3100,
     "event": "PostToolUse",
     "message": {
@@ -188,6 +365,39 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 3100,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 3100,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -223,6 +433,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_02",
+        "input": {
+          "file_path": "Z:\\replay\\web\\src\\login.ts",
+          "limit": 40,
+          "offset": 40
+        },
+        "tool": "Read"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolStart"
+    },
     "at": 4000,
     "event": "PreToolUse",
     "message": {
@@ -246,6 +471,52 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 4000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 4000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_02",
+              "input": {
+                "file_path": "Z:\\replay\\web\\src\\login.ts",
+                "limit": 40,
+                "offset": 40
+              },
+              "tool": "Read"
+            },
+            "since": 4000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -283,6 +554,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_02",
+        "input": {
+          "file_path": "Z:\\replay\\web\\src\\login.ts"
+        },
+        "tool": "Read"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolDone"
+    },
     "at": 4500,
     "event": "PostToolUse",
     "message": {
@@ -300,6 +584,39 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 4500,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 4500,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -335,6 +652,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_03",
+        "input": {
+          "file_path": "Z:\\replay\\web\\src\\login.ts",
+          "new_string": "if (user && user.ok)",
+          "old_string": "if (user)"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolStart"
+    },
     "at": 5000,
     "event": "PreToolUse",
     "message": {
@@ -358,6 +690,52 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 5000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 5000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_03",
+              "input": {
+                "file_path": "Z:\\replay\\web\\src\\login.ts",
+                "new_string": "if (user && user.ok)",
+                "old_string": "if (user)"
+              },
+              "tool": "Edit"
+            },
+            "since": 5000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -395,6 +773,22 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "file": "Z:\\replay\\web\\src\\login.ts",
+        "id": "toolu_03",
+        "input": {
+          "file_path": "Z:\\replay\\web\\src\\login.ts",
+          "new_string": "if (user && user.ok)",
+          "old_string": "if (user)"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolDone"
+    },
     "at": 6000,
     "event": "PostToolUse",
     "message": {
@@ -413,6 +807,41 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 6000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 6000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -448,6 +877,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_04",
+        "input": {
+          "command": "cd web && npm test",
+          "description": "Run the tests"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolStart"
+    },
     "at": 7000,
     "event": "PreToolUse",
     "message": {
@@ -471,6 +914,53 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 7000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 7000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_04",
+              "input": {
+                "command": "cd web && npm test",
+                "description": "Run the tests"
+              },
+              "tool": "Bash"
+            },
+            "since": 7000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -508,6 +998,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_04",
+        "input": {
+          "command": "cd web && npm test"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\web",
+      "quiet": false,
+      "session": "replay-cc-1",
+      "type": "toolFailed"
+    },
     "at": 9000,
     "event": "PostToolUseFailure",
     "message": {
@@ -540,6 +1044,41 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 9000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -575,6 +1114,27 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "here"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "input": {
+              "command": "git push origin fix-login"
+            },
+            "tool": "Bash"
+          }
+        }
+      }
+    },
     "at": 10000,
     "event": "PermissionRequest",
     "message": {
@@ -605,6 +1165,56 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 10000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "here"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "input": {
+                "command": "git push origin fix-login"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -647,6 +1257,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_05",
+        "input": {
+          "command": "git push origin fix-login"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolStart"
+    },
     "at": 15000,
     "event": "PreToolUse",
     "message": {
@@ -670,6 +1293,52 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 15000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 15000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "toolu_05",
+              "input": {
+                "command": "git push origin fix-login"
+              },
+              "tool": "Bash"
+            },
+            "since": 15000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -707,6 +1376,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_05",
+        "input": {
+          "command": "git push origin fix-login"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolDone"
+    },
     "at": 16000,
     "event": "PostToolUse",
     "message": {
@@ -724,6 +1406,41 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 16000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 16000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -759,9 +1476,18 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "reply": "## Done\nFixed the **login** page; the tests pass.",
+      "session": "replay-cc-1",
+      "title": "Login fix",
+      "type": "done"
+    },
     "at": 20000,
     "event": "Stop",
     "message": {
+      "event": "turn-end",
       "mood": "done",
       "project": "web",
       "reply": "Done: Fixed the login page; the tests pass.",
@@ -780,6 +1506,42 @@
       "turns": 0,
       "workedMs": 18000
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 20000,
+        "cwd": "Z:\\replay\\web",
+        "edited": true,
+        "eventAt": 20000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": "## Done\nFixed the **login** page; the tests pass.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": 18000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -815,6 +1577,42 @@
     "at": 30000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 20000,
+        "cwd": "Z:\\replay\\web",
+        "edited": true,
+        "eventAt": 20000,
+        "files": [
+          "Z:\\replay\\web\\src\\login.ts"
+        ],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "Fix the login page and add a test",
+        "reply": "## Done\nFixed the **login** page; the tests pass.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": 18000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -847,6 +1645,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "prompt": "ok",
+      "session": "replay-cc-1",
+      "title": "Login fix",
+      "type": "turnStart"
+    },
     "at": 40000,
     "event": "UserPromptSubmit",
     "message": {
@@ -863,6 +1669,39 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 40000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 40000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": 40000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -898,6 +1737,15 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "waiting",
+      "wait": {
+        "for": "question"
+      }
+    },
     "at": 41000,
     "event": "PreToolUse",
     "message": {
@@ -906,8 +1754,7 @@
       },
       "mood": "waiting",
       "project": "web",
-      "session": "replay-cc-1",
-      "toolId": "toolu_06"
+      "session": "replay-cc-1"
     },
     "outcome": {
       "alerts": [
@@ -921,6 +1768,42 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 41000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 41000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": 40000,
+        "status": "waiting",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "for": "question"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -956,6 +1839,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "call": {
+        "id": "toolu_06",
+        "input": {
+          "questions": []
+        },
+        "tool": "AskUserQuestion"
+      },
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "toolDone"
+    },
     "at": 50000,
     "event": "PostToolUse",
     "message": {
@@ -973,6 +1869,39 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 50000,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 50000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": 40000,
+        "status": "working",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1008,6 +1937,17 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "error": {
+        "as": "kind",
+        "kind": "rate_limit"
+      },
+      "session": "replay-cc-1",
+      "title": "Login fix",
+      "type": "failed"
+    },
     "at": 52000,
     "event": "StopFailure",
     "message": {
@@ -1015,6 +1955,7 @@
         "key": "error.rate_limit",
         "vars": {}
       },
+      "event": "turn-end",
       "mood": "error",
       "project": "web",
       "session": "replay-cc-1",
@@ -1032,6 +1973,43 @@
       "turns": 0,
       "workedMs": 12000
     },
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 52000,
+        "cwd": "Z:\\replay\\web",
+        "error": {
+          "as": "kind",
+          "kind": "rate_limit"
+        },
+        "eventAt": 52000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": 12000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1070,6 +2048,43 @@
     "at": 60000,
     "changed": false,
     "do": "stale",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 52000,
+        "cwd": "Z:\\replay\\web",
+        "error": {
+          "as": "kind",
+          "kind": "rate_limit"
+        },
+        "eventAt": 52000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": 12000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1108,6 +2123,39 @@
     "at": 7252001,
     "changed": true,
     "do": "stale",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 7252001,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 52000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": 12000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "",
@@ -1143,6 +2191,39 @@
     "at": 9052002,
     "changed": true,
     "do": "hide",
+    "registry": [
+      {
+        "agent": "claude",
+        "at": 7252001,
+        "cwd": "Z:\\replay\\web",
+        "eventAt": 52000,
+        "files": [],
+        "id": "replay-cc-1",
+        "project": "web",
+        "prompt": "ok",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Login fix",
+        "todos": [
+          {
+            "active": "Fixing the form",
+            "id": "1",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "id": "2",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ],
+        "took": 12000,
+        "turn": null
+      }
+    ],
     "sessions": [],
     "shown": {
       "id": "",
@@ -1152,6 +2233,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "claude",
+      "cwd": "Z:\\replay\\web",
+      "session": "replay-cc-1",
+      "type": "sessionEnd"
+    },
     "at": 9100000,
     "event": "SessionEnd",
     "message": {
@@ -1167,6 +2254,7 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [],
     "sessions": [],
     "shown": {
       "id": "",

@@ -1,141 +1,23 @@
-// Reasonix hook events → pet messages: read as Claude Code's (events.rs),
-// plus agent: "reasonix" (zhoupengjie/Wakuwaku#60).
-//
-// Reasonix runs the hooks in its global settings.json (connection.rs), each
-// as this program with connection::REASONIX_FLAG and the event's name,
-// which hands it to /hook?agent=reasonix (main.rs reasonix_hook). Its
-// payload is its own (its hook package's Payload, 2.x and the Go 1.x alike):
-// event, sessionId, cwd (the workspace's root), toolName and toolArgs (its
-// tools' own names and arguments: write_file with path), toolResult, prompt
-// and turn, lastAssistantText, error, isInterrupt, source, reason, message
-// and notificationType; read here as Claude Code's fields and tools (the
-// table Reasonix itself uses for the Claude Code hooks it runs), so events.rs
-// reads them as it reads Claude Code's. What differs, as its source has it
-// (studio, 2.43, 2026-10-17):
-//   - a failed turn fires StopFailure, then its settings' Stop hooks again
-//     with the same payload (error set): that Stop is no ending of its own;
-//     a failed tool, PostToolUseFailure and then PostToolUse the same way;
-//     the person stopping a turn is a StopFailure with isInterrupt;
-//   - SessionStart comes with the session's first turn, not as it opens;
-//   - its subagents (a task, explore, ...), its planner and its guardian
-//     fire the tool hooks under ids of their own, the session's with
-//     ":subagent:<ref>", ":planner" or ":guardian" after it: told as the
-//     session's steps while a turn of it is under way (within), never as a
-//     session of their own;
-//   - a PermissionRequest comes before its dialog, a Notification
-//     (permission_prompt) as the dialog shows: the first says what waits,
-//     the second only says it again (but for a plan's approval and Auto
-//     Guard's, which have no PermissionRequest); its questions (the ask
-//     tool) come as PreToolUse, then a Notification (question_prompt).
-// Its approvals are answered in Reasonix (zhoupengjie/Wakuwaku#60, phase 1).
-use std::collections::HashMap;
-use std::sync::Mutex;
-
+// Reasonix's hook events (zhoupengjie/Wakuwaku#60), handed to her port by
+// this program with connection::REASONIX_FLAG (main.rs reasonix_hook):
+// agent-core reads them (reasonix.rs to_event_at: in Claude Code's words, a
+// subagent's steps as its session's, a failure told once, its approvals
+// answered in Reasonix), events.rs tells them in her words. Here, what she
+// makes of them.
+#[cfg(test)]
 use serde_json::{json, Value};
 
-use crate::events::{self, clip};
+#[cfg(test)]
+use agent_core::reasonix::SAME_ASK_MS;
 
-// Its event in Claude Code's words (its tools and their arguments by Claude
-// Code's names, the person's words past its own blocks), and the session an
-// id is with whether one works for it: agent-core's.
-use agent_core::reasonix::{as_claude, whose};
-
-fn s<'a>(e: &'a Value, key: &str) -> &'a str {
-    e.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-// When each session last asked for an approval through PermissionRequest
-// (ms), so that its Notification for the same dialog, just after, changes
-// nothing: the first already said what waits, in her words.
-static ASKED: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
-// How long after a PermissionRequest its Notification is taken as the same
-// dialog's (it comes at once, in its own goroutine).
-const SAME_ASK_MS: u64 = 30_000;
-
-fn asked(session: &str, now: u64) {
-    let mut asked = ASKED.lock().unwrap_or_else(|e| e.into_inner());
-    let asked = asked.get_or_insert_with(HashMap::new);
-    asked.retain(|_, at| now.saturating_sub(*at) < SAME_ASK_MS);
-    asked.insert(session.to_string(), now);
-}
-
-fn was_asked(session: &str, now: u64) -> bool {
-    let asked = ASKED.lock().unwrap_or_else(|e| e.into_inner());
-    asked.as_ref().and_then(|a| a.get(session)).is_some_and(|at| now.saturating_sub(*at) < SAME_ASK_MS)
+#[cfg(test)]
+fn to_message_at(e: &Value, now: u64) -> Option<Value> {
+    agent_core::reasonix::to_event_at(e, now).map(|ev| crate::events::message_of(&ev))
 }
 
 #[cfg(test)]
 fn to_message(e: &Value) -> Option<Value> {
     to_message_at(e, crate::now_ms())
-}
-
-// The message for an event at `now` (which tells a Notification from the
-// PermissionRequest just before it), or None for one that changes nothing.
-pub fn to_message_at(e: &Value, now: u64) -> Option<Value> {
-    if !e.is_object() {
-        return None;
-    }
-    let (session, is_within) = whose(s(e, "sessionId"));
-    let failed = !s(e, "error").is_empty();
-    let is_interrupt = e.get("isInterrupt").and_then(Value::as_bool) == Some(true);
-    let claude = as_claude(e);
-    let mut message = match s(e, "event") {
-        // A prompt for its approval: answered in Reasonix (phase 1: she shows
-        // the session waiting on it, and what it waits for).
-        "PermissionRequest" => {
-            let mut m = events::to_message(&claude)?;
-            if m["detail"]["key"] == "detail.approve" {
-                m["detail"] = json!({ "key": "detail.approveIn", "vars": { "app": "Reasonix", "what": m["detail"]["vars"]["what"].clone() } });
-            }
-            asked(session, now);
-            m
-        }
-        "Notification" => notification(e, session, now)?,
-        // A failed turn's or tool's, again as its plain end: told already.
-        "Stop" | "PostToolUse" if failed => return None,
-        // The person stopped the turn: at rest, nothing to come and see.
-        "StopFailure" if is_interrupt => json!({ "mood": "idle", "event": "turn-end" }),
-        // Its subagents' bounds and model calls, compactions: nothing to her.
-        "SubagentStart" | "SubagentStop" | "PostLLMCall" | "PreCompact" => return None,
-        _ => events::to_message(&claude)?,
-    };
-    message["agent"] = json!("reasonix");
-    if !session.is_empty() {
-        message["session"] = json!(session);
-    }
-    if is_within {
-        // A subagent's step, as its session's; never a session, a turn or an
-        // ending of its own.
-        if message["event"] == "session-end" || message["event"] == "turn-start" || matches!(message["mood"].as_str(), Some("done" | "error" | "idle")) {
-            return None;
-        }
-        message["within"] = json!(true);
-        if let Some(m) = message.as_object_mut() {
-            m.remove("react");
-            m.remove("say");
-            m.remove("task");
-            m.remove("reply");
-        }
-    }
-    if !s(e, "cwd").is_empty() && message.get("project").is_none() {
-        message["project"] = json!(events::project_of(s(e, "cwd")));
-    }
-    Some(message)
-}
-
-// What it wants the person's attention for: an approval (said already by its
-// PermissionRequest, unless none came: a plan's, Auto Guard's), a question
-// (said already by the ask tool's start, and said the same again), or
-// something else, in its own words.
-fn notification(e: &Value, session: &str, now: u64) -> Option<Value> {
-    let said = clip(s(e, "message"), 80);
-    match s(e, "notificationType") {
-        "permission_prompt" if was_asked(session, now) => None,
-        "permission_prompt" => Some(json!({ "mood": "waiting", "detail": { "key": "detail.approveIn", "vars": { "app": "Reasonix", "what": said } } })),
-        "question_prompt" => Some(json!({ "mood": "waiting", "detail": { "key": "detail.asksQuestion" } })),
-        _ if said.is_empty() => Some(json!({ "mood": "waiting", "detail": { "key": "detail.needsYou" } })),
-        _ => Some(json!({ "mood": "waiting", "detail": said })),
-    }
 }
 
 #[cfg(test)]

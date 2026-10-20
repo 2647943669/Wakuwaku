@@ -1,5 +1,11 @@
 [
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "cwd": "Z:\\replay\\zc",
+      "session": "replay-zc",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "SessionStart",
     "message": {
@@ -25,6 +31,26 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 1000,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -53,6 +79,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "cwd": "Z:\\replay\\zc",
+      "prompt": "Create a file named note.txt containing hi",
+      "session": "replay-zc",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "UserPromptSubmit",
     "message": {
@@ -70,6 +103,26 @@
       "turns": 1,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 2000,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -101,6 +154,20 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "call": {
+        "id": "call_00_UlU5",
+        "input": {
+          "content": "hi\n",
+          "file_path": "Z:\\replay\\zc\\note.txt"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\zc",
+      "session": "replay-zc",
+      "type": "toolStart"
+    },
     "at": 2500,
     "event": "PreToolUse",
     "message": {
@@ -125,6 +192,38 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 2500,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 2500,
+        "files": [],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_00_UlU5",
+              "input": {
+                "content": "hi\n",
+                "file_path": "Z:\\replay\\zc\\note.txt"
+              },
+              "tool": "Write"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -158,6 +257,29 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "cwd": "Z:\\replay\\zc",
+      "session": "replay-zc",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "here"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "id": "call_00_UlU5",
+            "input": {
+              "content": "hi\n",
+              "file_path": "Z:\\replay\\zc\\note.txt"
+            },
+            "tool": "Write"
+          }
+        }
+      }
+    },
     "at": 2600,
     "event": "PermissionRequest",
     "message": {
@@ -189,6 +311,55 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 2600,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 2600,
+        "files": [],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_00_UlU5",
+              "input": {
+                "content": "hi\n",
+                "file_path": "Z:\\replay\\zc\\note.txt"
+              },
+              "tool": "Write"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "waiting",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "here"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "id": "call_00_UlU5",
+              "input": {
+                "content": "hi\n",
+                "file_path": "Z:\\replay\\zc\\note.txt"
+              },
+              "tool": "Write"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -227,6 +398,21 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "call": {
+        "file": "Z:\\replay\\zc\\note.txt",
+        "id": "call_00_UlU5",
+        "input": {
+          "content": "hi\n",
+          "file_path": "Z:\\replay\\zc\\note.txt"
+        },
+        "tool": "Write"
+      },
+      "cwd": "Z:\\replay\\zc",
+      "session": "replay-zc",
+      "type": "toolDone"
+    },
     "at": 4000,
     "event": "PostToolUse",
     "message": {
@@ -246,6 +432,28 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 4000,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 4000,
+        "files": [
+          "Z:\\replay\\zc\\note.txt"
+        ],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -277,6 +485,19 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "call": {
+        "id": "call_01",
+        "input": {
+          "description": "Explore the code"
+        },
+        "tool": "Task"
+      },
+      "cwd": "Z:\\replay\\zc",
+      "session": "replay-zc",
+      "type": "toolStart"
+    },
     "at": 4500,
     "event": "PreToolUse",
     "message": {
@@ -301,6 +522,39 @@
       "turns": 0,
       "workedMs": 0
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 4500,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 4500,
+        "files": [
+          "Z:\\replay\\zc\\note.txt"
+        ],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_01",
+              "input": {
+                "description": "Explore the code"
+              },
+              "tool": "Task"
+            },
+            "since": 4500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -334,10 +588,44 @@
     }
   },
   {
+    "agentEvent": null,
     "at": 5000,
     "event": "PostToolUseFailure",
     "message": null,
     "outcome": null,
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 4500,
+        "cwd": "Z:\\replay\\zc",
+        "eventAt": 4500,
+        "files": [
+          "Z:\\replay\\zc\\note.txt"
+        ],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_01",
+              "input": {
+                "description": "Explore the code"
+              },
+              "tool": "Task"
+            },
+            "since": 4500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": null,
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",
@@ -371,10 +659,18 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "zcode",
+      "cwd": "Z:\\replay\\zc",
+      "reply": "Created note.txt.",
+      "session": "replay-zc",
+      "type": "done"
+    },
     "at": 6000,
     "event": "Stop",
     "message": {
       "agent": "zcode",
+      "event": "turn-end",
       "mood": "done",
       "project": "zc",
       "reply": "Created note.txt.",
@@ -392,6 +688,29 @@
       "turns": 0,
       "workedMs": 4000
     },
+    "registry": [
+      {
+        "agent": "zcode",
+        "at": 6000,
+        "cwd": "Z:\\replay\\zc",
+        "edited": true,
+        "eventAt": 6000,
+        "files": [
+          "Z:\\replay\\zc\\note.txt"
+        ],
+        "id": "replay-zc",
+        "project": "zc",
+        "prompt": "Create a file named note.txt containing hi",
+        "reply": "Created note.txt.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": null,
+        "todos": [],
+        "took": 4000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "zcode",

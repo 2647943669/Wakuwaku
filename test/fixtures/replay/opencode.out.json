@@ -1,5 +1,12 @@
 [
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "title": "Shell echo command",
+      "type": "sessionStart"
+    },
     "at": 1000,
     "event": "session.created",
     "message": {
@@ -38,6 +45,26 @@
       "title": "Shell echo command",
       "type": "session.created"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 1000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 1000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": null,
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "idle",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -66,6 +93,14 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "prompt": "Run the shell command: echo hi",
+      "session": "replay-oc",
+      "title": "Shell echo command",
+      "type": "turnStart"
+    },
     "at": 2000,
     "event": "session.execution.started",
     "message": {
@@ -97,6 +132,26 @@
       "title": "Shell echo command",
       "type": "session.execution.started"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 2000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 2000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -128,6 +183,24 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "call": {
+        "id": "call_1",
+        "input": {
+          "command": "cd x && echo hi",
+          "description": ""
+        },
+        "own": "shell",
+        "raw": {
+          "command": "cd x && echo hi"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "toolStart"
+    },
     "at": 2500,
     "event": "session.tool.called",
     "message": {
@@ -173,6 +246,42 @@
       "tool_use_id": "call_1",
       "type": "session.tool.called"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 2500,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 2500,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_1",
+              "input": {
+                "command": "cd x && echo hi",
+                "description": ""
+              },
+              "own": "shell",
+              "raw": {
+                "command": "cd x && echo hi"
+              },
+              "tool": "Bash"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -206,6 +315,33 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "waiting",
+      "wait": {
+        "answerIn": {
+          "in": "here"
+        },
+        "for": "approval",
+        "what": {
+          "as": "call",
+          "call": {
+            "id": "call_1",
+            "input": {
+              "command": "echo hi",
+              "description": ""
+            },
+            "own": "shell",
+            "raw": {
+              "command": "echo hi"
+            },
+            "tool": "Bash"
+          }
+        }
+      }
+    },
     "at": 2600,
     "event": "permission.asked",
     "message": {
@@ -241,12 +377,6 @@
       "action": "shell",
       "agent": "opencode",
       "agent_id": "",
-      "call_step": {
-        "key": "step.command",
-        "vars": {
-          "what": "echo hi"
-        }
-      },
       "cwd": "Z:\\replay\\oc",
       "directory": "Z:\\replay\\oc",
       "hook_event_name": "PermissionRequest",
@@ -276,6 +406,63 @@
       "tool_use_id": "call_1",
       "type": "permission.asked"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 2600,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 2600,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_1",
+              "input": {
+                "command": "cd x && echo hi",
+                "description": ""
+              },
+              "own": "shell",
+              "raw": {
+                "command": "cd x && echo hi"
+              },
+              "tool": "Bash"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "waiting",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "answerIn": {
+            "in": "here"
+          },
+          "for": "approval",
+          "what": {
+            "as": "call",
+            "call": {
+              "id": "call_1",
+              "input": {
+                "command": "echo hi",
+                "description": ""
+              },
+              "own": "shell",
+              "raw": {
+                "command": "echo hi"
+              },
+              "tool": "Bash"
+            }
+          }
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -314,6 +501,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "working"
+    },
     "at": 5000,
     "event": "permission.replied",
     "message": {
@@ -342,6 +535,42 @@
       "session_id": "replay-oc",
       "type": "permission.replied"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 5000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 5000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_1",
+              "input": {
+                "command": "cd x && echo hi",
+                "description": ""
+              },
+              "own": "shell",
+              "raw": {
+                "command": "cd x && echo hi"
+              },
+              "tool": "Bash"
+            },
+            "since": 2500
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -375,6 +604,24 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "call": {
+        "id": "call_1",
+        "input": {
+          "command": "cd x && echo hi",
+          "description": ""
+        },
+        "own": "shell",
+        "raw": {
+          "command": "cd x && echo hi"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "toolDone"
+    },
     "at": 5500,
     "event": "session.tool.success",
     "message": {
@@ -414,6 +661,26 @@
       "tool_use_id": "call_1",
       "type": "session.tool.success"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 5500,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 5500,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -445,6 +712,25 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "call": {
+        "id": "call_2",
+        "input": {
+          "file_path": "Z:\\replay\\oc\\src\\a.rs"
+        },
+        "own": "edit",
+        "raw": {
+          "newString": "b",
+          "oldString": "a",
+          "path": "Z:\\replay\\oc\\src\\a.rs"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "toolStart"
+    },
     "at": 6000,
     "event": "session.tool.called",
     "message": {
@@ -491,6 +777,43 @@
       "tool_use_id": "call_2",
       "type": "session.tool.called"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 6000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 6000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [
+          {
+            "call": {
+              "id": "call_2",
+              "input": {
+                "file_path": "Z:\\replay\\oc\\src\\a.rs"
+              },
+              "own": "edit",
+              "raw": {
+                "newString": "b",
+                "oldString": "a",
+                "path": "Z:\\replay\\oc\\src\\a.rs"
+              },
+              "tool": "Edit"
+            },
+            "since": 6000
+          }
+        ],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -524,6 +847,26 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "call": {
+        "file": "Z:\\replay\\oc\\src\\a.rs",
+        "id": "call_2",
+        "input": {
+          "file_path": "Z:\\replay\\oc\\src\\a.rs"
+        },
+        "own": "edit",
+        "raw": {
+          "newString": "b",
+          "oldString": "a",
+          "path": "Z:\\replay\\oc\\src\\a.rs"
+        },
+        "tool": "Edit"
+      },
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "toolDone"
+    },
     "at": 6500,
     "event": "session.tool.success",
     "message": {
@@ -565,6 +908,28 @@
       "tool_use_id": "call_2",
       "type": "session.tool.success"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 6500,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 6500,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -596,6 +961,15 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "waiting",
+      "wait": {
+        "for": "question"
+      }
+    },
     "at": 7000,
     "event": "form.created",
     "message": {
@@ -629,6 +1003,31 @@
       "session_id": "replay-oc",
       "type": "form.created"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 7000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 7000,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "waiting",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null,
+        "wait": {
+          "for": "question"
+        }
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -660,6 +1059,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "working"
+    },
     "at": 9000,
     "event": "form.replied",
     "message": {
@@ -685,6 +1090,28 @@
       "session_id": "replay-oc",
       "type": "form.replied"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 9000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 9000,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -716,6 +1143,24 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "call": {
+        "id": "call_3",
+        "input": {
+          "command": "rm -rf build",
+          "description": ""
+        },
+        "own": "shell",
+        "raw": {
+          "command": "rm -rf build"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "toolDone"
+    },
     "at": 9500,
     "event": "session.tool.failed",
     "message": {
@@ -759,6 +1204,28 @@
       "tool_use_id": "call_3",
       "type": "session.tool.failed"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 9500,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 9500,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -792,6 +1259,28 @@
   {
     "at": 9800,
     "event": "session.step.started",
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 9500,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 9500,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": null,
+        "running": [],
+        "since": 2000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -824,6 +1313,14 @@
     "taken": false
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "reply": "Done — the command output `hi`.",
+      "session": "replay-oc",
+      "title": "Shell echo command",
+      "type": "done"
+    },
     "at": 10000,
     "event": "session.execution.succeeded",
     "message": {
@@ -861,6 +1358,29 @@
       "title": "Shell echo command",
       "type": "session.execution.succeeded"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 10000,
+        "cwd": "Z:\\replay\\oc",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": "Done — the command output `hi`.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -891,6 +1411,29 @@
   {
     "at": 10100,
     "event": "session.execution.interrupted",
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 10000,
+        "cwd": "Z:\\replay\\oc",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": "Done — the command output `hi`.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -923,6 +1466,29 @@
     "at": 20000,
     "changed": true,
     "do": "seen",
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 10000,
+        "cwd": "Z:\\replay\\oc",
+        "edited": true,
+        "eventAt": 10000,
+        "files": [
+          "Z:\\replay\\oc\\src\\a.rs"
+        ],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Run the shell command: echo hi",
+        "reply": "Done — the command output `hi`.",
+        "running": [],
+        "since": null,
+        "status": "done",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": 8000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -951,6 +1517,13 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "prompt": "Try again",
+      "session": "replay-oc",
+      "type": "turnStart"
+    },
     "at": 21000,
     "event": "session.execution.started",
     "message": {
@@ -979,6 +1552,26 @@
       "session_id": "replay-oc",
       "type": "session.execution.started"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 21000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 21000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Try again",
+        "reply": null,
+        "running": [],
+        "since": 21000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -1010,6 +1603,25 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "call": {
+        "id": "call_4",
+        "input": {
+          "command": "false",
+          "description": ""
+        },
+        "own": "shell",
+        "raw": {
+          "command": "false"
+        },
+        "tool": "Bash"
+      },
+      "cwd": "Z:\\replay\\oc",
+      "quiet": false,
+      "session": "replay-oc",
+      "type": "toolFailed"
+    },
     "at": 22000,
     "event": "session.tool.failed",
     "message": {
@@ -1068,6 +1680,26 @@
       "tool_use_id": "call_4",
       "type": "session.tool.failed"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 22000,
+        "cwd": "Z:\\replay\\oc",
+        "eventAt": 22000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Try again",
+        "reply": null,
+        "running": [],
+        "since": 21000,
+        "status": "working",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": null,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -1099,6 +1731,16 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "error": {
+        "as": "kind",
+        "kind": "rate_limit"
+      },
+      "session": "replay-oc",
+      "type": "failed"
+    },
     "at": 23000,
     "event": "session.execution.failed",
     "message": {
@@ -1138,6 +1780,30 @@
       "session_id": "replay-oc",
       "type": "session.execution.failed"
     },
+    "registry": [
+      {
+        "agent": "opencode",
+        "at": 23000,
+        "cwd": "Z:\\replay\\oc",
+        "error": {
+          "as": "kind",
+          "kind": "rate_limit"
+        },
+        "eventAt": 23000,
+        "files": [],
+        "id": "replay-oc",
+        "project": "oc",
+        "prompt": "Try again",
+        "reply": null,
+        "running": [],
+        "since": null,
+        "status": "failed",
+        "title": "Shell echo command",
+        "todos": [],
+        "took": 2000,
+        "turn": null
+      }
+    ],
     "sessions": [
       {
         "agent": "opencode",
@@ -1169,6 +1835,12 @@
     }
   },
   {
+    "agentEvent": {
+      "agent": "opencode",
+      "cwd": "Z:\\replay\\oc",
+      "session": "replay-oc",
+      "type": "sessionEnd"
+    },
     "at": 24000,
     "event": "session.deleted",
     "message": {
@@ -1195,6 +1867,7 @@
       "session_id": "replay-oc",
       "type": "session.deleted"
     },
+    "registry": [],
     "sessions": [],
     "shown": {
       "id": "",

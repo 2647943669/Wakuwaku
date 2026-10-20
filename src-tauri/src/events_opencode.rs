@@ -1,162 +1,18 @@
-// OpenCode's events → pet messages, the same messages as events.rs makes
-// (state.rs has the format), plus agent: "opencode". The words for a step,
-// a task, a reply and the project are events.rs's.
-//
-// OpenCode 2 has no command hooks: her plugin (integrations/opencode/
-// wakuwaku.js, installed by connection.rs) runs in OpenCode's background
-// service and POSTs its events to /hook?agent=opencode as OpenCode gives
-// them, { type, sessionID, ... }, with what only it knows put in: the
-// folder (directory), the session's title, the person's words for a turn
-// (prompt), a call's tool, the turn's last text. As OpenCode 2.0.29 sends
-// them (2026-10-15):
-//   session.created              a session (sub-agents' are not sent)
-//   session.execution.started    a turn begins (prompt: the person's words)
-//   session.tool.called          a tool starts: id, tool, input
-//   session.tool.success|failed  it ends (error: { type, message })
-//   permission.asked             it asks the person: id, action ("shell",
-//                                "edit", …), resources, save (what "always"
-//                                allows), source.id (the call); agentID for
-//                                a sub-agent's
-//   permission.replied           answered (requestID, reply), anywhere
-//   form.created|replied|cancelled  its question tool waits on the person
-//   session.execution.succeeded  the turn is done (text: its last words)
-//   session.execution.failed     it failed (error)
-//   session.execution.interrupted  stopped (reason: user, shutdown, …)
-//   session.deleted
-// normalize gives each the names Claude Code's hooks have (hook_event_name,
-// session_id, cwd, tool_name, tool_input, …): the prompts (asks.rs) and the
-// server's look for where a session runs (jump.rs) read them so. A tool by
-// Claude Code's name for it (shell is Bash, edit Edit, patch apply_patch),
-// for the words of its step and the edits a turn made.
+// OpenCode's events, from her plugin in OpenCode's background service
+// (integrations/opencode/wakuwaku.js, installed by connection.rs): agent-core
+// reads them (opencode.rs: normalize, by the names Claude Code's hooks have,
+// for the prompts and the jump too; to_event), events.rs tells them in her
+// words. Here, what she makes of them.
+#[cfg(test)]
 use serde_json::{json, Value};
 
-use agent_core::opencode::as_claude;
+#[cfg(test)]
+use agent_core::opencode::normalize;
 
-use crate::events::{base, clip, project_of, reply_of, step, step_of, task_of};
-use crate::events_codex::patched;
-
-fn s<'a>(e: &'a Value, key: &str) -> &'a str {
-    e.get(key).and_then(Value::as_str).unwrap_or("")
+#[cfg(test)]
+fn to_message(e: &Value) -> Option<Value> {
+    agent_core::opencode::to_event(e).map(|ev| crate::events::message_of(&ev))
 }
-
-// What a tool is doing, in plain words: a patch by the files it edits.
-fn step_of_opencode(tool: &str, input: &Value) -> Value {
-    if tool != "apply_patch" {
-        return step_of(tool, input);
-    }
-    match patched(s(input, "command")).as_slice() {
-        [] => step("step.tool", json!({ "tool": "patch" })),
-        [one] => step("step.edit", json!({ "file": base(one) })),
-        [first, rest @ ..] => step("step.edit", json!({ "file": format!("{} +{}", base(first), rest.len()) })),
-    }
-}
-
-// The file a finished edit changed.
-fn edited(tool: &str, input: &Value) -> Option<String> {
-    match tool {
-        "Edit" | "Write" => Some(s(input, "file_path").to_string()),
-        "apply_patch" => patched(s(input, "command")).first().map(|f| f.to_string()),
-        _ => None,
-    }
-    .filter(|f| !f.is_empty())
-}
-
-// OpenCode's event under the name Claude Code's hook has for it, with the
-// fields its hooks have (agent-core), or Null for one that is nothing to her;
-// a permission asked for a call says what the call does, in plain words
-// (call_step).
-pub fn normalize(e: &Value) -> Value {
-    let mut out = agent_core::opencode::normalize(e);
-    if out["hook_event_name"] == "PermissionRequest" && !s(e, "tool").is_empty() {
-        let (tool, input) = as_claude(s(e, "tool"), e.get("input").unwrap_or(&json!({})));
-        out["call_step"] = step_of_opencode(&tool, &input);
-    }
-    out
-}
-
-// Why a turn failed: one of her error kinds, or OpenCode's own words.
-fn error_of(error: &Value) -> Value {
-    let key = match s(error, "type") {
-        "provider.auth" => "authentication_failed",
-        "provider.rate-limit" => "rate_limit",
-        "provider.quota" => "billing_error",
-        "provider.internal" => "server_error",
-        "provider.invalid-request" => "invalid_request",
-        "provider.unknown" | "provider.no-route" => "model_not_found",
-        _ => return json!(clip(s(error, "message").lines().next().unwrap_or(""), 80)),
-    };
-    json!({ "key": format!("error.{key}"), "vars": {} })
-}
-
-// The mood part of the message for a normalized event, or None for one that changes nothing.
-fn mood_of(e: &Value) -> Option<Value> {
-    let tool = s(e, "tool_name");
-    let input = e.get("tool_input").unwrap_or(&Value::Null);
-    let mut m = match s(e, "hook_event_name") {
-        "SessionStart" => json!({ "mood": "idle", "react": "wave", "say": { "key": "say.hello" } }),
-        "SessionEnd" => json!({ "mood": "idle", "event": "session-end" }),
-        "UserPromptSubmit" => {
-            let mut m = json!({ "mood": "working", "event": "turn-start" });
-            if let Some(task) = task_of(s(e, "prompt")) {
-                m["task"] = json!(task);
-            }
-            m
-        }
-        // OpenCode's question to the person waits on them like a prompt.
-        "PreToolUse" if tool == "question" => json!({ "mood": "waiting", "detail": { "key": "detail.asksQuestion" } }),
-        "PreToolUse" => json!({ "mood": "working", "detail": tool, "event": "tool-start", "step": step_of_opencode(tool, input) }),
-        "PostToolUse" => {
-            let mut m = json!({ "mood": "working", "detail": tool, "event": "tool-done" });
-            if let Some(file) = edited(tool, input) {
-                m["file"] = json!(file);
-            }
-            m
-        }
-        "PostToolUseFailure" => json!({
-            "mood": "working", "detail": tool, "event": "tool-failed", "react": "failed",
-            "say": { "key": "say.toolFailed", "vars": { "tool": s(e, "tool") } },
-        }),
-        "PermissionRequest" => {
-            let what = e.get("call_step").cloned().unwrap_or_else(|| step("step.tool", json!({ "tool": tool })));
-            json!({ "mood": "waiting", "detail": { "key": "detail.approve", "vars": { "what": what } } })
-        }
-        "Question" => json!({ "mood": "waiting", "detail": { "key": "detail.asksQuestion" } }),
-        // Answered, here or there: back at work.
-        "PermissionReplied" | "Answered" => json!({ "mood": "working" }),
-        "Stop" => json!({ "mood": "done", "event": "turn-end" }),
-        "StopFailure" => json!({ "mood": "error", "event": "turn-end", "error": error_of(e.get("error").unwrap_or(&Value::Null)) }),
-        // Stopped by the person: nothing to come and see.
-        "Interrupt" => json!({ "mood": "idle", "event": "turn-end" }),
-        _ => return None,
-    };
-    if matches!(s(e, "hook_event_name"), "PreToolUse" | "PostToolUse" | "PostToolUseFailure") && !s(e, "tool_use_id").is_empty() {
-        m["toolId"] = json!(s(e, "tool_use_id"));
-    }
-    if let Some(reply) = reply_of(s(e, "last_assistant_message")) {
-        m["reply"] = json!(reply);
-    }
-    Some(m)
-}
-
-// The message for a normalized event, or None for one that changes nothing.
-pub fn to_message(e: &Value) -> Option<Value> {
-    if !e.is_object() {
-        return None;
-    }
-    let mut message = mood_of(e)?;
-    message["agent"] = json!("opencode");
-    if !s(e, "session_id").is_empty() {
-        message["session"] = json!(s(e, "session_id"));
-    }
-    if !s(e, "cwd").is_empty() {
-        message["project"] = json!(project_of(s(e, "cwd")));
-    }
-    if !s(e, "session_title").is_empty() {
-        message["title"] = json!(clip(s(e, "session_title"), 80));
-    }
-    Some(message)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
