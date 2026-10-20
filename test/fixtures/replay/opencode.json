@@ -1,0 +1,25 @@
+{
+  "about": "OpenCode through her plugin: a shell call asked for and allowed, an edit, its question tool, a call the person declined, the end with its last words; events that are nothing to her; a turn failing on the rate limit; the session deleted.",
+  "agent": "opencode",
+  "steps": [
+    { "at": 1000, "event": { "type": "session.created", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "title": "Shell echo command" } },
+    { "at": 2000, "event": { "type": "session.execution.started", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "title": "Shell echo command", "prompt": "Run the shell command: echo hi" } },
+    { "at": 2500, "event": { "type": "session.tool.called", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "call_1", "tool": "shell", "input": { "command": "cd x && echo hi" } } },
+    { "at": 2600, "event": { "type": "permission.asked", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "per_1", "action": "shell", "resources": ["echo hi"], "save": ["echo *"], "source": { "type": "tool", "id": "call_1" }, "tool": "shell", "input": { "command": "echo hi" } } },
+    { "at": 5000, "event": { "type": "permission.replied", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "requestID": "per_1", "reply": "once" } },
+    { "at": 5500, "event": { "type": "session.tool.success", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "call_1", "tool": "shell", "input": { "command": "cd x && echo hi" } } },
+    { "at": 6000, "event": { "type": "session.tool.called", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "call_2", "tool": "edit", "input": { "path": "Z:\\replay\\oc\\src\\a.rs", "oldString": "a", "newString": "b" } } },
+    { "at": 6500, "event": { "type": "session.tool.success", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "call_2", "tool": "edit", "input": { "path": "Z:\\replay\\oc\\src\\a.rs", "oldString": "a", "newString": "b" } } },
+    { "at": 7000, "event": { "type": "form.created", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc" } },
+    { "at": 9000, "event": { "type": "form.replied", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc" } },
+    { "at": 9500, "event": { "type": "session.tool.failed", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "call_3", "tool": "shell", "input": { "command": "rm -rf build" }, "error": { "type": "aborted", "message": "The user declined this tool call" } } },
+    { "at": 9800, "event": { "type": "session.step.started", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc" } },
+    { "at": 10000, "event": { "type": "session.execution.succeeded", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "title": "Shell echo command", "text": "Done — the command output `hi`." } },
+    { "at": 10100, "event": { "type": "session.execution.interrupted", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "reason": "superseded" } },
+    { "at": 20000, "do": "seen" },
+    { "at": 21000, "event": { "type": "session.execution.started", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "prompt": "Try again" } },
+    { "at": 22000, "event": { "type": "session.tool.failed", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "id": "call_4", "tool": "shell", "input": { "command": "false" }, "error": { "type": "tool.execution", "message": "exit 1" } } },
+    { "at": 23000, "event": { "type": "session.execution.failed", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc", "error": { "type": "provider.rate-limit", "message": "429" } } },
+    { "at": 24000, "event": { "type": "session.deleted", "sessionID": "replay-oc", "directory": "Z:\\replay\\oc" } }
+  ]
+}

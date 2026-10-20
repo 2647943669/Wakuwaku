@@ -1,0 +1,1155 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "agent": "dsh",
+      "mood": "idle",
+      "project": "dsh-ws",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-dsh-main"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "dsh",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "task": "Read note.txt, then create copy.txt"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2500,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Bash",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "step": {
+        "key": "step.run",
+        "vars": {
+          "what": "Read note.txt"
+        }
+      },
+      "toolId": "call_00_A"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 2500,
+        "detail": "Bash",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.run",
+          "vars": {
+            "what": "Read note.txt"
+          }
+        },
+        "stepSince": 2500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2800,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Bash",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "toolId": "call_00_A"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 2800,
+        "detail": "Bash",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2800,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3000,
+    "event": "PermissionRequest",
+    "message": {
+      "agent": "dsh",
+      "detail": {
+        "key": "detail.approve",
+        "vars": {
+          "what": {
+            "key": "step.write",
+            "vars": {
+              "file": "copy.txt"
+            }
+          }
+        }
+      },
+      "mood": "waiting",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Read note.txt, then create cop"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 3000,
+        "detail": {
+          "key": "detail.approve",
+          "vars": {
+            "what": {
+              "key": "step.write",
+              "vars": {
+                "file": "copy.txt"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6000,
+    "event": "PermissionReplied",
+    "message": {
+      "agent": "dsh",
+      "mood": "working",
+      "session": "replay-dsh-main",
+      "within": true
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 6000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2800,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6500,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Write",
+      "event": "tool-done",
+      "file": "Z:\\replay\\dsh-ws\\copy.txt",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "toolId": "call_00_B"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 6500,
+        "detail": "Write",
+        "error": null,
+        "files": 1,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7000,
+    "event": "SessionStart",
+    "message": {
+      "agent": "dsh",
+      "event": "session-end",
+      "mood": "idle",
+      "session": "replay-dsh-sub"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 6500,
+        "detail": "Write",
+        "error": null,
+        "files": 1,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7100,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "dsh",
+      "event": "session-end",
+      "mood": "idle",
+      "session": "replay-dsh-sub"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 6500,
+        "detail": "Write",
+        "error": null,
+        "files": 1,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7500,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Write",
+      "event": "tool-done",
+      "file": "Z:\\replay\\dsh-ws\\notes.md",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "toolId": "call_01",
+      "within": true
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 7500,
+        "detail": "Write",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 7500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7600,
+    "event": "PostToolUse",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 7500,
+        "detail": "Write",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 7500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7800,
+    "event": "Stop",
+    "message": {
+      "agent": "dsh",
+      "event": "session-end",
+      "mood": "idle",
+      "session": "replay-dsh-sub"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 7500,
+        "detail": "Write",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 7500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 8000,
+    "event": "PermissionRequest",
+    "message": {
+      "agent": "dsh",
+      "detail": {
+        "key": "detail.approveIn",
+        "vars": {
+          "app": "DeepSeek Harness",
+          "what": {
+            "key": "step.run",
+            "vars": {
+              "what": "Remove the build folder"
+            }
+          }
+        }
+      },
+      "mood": "waiting",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Read note.txt, then create cop"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 8000,
+        "detail": {
+          "key": "detail.approveIn",
+          "vars": {
+            "app": "DeepSeek Harness",
+            "what": {
+              "key": "step.run",
+              "vars": {
+                "what": "Remove the build folder"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9000,
+    "event": "PermissionReplied",
+    "message": {
+      "agent": "dsh",
+      "mood": "working",
+      "session": "replay-dsh-main",
+      "within": true
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 9000,
+        "detail": "",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 7500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9500,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Bash",
+      "event": "tool-failed",
+      "mood": "working",
+      "project": "dsh-ws",
+      "react": "failed",
+      "say": {
+        "key": "say.toolFailed",
+        "vars": {
+          "tool": "Bash"
+        }
+      },
+      "session": "replay-dsh-main",
+      "toolId": "call_00_C"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "failed",
+        "say": {
+          "key": "say.toolFailed",
+          "vars": {
+            "tool": "Bash"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 9500,
+        "detail": "Bash",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9800,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "TodoWrite",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "todo": {
+        "set": [
+          {
+            "active": "",
+            "status": "completed",
+            "text": "Read note.txt"
+          },
+          {
+            "active": "",
+            "status": "completed",
+            "text": "Write copy.txt"
+          }
+        ]
+      },
+      "toolId": "call_00_D"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 9800,
+        "detail": "TodoWrite",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt, then create copy.txt",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9800,
+        "todo": {
+          "active": "",
+          "done": 2,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 10000,
+    "event": "Stop",
+    "message": {
+      "agent": "dsh",
+      "mood": "done",
+      "project": "dsh-ws",
+      "reply": "Done — copy.txt has hi.",
+      "session": "replay-dsh-main",
+      "title": "Copy a note"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Copy a note"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 8000
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 10000,
+        "detail": "",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "review",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "Done — copy.txt has hi.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 2,
+          "total": 2
+        },
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 20000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 20000,
+        "detail": "",
+        "error": null,
+        "files": 2,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "idle",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 2,
+          "total": 2
+        },
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 21000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "dsh",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "task": "And a second copy"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 21000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 21000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 21000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 22000,
+    "event": "Stop",
+    "message": {
+      "agent": "dsh",
+      "mood": "idle",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 22000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "idle",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 23000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "dsh",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main",
+      "task": "Try the second copy again"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 23000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "working",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": 23000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 23000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 24000,
+    "event": "StopFailure",
+    "message": {
+      "agent": "dsh",
+      "error": "401 Unauthorized: invalid api key",
+      "mood": "error",
+      "project": "dsh-ws",
+      "session": "replay-dsh-main"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "error",
+          "Copy a note"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 1000
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 24000,
+        "detail": "",
+        "error": "401 Unauthorized: invalid api key",
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "error",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 25000,
+    "event": "WakuwakuLoaded",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 24000,
+        "detail": "",
+        "error": "401 Unauthorized: invalid api key",
+        "files": 0,
+        "id": "replay-dsh-main",
+        "jump": false,
+        "mood": "error",
+        "name": "Copy a note",
+        "project": "dsh-ws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-main",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  }
+]

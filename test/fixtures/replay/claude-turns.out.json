@@ -1,0 +1,1178 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "mood": "idle",
+      "project": "web",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-cc-1",
+      "title": "Login fix"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "idle",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "event": "turn-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "task": "Fix the login page and add a test",
+      "title": "Login fix"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "TodoWrite",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "step": {
+        "key": "step.plan",
+        "vars": {}
+      },
+      "todo": {
+        "set": [
+          {
+            "active": "Fixing the form",
+            "status": "in_progress",
+            "text": "Fix the form"
+          },
+          {
+            "active": "Adding a test",
+            "status": "pending",
+            "text": "Add a test"
+          }
+        ]
+      },
+      "toolId": "toolu_01"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3000,
+        "detail": "TodoWrite",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.plan",
+          "vars": {}
+        },
+        "stepSince": 3000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3100,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "TodoWrite",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "toolId": "toolu_01"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3100,
+        "detail": "TodoWrite",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 3100,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 4000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "Read",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "step": {
+        "key": "step.read",
+        "vars": {
+          "file": "login.ts"
+        }
+      },
+      "toolId": "toolu_02"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 4000,
+        "detail": "Read",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.read",
+          "vars": {
+            "file": "login.ts"
+          }
+        },
+        "stepSince": 4000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 4500,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "Read",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "toolId": "toolu_02"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 4500,
+        "detail": "Read",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 4500,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "Edit",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "step": {
+        "key": "step.edit",
+        "vars": {
+          "file": "login.ts"
+        }
+      },
+      "toolId": "toolu_03"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 5000,
+        "detail": "Edit",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.edit",
+          "vars": {
+            "file": "login.ts"
+          }
+        },
+        "stepSince": 5000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6000,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "Edit",
+      "event": "tool-done",
+      "file": "Z:\\replay\\web\\src\\login.ts",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "toolId": "toolu_03"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 6000,
+        "detail": "Edit",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "Bash",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "step": {
+        "key": "step.run",
+        "vars": {
+          "what": "Run the tests"
+        }
+      },
+      "toolId": "toolu_04"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 7000,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.run",
+          "vars": {
+            "what": "Run the tests"
+          }
+        },
+        "stepSince": 7000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9000,
+    "event": "PostToolUseFailure",
+    "message": {
+      "detail": "Bash",
+      "event": "tool-failed",
+      "mood": "working",
+      "project": "web",
+      "react": "failed",
+      "say": {
+        "key": "say.toolFailed",
+        "vars": {
+          "tool": "Bash"
+        }
+      },
+      "session": "replay-cc-1",
+      "toolId": "toolu_04"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "failed",
+        "say": {
+          "key": "say.toolFailed",
+          "vars": {
+            "tool": "Bash"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 9000,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 10000,
+    "event": "PermissionRequest",
+    "message": {
+      "detail": {
+        "key": "detail.approve",
+        "vars": {
+          "what": {
+            "key": "step.command",
+            "vars": {
+              "what": "git push origin fix-login"
+            }
+          }
+        }
+      },
+      "mood": "waiting",
+      "project": "web",
+      "session": "replay-cc-1"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Login fix"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 10000,
+        "detail": {
+          "key": "detail.approve",
+          "vars": {
+            "what": {
+              "key": "step.command",
+              "vars": {
+                "what": "git push origin fix-login"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 15000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "Bash",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "step": {
+        "key": "step.command",
+        "vars": {
+          "what": "git push origin fix-login"
+        }
+      },
+      "toolId": "toolu_05"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 15000,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.command",
+          "vars": {
+            "what": "git push origin fix-login"
+          }
+        },
+        "stepSince": 15000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 16000,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "Bash",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "toolId": "toolu_05"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 16000,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 16000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 20000,
+    "event": "Stop",
+    "message": {
+      "mood": "done",
+      "project": "web",
+      "reply": "Done: Fixed the login page; the tests pass.",
+      "session": "replay-cc-1",
+      "title": "Login fix"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Login fix"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 18000
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 20000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "review",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "Done: Fixed the login page; the tests pass.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": 18000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 30000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "",
+        "at": 30000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "idle",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": 18000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 40000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "event": "turn-start",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "title": "Login fix"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 40000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 40000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 40000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 41000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": {
+        "key": "detail.asksQuestion"
+      },
+      "mood": "waiting",
+      "project": "web",
+      "session": "replay-cc-1",
+      "toolId": "toolu_06"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Login fix"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 41000,
+        "detail": {
+          "key": "detail.asksQuestion",
+          "vars": {}
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 40000,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 50000,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "AskUserQuestion",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "web",
+      "session": "replay-cc-1",
+      "toolId": "toolu_06"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 50000,
+        "detail": "AskUserQuestion",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "working",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": 40000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 50000,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 52000,
+    "event": "StopFailure",
+    "message": {
+      "error": {
+        "key": "error.rate_limit",
+        "vars": {}
+      },
+      "mood": "error",
+      "project": "web",
+      "session": "replay-cc-1",
+      "title": "Login fix"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "error",
+          "Login fix"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 12000
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 52000,
+        "detail": "",
+        "error": {
+          "key": "error.rate_limit",
+          "vars": {}
+        },
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "error",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": 12000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 60000,
+    "changed": false,
+    "do": "stale",
+    "sessions": [
+      {
+        "agent": "",
+        "at": 52000,
+        "detail": "",
+        "error": {
+          "key": "error.rate_limit",
+          "vars": {}
+        },
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "error",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": 12000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7252001,
+    "changed": true,
+    "do": "stale",
+    "sessions": [
+      {
+        "agent": "",
+        "at": 7252001,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-1",
+        "jump": false,
+        "mood": "idle",
+        "name": "Login fix",
+        "project": "web",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "Fixing the form",
+          "done": 0,
+          "total": 2
+        },
+        "took": 12000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-1",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9052002,
+    "changed": true,
+    "do": "hide",
+    "sessions": [],
+    "shown": {
+      "id": "",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 0
+    }
+  },
+  {
+    "at": 9100000,
+    "event": "SessionEnd",
+    "message": {
+      "event": "session-end",
+      "mood": "idle",
+      "project": "web",
+      "session": "replay-cc-1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [],
+    "shown": {
+      "id": "",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 0
+    }
+  }
+]

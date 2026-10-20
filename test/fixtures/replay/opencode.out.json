@@ -1,0 +1,1206 @@
+[
+  {
+    "at": 1000,
+    "event": "session.created",
+    "message": {
+      "agent": "opencode",
+      "mood": "idle",
+      "project": "oc",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-oc",
+      "title": "Shell echo command"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "SessionStart",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "session_title": "Shell echo command",
+      "title": "Shell echo command",
+      "type": "session.created"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "idle",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "session.execution.started",
+    "message": {
+      "agent": "opencode",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "task": "Run the shell command: echo hi",
+      "title": "Shell echo command"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "UserPromptSubmit",
+      "prompt": "Run the shell command: echo hi",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "session_title": "Shell echo command",
+      "title": "Shell echo command",
+      "type": "session.execution.started"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2500,
+    "event": "session.tool.called",
+    "message": {
+      "agent": "opencode",
+      "detail": "Bash",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "step": {
+        "key": "step.command",
+        "vars": {
+          "what": "echo hi"
+        }
+      },
+      "toolId": "call_1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "PreToolUse",
+      "id": "call_1",
+      "input": {
+        "command": "cd x && echo hi"
+      },
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd x && echo hi",
+        "description": ""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "call_1",
+      "type": "session.tool.called"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 2500,
+        "detail": "Bash",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.command",
+          "vars": {
+            "what": "echo hi"
+          }
+        },
+        "stepSince": 2500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2600,
+    "event": "permission.asked",
+    "message": {
+      "agent": "opencode",
+      "detail": {
+        "key": "detail.approve",
+        "vars": {
+          "what": {
+            "key": "step.command",
+            "vars": {
+              "what": "echo hi"
+            }
+          }
+        }
+      },
+      "mood": "waiting",
+      "project": "oc",
+      "session": "replay-oc"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Shell echo command"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "action": "shell",
+      "agent": "opencode",
+      "agent_id": "",
+      "call_step": {
+        "key": "step.command",
+        "vars": {
+          "what": "echo hi"
+        }
+      },
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "PermissionRequest",
+      "id": "per_1",
+      "input": {
+        "command": "echo hi"
+      },
+      "permission_id": "per_1",
+      "resources": [
+        "echo hi"
+      ],
+      "save": [
+        "echo *"
+      ],
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "source": {
+        "id": "call_1",
+        "type": "tool"
+      },
+      "tool": "shell",
+      "tool_input": {
+        "command": "echo hi",
+        "description": ""
+      },
+      "tool_name": "shell",
+      "tool_use_id": "call_1",
+      "type": "permission.asked"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 2600,
+        "detail": {
+          "key": "detail.approve",
+          "vars": {
+            "what": {
+              "key": "step.command",
+              "vars": {
+                "what": "echo hi"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5000,
+    "event": "permission.replied",
+    "message": {
+      "agent": "opencode",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "PermissionReplied",
+      "permission_id": "per_1",
+      "reply": "once",
+      "requestID": "per_1",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "type": "permission.replied"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 5000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.command",
+          "vars": {
+            "what": "echo hi"
+          }
+        },
+        "stepSince": 2500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5500,
+    "event": "session.tool.success",
+    "message": {
+      "agent": "opencode",
+      "detail": "Bash",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "toolId": "call_1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "PostToolUse",
+      "id": "call_1",
+      "input": {
+        "command": "cd x && echo hi"
+      },
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd x && echo hi",
+        "description": ""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "call_1",
+      "type": "session.tool.success"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 5500,
+        "detail": "Bash",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 5500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6000,
+    "event": "session.tool.called",
+    "message": {
+      "agent": "opencode",
+      "detail": "Edit",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "step": {
+        "key": "step.edit",
+        "vars": {
+          "file": "a.rs"
+        }
+      },
+      "toolId": "call_2"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "PreToolUse",
+      "id": "call_2",
+      "input": {
+        "newString": "b",
+        "oldString": "a",
+        "path": "Z:\\replay\\oc\\src\\a.rs"
+      },
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "tool": "edit",
+      "tool_input": {
+        "file_path": "Z:\\replay\\oc\\src\\a.rs"
+      },
+      "tool_name": "Edit",
+      "tool_use_id": "call_2",
+      "type": "session.tool.called"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 6000,
+        "detail": "Edit",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.edit",
+          "vars": {
+            "file": "a.rs"
+          }
+        },
+        "stepSince": 6000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6500,
+    "event": "session.tool.success",
+    "message": {
+      "agent": "opencode",
+      "detail": "Edit",
+      "event": "tool-done",
+      "file": "Z:\\replay\\oc\\src\\a.rs",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "toolId": "call_2"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "PostToolUse",
+      "id": "call_2",
+      "input": {
+        "newString": "b",
+        "oldString": "a",
+        "path": "Z:\\replay\\oc\\src\\a.rs"
+      },
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "tool": "edit",
+      "tool_input": {
+        "file_path": "Z:\\replay\\oc\\src\\a.rs"
+      },
+      "tool_name": "Edit",
+      "tool_use_id": "call_2",
+      "type": "session.tool.success"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 6500,
+        "detail": "Edit",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7000,
+    "event": "form.created",
+    "message": {
+      "agent": "opencode",
+      "detail": {
+        "key": "detail.asksQuestion"
+      },
+      "mood": "waiting",
+      "project": "oc",
+      "session": "replay-oc"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Shell echo command"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "Question",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "type": "form.created"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 7000,
+        "detail": {
+          "key": "detail.asksQuestion",
+          "vars": {}
+        },
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9000,
+    "event": "form.replied",
+    "message": {
+      "agent": "opencode",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "Answered",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "type": "form.replied"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 9000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9500,
+    "event": "session.tool.failed",
+    "message": {
+      "agent": "opencode",
+      "detail": "Bash",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "toolId": "call_3"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "error": {
+        "message": "The user declined this tool call",
+        "type": "aborted"
+      },
+      "hook_event_name": "PostToolUse",
+      "id": "call_3",
+      "input": {
+        "command": "rm -rf build"
+      },
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "tool": "shell",
+      "tool_input": {
+        "command": "rm -rf build",
+        "description": ""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "call_3",
+      "type": "session.tool.failed"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 9500,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9800,
+    "event": "session.step.started",
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 9500,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    },
+    "taken": false
+  },
+  {
+    "at": 10000,
+    "event": "session.execution.succeeded",
+    "message": {
+      "agent": "opencode",
+      "event": "turn-end",
+      "mood": "done",
+      "project": "oc",
+      "reply": "Done — the command output hi.",
+      "session": "replay-oc",
+      "title": "Shell echo command"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Shell echo command"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 8000
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "Stop",
+      "last_assistant_message": "Done — the command output `hi`.",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "session_title": "Shell echo command",
+      "text": "Done — the command output `hi`.",
+      "title": "Shell echo command",
+      "type": "session.execution.succeeded"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 10000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "review",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "Done — the command output hi.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 10100,
+    "event": "session.execution.interrupted",
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 10000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "review",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "Done — the command output hi.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    },
+    "taken": false
+  },
+  {
+    "at": 20000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 20000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "idle",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 21000,
+    "event": "session.execution.started",
+    "message": {
+      "agent": "opencode",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "oc",
+      "session": "replay-oc",
+      "task": "Try again"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "UserPromptSubmit",
+      "prompt": "Try again",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "type": "session.execution.started"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 21000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 21000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 21000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 22000,
+    "event": "session.tool.failed",
+    "message": {
+      "agent": "opencode",
+      "detail": "Bash",
+      "event": "tool-failed",
+      "mood": "working",
+      "project": "oc",
+      "react": "failed",
+      "say": {
+        "key": "say.toolFailed",
+        "vars": {
+          "tool": "shell"
+        }
+      },
+      "session": "replay-oc",
+      "toolId": "call_4"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "failed",
+        "say": {
+          "key": "say.toolFailed",
+          "vars": {
+            "tool": "shell"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "error": {
+        "message": "exit 1",
+        "type": "tool.execution"
+      },
+      "hook_event_name": "PostToolUseFailure",
+      "id": "call_4",
+      "input": {
+        "command": "false"
+      },
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "tool": "shell",
+      "tool_input": {
+        "command": "false",
+        "description": ""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "call_4",
+      "type": "session.tool.failed"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 22000,
+        "detail": "Bash",
+        "error": null,
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "working",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": 21000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 22000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 23000,
+    "event": "session.execution.failed",
+    "message": {
+      "agent": "opencode",
+      "error": {
+        "key": "error.rate_limit",
+        "vars": {}
+      },
+      "event": "turn-end",
+      "mood": "error",
+      "project": "oc",
+      "session": "replay-oc"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "error",
+          "Shell echo command"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 2000
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "error": {
+        "message": "429",
+        "type": "provider.rate-limit"
+      },
+      "hook_event_name": "StopFailure",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "type": "session.execution.failed"
+    },
+    "sessions": [
+      {
+        "agent": "opencode",
+        "at": 23000,
+        "detail": "",
+        "error": {
+          "key": "error.rate_limit",
+          "vars": {}
+        },
+        "files": 0,
+        "id": "replay-oc",
+        "jump": false,
+        "mood": "error",
+        "name": "Shell echo command",
+        "project": "oc",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 2000
+      }
+    ],
+    "shown": {
+      "id": "replay-oc",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 24000,
+    "event": "session.deleted",
+    "message": {
+      "agent": "opencode",
+      "event": "session-end",
+      "mood": "idle",
+      "project": "oc",
+      "session": "replay-oc"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "read": {
+      "agent": "opencode",
+      "agent_id": "",
+      "cwd": "Z:\\replay\\oc",
+      "directory": "Z:\\replay\\oc",
+      "hook_event_name": "SessionEnd",
+      "sessionID": "replay-oc",
+      "session_id": "replay-oc",
+      "type": "session.deleted"
+    },
+    "sessions": [],
+    "shown": {
+      "id": "",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 0
+    }
+  }
+]

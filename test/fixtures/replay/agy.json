@@ -1,0 +1,20 @@
+{
+  "about": "Antigravity: the person's words and the reply from its transcript, a file written, a command left in the background (Stop not fully idle, then the model called again from 0, the same turn), a failed tool, a failure, a turn cancelled.",
+  "agent": "agy",
+  "steps": [
+    { "at": 1000, "event": { "hook_event_name": "SessionStart", "conversationId": "replay-agy", "modelName": "gemini-3.8-flash-high", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl" } },
+    { "at": 2000, "event": { "hook_event_name": "PreInvocation", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "invocationNum": 0, "initialNumSteps": 1 } },
+    { "at": 4000, "event": { "hook_event_name": "PostToolUse", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "stepIdx": 1, "error": "", "toolCall": { "name": "write_to_file", "args": { "CodeContent": "hi", "TargetFile": "Z:\\replay\\agyws\\hello.txt", "toolAction": "Creating hello.txt", "toolSummary": "Create hello.txt" } } } },
+    { "at": 5000, "event": { "hook_event_name": "PreInvocation", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "invocationNum": 1, "initialNumSteps": 3 } },
+    { "at": 9000, "event": { "hook_event_name": "Stop", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "executionNum": 0, "fullyIdle": false, "terminationReason": "NO_TOOL_CALL", "error": "" } },
+    { "at": 15000, "event": { "hook_event_name": "PostToolUse", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "stepIdx": 2, "error": "", "toolCall": { "name": "run_command", "args": { "toolAction": "Running ping" } } } },
+    { "at": 16000, "event": { "hook_event_name": "PreInvocation", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "invocationNum": 0, "initialNumSteps": 5 } },
+    { "at": 18000, "event": { "hook_event_name": "Stop", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "$REPLAY/agy-transcript.jsonl", "executionNum": 1, "fullyIdle": true, "terminationReason": "NO_TOOL_CALL", "error": "" } },
+    { "at": 25000, "do": "seen" },
+    { "at": 26000, "event": { "hook_event_name": "PostToolUse", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "", "stepIdx": 7, "error": "exit status 1", "toolCall": { "name": "run_command", "args": {} } } },
+    { "at": 27000, "event": { "hook_event_name": "Stop", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "", "fullyIdle": true, "error": "quota exceeded\nmore" } },
+    { "at": 28000, "do": "seen" },
+    { "at": 29000, "event": { "hook_event_name": "Stop", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "", "fullyIdle": true, "terminationReason": "USER_CANCELLED", "error": "" } },
+    { "at": 30000, "event": { "hook_event_name": "PostInvocation", "conversationId": "replay-agy", "workspacePaths": ["Z:/replay/agyws"], "transcriptPath": "" } }
+  ]
+}

@@ -18,13 +18,7 @@ fn s<'a>(e: &'a Value, key: &str) -> &'a str {
 }
 
 // The files a patch adds, changes or deletes.
-pub(crate) fn patched(patch: &str) -> Vec<&str> {
-    patch
-        .lines()
-        .filter_map(|line| ["*** Add File: ", "*** Update File: ", "*** Delete File: "].iter().find_map(|p| line.strip_prefix(p)))
-        .map(str::trim)
-        .collect()
-}
+pub(crate) use agent_core::codex::patched;
 
 // What a tool is doing, in plain words: a patch by the file it edits.
 fn step_of_codex(tool: &str, input: &Value) -> Value {

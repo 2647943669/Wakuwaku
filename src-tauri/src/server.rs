@@ -25,6 +25,7 @@
 //                      her would leave the taskbar's strip taken)
 //                      ?wake=1: quit so that a session's hook may start her again
 use std::io::Read;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
@@ -88,6 +89,47 @@ fn brings_chain(agent: Option<&str>) -> bool {
 // answers first; integrations/dsh/wakuwaku.js).
 fn answers_none(agent: Option<&str>, event: &Value) -> bool {
     agent == Some("reasonix") || (agent == Some("dsh") && event.get("answerable") != Some(&Value::Bool(true)))
+}
+
+// An agent's event as she takes it: OpenCode's by the names Claude Code's
+// hooks have (the prompts and the jump read them so), every agent's but
+// Claude Code's tagged with its name for the prompts (asks.rs). None for one
+// that is nothing to her.
+pub(crate) fn read_event(agent: Option<&str>, mut event: Value) -> Option<Value> {
+    if agent == Some("opencode") {
+        event = events_opencode::normalize(&event);
+        if event.is_null() {
+            return None;
+        }
+    }
+    if let (Some(agent), Some(fields)) = (agent, event.as_object_mut()) {
+        fields.insert("agent".into(), json!(agent));
+    }
+    Some(event)
+}
+
+// The message for an event she took (read_event), each agent's read its own
+// way, at `now`: Antigravity's given the person's words and its reply from
+// its transcript first; a DSH prompt she does not hold (`held`) to be
+// approved in DSH. Also the replay tests' way in (replay.rs).
+pub(crate) fn message_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<Value> {
+    let mut msg = match agent {
+        Some("codex") => events_codex::to_message(event),
+        Some("agy") => {
+            events_agy::with_transcript(event);
+            events_agy::to_message(event)
+        }
+        Some("opencode") => events_opencode::to_message(event),
+        Some("omp") => events_omp::to_message(event),
+        Some("zcode") => events_zcode::to_message(event),
+        Some("reasonix") => events_reasonix::to_message_at(event, now),
+        Some("dsh") => events_dsh::to_message(event, dsh_home),
+        _ => events::to_message(event),
+    }?;
+    if agent == Some("dsh") && event["hook_event_name"] == "PermissionRequest" && !held {
+        events_dsh::answered_in_dsh(&mut msg);
+    }
+    Some(msg)
 }
 
 // True the first time a line comes; a few kinds are kept, and past them
@@ -173,26 +215,14 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
     let method = req.method().as_str().to_string();
     match (method.as_str(), path.as_str()) {
         ("POST", "/hook") => {
-            let Some(mut event) = read_json(&mut req) else { return reply(req, 200, json!({})) };
+            let Some(event) = read_json(&mut req) else { return reply(req, 200, json!({})) };
             // Heard from one: connected (the island stops asking).
             if crate::connection::note_connected(true) {
                 sh.redraw();
             }
             let agent = agent_of(req.url());
-            // OpenCode's events by the names Claude Code's hooks have (the
-            // prompts and the jump read them so); one that is nothing to her
-            // is answered at once.
-            if agent == Some("opencode") {
-                event = events_opencode::normalize(&event);
-                if event.is_null() {
-                    return reply(req, 200, json!({}));
-                }
-            }
-            // Codex's, Antigravity's, OpenCode's and omp's events, tagged for
-            // the prompts (asks.rs) and read their own way.
-            if let (Some(agent), Some(fields)) = (agent, event.as_object_mut()) {
-                fields.insert("agent".into(), json!(agent));
-            }
+            // One that is nothing to her is answered at once.
+            let Some(mut event) = read_event(agent, event) else { return reply(req, 200, json!({})) };
             let seen = match agent {
                 Some("codex") => &sh.codex_seen,
                 Some("agy") => &sh.agy_seen,
@@ -218,32 +248,19 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             // plugin cannot take an answer to.
             let is_prompt = event["hook_event_name"] == "PermissionRequest" && !answers_none(agent, &event);
             let holds = is_prompt && sh.asks_seen();
-            let msg = match agent {
-                Some("codex") => events_codex::to_message(&event),
-                Some("agy") => {
-                    events_agy::with_transcript(&mut event);
-                    if let Some(line) = events_agy::log_line(&event) {
-                        sh.log(&line);
-                    }
-                    events_agy::to_message(&event)
+            let dsh_home = crate::connection::dsh_home();
+            let msg = message_for(agent, &mut event, holds, now_ms(), &dsh_home);
+            if agent == Some("agy") {
+                if let Some(line) = events_agy::log_line(&event) {
+                    sh.log(&line);
                 }
-                Some("opencode") => events_opencode::to_message(&event),
-                Some("omp") => events_omp::to_message(&event),
-                Some("zcode") => events_zcode::to_message(&event),
-                Some("reasonix") => events_reasonix::to_message(&event),
-                Some("dsh") => events_dsh::to_message(&event, &crate::connection::dsh_home()),
-                _ => events::to_message(&event),
-            };
+            }
             if let Some(mut msg) = msg {
-                // DSH's prompt she does not hold: to be approved in DSH.
-                if agent == Some("dsh") && event["hook_event_name"] == "PermissionRequest" && !holds {
-                    events_dsh::answered_in_dsh(&mut msg);
-                }
                 // Where the session runs, for going to its window (jump.rs);
                 // none for one going (a DSH subagent's too: events_dsh.rs whose).
                 let chain = if msg["event"] == "session-end" { None } else { chain_for(sh, &req, &event, agent) };
                 if agent == Some("dsh") {
-                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &crate::connection::dsh_home()) {
+                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &dsh_home) {
                         sh.log(&line);
                     }
                 }
@@ -254,7 +271,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             } else if agent == Some("dsh") {
                 // Her plugin's word as DSH loads it: said in her log, and the
                 // open Connect page tells it loaded (connection.rs dsh_view).
-                if let Some(line) = events_dsh::log_line(&event, None, &crate::connection::dsh_home()) {
+                if let Some(line) = events_dsh::log_line(&event, None, &dsh_home) {
                     sh.log(&line);
                     sh.push_settings();
                 }

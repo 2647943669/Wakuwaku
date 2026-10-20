@@ -1,0 +1,31 @@
+{
+  "about": "Claude Code, two sessions side by side, endings held 30 s: tasks added and updated, an MCP tool, a subagent, an MCP server asking, a compaction, a task done, both ending and settling.",
+  "hold": 30,
+  "steps": [
+    { "at": 1000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "SessionStart", "source": "startup", "session_title": "API refactor" } },
+    { "at": 1500, "event": { "session_id": "replay-cc-b", "cwd": "Z:\\replay\\docs", "hook_event_name": "SessionStart", "source": "startup" } },
+    { "at": 2000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "UserPromptSubmit", "prompt": "Refactor the API client" } },
+    { "at": 2500, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PreToolUse", "tool_name": "TaskCreate", "tool_use_id": "toolu_a1", "tool_input": { "subject": "Split the client", "activeForm": "Splitting the client" } } },
+    { "at": 2600, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PostToolUse", "tool_name": "TaskCreate", "tool_use_id": "toolu_a1", "tool_input": { "subject": "Split the client" } } },
+    { "at": 2700, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PreToolUse", "tool_name": "TaskCreate", "tool_use_id": "toolu_a2", "tool_input": { "subject": "Add retries", "activeForm": "Adding retries" } } },
+    { "at": 2800, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PostToolUse", "tool_name": "TaskCreate", "tool_use_id": "toolu_a2", "tool_input": { "subject": "Add retries" } } },
+    { "at": 3000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PreToolUse", "tool_name": "TaskUpdate", "tool_use_id": "toolu_a3", "tool_input": { "taskId": "1", "status": "in_progress" } } },
+    { "at": 3100, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PostToolUse", "tool_name": "TaskUpdate", "tool_use_id": "toolu_a3", "tool_input": { "taskId": "1", "status": "in_progress" } } },
+    { "at": 3500, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PreToolUse", "tool_name": "mcp__github__get_issue", "tool_use_id": "toolu_a4", "tool_input": { "issue_number": 12 } } },
+    { "at": 4000, "event": { "session_id": "replay-cc-b", "cwd": "Z:\\replay\\docs", "hook_event_name": "UserPromptSubmit", "prompt": "Update the README" } },
+    { "at": 4100, "event": { "session_id": "replay-cc-b", "cwd": "Z:\\replay\\docs", "hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "toolu_b1", "tool_input": { "description": "Explore the docs", "subagent_type": "Explore", "prompt": "Find stale sections" } } },
+    { "at": 4200, "event": { "session_id": "replay-cc-b", "cwd": "Z:\\replay\\docs", "hook_event_name": "Elicitation", "mcp_server_name": "linear" } },
+    { "at": 5000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PostToolUse", "tool_name": "mcp__github__get_issue", "tool_use_id": "toolu_a4", "tool_input": { "issue_number": 12 } } },
+    { "at": 5500, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "SessionStart", "source": "compact" } },
+    { "at": 6000, "event": { "session_id": "replay-cc-b", "cwd": "Z:\\replay\\docs", "hook_event_name": "PostToolUse", "tool_name": "Agent", "tool_use_id": "toolu_b1", "tool_input": { "description": "Explore the docs" } } },
+    { "at": 6500, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "TaskCompleted", "task_subject": "Split the client" } },
+    { "at": 7000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PreToolUse", "tool_name": "TaskUpdate", "tool_use_id": "toolu_a5", "tool_input": { "taskId": "1", "status": "completed" } } },
+    { "at": 7100, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "PostToolUse", "tool_name": "TaskUpdate", "tool_use_id": "toolu_a5", "tool_input": { "taskId": "1", "status": "completed" } } },
+    { "at": 8000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "Stop", "stop_hook_active": false, "last_assistant_message": "Done." } },
+    { "at": 9000, "event": { "session_id": "replay-cc-b", "cwd": "Z:\\replay\\docs", "hook_event_name": "Stop", "stop_hook_active": false, "last_assistant_message": "The README is up to date." } },
+    { "at": 20000, "do": "tick" },
+    { "at": 38500, "do": "tick" },
+    { "at": 39500, "do": "tick" },
+    { "at": 40000, "event": { "session_id": "replay-cc-a", "cwd": "Z:\\replay\\api", "hook_event_name": "SessionEnd", "reason": "other" } }
+  ]
+}

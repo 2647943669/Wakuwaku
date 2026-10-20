@@ -8,7 +8,19 @@ authors = ["Pengjie Zhou"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+# The agents' side of things, a crate of its own (crates/agent-core): what
+# an agent's session is doing, read from its events and the files it
+# leaves, with nothing of how she shows it; one day of other apps' too.
+# This folder stays the workspace's root, so its lock, its target folder,
+# its profile and its patch stay where they were; the crate is under it, so
+# rustc is given its files by paths relative to it (one outside it gets
+# whole paths, which go into the exe's panic messages).
+[workspace]
+members = [".", "crates/agent-core"]
+default-members = [".", "crates/agent-core"]
+
 [dependencies]
+agent-core = { path = "crates/agent-core" }
 # macos-private-api: her windows see-through on macOS (tauri.conf.json
 # macOSPrivateApi); nothing elsewhere.
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset", "macos-private-api"] }
@@ -43,15 +55,13 @@ flate2 = "1"
 crc32fast = "1"
 # Tauri's async runtime made with fewer threads (main.rs); already in the tree, under Tauri.
 tokio = { version = "1", features = ["rt-multi-thread"] }
-# DeepSeek Harness's session log read for its last reply (events_dsh.rs):
-# a Zstandard decoder in plain Rust, nothing under it (no checksums: "hash"
-# off). New to the tree: 78,848 bytes of the release exe with the reading
-# of the log (11,452,416 before; 2026-10-16).
-ruzstd = { version = "=0.9.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Her tests make a connection's split fail (server.rs); her builds never have it.
 tiny_http = { version = "0.12", features = ["test-failed-split"] }
+# Her tests write DeepSeek Harness's session logs (events_dsh.rs); agent-core
+# reads them.
+ruzstd = { version = "=0.9.1", default-features = false, features = ["std"] }
 
 [patch.crates-io]
 # tiny_http 0.12.0 with its connections' failures dropped, not panicked on
