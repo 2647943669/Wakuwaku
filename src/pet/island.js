@@ -66,11 +66,11 @@
     error: '#c42b3c',
   }
   // The moods' colours in her island, as its words are (setInk): deeper on
-  // a light ground; on the taskbar's strip (stripHue), as Windows' mode.
+  // a light ground; on the taskbar's strip (stripHue), as its words are.
   let inkLight = false
   let groundLight = null
   const hue = () => (inkLight ? COLOR_LIGHT : COLOR)
-  const stripHue = () => (isLight() ? COLOR_LIGHT : COLOR)
+  const stripHue = () => (isStripLight() ? COLOR_LIGHT : COLOR)
   // A widget's own colour (a script's, or the monitor's), on a light ground
   // as deep as the moods' there: one of the moods' colours as its deeper
   // one, any other darkened until it reads on white (widgets.js).
@@ -80,7 +80,7 @@
     return mood ? COLOR_LIGHT[mood] : Widgets.deepen(colour)
   }
   const ink = colour => deeper(colour, inkLight)
-  const stripInk = colour => deeper(colour, isLight())
+  const stripInk = colour => deeper(colour, isStripLight())
 
   // What she plays when the island opens by itself for each mood.
   const NUDGE_CLIP = { waiting: 'waiting', done: 'waving', review: 'review', error: 'failed' }
@@ -401,12 +401,15 @@
   // How light the desktop under the clear strip is (mica.js lightness):
   // true, light enough for dark words; null, not known (yet).
   let backdropLight = null
-  // The taskbar light, as Windows' own is in its light mode (taskbar.rs).
-  // Clear, with the desktop showing through it: its words as dark or as
-  // light as the desktop under them wants (backdropLight), as text over
-  // iOS's glass goes by what is behind it, not by the system's mode; dark
-  // words on a dark wallpaper, haloed white, did not read.
-  const isLight = () => isOn() && home() === 'taskbar' && (isClear() && !isFilled() && backdropLight !== null ? backdropLight : look.mode === 'light')
+  // The taskbar light, as Windows' own is in its light mode (taskbar.rs):
+  // the strip's ground, what opens from it, her island, the settings.
+  const isLight = () => isOn() && home() === 'taskbar' && look.mode === 'light'
+  // The strip's own words dark (tb-ink-light), what is drawn on it alone:
+  // clear, with the desktop showing through it, as the desktop under them
+  // wants (backdropLight), as text over iOS's glass goes by what is behind
+  // it, not by the system's mode (dark words on a dark wallpaper, haloed
+  // white, did not read); else, or while that is not known, as Windows'.
+  const isStripLight = () => Mica.stripInkLight({ light: isLight(), clear: isClear(), filled: isFilled(), backdrop: backdropLight })
   // Her end a capsule of its own in the strip (black, or light in Windows'
   // light mode), wherever the strip is not black itself: on the Mica, clear,
   // or light.
@@ -1776,8 +1779,11 @@
   // CI runs) shows them in turn. Several in one place: a carousel (in turn,
   // drawGroup) or a stack (the first, its others opened over it).
   const ENTRY_TURN_MS = 5000
-  // What the widgets on the strip are drawn with (wcards.js ctx).
-  const barCtx = () => ({ lang, light: isLight(), detailed: isDetailed(), width: STACK_CARD_W, hour: new Date().getHours(), now: Date.now() })
+  // What the widgets on the strip are drawn with (wcards.js ctx), as its
+  // words are; what opens from them (a card, a stack, a menu), as Windows'
+  // mode, as their ground is.
+  const barCtx = () => ({ lang, light: isStripLight(), detailed: isDetailed(), width: STACK_CARD_W, hour: new Date().getHours(), now: Date.now() })
+  const popCtx = () => ({ ...barCtx(), light: isLight() })
   // Placed this long ago at most, a widget with nothing yet is loading.
   const LOADING_MS = 20000
   const placedAt = new Map()
@@ -2465,7 +2471,7 @@
     const e = node?._entry
     if (!e || !node.isConnected || editLayout || home() !== 'taskbar') return closeWidgetPop()
     const detailed = isDetailed()
-    const ctx = barCtx()
+    const ctx = popCtx()
     // A group's: the one picked, or the one its carousel shows.
     const group = Widgets.isGroup(e)
     const slides = group ? Widgets.slidesOf(e, allWidgets) : []
@@ -2628,7 +2634,7 @@
     const e = node?._entry
     if (!e || e.type !== 'stack' || !node.isConnected || editLayout || home() !== 'taskbar') return closeStackPop()
     if (stackDrag?.moved) return
-    const ctx = barCtx()
+    const ctx = popCtx()
     const slides = Widgets.slidesOf(e, allWidgets)
     const drawn = JSON.stringify([stackFor, slides.map(s => (s.w ? [s.w.id, s.w.label, s.w.value, s.w.detail, s.w.private] : Widgets.memberKey(s.member))), ctx.detailed, ctx.light, lang])
     if (drawn !== stackPop._drawn || stackPop.hidden) {
@@ -2768,7 +2774,7 @@
     // A group's own menu speaks for the group, not the one it shows.
     const w = group && member < 0 ? null : shownW
     const bar = m.where === 'bar'
-    const ctx = bar ? barCtx() : isleCtx()
+    const ctx = bar ? popCtx() : isleCtx()
     const opt = (act, v, label, on, why = '') => `<button type="button" class="wmo${on ? ' on' : ''}${why ? ' off' : ''}" data-act="${act}" data-v="${v}"${why ? ` aria-disabled="true" title="${esc(why)}" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
     const item = (act, label, why = '', v = '') => `<button type="button" class="wmi${why ? ' off' : ''}" data-act="${act}" data-v="${esc(v)}"${why ? ` aria-disabled="true" title="${esc(why)}" data-why="${esc(why)}"` : ''}>${esc(label)}</button>`
     const line = (label, html) => `<div class="wmr"><span class="wml">${esc(label)}</span><span class="wms">${html}</span></div>`
@@ -3753,8 +3759,9 @@
   // the strip is to fill in as Mica (tb-clear-mica): it fades in at once
   // while a window is maximized or full screen on its display (tb-filled,
   // drawn again as the windows change); filled in solid, tb-solid. The
-  // strip light in Windows' light mode (tb-light), her end a capsule
-  // wherever the strip is not black (tb-capsule).
+  // strip light in Windows' light mode (tb-light), its own words dark on
+  // it or on a light desktop under the clear strip (tb-ink-light), her end
+  // a capsule wherever the strip is not black (tb-capsule).
   // The strip as thick as it lies on the screen (island.rs tell_strip): its
   // physical px over the scale, a fraction of a CSS px if need be, so its
   // inner edge is the work area's, where maximized windows stop (a hairline
@@ -3832,6 +3839,7 @@
     const clearMica = isClear() && clearWhen() === 'mica'
     body.classList.toggle('tb-mica', isMica())
     body.classList.toggle('tb-light', isLight())
+    body.classList.toggle('tb-ink-light', isStripLight())
     body.classList.toggle('tb-capsule', isCapsule())
     body.classList.toggle('tb-clear', isClear())
     body.classList.toggle('tb-clear-mica', clearMica)
@@ -3844,7 +3852,7 @@
     // The strip's words turned light or dark (a window maximized over the
     // clear strip fills it in, back to Windows' mode): what is drawn with
     // their colour (stripHue, the widgets' cards) drawn again.
-    const light = isLight()
+    const light = isStripLight()
     if (light !== stripWasLight) {
       stripWasLight = light
       requestAnimationFrame(() => update())

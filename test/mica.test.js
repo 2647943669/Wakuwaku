@@ -50,3 +50,51 @@ test("the clear strip's words dark only where black reads better than white", ()
   assert.equal(Mica.wantsDarkInk(0.17), false)
   assert.equal(Mica.wantsDarkInk(0.19), true)
 })
+
+test("only the clear strip's own words go by the desktop under them", () => {
+  const plum = Mica.wantsDarkInk(0.008)
+  // Windows' light mode, a deep plum wallpaper under the clear strip: light
+  // words on it; Windows' dark mode, a light one: dark words.
+  assert.equal(Mica.stripInkLight({ light: true, clear: true, filled: false, backdrop: plum }), false)
+  assert.equal(Mica.stripInkLight({ light: false, clear: true, filled: false, backdrop: true }), true)
+  // A window maximized fills the strip in: as Windows' mode again.
+  assert.equal(Mica.stripInkLight({ light: true, clear: true, filled: true, backdrop: false }), true)
+  assert.equal(Mica.stripInkLight({ light: false, clear: true, filled: true, backdrop: true }), false)
+  // The picture not read (yet): as Windows' mode.
+  assert.equal(Mica.stripInkLight({ light: true, clear: true, filled: false, backdrop: null }), true)
+  assert.equal(Mica.stripInkLight({ light: false, clear: true, filled: false, backdrop: null }), false)
+  // The Mica or solid strip: as Windows' mode, whatever the picture.
+  assert.equal(Mica.stripInkLight({ light: true, clear: false, filled: false, backdrop: false }), true)
+  assert.equal(Mica.stripInkLight({ light: false, clear: false, filled: false, backdrop: true }), false)
+})
+
+// The settings, what opens from the strip, her island and the picker stay
+// as Windows' mode (tb-light, isl-light): the strip's words (tb-ink-light)
+// turned them dark in Windows' light mode over a dark wallpaper before.
+test("the strip's words' class reaches nothing but the strip", () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const css = file => fs.readFileSync(path.join(__dirname, '..', 'src', 'pet', file), 'utf8')
+  const selectors = text =>
+    text
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('}')
+      .map(block => block.split('{')[0])
+      .flatMap(head => head.split(','))
+      .map(s => s.trim())
+      .filter(Boolean)
+  const inked = ['style.css', 'picker.css', 'settings.css'].flatMap(f => selectors(css(f)).filter(s => s.includes('tb-ink-light')).map(s => [f, s]))
+  assert.ok(inked.length > 20)
+  for (const [file, s] of inked) {
+    assert.match(s, /#bar-rest/, `${file}: ${s}`)
+    assert.doesNotMatch(s, /#island\b|#island-|\.tbedit|\.tblib|\.wpop|\.tfly|\.wgpop|\.wstk|\.wmenu/, `${file}: ${s}`)
+  }
+  // The settings follow Windows' mode alone.
+  assert.ok(selectors(css('settings.css')).some(s => s.startsWith('.tb-light #island-settings')))
+  // The strip's own words and its clear halo go by the new class.
+  const style = selectors(css('style.css'))
+  assert.ok(style.includes('.tb-ink-light #bar-rest'))
+  assert.ok(style.includes('.tb-ink-light.tb-clear:not(.tb-filled) #bar-rest'))
+  assert.ok(!style.includes('.tb-light #bar-rest .tclock i'))
+  assert.ok(style.includes('.tb-light #bar-rest .wpop'))
+})
