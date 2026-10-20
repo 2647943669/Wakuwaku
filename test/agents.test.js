@@ -88,9 +88,9 @@ test('what she can do is what the code does', () => {
   // omp's are its plan reviews alone.
   assert.equal(Agents.byId('omp').caps.approve[0], 'part')
   // A question answered on the island: Claude Code's AskUserQuestion, and
-  // DeepSeek Harness's, whose answers asks.rs gives back by their ids.
+  // DeepSeek Harness's, whose answers agent-core's asks.rs gives back by their ids.
   assert.deepEqual(lit('choose'), ['claude', 'dsh'])
-  assert.match(read('src-tauri/src/asks.rs'), /fn dsh_answer\(/)
+  assert.match(read('src-tauri/crates/agent-core/src/asks.rs'), /fn dsh_answer\(/)
   // Mail: those mail/agent.rs runs.
   const mail = /const NAMES: \[&str; \d\] = \[([^\]]*)\]/.exec(read('src-tauri/src/mail/agent.rs'))[1]
   assert.deepEqual(lit('mail'), [...mail.matchAll(/"(\w+)"/g)].map(m => m[1]).sort())
