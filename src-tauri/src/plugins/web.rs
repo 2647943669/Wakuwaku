@@ -35,13 +35,8 @@ pub enum Fail {
 
 // Redirects followed as many as PowerShell did (5), or none (devserver).
 fn agent(way: &Way, timeout: Duration, redirects: u32) -> Option<ureq::Agent> {
-    let config = way
-        .config(timeout)?
-        // An error page is an answer too: its status and words are read here.
-        .http_status_as_error(false)
-        .max_redirects(redirects)
-        .max_redirects_will_error(false);
-    Some(config.build().new_agent())
+    // An error page is an answer too: its status and words are read here.
+    way.agent_with(timeout, |c| c.http_status_as_error(false).max_redirects(redirects).max_redirects_will_error(false))
 }
 
 // GET an address with these headers: its answer, whatever its status; or

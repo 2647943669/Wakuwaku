@@ -1645,6 +1645,7 @@ fn main() {
             settings::settings_update,
             settings::settings_lhm,
             settings::settings_crash,
+            settings::settings_net_test,
             mail::mail_discover,
             mail::mail_probe,
             mail::mail_save,
@@ -1736,6 +1737,8 @@ fn main() {
                 evals: Mutex::new((0, std::collections::HashMap::new())),
             });
             app.manage(sh.clone());
+            // Her requests to the web the way the General page says (proxy.rs).
+            proxy::set_web(&sh.setting("netProxy"));
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
             let cleared = cleared.as_ref().map(|note| format!("; the mark of her last quit taken away ({note})")).unwrap_or_default();
             sh.log(&format!("started by: {started_by}{cleared}"));

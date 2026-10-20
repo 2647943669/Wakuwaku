@@ -21,50 +21,36 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::imap::{Fail, Hop};
-pub use crate::proxy::{Kind, Proxy};
+pub use crate::proxy::{Kind, Proxy, Via};
 use crate::Shared;
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub enum Via {
-    // Windows' proxy, read again at each connection: Clash's switched on or
-    // off meanwhile is taken at the next.
-    #[default]
-    System,
-    Manual(Proxy),
-    Straight,
-}
-
-impl Via {
-    // As kept in the settings; None when it is not one (a manual one with no
-    // address that reads as one, a key of another name).
-    pub fn of(v: &Value) -> Option<Via> {
-        let m = v.as_object()?;
-        if m.keys().any(|k| !matches!(k.as_str(), "mode" | "kind" | "address")) {
-            return None;
-        }
-        match m.get("mode")?.as_str()? {
-            "system" => Some(Via::System),
-            "none" => Some(Via::Straight),
-            "manual" => {
-                let kind = Kind::parse(m.get("kind").and_then(Value::as_str).unwrap_or("http"))?;
-                Proxy::parse(m.get("address")?.as_str()?, kind).map(Via::Manual)
-            }
-            _ => None,
-        }
-    }
-
-    pub fn json(&self) -> Value {
-        match self {
-            Via::System => json!({ "mode": "system" }),
-            Via::Straight => json!({ "mode": "none" }),
-            Via::Manual(p) => json!({ "mode": "manual", "kind": p.kind.name(), "address": p.at() }),
-        }
-    }
-}
-
-// The way set on the Mail page (Windows' proxy unless set).
+// The way set on the Mail page: the General page's Network proxy (netProxy,
+// Windows' unless set) while it follows that ("follow", and unset: since
+// zhoupengjie/Wakuwaku#68; one set before keeps its way), else its own.
 pub fn setting(sh: &Shared) -> Via {
-    Via::of(&sh.setting("mailProxy")).unwrap_or_default()
+    let page = sh.setting("mailProxy");
+    if follows(&page) {
+        return Via::of(&sh.setting("netProxy")).unwrap_or_default();
+    }
+    Via::of(&page).unwrap_or_default()
+}
+
+fn follows(page: &Value) -> bool {
+    page.is_null() || page["mode"] == "follow"
+}
+
+// What the Mail page may keep: a way, or "follow" (a manual one's kind and
+// address kept beside it, as with the others).
+pub fn is_page_way(v: &Value) -> bool {
+    if v.get("mode").and_then(Value::as_str) != Some("follow") {
+        return Via::of(v).is_some();
+    }
+    v.as_object().is_some_and(|m| m.iter().all(|(k, x)| match k.as_str() {
+        "mode" => true,
+        "kind" => x.as_str().and_then(Kind::parse).is_some(),
+        "address" => x.is_string(),
+        _ => false,
+    }))
 }
 
 // The way for one asked from the page: its own, or (null) the page's.
@@ -266,16 +252,24 @@ fn through_socks(tcp: &mut TcpStream, host: &str, port: u16) -> Result<(), Said>
 // is never called: ours stands where it would; without it, the name is
 // looked up here, and still the connection goes through ours).
 pub fn agent(proxy: Option<&Proxy>, timeout: Duration) -> ureq::Agent {
+    let config = ureq::Agent::config_builder().timeout_global(Some(timeout));
+    match proxy {
+        Some(p) => through(p, timeout, config),
+        None => config.build().new_agent(),
+    }
+}
+
+// An agent through `p` with this config (the web's way through one typed
+// in, proxy::Way::Manual, too); `connect`: how long the way through may take.
+pub fn through(p: &Proxy, connect: Duration, config: ureq::config::ConfigBuilder<ureq::typestate::AgentScope>) -> ureq::Agent {
     use ureq::unversioned::resolver::DefaultResolver;
     use ureq::unversioned::transport::{Connector, RustlsConnector};
-    let config = ureq::Agent::config_builder().timeout_global(Some(timeout));
-    let Some(p) = proxy else { return config.build().new_agent() };
     let config = match ureq::Proxy::new(&format!("socks5h://{}", p.at())) {
         Ok(stand_in) => config.proxy(Some(stand_in)),
         Err(_) => config,
     }
     .build();
-    let connector = ().chain(Through { proxy: p.clone(), timeout }).chain(RustlsConnector::default());
+    let connector = ().chain(Through { proxy: p.clone(), timeout: connect }).chain(RustlsConnector::default());
     ureq::Agent::with_parts(config, connector, DefaultResolver::default())
 }
 
@@ -292,9 +286,21 @@ impl ureq::unversioned::transport::Connector<()> for Through {
         let uri = details.uri;
         let host = uri.host().unwrap_or("").trim_start_matches('[').trim_end_matches(']');
         let port = uri.port_u16().unwrap_or(if uri.scheme_str() == Some("https") { 443 } else { 80 });
-        let tcp = tunnel(&self.proxy, host, port, self.timeout).map_err(|f| ureq::Error::Io(io::Error::other(format!("{f:?}"))))?;
+        let tcp = tunnel(&self.proxy, host, port, self.timeout).map_err(|f| ureq::Error::Io(io::Error::other(hop_words(&f))))?;
         let config = details.config;
         Ok(Some(Tunnel { tcp, buffers: ureq::unversioned::transport::LazyBuffers::new(config.input_buffer_size(), config.output_buffer_size()) }))
+    }
+}
+
+// A way through that failed, in a few words: the lookups' and the web's
+// errors (an update's log, the Network proxy's Test).
+fn hop_words(f: &Fail) -> String {
+    match f {
+        Fail::ProxyDown(h) => format!("proxy {} not reached: {}", h.at, h.why),
+        Fail::NotProxy(h) => format!("{} does not answer as a proxy of this kind: {}", h.at, h.why),
+        Fail::ProxyRefused(h) => format!("proxy {} said no: {}", h.at, h.why),
+        Fail::ProxyServer(h) => format!("proxy {} did not reach the server: {}", h.at, h.why),
+        other => format!("{other:?}"),
     }
 }
 
@@ -547,6 +553,13 @@ mod tests {
     #[test]
     fn the_way_is_kept_as_set() {
         assert_eq!(Via::of(&json!({ "mode": "system" })), Some(Via::System));
+        // The page may follow the General page's (a manual one's kept beside it); an account may not.
+        assert!(is_page_way(&json!({ "mode": "follow" })));
+        assert!(is_page_way(&json!({ "mode": "follow", "kind": "socks5", "address": "127.0.0.1:10808" })));
+        assert!(!is_page_way(&json!({ "mode": "follow", "kind": "ftp" })));
+        assert!(!is_page_way(&json!({ "mode": "follow", "other": 1 })));
+        assert!(is_page_way(&json!({ "mode": "none" })));
+        assert!(follows(&Value::Null) && follows(&json!({ "mode": "follow" })) && !follows(&json!({ "mode": "system" })));
         assert_eq!(Via::of(&json!({ "mode": "none" })), Some(Via::Straight));
         let manual = Via::of(&json!({ "mode": "manual", "kind": "socks5", "address": " 127.0.0.1:10808" })).unwrap();
         assert_eq!(manual, Via::Manual(proxy(Kind::Socks5, 10808)));
@@ -641,8 +654,9 @@ mod tests {
     fn the_lookups_go_through_it_too() {
         let http = http_proxy(echo(), false);
         let err = agent(Some(&proxy(Kind::Http, http)), WAIT).get(&format!("https://{NAME}/mail/config-v1.1.xml")).call().unwrap_err().to_string();
-        assert!(!err.contains("Proxy"), "{err}");
-        let err = agent(Some(&proxy(Kind::Socks5, free_port())), WAIT).get(&format!("https://{NAME}/")).call().unwrap_err().to_string();
-        assert!(err.contains("ProxyDown"), "{err}");
+        assert!(!err.contains("proxy"), "{err}");
+        let port = free_port();
+        let err = agent(Some(&proxy(Kind::Socks5, port)), WAIT).get(&format!("https://{NAME}/")).call().unwrap_err().to_string();
+        assert!(err.contains(&format!("proxy 127.0.0.1:{port} not reached: ")), "{err}");
     }
 }

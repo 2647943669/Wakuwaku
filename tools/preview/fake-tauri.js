@@ -384,7 +384,7 @@
       winLook: { light: world.mode === 'light', accent: world.accent.base },
       winPaper: { file: 'gpt-cloud-terrace.png', position: 'fill', every: 0, shuffle: false },
       version: world.version,
-      update: { current: world.version, may: true, latest: { version: world.version, newer: false, canInstall: true }, checkedAt: T0 - 2 * 3600e3 },
+      update: { current: world.version, may: true, latest: { version: world.version, newer: false, canInstall: true }, checkedAt: T0 - 2 * 3600e3, ...(world.update || {}) },
       crash: { can: false },
       fullscreenAvailable: true,
       plate: true,
@@ -402,6 +402,8 @@
       mailModels: clone(MAIL_MODELS),
       mailTalks: clone(mailWorld().talks),
       mailSystemProxy: clone(mailWorld().systemProxy) ?? null,
+      // Windows' proxy as the web takes it (the General page's Network proxy).
+      netSystemProxy: 'netSystemProxy' in world ? world.netSystemProxy : (clone(mailWorld().systemProxy) ?? null),
       mailRev: mailWorld().rev,
       waku: 'C:\\Users\\you\\AppData\\Local\\wakuwaku\\waku.ps1',
       port: 47213,
@@ -565,7 +567,8 @@
   // The proxy an account's servers are reached through (mail/proxy.rs): its
   // own way, else the Mail page's (Windows' proxy unless set); its address.
   function viaOf(a) {
-    const way = a.proxy || config().mailProxy || { mode: 'system' }
+    const page = config().mailProxy?.mode && config().mailProxy.mode !== 'follow' ? config().mailProxy : config().netProxy
+    const way = a.proxy || page || { mode: 'system' }
     if (way.mode === 'none') return null
     if (way.mode === 'manual') return way.address || null
     return mailWorld().systemProxy?.address || null
@@ -851,6 +854,11 @@
     },
     settings_open: ({ tab }) => later(() => emit('island:settings', { tab: tab || null })),
     settings_gallery: () => ({ ok: true, items: [], page: 1, totalPages: 1, total: 0 }),
+    // The Network proxy's Test (proxy.rs test): GitHub reached through the proxy the page has, or Windows'.
+    settings_net_test: ({ proxy }) => {
+      const via = proxy?.mode === 'manual' ? proxy.address : proxy?.mode === 'none' ? null : (mailWorld().systemProxy?.address ?? null)
+      return new Promise(done => setTimeout(() => done({ ok: true, via, ms: 412 }), 300))
+    },
     session_jump: () => true,
     pet_walk: () => false,
     pet_answer: ({ id }) => {

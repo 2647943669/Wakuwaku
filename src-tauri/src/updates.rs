@@ -340,8 +340,7 @@ fn get(url: &str, seconds: u64, accept: Option<&str>) -> Result<Answer, Miss> {
 // One way: its redirects followed by hand (to https only, unless a test's),
 // so what goes wrong says at which host. Err(None): not there (404).
 fn get_way(way: &crate::proxy::Way, url: &str, seconds: u64, accept: Option<&str>) -> Result<Answer, Option<String>> {
-    let config = way.config(Duration::from_secs(seconds)).ok_or_else(|| Some(format!("{}: not a proxy to go through", way.name())))?;
-    let agent = config.max_redirects(0).build().new_agent();
+    let agent = way.agent_with(Duration::from_secs(seconds), |c| c.max_redirects(0)).ok_or_else(|| Some(format!("{}: not a proxy to go through", way.name())))?;
     let mut at = url.to_string();
     let mut hosts = vec![crate::proxy::host_of(url).unwrap_or_default()];
     for _ in 0..=HOPS {
@@ -607,11 +606,6 @@ pub fn view(sh: &Shared) -> Value {
         "from": s.from.map(Source::name),
         "got": s.got,
         "total": s.total,
-        // A look or a download that failed with no proxy to go through
-        // (Windows' or the environment's): the page says how one is set.
-        "noProxy": s.error.as_ref().is_some_and(|e| e["code"] == "check" || e["code"] == "download")
-            && crate::proxy::web_ways(GITHUB_LATEST).len() == 1
-            && ureq::Proxy::try_from_env().is_none(),
     })
 }
 
