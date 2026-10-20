@@ -1,4 +1,4 @@
-// Your dev servers, as examples/widgets/devserver.ps1 had them: which are up
+// Your dev servers, as the old devserver.ps1 had them: which are up
 // ("3000 ✓ 5173 ✗"); the island opens when one that was up goes down. Any
 // answer counts as up, an error page or a redirect too; no answer within
 // three seconds is down. Every 15 seconds; with nobody about (quiet) or her

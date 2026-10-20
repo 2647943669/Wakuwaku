@@ -1,4 +1,4 @@
-// A pomodoro, as examples/widgets/pomodoro.ps1 had it: focus for a while,
+// A pomodoro, as the old pomodoro.ps1 had it: focus for a while,
 // then a break, round after round, a long break after every fourth; the
 // island shows the time left, and opens when it is time to stop or start
 // again. Its larger sizes: how much of it is left (a ring: the seconds left

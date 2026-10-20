@@ -1,4 +1,4 @@
-// The weather, as examples/widgets/weather.ps1 had it: the sky and the
+// The weather, as the old weather.ps1 had it: the sky and the
 // temperature in a city, and today's lowest and highest (shown when the
 // island is open), from Open-Meteo (no key needed), every 10 minutes. The
 // city can be named in English or Chinese. Its larger sizes (the open

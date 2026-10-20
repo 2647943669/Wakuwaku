@@ -405,7 +405,6 @@
       // Windows' proxy as the web takes it (the General page's Network proxy).
       netSystemProxy: 'netSystemProxy' in world ? world.netSystemProxy : (clone(mailWorld().systemProxy) ?? null),
       mailRev: mailWorld().rev,
-      waku: 'C:\\Users\\you\\AppData\\Local\\wakuwaku\\waku.ps1',
       port: 47213,
     }
   }

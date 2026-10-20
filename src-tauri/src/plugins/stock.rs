@@ -1,4 +1,4 @@
-// Stocks, exchange rates and coins, as examples/widgets/stock.ps1 had them:
+// Stocks, exchange rates and coins, as the old stock.ps1 had them:
 // each symbol's price and the day's change, from Yahoo Finance's chart data
 // (unofficial, no key needed), every 5 minutes. One widget a symbol.
 //   Shanghai and Shenzhen shares end in .SS and .SZ: 600519.SS, 000001.SZ

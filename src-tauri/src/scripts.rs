@@ -1,18 +1,10 @@
-// Scripts she writes out or starts: waku, the command wrapper for the
-// terminal (examples/widgets/waku.ps1), written to <her folder>/plugins for
-// the Plugins page to point at; and what starting a PowerShell script well
-// takes, for mail's agents (mail/agent.rs): its arguments quoted, and a job
-// object that takes what she started down with her.
+// What starting a PowerShell script well takes, for mail's agents
+// (mail/agent.rs): its arguments quoted, and a job object that takes what
+// she started down with her.
 //
 // The plugins she runs for you were scripts started from here once; they are
-// done inside her now (plugins.rs), and examples/widgets keeps their scripts
-// as samples for anyone writing their own.
-use std::path::{Path, PathBuf};
-
-use crate::Shared;
-
-// waku is no plugin to switch on: a command wrapper, written out for the terminal.
-const WAKU: &[u8] = include_bytes!("../../examples/widgets/waku.ps1");
+// done inside her now (plugins.rs). waku, the command wrapper for the
+// terminal she wrote out beside them, is gone too.
 
 // A PowerShell string: in single quotes, which PowerShell also takes in
 // their curly forms, each doubled inside.
@@ -26,23 +18,6 @@ pub(crate) fn quote(s: &str) -> String {
     }
     out.push('\'');
     out
-}
-
-// waku in her folder, rewritten when it differs from hers.
-fn write_out(folder: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(folder)?;
-    let file = folder.join("waku.ps1");
-    if std::fs::read(&file).ok().as_deref() != Some(WAKU) {
-        std::fs::write(&file, WAKU)?;
-    }
-    Ok(())
-}
-
-// The waku script, written out, for the terminal.
-pub fn waku_path(sh: &Shared) -> PathBuf {
-    let folder = sh.dir.join("plugins");
-    let _ = write_out(&folder);
-    folder.join("waku.ps1")
 }
 
 // A job object that ends every process in it when she ends, however she ends.
@@ -133,18 +108,6 @@ mod tests {
     fn what_powershell_is_given_is_quoted() {
         assert_eq!(quote("o'neil/x’y"), "'o''neil/x’’y'");
         assert_eq!(quote("C:\\d\\ci.ps1"), "'C:\\d\\ci.ps1'");
-    }
-
-    // Only waku is written out now: the plugins' scripts are hers no more.
-    #[test]
-    fn waku_alone_is_written_out() {
-        let dir = std::env::temp_dir().join(format!("wakuwaku-waku-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        write_out(&dir).unwrap();
-        let names: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-        assert_eq!(names, ["waku.ps1"]);
-        assert_eq!(std::fs::read(dir.join("waku.ps1")).unwrap(), WAKU);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[cfg(windows)]

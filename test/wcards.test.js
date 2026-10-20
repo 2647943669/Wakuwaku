@@ -69,7 +69,7 @@ test('each kind its colour, dark and light; a script its own, deepened on light'
   assert.equal(WCards.colorOf({ id: 'x', color: '#5e9bff' }, dark), '#5e9bff')
   assert.notEqual(WCards.colorOf({ id: 'x', color: '#ffd60a' }, light), '#ffd60a')
   // Ups and downs by the colour the script gave, the one place that decides
-  // (stock.ps1: green up and red down; -RedUp the other way round).
+  // (plugins/stock.rs: green up and red down, or red up by its Colors).
   assert.equal(WCards.trendOf(stock), 'green')
   assert.equal(WCards.trendOf({ color: '#ff5c6c' }), 'red')
   assert.equal(WCards.trendOf({ color: '#34d27b' }), 'green')
