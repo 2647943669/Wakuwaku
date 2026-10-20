@@ -420,14 +420,15 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool, hooks: &SyncSender
         ("GET", "/v1/sessions" | "/v1/events") if is_local(&req) && !sh.hub.allows(header(&req, "Authorization")) => {
             reply(req, 401, json!({ "error": "the hub's token is asked for: Authorization: Bearer <token>", "tokenFile": sh.hub.token_file() }))
         }
-        ("GET", "/v1/sessions") if is_local(&req) => {
-            let body = sh.hub.sessions(query(req.url()));
-            reply(req, 200, body)
-        }
-        ("GET", "/v1/events") if is_local(&req) => {
-            let events = sh.hub.events(query(req.url()), header(&req, "Last-Event-ID"));
-            stream(req, events);
-        }
+        // A query it cannot take (agents it does not know): 400, saying why.
+        ("GET", "/v1/sessions") if is_local(&req) => match sh.hub.sessions(query(req.url())) {
+            Ok(body) => reply(req, 200, body),
+            Err(why) => reply(req, 400, json!({ "error": why })),
+        },
+        ("GET", "/v1/events") if is_local(&req) => match sh.hub.events(query(req.url()), header(&req, "Last-Event-ID")) {
+            Ok(events) => stream(req, events),
+            Err(why) => reply(req, 400, json!({ "error": why })),
+        },
         // A widget from a script (widgets.rs).
         ("POST", "/widget") => match read_json(&mut req) {
             Some(v) => match sh.put_widget(&v) {
@@ -692,7 +693,7 @@ mod tests {
         });
         let hub = agent_hub::Hub::with_token("t".repeat(32), "Z:\\agent-hub\\token".into(), 1);
         let req = server.recv_timeout(Duration::from_secs(5)).unwrap().expect("the stream asked for");
-        stream(req, hub.events("", None));
+        stream(req, hub.events("", None).unwrap());
         let t = Instant::now();
         let ev = AgentEvent { agent: Agent::Claude, session: "a".into(), within: false, cwd: Some("Z:\\p".into()), turn: None, title: None, reply: None, kind: Kind::Working };
         hub.publish(&ev, 2_000);

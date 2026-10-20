@@ -509,6 +509,9 @@
       "agent": "codex",
       "call": {
         "file": "Z:\\replay\\svc\\src\\main.rs",
+        "files": [
+          "Z:\\replay\\svc\\src\\main.rs"
+        ],
         "id": "c2",
         "input": {
           "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\src\\main.rs\n@@ fn routes()\n+    .route(\"/health\", health)\n*** End Patch"
@@ -1178,6 +1181,9 @@
       "agent": "codex",
       "call": {
         "file": "Z:\\replay\\svc\\Cargo.toml",
+        "files": [
+          "Z:\\replay\\svc\\Cargo.toml"
+        ],
         "id": "c5",
         "input": {
           "command": "*** Begin Patch\n*** Update File: Z:\\replay\\svc\\Cargo.toml\n@@\n+version = \"0.1.1\"\n*** End Patch"

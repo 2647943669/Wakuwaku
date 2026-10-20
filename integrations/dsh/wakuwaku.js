@@ -69,7 +69,7 @@ import { fileURLToPath } from 'node:url'
 // file's own digest (sha, in the marker): DSH keeps a module it imported
 // until it restarts, so a file written again under the same name is not
 // what runs, and her Connect page compares the two.
-export const VERSION = 2
+export const VERSION = 3
 export const name = 'wakuwaku'
 
 const DEFAULT_PORT = 47213
@@ -106,15 +106,41 @@ function textOf(content, sep = '') {
 
 const clip = (text, max = TEXT_MAX) => (text.length > max ? text.slice(0, max) : text)
 
+// An edit's text, which says where it changes a file (an app that follows
+// the agents shows it: zhoupengjie/Wakuwaku#73), kept up to this much.
+const EDIT_MAX = 64 * 1024
+const EDIT_FIELDS = new Set(['old_string', 'new_string', 'old_str', 'new_str'])
+
 // A tool's input with any long text cut short (a file written whole is no
-// business of hers), a few levels down.
-function slim(value, depth = 0) {
-  if (typeof value === 'string') return clip(value)
-  if (value === null || typeof value !== 'object' || depth > 4) return value
-  if (Array.isArray(value)) return value.slice(0, 100).map(v => slim(v, depth + 1))
-  const out = {}
-  for (const [k, v] of Object.entries(value)) out[k] = slim(v, depth + 1)
-  return out
+// business of hers; an edit's text up to EDIT_MAX), a few levels down, a
+// text cut ending in "…"; and whether anything was cut.
+function slimmed(input) {
+  let cut = false
+  const walk = (value, depth, key) => {
+    if (typeof value === 'string') {
+      const max = EDIT_FIELDS.has(key) ? EDIT_MAX : TEXT_MAX
+      if (value.length <= max) return value
+      cut = true
+      return `${value.slice(0, max - 1)}…`
+    }
+    if (value === null || typeof value !== 'object' || depth > 4) return value
+    if (Array.isArray(value)) {
+      if (value.length > 100) cut = true
+      return value.slice(0, 100).map(v => walk(v, depth + 1, key))
+    }
+    const out = {}
+    for (const [k, v] of Object.entries(value)) out[k] = walk(v, depth + 1, k)
+    return out
+  }
+  return [walk(input, 0, ''), cut]
+}
+
+const slim = value => slimmed(value)[0]
+
+// A tool's input as an event carries it, marked when it was cut short.
+function toolInput(args) {
+  const [input, cut] = slimmed(args ?? {})
+  return cut ? { tool_input: input, tool_input_truncated: true } : { tool_input: input }
 }
 
 // The folder this file is in (its marker goes beside it).
@@ -369,7 +395,7 @@ export function make(ctx, config = {}, options = {}) {
       ours = new AbortController()
       answerable = takeOver(req, ours)
       id = `${process.pid}-${++asked}`
-      body = { ...base(session, 'PermissionRequest'), tool_name: call?.name || String(req.toolName || ''), tool_input: call?.input ?? {}, tool_use_id: callId, permission_id: id, reason: clip(String(req.reason ?? ''), 400), answerable }
+      body = { ...base(session, 'PermissionRequest'), tool_name: call?.name || String(req.toolName || ''), tool_input: call?.input ?? {}, ...(call?.cut ? { tool_input_truncated: true } : {}), tool_use_id: callId, permission_id: id, reason: clip(String(req.reason ?? ''), 400), answerable }
       const shown = req.displayReason
       if (shown && typeof shown === 'object') body.display_reason = { en: clip(String(shown.en ?? ''), 400), zh: clip(String(shown.zh ?? ''), 400) }
     } catch {
@@ -465,9 +491,9 @@ export function make(ctx, config = {}, options = {}) {
   }
 
   function preTool(exec) {
-    const input = slim(exec?.arguments ?? {})
-    if (exec?.callId) remember(calls, exec.callId, { session: idOf(exec.agent?.session), name: exec.name || '', input })
-    send({ ...base(exec?.agent?.session, 'PreToolUse'), tool_name: exec?.name || '', tool_input: input, tool_use_id: exec?.callId || '' })
+    const fields = toolInput(exec?.arguments)
+    if (exec?.callId) remember(calls, exec.callId, { session: idOf(exec.agent?.session), name: exec.name || '', input: fields.tool_input, cut: fields.tool_input_truncated === true })
+    send({ ...base(exec?.agent?.session, 'PreToolUse'), tool_name: exec?.name || '', ...fields, tool_use_id: exec?.callId || '' })
   }
 
   function postTool(exec, result) {
@@ -475,7 +501,7 @@ export function make(ctx, config = {}, options = {}) {
     send({
       ...base(exec?.agent?.session, 'PostToolUse'),
       tool_name: exec?.name || '',
-      tool_input: slim(exec?.arguments ?? {}),
+      ...toolInput(exec?.arguments),
       tool_use_id: exec?.callId || '',
       tool_response: clip(textOf(result?.content)),
       is_error: result?.isError === true,

@@ -314,7 +314,9 @@
       "call": {
         "id": "call_2",
         "input": {
-          "file_path": "a.txt"
+          "file_path": "a.txt",
+          "new_string": "bye",
+          "old_string": "hi"
         },
         "intent": "Changing hi to bye",
         "own": "edit",
@@ -354,7 +356,9 @@
             "call": {
               "id": "call_2",
               "input": {
-                "file_path": "a.txt"
+                "file_path": "a.txt",
+                "new_string": "bye",
+                "old_string": "hi"
               },
               "intent": "Changing hi to bye",
               "own": "edit",

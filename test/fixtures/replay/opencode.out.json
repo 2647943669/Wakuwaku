@@ -650,7 +650,9 @@
       "call": {
         "id": "call_2",
         "input": {
-          "file_path": "Z:\\replay\\oc\\src\\a.rs"
+          "file_path": "Z:\\replay\\oc\\src\\a.rs",
+          "new_string": "b",
+          "old_string": "a"
         },
         "own": "edit",
         "raw": {
@@ -689,7 +691,9 @@
       "session_id": "replay-oc",
       "tool": "edit",
       "tool_input": {
-        "file_path": "Z:\\replay\\oc\\src\\a.rs"
+        "file_path": "Z:\\replay\\oc\\src\\a.rs",
+        "new_string": "b",
+        "old_string": "a"
       },
       "tool_name": "Edit",
       "tool_use_id": "call_2",
@@ -711,7 +715,9 @@
             "call": {
               "id": "call_2",
               "input": {
-                "file_path": "Z:\\replay\\oc\\src\\a.rs"
+                "file_path": "Z:\\replay\\oc\\src\\a.rs",
+                "new_string": "b",
+                "old_string": "a"
               },
               "own": "edit",
               "raw": {
@@ -771,7 +777,9 @@
         "file": "Z:\\replay\\oc\\src\\a.rs",
         "id": "call_2",
         "input": {
-          "file_path": "Z:\\replay\\oc\\src\\a.rs"
+          "file_path": "Z:\\replay\\oc\\src\\a.rs",
+          "new_string": "b",
+          "old_string": "a"
         },
         "own": "edit",
         "raw": {
@@ -810,7 +818,9 @@
       "session_id": "replay-oc",
       "tool": "edit",
       "tool_input": {
-        "file_path": "Z:\\replay\\oc\\src\\a.rs"
+        "file_path": "Z:\\replay\\oc\\src\\a.rs",
+        "new_string": "b",
+        "old_string": "a"
       },
       "tool_name": "Edit",
       "tool_use_id": "call_2",
