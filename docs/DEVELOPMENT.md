@@ -88,6 +88,7 @@ integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装
 integrations/omp/         omp 的扩展 wakuwaku.ts（connection.rs 填上端口、程序路径后写进 omp 的 agent 文件夹）
 .claude-plugin/           插件市场入口 marketplace.json（位置是 Claude Code 规定的）
 scripts/make-icons.js     画图标（node + ImageMagick），输出提交在 src-tauri/icons
+scripts/build-release.ps1 编译发布用的 exe，不带本机路径（见「构建和运行」）；scripts/gitee-release.ps1 把发布复制到 Gitee
 test/                     页面的单元测试（node --test，不需要 npm install）；fake-imap.js、fake-smtp.js 是试邮件用的假 IMAP、SMTP 服务器；fake-relay.js 是假的崩溃报告中转；fake-lhm.js 是假的 LibreHardwareMonitor 网页服务器
 relay/                    崩溃报告中转（Cloudflare Worker → GitHub issue；阿里云函数计算 → Gitee issue），部署步骤在 relay/README.md
 examples/widgets/         岛上插件的示例脚本：waku、邮件……，以及她替你跑的那几个插件的脚本版（样例，她不运行）
@@ -106,11 +107,21 @@ cargo run                 # 调试版：有控制台窗口
 cargo build --release     # target/release/wakuwaku.exe：单个文件，约 5 MB，没有控制台
 cargo test                # Rust 单元测试
 cd .. && node --test "test/*.test.js"   # 页面的单元测试
+pwsh scripts/build-release.ps1 [-Out <文件夹>]   # 发布用的 exe：wakuwaku-v<版本>-windows-x64.exe，不带本机路径
 ```
+
+**发布用的 exe 要用 `scripts/build-release.ps1` 编译**，不要直接用 `cargo build --release`。
+
+- **为什么**：Rust 程序里每个可能 panic 的地方（`unwrap`、下标），都会以明文记下源文件路径，供 panic 信息使用；这些是数据不是符号，`strip` 去不掉。她自己的文件记的是仓库里的相对路径，但 crate 记的是 cargo 缓存的整条路径，标准库记的是工具链的整条路径，里面都有用户名；打过补丁的 tiny_http（path 依赖）记的是仓库的整条路径。v0.3.3 里用户名出现了 425 次。另外 `data.rs` 编进了源码目录（从源码运行时数据放在源码树里）。
+- **脚本做什么**：
+  - 用 `--remap-path-prefix` 把仓库、`<CARGO_HOME>\registry\src`、`<CARGO_HOME>\git\checkouts`、工具链（`rustc --print sysroot`）分别写成 `wakuwaku`、`crates`、`git`、`rust`。panic 信息照样说得出是哪个 crate 的哪个文件哪一行（`crates\index.crates.io-…\tauri-2.12.1\src\ipc\mod.rs`）。参数用 `CARGO_ENCODED_RUSTFLAGS` 传，带空格的路径也不会断开。cargo 的 `trim-paths` 能自动做这件事，但 1.93 还没稳定。
+  - 设 `WAKUWAKU_ASSET=1`：`build.rs` 不再把源码目录交给 `data.rs`（`WAKUWAKU_SOURCE_TREE`）。这样的 exe 不会认为自己是从源码运行，也不会去找源码树里的 `pets/`。
+  - 编进 `src-tauri/target/asset`：参数和普通构建不同，共用 `target/release` 的话每次切换都要全部重编，还会覆盖从源码运行的那个 exe。
+  - 编完后在 exe 里找有没有本机路径（仓库、cargo、工具链、用户目录、任何 `X:\Users\`），有就报错停下。最后给出文件、大小和 SHA-256。
 
 页面是打进 exe 的：改了 `src/` 要重新编译（cargo 会发现）。不需要 Node 和 Tauri CLI；`Cargo.toml` 默认开着 `custom-protocol`，所以 `cargo run` 也直接用打进去的页面，不找开发服务器。
 
-**数据放在哪**（`data.rs` 的 `folder()`）：`WAKUWAKU_USER_DATA`（测试用）；从源码树里运行时是项目的 `data/`；否则是 exe 旁边的 `wakuwaku-data/`，启动时没有就新建一个。旧的 Electron 安装版的 `%APPDATA%\wakuwaku` 不再读取。数据目录里放一个 `debug.on` 文件，就会写 `debug.log`（两个页面的 console.log 也在里面）。
+**数据放在哪**（`data.rs` 的 `folder()`）：`WAKUWAKU_USER_DATA`（测试用）；从源码树里运行时（exe 在编译时源码目录的 `target` 下面；发布用的 exe 不算）是项目的 `data/`；否则是 exe 旁边的 `wakuwaku-data/`，启动时没有就新建一个。旧的 Electron 安装版的 `%APPDATA%\wakuwaku` 不再读取。数据目录里放一个 `debug.on` 文件，就会写 `debug.log`（两个页面的 console.log 也在里面）。
 
 | 环境变量 | 作用 |
 | --- | --- |

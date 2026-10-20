@@ -8,24 +8,26 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-const SOURCE_TREE: &str = env!("CARGO_MANIFEST_DIR");
+// The source tree she was built in (build.rs); none in a release asset,
+// which carries no path of the machine that built it.
+const SOURCE_TREE: Option<&str> = option_env!("WAKUWAKU_SOURCE_TREE");
 
 // The sizes she comes in.
 pub const SCALES: [(&str, f64); 3] = [("small", 0.4), ("medium", 0.55), ("large", 0.75)];
 
 // The source tree's path this many levels up, then `rest`: no "..", which
 // the asset protocol's scope would not match.
-fn in_tree(up: usize, rest: &str) -> PathBuf {
-    let tree = Path::new(SOURCE_TREE);
-    tree.ancestors().nth(up).unwrap_or(tree).join(rest)
+fn in_tree(up: usize, rest: &str) -> Option<PathBuf> {
+    let tree = Path::new(SOURCE_TREE?);
+    Some(tree.ancestors().nth(up).unwrap_or(tree).join(rest))
 }
 
 pub fn folder() -> PathBuf {
     if let Ok(dir) = std::env::var("WAKUWAKU_USER_DATA") {
         return dir.into();
     }
-    if from_source() {
-        return in_tree(1, "data");
+    if let Some(data) = in_tree(1, "data").filter(|_| from_source()) {
+        return data;
     }
     let exe = std::env::current_exe().unwrap_or_default();
     exe.parent().map(|p| p.join("wakuwaku-data")).unwrap_or_else(|| "wakuwaku-data".into())
@@ -85,7 +87,7 @@ pub fn may_start(dir: &Path) -> bool {
 // Run from the source tree it was built in (its target folder), not a
 // downloaded exe: its data stays in the tree, and it updates by a build.
 pub fn from_source() -> bool {
-    std::env::current_exe().unwrap_or_default().starts_with(Path::new(SOURCE_TREE).join("target"))
+    SOURCE_TREE.is_some_and(|tree| std::env::current_exe().unwrap_or_default().starts_with(Path::new(tree).join("target")))
 }
 
 // Her exe where it is now. Windows goes on giving the path she was started
@@ -329,10 +331,10 @@ pub fn codex_pets() -> PathBuf {
     crate::connection::codex_home().join("pets")
 }
 
-// Downloaded pets: <her folder>/pets, then the project's pets/ (from source),
-// then Codex's.
+// Downloaded pets: <her folder>/pets, then the project's pets/ (a build
+// from source; not a release asset), then Codex's.
 pub fn pet_dirs(dir: &Path) -> Vec<PathBuf> {
-    vec![dir.join("pets"), in_tree(1, "pets"), codex_pets()]
+    [Some(dir.join("pets")), in_tree(1, "pets"), Some(codex_pets())].into_iter().flatten().collect()
 }
 
 // The pets, as last found, until one of their folders changes (a pet added
