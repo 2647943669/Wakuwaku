@@ -1201,7 +1201,7 @@ fn write_omp_files(files: &[PathBuf], action: &str, want: &str) -> Result<(), St
 
 pub const ZCODE_FLAG: &str = "--wakuwaku-zcode-hook";
 // ZCode's 7 events, and how long each may run (ms): the prompt waits for the
-// person, past her own wait (asks.rs ASK_TIMEOUT_MS); ZCode's default is 60 s.
+// person, past her own wait (agent-core asks.rs ASK_TIMEOUT_MS); ZCode's default is 60 s.
 pub const ZCODE_PROMPT_TIMEOUT_MS: u64 = 600_000;
 const ZCODE_TIMEOUT_MS: u64 = 10_000;
 const ZCODE_EVENTS: [&str; 7] = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "Stop"];

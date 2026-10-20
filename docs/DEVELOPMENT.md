@@ -51,7 +51,7 @@ src-tauri/
     settings.rs           设置看到的快照、校验后的设置补丁、设置的各个命令
     pointer.rs            两个窗口共用的点击穿透
     screen.rs             各个显示器的工作区
-    asks.rs               确认请求：显示什么、每个选择回给 Claude Code 什么、排队和超时
+    asks.rs               确认请求：交还 DeepSeek Harness 自己窗口后，会话那一行说到哪里去答（handed_message）；确认请求本身（显示什么、每个选择回给各家 hook 什么、什么时候算在别处答过、排队和超时）在 agent-core 的 asks.rs，拒绝时说的话由她传进去
     connection.rs         插件、settings.json 里的 hooks、Codex 的 hooks.json、Antigravity 的 hooks.json、OpenCode 的插件文件、omp 的扩展、ZCode 的 config.json、DeepSeek Harness 的插件和补丁文件（安装 / 移除 / 状态，插件有没有被加载）、Reasonix 的全局 settings.json（安装 / 移除 / 状态）、各 agent 文件里写着的版本、开机自启
     logon.rs              开机自启的计划任务（任务栏和岛都有，Task Scheduler 的 COM）、这次登录是什么时候
     lhm.rs, lhm_setup.rs  监控的 LibreHardwareMonitor 来源：读它的网页服务器；用户点了时下载，以管理员身份装进 Program Files、配置、启动它，它自己的开机任务
@@ -83,7 +83,7 @@ src-tauri/
                           每家的事件读成 AgentEvent（event.rs：会话开始和结束、一轮开始、工具开始/结束/失败、等人（批准在哪儿批、提问、计划、
                           MCP 要输入）、回到工作、一轮完成/失败/被停下，带着工具调用的名字、Claude Code 说法的输入、原始输入、改了哪个文件、待办的变化），
                           哪些事件不算、回合号、子代理归到哪个会话、是不是本人说的话都在这里定（claude.rs、codex.rs、agy.rs、opencode.rs、omp.rs、
-                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半，她自己的心情、看过没有、留多久在 state.rs；以后的 /v1 用它）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
+                          reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；asks.rs 是等人回答的确认请求（面板要的数据、各家 hook 要的回复、什么时候算在别处答过、超时）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半，她自己的心情、看过没有、留多久在 state.rs；以后的 /v1 用它）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
                           补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、target、profile 和 patch 都还在那里；crate 放在它下面，
                           rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
