@@ -180,12 +180,14 @@ fn was_asked(session: &str, now: u64) -> bool {
     asked.as_ref().and_then(|a| a.get(session)).is_some_and(|at| now.saturating_sub(*at) < SAME_ASK_MS)
 }
 
-// The message for an event, or None for one that changes nothing.
-pub fn to_message(e: &Value) -> Option<Value> {
+#[cfg(test)]
+fn to_message(e: &Value) -> Option<Value> {
     to_message_at(e, crate::now_ms())
 }
 
-fn to_message_at(e: &Value, now: u64) -> Option<Value> {
+// The message for an event at `now` (which tells a Notification from the
+// PermissionRequest just before it), or None for one that changes nothing.
+pub fn to_message_at(e: &Value, now: u64) -> Option<Value> {
     if !e.is_object() {
         return None;
     }

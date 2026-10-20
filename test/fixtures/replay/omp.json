@@ -1,0 +1,24 @@
+{
+  "about": "oh-my-pi through her extension: tools in lower case with their intent, an edit bringing its file, an approval asked in omp's own window and resolved, a plan review on her, the end a review; a failure; a turn interrupted; the session's end.",
+  "agent": "omp",
+  "steps": [
+    { "at": 1000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "SessionStart", "source": "startup" } },
+    { "at": 2000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "UserPromptSubmit", "prompt": "Change hi to bye in a.txt" } },
+    { "at": 2500, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PreToolUse", "tool_name": "read", "tool_input": { "path": "a.txt" }, "tool_use_id": "call_1", "intent": "Reading a.txt" } },
+    { "at": 2700, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PostToolUse", "tool_name": "read", "tool_input": { "path": "a.txt" }, "tool_use_id": "call_1", "file": "Z:\\replay\\omp\\a.txt" } },
+    { "at": 3000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PreToolUse", "tool_name": "edit", "tool_input": { "path": "a.txt", "old_string": "hi", "new_string": "bye" }, "tool_use_id": "call_2", "intent": "Changing hi to bye" } },
+    { "at": 3500, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PostToolUse", "tool_name": "edit", "tool_input": { "path": "a.txt" }, "tool_use_id": "call_2", "file": "Z:\\replay\\omp\\a.txt" } },
+    { "at": 4000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "ApprovalRequested", "tool_name": "bash", "tool_input": { "command": "rm -rf build" }, "intent": "" } },
+    { "at": 6000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "ApprovalResolved", "approved": true } },
+    { "at": 6500, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PreToolUse", "tool_name": "bash", "tool_input": { "command": "rm -rf build" }, "tool_use_id": "call_3", "intent": "Removing the build folder" } },
+    { "at": 7000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PostToolUseFailure", "tool_name": "bash", "tool_input": { "command": "rm -rf build" }, "tool_use_id": "call_3", "error": "exit 1" } },
+    { "at": 7500, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "PermissionRequest", "tool_name": "ExitPlanMode", "tool_input": { "plan": "1. Write b.txt" }, "tool_use_id": "r1" } },
+    { "at": 9000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "Stop", "last_assistant_message": "Done.\nChanged hi to bye.", "session_title": "Change a greeting" } },
+    { "at": 20000, "do": "seen" },
+    { "at": 21000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "UserPromptSubmit", "prompt": "Run it again" } },
+    { "at": 22000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "StopFailure", "error": "", "error_details": "Connection error.\nretry later" } },
+    { "at": 23000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "UserPromptSubmit", "prompt": "Once more please" } },
+    { "at": 24000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "Interrupt" } },
+    { "at": 25000, "event": { "session_id": "replay-omp", "cwd": "Z:\\replay\\omp", "hook_event_name": "SessionEnd", "reason": "exit" } }
+  ]
+}

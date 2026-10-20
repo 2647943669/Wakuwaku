@@ -1,0 +1,29 @@
+{
+  "about": "Reasonix: the person's words past its own blocks, an approval and its Notification just after (told once), a subagent's steps as the session's, a failed tool told once, the end a review; a failed turn told once; a turn the person stopped; an approval with no PermissionRequest before it (Auto Guard's).",
+  "agent": "reasonix",
+  "steps": [
+    { "at": 1000, "event": { "event": "SessionStart", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "source": "startup" } },
+    { "at": 2000, "event": { "event": "UserPromptSubmit", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "turn": 1, "prompt": "<current-date>\nToday's date is 2026-10-18 (Sunday).\n</current-date>\n\n<available-skills>\n# Skills\n- explore\n</available-skills>\n\nCreate note.txt and push it." } },
+    { "at": 2500, "event": { "event": "PreToolUse", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "toolName": "write_file", "toolArgs": { "path": "note.txt", "content": "hi\n" }, "callId": "rx_c1" } },
+    { "at": 3000, "event": { "event": "PostToolUse", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "toolName": "write_file", "toolArgs": { "path": "note.txt", "content": "hi\n" }, "toolResult": "wrote 3 bytes", "callId": "rx_c1" } },
+    { "at": 5000, "event": { "event": "PermissionRequest", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "toolName": "bash", "toolArgs": { "command": "git push" }, "subject": "git push" } },
+    { "at": 5050, "event": { "event": "Notification", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "notificationType": "permission_prompt", "message": "Approval needed: bash (git push)" } },
+    { "at": 8000, "event": { "event": "PreToolUse", "sessionId": "replay-rx:subagent:call_7", "cwd": "Z:\\replay\\rx", "toolName": "grep", "toolArgs": { "pattern": "TODO" } } },
+    { "at": 8500, "event": { "event": "PostToolUse", "sessionId": "replay-rx:subagent:call_7", "cwd": "Z:\\replay\\rx", "toolName": "write_file", "toolArgs": { "path": "Z:\\replay\\rx\\todo.md" } } },
+    { "at": 8600, "event": { "event": "Stop", "sessionId": "replay-rx:subagent:call_7", "cwd": "Z:\\replay\\rx", "lastAssistantText": "Found 3." } },
+    { "at": 9000, "event": { "event": "PostToolUseFailure", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "toolName": "edit_file", "toolArgs": { "path": "a.rs" }, "error": "old_string not found" } },
+    { "at": 9001, "event": { "event": "PostToolUse", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "toolName": "edit_file", "toolArgs": { "path": "a.rs" }, "error": "old_string not found" } },
+    { "at": 10000, "event": { "event": "Stop", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "turn": 1, "lastAssistantText": "## Done\nCreated **note.txt** and pushed it." } },
+    { "at": 20000, "do": "seen" },
+    { "at": 21000, "event": { "event": "UserPromptSubmit", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "turn": 2, "prompt": "Now tag a release" } },
+    { "at": 22000, "event": { "event": "StopFailure", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "turn": 2, "error": "deepseek: 402 Insufficient Balance" } },
+    { "at": 22001, "event": { "event": "Stop", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "turn": 2, "error": "deepseek: 402 Insufficient Balance" } },
+    { "at": 30000, "do": "seen" },
+    { "at": 31000, "event": { "event": "UserPromptSubmit", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "turn": 3, "prompt": "Try once more" } },
+    { "at": 32000, "event": { "event": "StopFailure", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "error": "context canceled", "isInterrupt": true } },
+    { "at": 32001, "event": { "event": "Stop", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "error": "context canceled", "isInterrupt": true } },
+    { "at": 100000, "event": { "event": "Notification", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "notificationType": "permission_prompt", "message": "Auto Guard: confirm the next action" } },
+    { "at": 101000, "event": { "event": "SubagentStart", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx" } },
+    { "at": 102000, "event": { "event": "SessionEnd", "sessionId": "replay-rx", "cwd": "Z:\\replay\\rx", "reason": "exit" } }
+  ]
+}

@@ -83,6 +83,8 @@ mod plugins;
 mod pointer;
 mod power;
 mod proxy;
+#[cfg(test)]
+mod replay;
 mod screen;
 mod scripts;
 mod sensors;

@@ -1,0 +1,16 @@
+{
+  "about": "DeepSeek Harness through its old Claude Code hook bridge: no origin, no last words, no name with the events, so whose the session is, its turn's last words and its name are read from DSH's folder (a real session log from the test machine, its projection cache).",
+  "agent": "dsh",
+  "dsh": {
+    "logs": [{ "cwd": "Z:\\replay\\dsh-bridge", "session": "replay-dsh-c96", "file": "dsh/session-c96167f1.v4.jsonl.zstd" }],
+    "titles": { "replay-dsh-c96": "Read note.txt and copy it" }
+  },
+  "steps": [
+    { "at": 1000, "event": { "session_id": "replay-dsh-c96", "transcript_path": "", "cwd": "Z:\\replay\\dsh-bridge", "hook_event_name": "SessionStart", "source": "startup" } },
+    { "at": 2000, "event": { "session_id": "replay-dsh-c96", "transcript_path": "", "cwd": "Z:\\replay\\dsh-bridge", "hook_event_name": "UserPromptSubmit", "prompt": "Read note.txt, then create copy.txt" } },
+    { "at": 3000, "event": { "session_id": "replay-dsh-c96", "transcript_path": "", "cwd": "Z:\\replay\\dsh-bridge", "hook_event_name": "PreToolUse", "tool_name": "read", "tool_input": { "file_path": "Z:\\replay\\dsh-bridge\\note.txt" }, "tool_use_id": "call_00_R" } },
+    { "at": 3500, "event": { "session_id": "replay-dsh-c96", "transcript_path": "", "cwd": "Z:\\replay\\dsh-bridge", "hook_event_name": "PostToolUse", "tool_name": "read", "tool_input": { "file_path": "Z:\\replay\\dsh-bridge\\note.txt" }, "tool_use_id": "call_00_R", "tool_response": "hi" } },
+    { "at": 4000, "event": { "session_id": "replay-dsh-c96", "transcript_path": "", "cwd": "Z:\\replay\\dsh-bridge", "hook_event_name": "PostToolUse", "tool_name": "write", "tool_input": { "file_path": "Z:\\replay\\dsh-bridge\\copy.txt", "content": "hi\n" }, "tool_use_id": "call_00_W", "tool_response": "<path>ok</path>" } },
+    { "at": 5000, "event": { "session_id": "replay-dsh-c96", "transcript_path": "", "cwd": "Z:\\replay\\dsh-bridge", "hook_event_name": "Stop", "stop_hook_active": false } }
+  ]
+}

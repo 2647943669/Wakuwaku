@@ -1,0 +1,1760 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "mood": "idle",
+      "project": "api",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-cc-a",
+      "title": "API refactor"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "idle",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 1500,
+    "event": "SessionStart",
+    "message": {
+      "mood": "idle",
+      "project": "docs",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-cc-b"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "idle",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 2000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "event": "turn-start",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "task": "Refactor the API client"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 2500,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "TaskCreate",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "step": {
+        "key": "step.plan",
+        "vars": {}
+      },
+      "todo": {
+        "add": {
+          "active": "Splitting the client",
+          "text": "Split the client"
+        }
+      },
+      "toolId": "toolu_a1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 2500,
+        "detail": "TaskCreate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.plan",
+          "vars": {}
+        },
+        "stepSince": 2500,
+        "todo": {
+          "active": "",
+          "done": 0,
+          "total": 1
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 2600,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "TaskCreate",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "toolId": "toolu_a1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 2600,
+        "detail": "TaskCreate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2600,
+        "todo": {
+          "active": "",
+          "done": 0,
+          "total": 1
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 2700,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "TaskCreate",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "step": {
+        "key": "step.plan",
+        "vars": {}
+      },
+      "todo": {
+        "add": {
+          "active": "Adding retries",
+          "text": "Add retries"
+        }
+      },
+      "toolId": "toolu_a2"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 2700,
+        "detail": "TaskCreate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.plan",
+          "vars": {}
+        },
+        "stepSince": 2700,
+        "todo": {
+          "active": "",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 2800,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "TaskCreate",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "toolId": "toolu_a2"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 2800,
+        "detail": "TaskCreate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2800,
+        "todo": {
+          "active": "",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 3000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "TaskUpdate",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "step": {
+        "key": "step.plan",
+        "vars": {}
+      },
+      "todo": {
+        "update": {
+          "id": "1",
+          "status": "in_progress"
+        }
+      },
+      "toolId": "toolu_a3"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3000,
+        "detail": "TaskUpdate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.plan",
+          "vars": {}
+        },
+        "stepSince": 3000,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 3100,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "TaskUpdate",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "toolId": "toolu_a3"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3100,
+        "detail": "TaskUpdate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 3100,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 3500,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "mcp__github__get_issue",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "step": {
+        "key": "step.mcp",
+        "vars": {
+          "server": "github",
+          "tool": "get_issue"
+        }
+      },
+      "toolId": "toolu_a4"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3500,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.mcp",
+          "vars": {
+            "server": "github",
+            "tool": "get_issue"
+          }
+        },
+        "stepSince": 3500,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 1500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 4000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "event": "turn-start",
+      "mood": "working",
+      "project": "docs",
+      "session": "replay-cc-b",
+      "task": "Update the README"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3500,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.mcp",
+          "vars": {
+            "server": "github",
+            "tool": "get_issue"
+          }
+        },
+        "stepSince": 3500,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 4000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 4000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "working",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 4100,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "Agent",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "docs",
+      "session": "replay-cc-b",
+      "step": {
+        "key": "step.agent",
+        "vars": {
+          "what": "Explore the docs"
+        }
+      },
+      "toolId": "toolu_b1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3500,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.mcp",
+          "vars": {
+            "server": "github",
+            "tool": "get_issue"
+          }
+        },
+        "stepSince": 3500,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 4100,
+        "detail": "Agent",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.agent",
+          "vars": {
+            "what": "Explore the docs"
+          }
+        },
+        "stepSince": 4100,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "working",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 4200,
+    "event": "Elicitation",
+    "message": {
+      "detail": {
+        "key": "detail.needsInput",
+        "vars": {
+          "server": "linear"
+        }
+      },
+      "mood": "waiting",
+      "project": "docs",
+      "session": "replay-cc-b"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Update the README"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 3500,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.mcp",
+          "vars": {
+            "server": "github",
+            "tool": "get_issue"
+          }
+        },
+        "stepSince": 3500,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 4200,
+        "detail": {
+          "key": "detail.needsInput",
+          "vars": {
+            "server": "linear"
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "waiting",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 5000,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "mcp__github__get_issue",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "toolId": "toolu_a4"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 5000,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 5000,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 4200,
+        "detail": {
+          "key": "detail.needsInput",
+          "vars": {
+            "server": "linear"
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "waiting",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 5500,
+    "event": "SessionStart",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "",
+        "at": 5000,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 5000,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 4200,
+        "detail": {
+          "key": "detail.needsInput",
+          "vars": {
+            "server": "linear"
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "waiting",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 6000,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "Agent",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "docs",
+      "session": "replay-cc-b",
+      "toolId": "toolu_b1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 5000,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 5000,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 6000,
+        "detail": "Agent",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "working",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 6500,
+    "event": "TaskCompleted",
+    "message": {
+      "project": "api",
+      "react": "jump",
+      "say": {
+        "key": "say.taskDone",
+        "vars": {
+          "task": "Split the client"
+        }
+      },
+      "session": "replay-cc-a"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": false,
+      "react": {
+        "react": "jump",
+        "say": {
+          "key": "say.taskDone",
+          "vars": {
+            "task": "Split the client"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 5000,
+        "detail": "mcp__github__get_issue",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 5000,
+        "todo": {
+          "active": "Splitting the client",
+          "done": 0,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 6000,
+        "detail": "Agent",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "working",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 7000,
+    "event": "PreToolUse",
+    "message": {
+      "detail": "TaskUpdate",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "step": {
+        "key": "step.plan",
+        "vars": {}
+      },
+      "todo": {
+        "update": {
+          "id": "1",
+          "status": "completed"
+        }
+      },
+      "toolId": "toolu_a5"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 7000,
+        "detail": "TaskUpdate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.plan",
+          "vars": {}
+        },
+        "stepSince": 7000,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 6000,
+        "detail": "Agent",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 7100,
+    "event": "PostToolUse",
+    "message": {
+      "detail": "TaskUpdate",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "api",
+      "session": "replay-cc-a",
+      "toolId": "toolu_a5"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 7100,
+        "detail": "TaskUpdate",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "working",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 7100,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": null
+      },
+      {
+        "agent": "",
+        "at": 6000,
+        "detail": "Agent",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "working",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 8000,
+    "event": "Stop",
+    "message": {
+      "mood": "done",
+      "project": "api",
+      "reply": "Done.",
+      "session": "replay-cc-a"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "done",
+          "API refactor"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 6000
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 8000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "done",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "Done.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": 6000
+      },
+      {
+        "agent": "",
+        "at": 6000,
+        "detail": "Agent",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "working",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": 4000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 6000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-a",
+      "mood": "done",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 9000,
+    "event": "Stop",
+    "message": {
+      "mood": "done",
+      "project": "docs",
+      "reply": "The README is up to date.",
+      "session": "replay-cc-b"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "done",
+          "Update the README"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 5000
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 8000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "done",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "Done.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": 6000
+      },
+      {
+        "agent": "",
+        "at": 9000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "done",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "The README is up to date.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 5000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "done",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 20000,
+    "changed": false,
+    "do": "tick",
+    "sessions": [
+      {
+        "agent": "",
+        "at": 8000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "done",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "Done.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": 6000
+      },
+      {
+        "agent": "",
+        "at": 9000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "done",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "The README is up to date.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 5000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "done",
+      "others": 1,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 38500,
+    "changed": true,
+    "do": "tick",
+    "sessions": [
+      {
+        "agent": "",
+        "at": 38500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "idle",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": 6000
+      },
+      {
+        "agent": "",
+        "at": 9000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "done",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "The README is up to date.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 5000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "done",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 39500,
+    "changed": true,
+    "do": "tick",
+    "sessions": [
+      {
+        "agent": "",
+        "at": 38500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-a",
+        "jump": false,
+        "mood": "idle",
+        "name": "API refactor",
+        "project": "api",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": {
+          "active": "",
+          "done": 1,
+          "total": 2
+        },
+        "took": 6000
+      },
+      {
+        "agent": "",
+        "at": 39500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 5000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 2
+    }
+  },
+  {
+    "at": 40000,
+    "event": "SessionEnd",
+    "message": {
+      "event": "session-end",
+      "mood": "idle",
+      "project": "api",
+      "session": "replay-cc-a"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "",
+        "at": 39500,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-cc-b",
+        "jump": false,
+        "mood": "idle",
+        "name": "Update the README",
+        "project": "docs",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 5000
+      }
+    ],
+    "shown": {
+      "id": "replay-cc-b",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  }
+]

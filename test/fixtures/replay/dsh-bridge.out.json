@@ -1,0 +1,311 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "agent": "dsh",
+      "mood": "idle",
+      "project": "dsh-bridge",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-dsh-c96",
+      "title": "Read note.txt and copy it"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-c96",
+        "jump": false,
+        "mood": "idle",
+        "name": "Read note.txt and copy it",
+        "project": "dsh-bridge",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-c96",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "dsh",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "dsh-bridge",
+      "session": "replay-dsh-c96",
+      "task": "Read note.txt, then create copy.txt",
+      "title": "Read note.txt and copy it"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-c96",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt and copy it",
+        "project": "dsh-bridge",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-c96",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3000,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Read",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "dsh-bridge",
+      "session": "replay-dsh-c96",
+      "step": {
+        "key": "step.read",
+        "vars": {
+          "file": "note.txt"
+        }
+      },
+      "toolId": "call_00_R"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 3000,
+        "detail": "Read",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-c96",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt and copy it",
+        "project": "dsh-bridge",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.read",
+          "vars": {
+            "file": "note.txt"
+          }
+        },
+        "stepSince": 3000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-c96",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3500,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Read",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "dsh-bridge",
+      "session": "replay-dsh-c96",
+      "toolId": "call_00_R"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 3500,
+        "detail": "Read",
+        "error": null,
+        "files": 0,
+        "id": "replay-dsh-c96",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt and copy it",
+        "project": "dsh-bridge",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 3500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-c96",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 4000,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "dsh",
+      "detail": "Write",
+      "event": "tool-done",
+      "file": "Z:\\replay\\dsh-bridge\\copy.txt",
+      "mood": "working",
+      "project": "dsh-bridge",
+      "session": "replay-dsh-c96",
+      "toolId": "call_00_W"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 4000,
+        "detail": "Write",
+        "error": null,
+        "files": 1,
+        "id": "replay-dsh-c96",
+        "jump": false,
+        "mood": "working",
+        "name": "Read note.txt and copy it",
+        "project": "dsh-bridge",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 4000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-c96",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5000,
+    "event": "Stop",
+    "message": {
+      "agent": "dsh",
+      "mood": "done",
+      "project": "dsh-bridge",
+      "reply": "Done — note.txt contained hi, and copy.txt now has the same text.",
+      "session": "replay-dsh-c96",
+      "title": "Read note.txt and copy it"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Read note.txt and copy it"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 3000
+    },
+    "sessions": [
+      {
+        "agent": "dsh",
+        "at": 5000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-dsh-c96",
+        "jump": false,
+        "mood": "review",
+        "name": "Read note.txt and copy it",
+        "project": "dsh-bridge",
+        "reply": "Done — note.txt contained hi, and copy.txt now has the same text.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 3000
+      }
+    ],
+    "shown": {
+      "id": "replay-dsh-c96",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  }
+]

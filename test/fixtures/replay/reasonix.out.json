@@ -1,0 +1,1052 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "agent": "reasonix",
+      "mood": "idle",
+      "project": "rx",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "reasonix",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "task": "Create note.txt and push it."
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2500,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "reasonix",
+      "detail": "Write",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "step": {
+        "key": "step.write",
+        "vars": {
+          "file": "note.txt"
+        }
+      },
+      "toolId": "rx_c1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 2500,
+        "detail": "Write",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.write",
+          "vars": {
+            "file": "note.txt"
+          }
+        },
+        "stepSince": 2500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3000,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "reasonix",
+      "detail": "Write",
+      "event": "tool-done",
+      "file": "Z:\\replay\\rx\\note.txt",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "toolId": "rx_c1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 3000,
+        "detail": "Write",
+        "error": null,
+        "files": 1,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 3000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5000,
+    "event": "PermissionRequest",
+    "message": {
+      "agent": "reasonix",
+      "detail": {
+        "key": "detail.approveIn",
+        "vars": {
+          "app": "Reasonix",
+          "what": {
+            "key": "step.command",
+            "vars": {
+              "what": "git push"
+            }
+          }
+        }
+      },
+      "mood": "waiting",
+      "project": "rx",
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Create note.txt and push it."
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 5000,
+        "detail": {
+          "key": "detail.approveIn",
+          "vars": {
+            "app": "Reasonix",
+            "what": {
+              "key": "step.command",
+              "vars": {
+                "what": "git push"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 1,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5050,
+    "event": "Notification",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 5000,
+        "detail": {
+          "key": "detail.approveIn",
+          "vars": {
+            "app": "Reasonix",
+            "what": {
+              "key": "step.command",
+              "vars": {
+                "what": "git push"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 1,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 8000,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "reasonix",
+      "detail": "Grep",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "step": {
+        "key": "step.search",
+        "vars": {
+          "what": "TODO"
+        }
+      },
+      "within": true
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 8000,
+        "detail": "Grep",
+        "error": null,
+        "files": 1,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.search",
+          "vars": {
+            "what": "TODO"
+          }
+        },
+        "stepSince": 8000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 8500,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "reasonix",
+      "detail": "Write",
+      "event": "tool-done",
+      "file": "Z:\\replay\\rx\\todo.md",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "within": true
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 8500,
+        "detail": "Write",
+        "error": null,
+        "files": 2,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 8500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 8600,
+    "event": "Stop",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 8500,
+        "detail": "Write",
+        "error": null,
+        "files": 2,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 8500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9000,
+    "event": "PostToolUseFailure",
+    "message": {
+      "agent": "reasonix",
+      "detail": "Edit",
+      "event": "tool-failed",
+      "mood": "working",
+      "project": "rx",
+      "react": "failed",
+      "say": {
+        "key": "say.toolFailed",
+        "vars": {
+          "tool": "Edit"
+        }
+      },
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "failed",
+        "say": {
+          "key": "say.toolFailed",
+          "vars": {
+            "tool": "Edit"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 9000,
+        "detail": "Edit",
+        "error": null,
+        "files": 2,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9001,
+    "event": "PostToolUse",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 9000,
+        "detail": "Edit",
+        "error": null,
+        "files": 2,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 9000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 10000,
+    "event": "Stop",
+    "message": {
+      "agent": "reasonix",
+      "mood": "done",
+      "project": "rx",
+      "reply": "Done: Created note.txt and pushed it.",
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Create note.txt and push it."
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 8000
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 10000,
+        "detail": "",
+        "error": null,
+        "files": 2,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "review",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "Done: Created note.txt and pushed it.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 20000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 20000,
+        "detail": "",
+        "error": null,
+        "files": 2,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "idle",
+        "name": "Create note.txt and push it.",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 8000
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 21000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "reasonix",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "task": "Now tag a release"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 21000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Now tag a release",
+        "project": "rx",
+        "reply": "",
+        "since": 21000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 21000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 22000,
+    "event": "StopFailure",
+    "message": {
+      "agent": "reasonix",
+      "error": "deepseek: 402 Insufficient Balance",
+      "mood": "error",
+      "project": "rx",
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "error",
+          "Now tag a release"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 1000
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 22000,
+        "detail": "",
+        "error": "deepseek: 402 Insufficient Balance",
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "error",
+        "name": "Now tag a release",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 22001,
+    "event": "Stop",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 22000,
+        "detail": "",
+        "error": "deepseek: 402 Insufficient Balance",
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "error",
+        "name": "Now tag a release",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 30000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 30000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "idle",
+        "name": "Now tag a release",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 31000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "reasonix",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "rx",
+      "session": "replay-rx",
+      "task": "Try once more"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 31000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "working",
+        "name": "Try once more",
+        "project": "rx",
+        "reply": "",
+        "since": 31000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 31000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 32000,
+    "event": "StopFailure",
+    "message": {
+      "agent": "reasonix",
+      "event": "turn-end",
+      "mood": "idle",
+      "project": "rx",
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 1000
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 32000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "idle",
+        "name": "Try once more",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 32001,
+    "event": "Stop",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 32000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "idle",
+        "name": "Try once more",
+        "project": "rx",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 100000,
+    "event": "Notification",
+    "message": {
+      "agent": "reasonix",
+      "detail": {
+        "key": "detail.approveIn",
+        "vars": {
+          "app": "Reasonix",
+          "what": "Auto Guard: confirm the next action"
+        }
+      },
+      "mood": "waiting",
+      "project": "rx",
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Try once more"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 100000,
+        "detail": {
+          "key": "detail.approveIn",
+          "vars": {
+            "app": "Reasonix",
+            "what": "Auto Guard: confirm the next action"
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Try once more",
+        "project": "rx",
+        "reply": "",
+        "since": 100000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 101000,
+    "event": "SubagentStart",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "reasonix",
+        "at": 100000,
+        "detail": {
+          "key": "detail.approveIn",
+          "vars": {
+            "app": "Reasonix",
+            "what": "Auto Guard: confirm the next action"
+          }
+        },
+        "error": null,
+        "files": 0,
+        "id": "replay-rx",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Try once more",
+        "project": "rx",
+        "reply": "",
+        "since": 100000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-rx",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 102000,
+    "event": "SessionEnd",
+    "message": {
+      "agent": "reasonix",
+      "event": "session-end",
+      "mood": "idle",
+      "project": "rx",
+      "session": "replay-rx"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [],
+    "shown": {
+      "id": "",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 0
+    }
+  }
+]

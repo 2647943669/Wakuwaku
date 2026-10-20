@@ -1,0 +1,643 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "agent": "agy",
+      "mood": "idle",
+      "project": "agyws",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-agy"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "agyws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "PreInvocation",
+    "message": {
+      "agent": "agy",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "agyws",
+      "session": "replay-agy",
+      "task": "Create hello.txt, then ping in the background",
+      "turn": "0"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 4000,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "agy",
+      "detail": "write_to_file",
+      "event": "tool-done",
+      "file": "Z:\\replay\\agyws\\hello.txt",
+      "mood": "working",
+      "project": "agyws",
+      "session": "replay-agy",
+      "step": {
+        "key": "step.run",
+        "vars": {
+          "what": "Creating hello.txt"
+        }
+      }
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 4000,
+        "detail": "write_to_file",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 4000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 5000,
+    "event": "PreInvocation",
+    "message": {
+      "agent": "agy",
+      "mood": "working",
+      "project": "agyws",
+      "session": "replay-agy"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 5000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 4000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9000,
+    "event": "Stop",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 5000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 4000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 15000,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "agy",
+      "detail": "run_command",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "agyws",
+      "session": "replay-agy",
+      "step": {
+        "key": "step.run",
+        "vars": {
+          "what": "Running ping"
+        }
+      }
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 15000,
+        "detail": "run_command",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 15000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 16000,
+    "event": "PreInvocation",
+    "message": {
+      "agent": "agy",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "agyws",
+      "session": "replay-agy",
+      "task": "Create hello.txt, then ping in the background",
+      "turn": "0"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 16000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 15000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 18000,
+    "event": "Stop",
+    "message": {
+      "agent": "agy",
+      "event": "turn-end",
+      "mood": "done",
+      "project": "agyws",
+      "reply": "Created hello.txt; the ping is done.",
+      "session": "replay-agy"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Create hello.txt, then ping in"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 16000
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 18000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "review",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "Created hello.txt; the ping is done.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 16000
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 25000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 25000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "idle",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 16000
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 26000,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "agy",
+      "detail": "run_command",
+      "event": "tool-failed",
+      "mood": "working",
+      "project": "agyws",
+      "react": "failed",
+      "say": {
+        "key": "say.toolFailed",
+        "vars": {
+          "tool": "run_command"
+        }
+      },
+      "session": "replay-agy"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "failed",
+        "say": {
+          "key": "say.toolFailed",
+          "vars": {
+            "tool": "run_command"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 26000,
+        "detail": "run_command",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "working",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": 26000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 26000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 27000,
+    "event": "Stop",
+    "message": {
+      "agent": "agy",
+      "error": "quota exceeded",
+      "mood": "error",
+      "project": "agyws",
+      "session": "replay-agy"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "error",
+          "Create hello.txt, then ping in"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 1000
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 27000,
+        "detail": "",
+        "error": "quota exceeded",
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "error",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "Created hello.txt; the ping is done.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 28000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 28000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "idle",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 29000,
+    "event": "Stop",
+    "message": {
+      "agent": "agy",
+      "event": "turn-end",
+      "mood": "idle",
+      "project": "agyws",
+      "session": "replay-agy"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 29000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "idle",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 30000,
+    "event": "PostInvocation",
+    "message": null,
+    "outcome": null,
+    "sessions": [
+      {
+        "agent": "agy",
+        "at": 29000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-agy",
+        "jump": false,
+        "mood": "idle",
+        "name": "Create hello.txt, then ping in the background",
+        "project": "agyws",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-agy",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  }
+]

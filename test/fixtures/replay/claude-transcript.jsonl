@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"Fix the login page and add a test"}}
+{"type":"ai-title","aiTitle":"Fix the login page"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Looking at the login page."}]}}
+{"type":"custom-title","customTitle":"Login fix"}

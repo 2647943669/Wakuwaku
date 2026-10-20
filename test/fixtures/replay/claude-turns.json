@@ -1,0 +1,28 @@
+{
+  "about": "Claude Code, one session: a turn with a to-do list, a read, an edit, a failed command, an approval, its end a review; then a question and a failure, what time does to them, its end.",
+  "steps": [
+    { "at": 1000, "event": { "session_id": "replay-cc-1", "transcript_path": "$REPLAY/claude-transcript.jsonl", "cwd": "Z:\\replay\\web", "hook_event_name": "SessionStart", "source": "startup" } },
+    { "at": 2000, "event": { "session_id": "replay-cc-1", "transcript_path": "$REPLAY/claude-transcript.jsonl", "cwd": "Z:\\replay\\web", "hook_event_name": "UserPromptSubmit", "prompt": "Fix the login page and add a test" } },
+    { "at": 3000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PreToolUse", "tool_name": "TodoWrite", "tool_use_id": "toolu_01", "tool_input": { "todos": [{ "content": "Fix the form", "activeForm": "Fixing the form", "status": "in_progress" }, { "content": "Add a test", "activeForm": "Adding a test", "status": "pending" }] } } },
+    { "at": 3100, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PostToolUse", "tool_name": "TodoWrite", "tool_use_id": "toolu_01", "tool_input": { "todos": [] } } },
+    { "at": 4000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_use_id": "toolu_02", "tool_input": { "file_path": "Z:\\replay\\web\\src\\login.ts", "offset": 40, "limit": 40 } } },
+    { "at": 4500, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PostToolUse", "tool_name": "Read", "tool_use_id": "toolu_02", "tool_input": { "file_path": "Z:\\replay\\web\\src\\login.ts" } } },
+    { "at": 5000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_use_id": "toolu_03", "tool_input": { "file_path": "Z:\\replay\\web\\src\\login.ts", "old_string": "if (user)", "new_string": "if (user && user.ok)" } } },
+    { "at": 6000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_use_id": "toolu_03", "tool_input": { "file_path": "Z:\\replay\\web\\src\\login.ts", "old_string": "if (user)", "new_string": "if (user && user.ok)" } } },
+    { "at": 7000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "toolu_04", "tool_input": { "command": "cd web && npm test", "description": "Run the tests" } } },
+    { "at": 9000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PostToolUseFailure", "tool_name": "Bash", "tool_use_id": "toolu_04", "tool_input": { "command": "cd web && npm test" }, "error": "exit 1", "is_interrupt": false } },
+    { "at": 10000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": { "command": "git push origin fix-login" }, "permission_suggestions": [] } },
+    { "at": 15000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "toolu_05", "tool_input": { "command": "git push origin fix-login" } } },
+    { "at": 16000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "toolu_05", "tool_input": { "command": "git push origin fix-login" } } },
+    { "at": 20000, "event": { "session_id": "replay-cc-1", "transcript_path": "$REPLAY/claude-transcript.jsonl", "cwd": "Z:\\replay\\web", "hook_event_name": "Stop", "stop_hook_active": false, "last_assistant_message": "## Done\nFixed the **login** page; the tests pass." } },
+    { "at": 30000, "do": "seen" },
+    { "at": 40000, "event": { "session_id": "replay-cc-1", "transcript_path": "$REPLAY/claude-transcript.jsonl", "cwd": "Z:\\replay\\web", "hook_event_name": "UserPromptSubmit", "prompt": "ok" } },
+    { "at": 41000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "tool_use_id": "toolu_06", "tool_input": { "questions": [] } } },
+    { "at": 50000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "tool_use_id": "toolu_06", "tool_input": { "questions": [] } } },
+    { "at": 52000, "event": { "session_id": "replay-cc-1", "transcript_path": "$REPLAY/claude-transcript.jsonl", "cwd": "Z:\\replay\\web", "hook_event_name": "StopFailure", "error": "rate_limit" } },
+    { "at": 60000, "do": "stale" },
+    { "at": 7252001, "do": "stale" },
+    { "at": 9052002, "do": "hide", "min": 30 },
+    { "at": 9100000, "event": { "session_id": "replay-cc-1", "cwd": "Z:\\replay\\web", "hook_event_name": "SessionEnd", "reason": "prompt_input_exit" } }
+  ]
+}

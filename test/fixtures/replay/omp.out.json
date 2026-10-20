@@ -1,0 +1,901 @@
+[
+  {
+    "at": 1000,
+    "event": "SessionStart",
+    "message": {
+      "agent": "omp",
+      "mood": "idle",
+      "project": "omp",
+      "react": "wave",
+      "say": {
+        "key": "say.hello"
+      },
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "wave",
+        "say": {
+          "key": "say.hello",
+          "vars": {}
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 1000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "idle",
+        "name": "",
+        "project": "omp",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "omp",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "task": "Change hi to bye in a.txt"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 2000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2500,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "omp",
+      "detail": "Read",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "step": {
+        "key": "step.read",
+        "vars": {
+          "file": "a.txt"
+        }
+      },
+      "toolId": "call_1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 2500,
+        "detail": "Read",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.read",
+          "vars": {
+            "file": "a.txt"
+          }
+        },
+        "stepSince": 2500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 2700,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "omp",
+      "detail": "Read",
+      "event": "tool-done",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "toolId": "call_1"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 2700,
+        "detail": "Read",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 2700,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3000,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "omp",
+      "detail": "Edit",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "step": {
+        "key": "step.edit",
+        "vars": {
+          "file": "a.txt"
+        }
+      },
+      "toolId": "call_2"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 3000,
+        "detail": "Edit",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.edit",
+          "vars": {
+            "file": "a.txt"
+          }
+        },
+        "stepSince": 3000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 3500,
+    "event": "PostToolUse",
+    "message": {
+      "agent": "omp",
+      "detail": "Edit",
+      "event": "tool-done",
+      "file": "Z:\\replay\\omp\\a.txt",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "toolId": "call_2"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 3500,
+        "detail": "Edit",
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 3500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 4000,
+    "event": "ApprovalRequested",
+    "message": {
+      "agent": "omp",
+      "detail": {
+        "key": "detail.approveInTerminal",
+        "vars": {
+          "what": {
+            "key": "step.command",
+            "vars": {
+              "what": "rm -rf build"
+            }
+          }
+        }
+      },
+      "mood": "waiting",
+      "project": "omp",
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Change hi to bye in a.txt"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 4000,
+        "detail": {
+          "key": "detail.approveInTerminal",
+          "vars": {
+            "what": {
+              "key": "step.command",
+              "vars": {
+                "what": "rm -rf build"
+              }
+            }
+          }
+        },
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6000,
+    "event": "ApprovalResolved",
+    "message": {
+      "agent": "omp",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 6000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 3500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 6500,
+    "event": "PreToolUse",
+    "message": {
+      "agent": "omp",
+      "detail": "Bash",
+      "event": "tool-start",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "step": {
+        "key": "step.run",
+        "vars": {
+          "what": "Removing the build folder"
+        }
+      },
+      "toolId": "call_3"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 6500,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.run",
+          "vars": {
+            "what": "Removing the build folder"
+          }
+        },
+        "stepSince": 6500,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7000,
+    "event": "PostToolUseFailure",
+    "message": {
+      "agent": "omp",
+      "detail": "Bash",
+      "event": "tool-failed",
+      "mood": "working",
+      "project": "omp",
+      "react": "failed",
+      "say": {
+        "key": "say.toolFailed",
+        "vars": {
+          "tool": "Bash"
+        }
+      },
+      "session": "replay-omp",
+      "toolId": "call_3"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": {
+        "react": "failed",
+        "say": {
+          "key": "say.toolFailed",
+          "vars": {
+            "tool": "Bash"
+          }
+        }
+      },
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 7000,
+        "detail": "Bash",
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 7000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 7500,
+    "event": "PermissionRequest",
+    "message": {
+      "agent": "omp",
+      "detail": {
+        "key": "detail.planToConfirm"
+      },
+      "mood": "waiting",
+      "project": "omp",
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "waiting",
+          "Change hi to bye in a.txt"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 7500,
+        "detail": {
+          "key": "detail.planToConfirm",
+          "vars": {}
+        },
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "waiting",
+        "name": "Change hi to bye in a.txt",
+        "project": "omp",
+        "reply": "",
+        "since": 2000,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "waiting",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 9000,
+    "event": "Stop",
+    "message": {
+      "agent": "omp",
+      "mood": "done",
+      "project": "omp",
+      "reply": "Done. Changed hi to bye.",
+      "session": "replay-omp",
+      "title": "Change a greeting"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "review",
+          "Change a greeting"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 7000
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 9000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "review",
+        "name": "Change a greeting",
+        "project": "omp",
+        "reply": "Done. Changed hi to bye.",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 7000
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "review",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 20000,
+    "changed": true,
+    "do": "seen",
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 20000,
+        "detail": "",
+        "error": null,
+        "files": 1,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "idle",
+        "name": "Change a greeting",
+        "project": "omp",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 7000
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 21000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "omp",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "task": "Run it again"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 21000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change a greeting",
+        "project": "omp",
+        "reply": "",
+        "since": 21000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 21000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 22000,
+    "event": "StopFailure",
+    "message": {
+      "agent": "omp",
+      "error": "Connection error.",
+      "mood": "error",
+      "project": "omp",
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [
+        [
+          "error",
+          "Change a greeting"
+        ]
+      ],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 1000
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 22000,
+        "detail": "",
+        "error": "Connection error.",
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "error",
+        "name": "Change a greeting",
+        "project": "omp",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": 1000
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "error",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 23000,
+    "event": "UserPromptSubmit",
+    "message": {
+      "agent": "omp",
+      "event": "turn-start",
+      "mood": "working",
+      "project": "omp",
+      "session": "replay-omp",
+      "task": "Once more please"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 1,
+      "workedMs": 0
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 23000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "working",
+        "name": "Change a greeting",
+        "project": "omp",
+        "reply": "",
+        "since": 23000,
+        "step": {
+          "key": "step.thinking",
+          "vars": {}
+        },
+        "stepSince": 23000,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "working",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 24000,
+    "event": "Interrupt",
+    "message": {
+      "agent": "omp",
+      "event": "turn-end",
+      "mood": "idle",
+      "project": "omp",
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 1000
+    },
+    "sessions": [
+      {
+        "agent": "omp",
+        "at": 24000,
+        "detail": "",
+        "error": null,
+        "files": 0,
+        "id": "replay-omp",
+        "jump": false,
+        "mood": "idle",
+        "name": "Change a greeting",
+        "project": "omp",
+        "reply": "",
+        "since": null,
+        "step": null,
+        "stepSince": null,
+        "todo": null,
+        "took": null
+      }
+    ],
+    "shown": {
+      "id": "replay-omp",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 1
+    }
+  },
+  {
+    "at": 25000,
+    "event": "SessionEnd",
+    "message": {
+      "agent": "omp",
+      "event": "session-end",
+      "mood": "idle",
+      "project": "omp",
+      "session": "replay-omp"
+    },
+    "outcome": {
+      "alerts": [],
+      "changed": true,
+      "react": null,
+      "turns": 0,
+      "workedMs": 0
+    },
+    "sessions": [],
+    "shown": {
+      "id": "",
+      "mood": "idle",
+      "others": 0,
+      "sessions": 0
+    }
+  }
+]
