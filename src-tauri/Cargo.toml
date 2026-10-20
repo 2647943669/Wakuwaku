@@ -16,11 +16,12 @@ tauri-build = { version = "2", features = [] }
 # rustc is given its files by paths relative to it (one outside it gets
 # whole paths, which go into the exe's panic messages).
 [workspace]
-members = [".", "crates/agent-core"]
-default-members = [".", "crates/agent-core"]
+members = [".", "crates/agent-core", "crates/agent-hub"]
+default-members = [".", "crates/agent-core", "crates/agent-hub"]
 
 [dependencies]
 agent-core = { path = "crates/agent-core" }
+agent-hub = { path = "crates/agent-hub" }
 # macos-private-api: her windows see-through on macOS (tauri.conf.json
 # macOSPrivateApi); nothing elsewhere.
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset", "macos-private-api"] }

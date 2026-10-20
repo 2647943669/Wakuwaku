@@ -430,11 +430,26 @@ where
         // sending the body
         if !do_not_send_body {
             match transfer_encoding {
+                // Wakuwaku: each piece the body gives is sent at once as a
+                // chunk of its own and the connection flushed, so a stream
+                // (Server-Sent Events) reaches its reader as it is written;
+                // 0.12.0's Encoder gathered 8 KB first, and nothing flushed
+                // the connection's buffer till the body ended.
                 Some(TransferEncoding::Chunked) => {
-                    use chunked_transfer::Encoder;
-
-                    let mut writer = Encoder::new(writer);
-                    io::copy(&mut reader, &mut writer)?;
+                    let mut piece = vec![0u8; 8192];
+                    loop {
+                        let n = match reader.read(&mut piece) {
+                            Ok(0) => break,
+                            Ok(n) => n,
+                            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                            Err(e) => return Err(e),
+                        };
+                        write!(writer, "{:x}\r\n", n)?;
+                        writer.write_all(&piece[..n])?;
+                        writer.write_all(b"\r\n")?;
+                        writer.flush()?;
+                    }
+                    writer.write_all(b"0\r\n\r\n")?;
                 }
 
                 Some(TransferEncoding::Identity) => {

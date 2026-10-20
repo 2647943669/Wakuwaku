@@ -137,6 +137,9 @@ pub struct Shared {
     pub win: Mutex<pet::Win>,
     pub island: Mutex<island::Island>,
     pub asks: Mutex<asks::Asks<Responder>>,
+    // The agents' sessions and events, for other apps on this machine
+    // (agent-hub, server.rs /v1).
+    pub hub: agent_hub::Hub,
     // Plugins in the island (widgets.rs), and what today has seen.
     pub widgets: Mutex<widgets::Widgets>,
     pub today: Mutex<widgets::Today>,
@@ -1381,7 +1384,7 @@ fn zcode_hook(port: u16, name: &str) {
 // running them), by its Claude Code bridge through its PowerShell, in its sandbox: the event
 // handed to her port and let go. As a session starts or a turn begins it
 // waits for her answer instead (some ms), this connection held while she
-// looks up where the session runs from this process (server.rs chain_for:
+// looks up where the session runs from this process (server.rs caller_of:
 // in its sandbox it may not open the processes above itself). It never
 // starts her: she would run in DSH's sandbox (a low-integrity,
 // write-restricted token) and could keep nothing. Nothing printed: the
@@ -1705,6 +1708,13 @@ fn main() {
             notify::register(&dir);
 
             let today = widgets::Today::load(&dir, &widgets::local_date());
+            // The hub's token in her data folder; one she could not keep there
+            // is hers alone this run, and /v1 asks for it of everybody.
+            let hub_folder = dir.join("agent-hub");
+            let (hub, hub_failed) = match agent_hub::Hub::open(&hub_folder, now_ms()) {
+                Ok(hub) => (hub, None),
+                Err(e) => (agent_hub::Hub::with_token(agent_hub::new_token(), hub_folder.join("token"), now_ms()), Some(e)),
+            };
             let sh = Arc::new(Shared {
                 app: app.handle().clone(),
                 is_logging: dir.join("debug.on").exists(),
@@ -1715,6 +1725,7 @@ fn main() {
                 win: Mutex::new(pet::Win::default()),
                 island: Mutex::new(island::Island::default()),
                 asks: Mutex::new(asks::Asks::default()),
+                hub,
                 widgets: Mutex::new(widgets::Widgets::default()),
                 plugins: Mutex::new(plugins::Runner::default()),
                 mail: Mutex::new(mail::Runner::default()),
@@ -1742,6 +1753,9 @@ fn main() {
             // Her requests to the web the way the General page says (proxy.rs).
             proxy::set_web(&sh.setting("netProxy"));
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
+            if let Some(e) = hub_failed {
+                sh.log(&format!("agent-hub: its token not kept in her data folder ({e}): /v1 serves nobody this run"));
+            }
             let cleared = cleared.as_ref().map(|note| format!("; the mark of her last quit taken away ({note})")).unwrap_or_default();
             sh.log(&format!("started by: {started_by}{cleared}"));
             sh.log(&format!("displays: {}", sh.screens().describe()));
@@ -1951,6 +1965,8 @@ fn main() {
                         let mut changed = ticker.pet.lock().unwrap().tick(now, hold);
                         if n % 120 == 0 {
                             changed |= ticker.pet.lock().unwrap().check_stale(now, hold);
+                            // The hub's sessions the same, the apps listening told.
+                            ticker.hub.tick(now);
                         }
                         changed |= ticker.pet.lock().unwrap().hide_quiet(now, hide);
                         if changed {

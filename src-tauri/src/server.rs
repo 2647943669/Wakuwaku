@@ -2,7 +2,9 @@
 //
 //   GET  /health       { ok, app, runtime, state, ready: { pet, island }, waiting }; with
 //                      WAKUWAKU_DEBUG=1, the windows and settings too
-//   POST /hook         a Claude Code hook event; answers {}, or for a prompt the person's answer
+//   POST /hook         a Claude Code hook event; answers {} as soon as it is read, then
+//                      takes it (take, one after another in the order they came), or
+//                      for a prompt answers with the person's answer
 //                      ?agent=codex: a Codex one, handed on by this program (main.rs codex_hook)
 //                      ?agent=agy, ?agent=zcode, ?agent=reasonix: the same for
 //                      Antigravity's, ZCode's and Reasonix's (main.rs agy_hook)
@@ -12,6 +14,11 @@
 //                      ?agent=opencode: an OpenCode event, from her plugin in it (events_opencode.rs)
 //                      ?agent=omp: an oh-my-pi one, from her extension inside omp
 //                      (integrations/omp/wakuwaku.ts, events_omp.rs)
+//   GET  /v1/info      the agents' sessions told to other apps on this machine (agent-hub,
+//   GET  /v1/sessions  its lib.rs says how): the hub; the sessions; each event as it comes
+//   GET  /v1/events    (Server-Sent Events). The last two take the token in her data
+//                      folder's agent-hub\token (Authorization: Bearer <token>); none is
+//                      served to a request whose Host is not this machine (is_local)
 //   POST /state        a message (state.rs)
 //   POST /widget       a widget for the island, from a script (widgets.rs)
 //   POST /come-home    started again while running: back into sight
@@ -26,11 +33,12 @@
 //                      ?wake=1: quit so that a session's hook may start her again
 use std::io::Read;
 use std::path::Path;
+use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tauri::Manager;
-use tiny_http::{Header, Request, Response, Server};
+use tiny_http::{Header, Request, Response, Server, StatusCode};
 
 use agent_core::event::{Agent, AgentEvent};
 
@@ -42,6 +50,9 @@ const MAX_BODY: u64 = 16 * 1024 * 1024;
 // Codex waits on a prompt's hook before it shows its own dialog: the panel
 // holds one this long at most.
 const CODEX_ASK_MS: u64 = 60 * 1000;
+// The hooks' events answered and not yet taken, at most (serve): past them
+// the next waits to be read.
+const HOOKS_WAITING: usize = 256;
 
 // Which agent's hook the request comes from (?agent=codex, ?agent=agy,
 // ?agent=zcode, ?agent=dsh, ?agent=reasonix: handed on by this program,
@@ -78,7 +89,7 @@ fn quit_of(url: &str) -> (crate::data::Quit, &'static str) {
 // Claude Code's come from its own process, omp's from her extension inside
 // omp.exe, OpenCode's from her plugin in its service and DeepSeek Harness's
 // from her plugin in its Host (or, the old way, a hook in its sandbox):
-// those she finds from the other end of the connection (chain_for).
+// those she finds from the other end of the connection (caller_of).
 fn brings_chain(agent: Option<&str>) -> bool {
     matches!(agent, Some("codex" | "agy" | "zcode" | "reasonix"))
 }
@@ -113,19 +124,15 @@ pub(crate) fn read_event(agent: Option<&str>, mut event: Value) -> Option<Value>
 // What an event she took (read_event) says a session is doing, each agent's
 // read its own way (agent-core) at `now`: Antigravity's given the person's
 // words and its reply from its transcript first; a DSH prompt she does not
-// hold (`held`) to be approved in DSH. Also the replay tests' way in
-// (replay.rs).
+// hold (`held`) to be approved in DSH. Her message is made from it
+// (events.rs message_of), and the apps listening are sent it (agent-hub).
+// Also the replay tests' way in (replay.rs).
 pub(crate) fn event_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<AgentEvent> {
     let mut ev = agent_core::read(Agent::from_tag(agent), event, &agent_core::Context { now, dsh_home })?;
     if agent == Some("dsh") && event["hook_event_name"] == "PermissionRequest" && !held {
         agent_core::dsh::answered_in_dsh(&mut ev);
     }
     Some(ev)
-}
-
-// The message for it (events.rs), for her.
-pub(crate) fn message_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<Value> {
-    event_for(agent, event, held, now, dsh_home).map(|ev| events::message_of(&ev))
 }
 
 // True the first time a line comes; a few kinds are kept, and past them
@@ -150,9 +157,19 @@ pub fn serve(sh: Arc<Shared>, server: Server) {
             teller.log(&format!("http: {line}"));
         }
     });
+    // The hooks' events, taken one after another in the order they came
+    // (take), each answered first (handle): an agent waits on her no longer
+    // than it takes to read its event.
+    let (hooks, taken) = std::sync::mpsc::sync_channel::<Hook>(HOOKS_WAITING);
+    let taker = sh.clone();
+    crate::spawn_named("hooks", move || {
+        for hook in taken {
+            take(&taker, hook);
+        }
+    });
     crate::spawn_named("server", move || {
         for req in server.incoming_requests() {
-            handle(&sh, req, is_debug);
+            handle(&sh, req, is_debug, &hooks);
         }
     });
 }
@@ -160,6 +177,20 @@ pub fn serve(sh: Arc<Shared>, server: Server) {
 fn reply(req: Request, code: u16, body: Value) {
     let header = Header::from_bytes("content-type", "application/json").expect("a valid header");
     let _ = req.respond(Response::from_string(body.to_string()).with_status_code(code).with_header(header));
+}
+
+// A stream of the hub's events answered (GET /v1/events): each sent as it
+// comes (a chunk of its own, vendor/tiny_http/README.md), for as long as
+// the client reads, on a thread of its own; it ends as the client goes (a
+// write fails, at the next event or ping) or the hub lets it go.
+fn stream(req: Request, events: agent_hub::Events) {
+    let headers = vec![
+        Header::from_bytes("content-type", "text/event-stream").expect("a valid header"),
+        Header::from_bytes("cache-control", "no-cache").expect("a valid header"),
+    ];
+    crate::spawn_named("hub-events", move || {
+        let _ = req.respond(Response::new(StatusCode(200), headers, events, None, None));
+    });
 }
 
 fn read_json(req: &mut Request) -> Option<Value> {
@@ -183,10 +214,22 @@ fn read_json(req: &mut Request) -> Option<Value> {
 // (wakuwaku ← pwsh ← runner ← runner ← host ← DeepSeek Harness.exe, seen
 // 2026-10-16). Either way the chain is the app's, the outermost by the
 // processes' list.
-fn chain_for(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> Option<jump::Chain> {
+//
+// Who sent it is found while the sender is there (caller_of), before the
+// hook is answered: the process on the other end of the connection, from
+// the TCP table, and for DSH the app above it, before the old bridge's
+// hook and the runners under it are gone. Its chain after (chain_of_caller).
+enum Caller {
+    // The chain its hook command brought.
+    Brought(jump::Chain),
+    // The process it came from (DSH's: the app's outermost).
+    Process(u32),
+}
+
+fn caller_of(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> Option<Caller> {
     if brings_chain(agent) {
         let chain = jump::chain_from_json(event.get(jump::CODEX_CHAIN));
-        return (!chain.is_empty()).then_some(chain);
+        return (!chain.is_empty()).then_some(Caller::Brought(chain));
     }
     let session = event.get("session_id").and_then(Value::as_str).unwrap_or("");
     let is_turn = matches!(event["hook_event_name"].as_str(), Some("UserPromptSubmit" | "SessionStart"));
@@ -194,19 +237,138 @@ fn chain_for(sh: &Shared, req: &Request, event: &Value, agent: Option<&str>) -> 
         return None;
     }
     let client = jump::client_of(req.remote_addr()?.port(), sh.port)?;
-    let chain = match agent {
-        Some("opencode") => {
+    Some(Caller::Process(if agent == Some("dsh") { jump::outermost_of(client, "DeepSeek Harness.exe") } else { client }))
+}
+
+fn chain_of_caller(caller: Caller, event: &Value, agent: Option<&str>) -> Option<jump::Chain> {
+    let chain = match caller {
+        Caller::Brought(chain) => chain,
+        Caller::Process(client) if agent == Some("opencode") => {
             let cwd = event.get("cwd").and_then(Value::as_str).unwrap_or("");
             let hints = [event.get("session_title").and_then(Value::as_str).unwrap_or(""), if cwd.is_empty() { "" } else { events::base(cwd) }];
             jump::front_chain(client, &hints)
         }
-        Some("dsh") => jump::chain_of(jump::outermost_of(client, "DeepSeek Harness.exe")),
-        _ => jump::chain_of(client),
+        Caller::Process(pid) => jump::chain_of(pid),
     };
     (!chain.is_empty()).then_some(chain)
 }
 
-fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
+// A hook event read and answered (handle), for the hooks' thread (take); a
+// prompt's request kept, to be answered as the person does (or at once
+// when it is not held).
+pub struct Hook {
+    agent: Option<&'static str>,
+    event: Value,
+    is_prompt: bool,
+    caller: Option<Caller>,
+    req: Option<Request>,
+}
+
+// What a hook's event does, in the order they came (serve): the session's
+// message for her, its event to the apps listening (agent-hub), a prompt
+// held for the person, prompts the terminal settled let go.
+fn take(sh: &Shared, hook: Hook) {
+    let Hook { agent, mut event, is_prompt, caller, req } = hook;
+    // A prompt held for the person's answer on her (below): known before
+    // its message, which for DSH's says where it is answered. Out of sight
+    // (her taskbar on another display counts: main.rs asks_seen), it is the
+    // terminal's at once.
+    let holds = is_prompt && sh.asks_seen();
+    let dsh_home = crate::connection::dsh_home();
+    let now = now_ms();
+    let ev = event_for(agent, &mut event, holds, now, &dsh_home);
+    if let Some(ev) = &ev {
+        sh.hub.publish(ev, now);
+    }
+    if agent == Some("agy") {
+        if let Some(line) = events_agy::log_line(&event) {
+            sh.log(&line);
+        }
+    }
+    if let Some(mut msg) = ev.map(|ev| events::message_of(&ev)) {
+        // Where the session runs, for going to its window (jump.rs);
+        // none for one going (a DSH subagent's too: events_dsh.rs whose).
+        let chain = if msg["event"] == "session-end" { None } else { caller.and_then(|c| chain_of_caller(c, &event, agent)) };
+        if agent == Some("dsh") {
+            if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &dsh_home) {
+                sh.log(&line);
+            }
+        }
+        if let Some(chain) = chain {
+            msg["chain"] = jump::chain_json(&chain);
+        }
+        sh.apply(&msg);
+    } else if agent == Some("dsh") {
+        // Her plugin's word as DSH loads it: said in her log, and the open
+        // Connect page tells it loaded (connection.rs dsh_view).
+        if let Some(line) = events_dsh::log_line(&event, None, &dsh_home) {
+            sh.log(&line);
+            sh.push_settings();
+        }
+    }
+    // A prompt holds the answer until the person picks on the pet, the
+    // terminal settles it, or time runs out.
+    if is_prompt && !holds {
+        sh.log("a prompt handed to the terminal: out of sight");
+    }
+    match req {
+        Some(req) if holds => {
+            let respond: Responder = Box::new(move |out: Option<Value>| match out {
+                Some(out) => reply(req, 200, if out.is_object() { out } else { json!({}) }),
+                None => drop(req),
+            });
+            let mut wait = sh.setting("promptWaitSec").as_u64().unwrap_or(290) * 1000;
+            if agent == Some("codex") {
+                wait = wait.min(CODEX_ASK_MS);
+            }
+            // DSH's in Claude Code's words, as the panel shows them.
+            let event = if agent == Some("dsh") { events_dsh::for_ask(&event) } else { event };
+            let added = sh.asks.lock().unwrap().add(event, respond, now_ms(), wait);
+            match added {
+                Ok(id) => {
+                    sh.log(&format!("prompt {id} waits on the person"));
+                    sh.push_asks();
+                }
+                Err(respond) => respond(Some(json!({}))),
+            }
+        }
+        req => {
+            let settled = sh.asks.lock().unwrap().seen(&event);
+            if !settled.is_empty() {
+                for id in settled {
+                    sh.log(&format!("prompt {id} settled in the terminal ({})", event["hook_event_name"].as_str().unwrap_or("?")));
+                }
+                sh.push_asks();
+            }
+            // A prompt not held: the terminal's.
+            if let Some(req) = req {
+                reply(req, 200, json!({}));
+            }
+        }
+    }
+}
+
+// A header's value.
+fn header<'a>(req: &'a Request, name: &'static str) -> Option<&'a str> {
+    req.headers().iter().find(|h| h.field.equiv(name)).map(|h| h.value.as_str())
+}
+
+fn query(url: &str) -> &str {
+    url.split_once('?').map_or("", |(_, q)| q)
+}
+
+// Whether a request names this machine as its host: a web page's own name
+// made to point here (DNS rebinding) does not, and is not served /v1.
+fn is_local(req: &Request) -> bool {
+    is_local_host(header(req, "Host").unwrap_or(""))
+}
+
+fn is_local_host(host: &str) -> bool {
+    let name = host.rsplit_once(':').filter(|(_, port)| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit())).map_or(host, |(name, _)| name);
+    matches!(name.to_ascii_lowercase().as_str(), "127.0.0.1" | "localhost" | "[::1]")
+}
+
+fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool, hooks: &SyncSender<Hook>) {
     let path = req.url().split('?').next().unwrap_or("").to_string();
     let method = req.method().as_str().to_string();
     match (method.as_str(), path.as_str()) {
@@ -218,7 +380,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             }
             let agent = agent_of(req.url());
             // One that is nothing to her is answered at once.
-            let Some(mut event) = read_event(agent, event) else { return reply(req, 200, json!({})) };
+            let Some(event) = read_event(agent, event) else { return reply(req, 200, json!({})) };
             let seen = match agent {
                 Some("codex") => &sh.codex_seen,
                 Some("agy") => &sh.agy_seen,
@@ -233,79 +395,40 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool) {
             if !(agent == Some("dsh") && events_dsh::is_loaded(&event)) {
                 seen.store(now_ms(), std::sync::atomic::Ordering::SeqCst);
             }
-            let is_codex = agent == Some("codex");
-            // A prompt held for the person's answer on her (below): known
-            // before its message, which for DSH's says where it is answered.
-            // Out of sight (her taskbar on another display counts: main.rs
-            // asks_seen), it is the terminal's at once. Reasonix's is not one
-            // to answer yet: its hook hands it on and is gone (main.rs
-            // reasonix_hook), so she only waits with it
+            // A prompt, which she may hold for the person's answer (take).
+            // Reasonix's is not one to answer yet: its hook hands it on and
+            // is gone (main.rs reasonix_hook), so she only waits with it
             // (zhoupengjie/Wakuwaku#60, phase 1); nor is one of DSH's her
             // plugin cannot take an answer to.
             let is_prompt = event["hook_event_name"] == "PermissionRequest" && !answers_none(agent, &event);
-            let holds = is_prompt && sh.asks_seen();
-            let dsh_home = crate::connection::dsh_home();
-            let msg = message_for(agent, &mut event, holds, now_ms(), &dsh_home);
-            if agent == Some("agy") {
-                if let Some(line) = events_agy::log_line(&event) {
-                    sh.log(&line);
+            let caller = caller_of(sh, &req, &event, agent);
+            // Answered now, and taken after (any other the same): a prompt
+            // kept to be answered there.
+            let req = if is_prompt {
+                Some(req)
+            } else {
+                reply(req, 200, json!({}));
+                None
+            };
+            // The hooks' thread gone (it never ends): a prompt's answered.
+            if let Err(gone) = hooks.send(Hook { agent, event, is_prompt, caller, req }) {
+                if let Some(req) = gone.0.req {
+                    reply(req, 200, json!({}));
                 }
             }
-            if let Some(mut msg) = msg {
-                // Where the session runs, for going to its window (jump.rs);
-                // none for one going (a DSH subagent's too: events_dsh.rs whose).
-                let chain = if msg["event"] == "session-end" { None } else { chain_for(sh, &req, &event, agent) };
-                if agent == Some("dsh") {
-                    if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &dsh_home) {
-                        sh.log(&line);
-                    }
-                }
-                if let Some(chain) = chain {
-                    msg["chain"] = jump::chain_json(&chain);
-                }
-                sh.apply(&msg);
-            } else if agent == Some("dsh") {
-                // Her plugin's word as DSH loads it: said in her log, and the
-                // open Connect page tells it loaded (connection.rs dsh_view).
-                if let Some(line) = events_dsh::log_line(&event, None, &dsh_home) {
-                    sh.log(&line);
-                    sh.push_settings();
-                }
-            }
-            // A prompt holds the answer until the person picks on the pet, the
-            // terminal settles it, or time runs out.
-            if is_prompt && !holds {
-                sh.log("a prompt handed to the terminal: out of sight");
-            }
-            if holds {
-                let respond: Responder = Box::new(move |out: Option<Value>| match out {
-                    Some(out) => reply(req, 200, if out.is_object() { out } else { json!({}) }),
-                    None => drop(req),
-                });
-                let mut wait = sh.setting("promptWaitSec").as_u64().unwrap_or(290) * 1000;
-                if is_codex {
-                    wait = wait.min(CODEX_ASK_MS);
-                }
-                // DSH's in Claude Code's words, as the panel shows them.
-                let event = if agent == Some("dsh") { events_dsh::for_ask(&event) } else { event };
-                let added = sh.asks.lock().unwrap().add(event, respond, now_ms(), wait);
-                match added {
-                    Ok(id) => {
-                        sh.log(&format!("prompt {id} waits on the person"));
-                        sh.push_asks();
-                    }
-                    Err(respond) => respond(Some(json!({}))),
-                }
-                return;
-            }
-            let settled = sh.asks.lock().unwrap().seen(&event);
-            if !settled.is_empty() {
-                for id in settled {
-                    sh.log(&format!("prompt {id} settled in the terminal ({})", event["hook_event_name"].as_str().unwrap_or("?")));
-                }
-                sh.push_asks();
-            }
-            reply(req, 200, json!({}))
+        }
+        // The agents' sessions, for other apps on this machine (agent-hub).
+        ("GET", "/v1/info") if is_local(&req) => reply(req, 200, sh.hub.info("wakuwaku", env!("CARGO_PKG_VERSION"))),
+        ("GET", "/v1/sessions" | "/v1/events") if is_local(&req) && !sh.hub.allows(header(&req, "Authorization")) => {
+            reply(req, 401, json!({ "error": "the hub's token is asked for: Authorization: Bearer <token>", "tokenFile": sh.hub.token_file() }))
+        }
+        ("GET", "/v1/sessions") if is_local(&req) => {
+            let body = sh.hub.sessions(query(req.url()));
+            reply(req, 200, body)
+        }
+        ("GET", "/v1/events") if is_local(&req) => {
+            let events = sh.hub.events(query(req.url()), header(&req, "Last-Event-ID"));
+            stream(req, events);
         }
         // A widget from a script (widgets.rs).
         ("POST", "/widget") => match read_json(&mut req) {
@@ -518,6 +641,59 @@ mod tests {
         let answer = asker.join().unwrap().unwrap();
         assert_eq!(answer.matches("HTTP/1.1 200").count(), 2, "{answer}");
         assert!(answer.ends_with("two"), "{answer}");
+    }
+
+    // /v1 is served to a request that names this machine as its host, not to
+    // a web page's own name made to point here.
+    #[test]
+    fn v1_is_for_this_machine_by_name() {
+        for host in ["127.0.0.1", "127.0.0.1:47213", "localhost:47213", "LOCALHOST", "[::1]:47213", "[::1]"] {
+            assert!(is_local_host(host), "{host}");
+        }
+        for host in ["", "evil.example:47213", "127.0.0.1.evil.example", "localhost.evil.example:80", "127.0.0.2:47213", "localhost:", "[::1]x"] {
+            assert!(!is_local_host(host), "{host}");
+        }
+    }
+
+    // An event of the hub's reaches a client of /v1/events as it is
+    // published, not when the stream ends (tiny_http sent a chunked body's
+    // 8 KB at a time, flushed at its end: vendor/tiny_http/README.md).
+    #[test]
+    fn an_event_reaches_its_reader_as_it_comes() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::time::{Duration, Instant};
+        use agent_core::event::Kind;
+        let server = Server::http(("127.0.0.1", 0)).unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        let reader = std::thread::spawn(move || -> std::io::Result<(String, Vec<String>)> {
+            let mut conn = std::net::TcpStream::connect(("127.0.0.1", port))?;
+            conn.set_read_timeout(Some(Duration::from_secs(5)))?;
+            conn.write_all(b"GET /v1/events HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")?;
+            let (mut head, mut lines) = (String::new(), Vec::new());
+            for line in BufReader::new(conn).lines() {
+                let line = line?;
+                if line.starts_with("data: ") {
+                    lines.push(line);
+                    break;
+                }
+                if lines.is_empty() && head.lines().last() != Some("") {
+                    head.push_str(&line);
+                    head.push('\n');
+                }
+            }
+            Ok((head, lines))
+        });
+        let hub = agent_hub::Hub::with_token("t".repeat(32), "Z:\\agent-hub\\token".into(), 1);
+        let req = server.recv_timeout(Duration::from_secs(5)).unwrap().expect("the stream asked for");
+        stream(req, hub.events("", None));
+        let t = Instant::now();
+        let ev = AgentEvent { agent: Agent::Claude, session: "a".into(), within: false, cwd: Some("Z:\\p".into()), turn: None, title: None, reply: None, kind: Kind::Working };
+        hub.publish(&ev, 2_000);
+        let (head, lines) = reader.join().unwrap().unwrap();
+        assert!(t.elapsed() < Duration::from_secs(2), "came at once");
+        assert!(head.starts_with("HTTP/1.1 200") && head.to_lowercase().contains("content-type: text/event-stream") && head.to_lowercase().contains("transfer-encoding: chunked"), "{head}");
+        let data: Value = serde_json::from_str(&lines[0]["data: ".len()..]).unwrap();
+        assert_eq!((data["seq"].as_u64(), data["type"].as_str(), data["session"].as_str()), (Some(1), Some("working"), Some("a")));
     }
 
     #[test]

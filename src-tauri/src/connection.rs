@@ -1675,7 +1675,7 @@ const DSH_PRE_TOOLS: &str = "ask_user_question";
 // needs no quoting, else as PowerShell calls a quoted program; its output
 // piped away, so that PowerShell waits for it (it does not for a program
 // with a window of its own, as this one is, and was gone before her server
-// could see where the hook ran: server.rs chain_for).
+// could see where the hook ran: server.rs caller_of).
 pub fn dsh_command(exe: &str, event: &str) -> String {
     let is_plain = !exe.is_empty() && exe.chars().all(|c| c.is_ascii_alphanumeric() || "\\/:._-".contains(c));
     if is_plain {
