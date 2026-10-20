@@ -15,7 +15,7 @@
 //   DeepSeek H.   as Claude Code's, the hook on the other end of the
 //                 connection (its sandbox keeps it from looking above
 //                 itself): the outermost process above it, the app
-//                 (server.rs chain_for)
+//                 (server.rs caller_of)
 // Going there, while the session's own process (the chain's first) still
 // runs: the first process up the chain, still the same one, that has
 // a window of its own (or a console window, kept by a conhost under it);
@@ -232,7 +232,7 @@ mod imp {
     // The outermost process above one, by the processes' list (their numbers
     // and parents): the app a hook runs under, past the shell and the hook
     // runners that are gone a moment later (DeepSeek Harness's: server.rs
-    // chain_for). The app (its exe's name, `app`) ends the climb at its
+    // caller_of). The app (its exe's name, `app`) ends the climb at its
     // outermost process of that name (an Electron app's helpers bear its
     // name too): what started it (a terminal, a script, Explorer) is not
     // where the session is (DSH started from a shell went to the shell's

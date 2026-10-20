@@ -29,7 +29,7 @@ fn short(id: &str) -> String {
 }
 
 // A line for her log as a session starts or a turn begins or ends: what came,
-// and whether she found the app it runs in (server.rs chain_for), for
+// and whether she found the app it runs in (server.rs caller_of), for
 // telling why its window can't be reached; a subagent's, whose it is.
 pub fn log_line(e: &Value, found: Option<u32>, home: &Path) -> Option<String> {
     let name = s(e, "hook_event_name");

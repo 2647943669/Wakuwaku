@@ -78,7 +78,7 @@ src-tauri/
     detach.rs             她启动的进程：更新、重启、守护进程按普通方式启动；hook 拉起她、启动时自查要脱离启动者的作业，作业不放行时才以资源管理器为父进程
   icons/                  exe、窗口、托盘和通知的图标（npm 不需要：scripts/make-icons.js 用 ImageMagick 画）
   capabilities/           页面能用的 Tauri 权限：两个窗口都要列进去
-  vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic（见 README.md）
+  vendor/tiny_http/       打过补丁的 tiny_http 0.12.0：连接出错时丢掉这个连接，不 panic；没有长度的正文读到一段就发一段（/v1/events 要）（见 README.md）
   crates/agent-core/      各家 agent 的会话在做什么，只从 agent 发来的事件和它留下的文件读，不管怎么显示（不依赖 Tauri、窗口、端口）：
                           每家的事件读成 AgentEvent（event.rs：会话开始和结束、一轮开始、工具开始/结束/失败、等人（批准在哪儿批、提问、计划、
                           MCP 要输入）、回到工作、一轮完成/失败/被停下，带着工具调用的名字、Claude Code 说法的输入、原始输入、改了哪个文件、待办的变化），
@@ -86,6 +86,8 @@ src-tauri/
                           reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；asks.rs 是等人回答的确认请求（面板要的数据、各家 hook 要的回复、什么时候算在别处答过、超时）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半，她自己的心情、看过没有、留多久在 state.rs；以后的 /v1 用它）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
                           补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、target、profile 和 patch 都还在那里；crate 放在它下面，
                           rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
+  crates/agent-hub/       把会话告诉本机别的应用（编辑器、脚本）：agent-core 的 registry、每个事件编号后留最近 512 个（最多 8 MB）、订阅的人各自的队列
+                          （读不动的放掉，不拖住 hook）、本机令牌、SSE 的写法；不带 HTTP 服务器，/v1 的请求由 server.rs 接（见「给别的应用：/v1」）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装时写上端口放进 OpenCode 的插件文件夹）
 integrations/omp/         omp 的扩展 wakuwaku.ts（connection.rs 填上端口、程序路径后写进 omp 的 agent 文件夹）
@@ -109,7 +111,7 @@ art/                      美术和调查资料，只在本地（只有 art/READ
 cd src-tauri
 cargo run                 # 调试版：有控制台窗口
 cargo build --release     # target/release/wakuwaku.exe：单个文件，约 5 MB，没有控制台
-cargo test                # Rust 单元测试（她和 src-tauri/crates/agent-core 两个 crate，含重放测试）
+cargo test --workspace    # Rust 单元测试（她和 src-tauri/crates 下的 agent-core、agent-hub，含重放测试）
 cd .. && node --test "test/*.test.js"   # 页面的单元测试
 pwsh scripts/build-release.ps1 [-Out <文件夹>]   # 发布用的 exe：wakuwaku-v<版本>-windows-x64.exe，不带本机路径
 ```
@@ -241,7 +243,10 @@ hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块�
 | 请求 | 说明 |
 | --- | --- |
 | `GET /health` | `{ ok, app: "wakuwaku", runtime: "tauri", state, ready: { pet, island }, waiting }`：`ready` 是两个页面各自说过就绪（`pet_ready`）没有，`waiting` 是另一份她占着任务栏、这份在等（这时不建岛的窗口，`island` 一直是 false）；调试模式下还有 `window`、`island`、`settings`。测试里启动一份副本后等 `ready`，别只等端口或日志里的某一行：起来一两秒内就被杀掉或 `/quit` 的副本，日志停在 `started … after logon`，两个页面都还没就绪，看着像起不来（2026-10-16 测试虚拟机里"新复制的 exe 两次启动都没有页面"就是这样：等日志的那段脚本多了一个 `}`，VM 的代理回了 `ERROR: …`，被 `Out-Null` 吞掉，没等就杀了、退了；同一份 exe、同一个数据目录，等 15 秒的第三次就好了） |
-| `POST /hook` | Claude Code 的 hook 事件；一般立刻回 `{}`，`PermissionRequest` 等面板上的回答。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来），`?agent=opencode` 的是 OpenCode 里她的插件发来的（见 OpenCode 一节），`?agent=omp` 的是 omp 里她的扩展发来的 |
+| `POST /hook` | Claude Code 的 hook 事件；读完就回 `{}`，再交给 `hooks` 线程按到达的顺序处理（`server.rs` 的 `take`：她的消息、发给 /v1 的订阅者、确认请求），agent 不等她处理完；`PermissionRequest` 等面板上的回答。是哪个进程发来的（找会话窗口用，`caller_of`）在回复之前查好：回复以后发来的进程可能就退出了（DSH 旧的 hook 桥）。正文上限 16 MB（Edit 的 PostToolUse 带着改之前的整个文件）。带 `?agent=codex` 的是 Codex 的事件（由 `--wakuwaku-codex-hook` 转来），`?agent=opencode` 的是 OpenCode 里她的插件发来的（见 OpenCode 一节），`?agent=omp` 的是 omp 里她的扩展发来的 |
+| `GET /v1/info` | 给本机别的应用的会话接口（见下一节）：API 版本、能给什么、在哪个应用里、什么时候起来的、最新事件的编号、令牌文件在哪儿。不用令牌 |
+| `GET /v1/sessions` | 现在有哪些会话（agent-core 的 registry）；`?cwd=<文件夹>`、`?agent=codex,dsh` 筛选。要令牌 |
+| `GET /v1/events` | Server-Sent Events：每个 AgentEvent 带编号和时间，一来就发；`?since=<n>` 或 `Last-Event-ID` 先补上漏掉的。要令牌 |
 | `POST /state` | 一条消息 |
 | `POST /widget` | 岛上的一个插件（见"岛上的插件"）；回 `{ ok: true }`，或者 400 和 `{ error }` |
 | `POST /come-home` | 再次启动时用：她重新出现 |
@@ -249,6 +254,20 @@ hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块�
 | `POST /quit` | 像菜单里的「退出」一样退出（任务栏还回去），算主动退出：之后会话不再把她拉起来，直到她以别的方式启动（回 `{ ok, byChoice: true }`）；`?wake=1` 退出但会话可以再拉起她（`byChoice: false`）。换新版本时用（新的启动时清掉标记），别直接杀进程 |
 | `POST /debug/eval` | `{ page: "pet" \| "island", code }`：在页面里运行一段表达式，返回结果（可以是 Promise） |
 | `POST /debug/walk` | `{ dx, ms }`：立刻走一段 |
+
+## 给别的应用：/v1
+
+本机别的应用（以后的 Markdown 编辑器、脚本）想知道 agent 在做什么时，不用自己装 hook，问她的端口就行。会话和事件由 `crates/agent-hub` 管（`lib.rs` 开头写了每个接口），`server.rs` 只管 HTTP；同一套代码以后也编进编辑器，谁先占着 47213 谁当 hub。
+
+- **令牌**：`/v1/sessions` 和 `/v1/events` 要带 `Authorization: Bearer <令牌>`，令牌在数据目录的 `agent-hub\token`（第一次启动时生成，32 个十六进制字符，以后一直用它），文件在哪儿 `/v1/info` 会说。事件里有你问 agent 的话、Edit 前后的文件内容，没有令牌的话本机浏览器里的网页也能来读。另外 `Host` 不是 `127.0.0.1` / `localhost` / `[::1]` 的请求一概 404（防 DNS rebinding）。数据目录写不进去时令牌只在内存里，这次运行 /v1 谁也用不了（日志里有一行）。
+- **`/v1/info`**：`{ api: 1, hub, app: "wakuwaku", appVersion, boot, seq, capabilities: ["sessions", "events"], token: { header, file } }`。`boot` 是 hub 起来的时间（毫秒），变了就说明事件编号重新从 1 开始。
+- **`/v1/sessions`**：`{ boot, seq, sessions: [...] }`，每个会话是 registry 里的样子（`id`、`agent`、`cwd`、`project`、`title`、`prompt`、`status`（`idle` / `working` / `waiting` 带 `wait` / `done` 带 `edited` / `failed` 带 `error`）、`at`、`since`、`took`、`eventAt`、`turn`、`running`、`todos`、`files`、`reply`），最近变的在前。`?cwd=` 是那个文件夹和它下面的（斜杠方向、结尾的斜杠、Windows 上大小写都不管），`?agent=` 可以写几个，用逗号隔开。拿到的 `seq` 接着用 `/v1/events?since=<seq>`，中间一个都不丢。
+- **`/v1/events`**：`text/event-stream`，每个事件是 `id: <seq>`、`event: agent`、`data: <AgentEvent 的 JSON，多了 seq、at，cwd 没有时补上会话的>`；没事件时每 15 秒一行 `: ping`。`?since=<n>` 或断线重连时的 `Last-Event-ID` 先补上 n 之后留着的（最近 512 个，最多 8 MB：一个事件可能带着整个文件）；漏掉的比留着的多、或者 hub 重启过（编号对不上），先发一个 `event: reset`，客户端应该重新读 `/v1/sessions`。超时没说结束的会话被放弃、安静太久的会话被忘掉时发 `event: sessions`（不编号），也是重新读 `/v1/sessions`。一个订阅者积着 256 个没读就被放掉（流结束），不会拖住 hook。要 HTTP/1.1（分块发送；1.0 的客户端要等流结束才收到）。
+
+```bash
+curl http://127.0.0.1:47213/v1/info
+curl -N -H "Authorization: Bearer $(cat <数据目录>/agent-hub/token)" "http://127.0.0.1:47213/v1/events?cwd=D:/work/notes"
+```
 
 ## 在宠物上确认
 

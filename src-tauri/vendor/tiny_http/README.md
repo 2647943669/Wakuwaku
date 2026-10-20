@@ -48,6 +48,13 @@ What is changed, each marked `Wakuwaku:` in the code:
 
 - `src/lib.rs`: `#![allow(unused_imports, dead_code)]`, for 0.12.0's own
   warnings, which a path dependency shows on every build of hers.
+- `src/response.rs`, `raw_print`: a chunked body (one of no known length) is
+  sent a chunk for each piece its reader gives, the connection flushed after
+  each, so a stream reaches its reader as it is written: her `/v1/events`
+  (Server-Sent Events, agent-hub) writes an event at a time. 0.12.0 copied it
+  through chunked_transfer's `Encoder`, which gathers 8 KB a chunk, and
+  flushed nothing till the body ended. None of her other answers is chunked
+  (each has its length).
 
 Nothing else differs from 0.12.0. Should a tiny_http release mend these, the
 patch can go and `tiny_http` be that version.
