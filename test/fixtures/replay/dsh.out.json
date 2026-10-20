@@ -144,6 +144,7 @@
           "command": "Get-Content note.txt",
           "description": "Read note.txt"
         },
+        "own": "pwsh",
         "tool": "Bash"
       },
       "cwd": "Z:\\replay\\dsh-ws",
@@ -178,6 +179,7 @@
                 "command": "Get-Content note.txt",
                 "description": "Read note.txt"
               },
+              "own": "pwsh",
               "tool": "Bash"
             },
             "since": 2500
@@ -231,6 +233,10 @@
         "input": {
           "command": "Get-Content note.txt",
           "description": ""
+        },
+        "own": "pwsh",
+        "raw": {
+          "command": "Get-Content note.txt"
         },
         "tool": "Bash"
       },
@@ -313,8 +319,10 @@
           "call": {
             "id": "call_00_B",
             "input": {
+              "content": "hi\n",
               "file_path": "Z:\\replay\\dsh-ws\\copy.txt"
             },
+            "own": "write",
             "tool": "Write"
           }
         }
@@ -362,8 +370,10 @@
             "call": {
               "id": "call_00_B",
               "input": {
+                "content": "hi\n",
                 "file_path": "Z:\\replay\\dsh-ws\\copy.txt"
               },
+              "own": "write",
               "tool": "Write"
             }
           }
@@ -480,8 +490,10 @@
         "file": "Z:\\replay\\dsh-ws\\copy.txt",
         "id": "call_00_B",
         "input": {
+          "content": "hi\n",
           "file_path": "Z:\\replay\\dsh-ws\\copy.txt"
         },
+        "own": "write",
         "tool": "Write"
       },
       "cwd": "Z:\\replay\\dsh-ws",
@@ -692,6 +704,7 @@
         "input": {
           "file_path": "Z:\\replay\\dsh-ws\\notes.md"
         },
+        "own": "write",
         "tool": "Write"
       },
       "cwd": "Z:\\replay\\dsh-ws",
@@ -907,6 +920,7 @@
               "command": "Remove-Item build -Recurse",
               "description": "Remove the build folder"
             },
+            "own": "pwsh",
             "tool": "Bash"
           }
         }
@@ -961,6 +975,7 @@
                 "command": "Remove-Item build -Recurse",
                 "description": "Remove the build folder"
               },
+              "own": "pwsh",
               "tool": "Bash"
             }
           }
@@ -1083,6 +1098,10 @@
           "command": "Remove-Item build -Recurse",
           "description": ""
         },
+        "own": "pwsh",
+        "raw": {
+          "command": "Remove-Item build -Recurse"
+        },
         "tool": "Bash"
       },
       "cwd": "Z:\\replay\\dsh-ws",
@@ -1177,6 +1196,7 @@
             }
           ]
         },
+        "own": "todo_write",
         "todo": {
           "change": "set",
           "items": [

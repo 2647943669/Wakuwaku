@@ -122,6 +122,8 @@ test('a turn as DSH runs it, told in the words of its Claude Code bridge', async
   // The name as DSH gave it last; a file written whole cut short.
   assert.equal(told[2].session_title, 'Read and copy a note')
   assert.deepEqual([told[2].tool_name, told[2].tool_use_id, told[2].tool_input.file_path, told[2].tool_input.content.length], ['write', 'call_00_CKTB', 'C:\\w\\copy.txt', 2000])
+  // Cut short: said so, and it ends so (zhoupengjie/Wakuwaku#73).
+  assert.deepEqual([told[2].tool_input_truncated, told[2].tool_input.content.endsWith('…')], [true, true])
   assert.deepEqual([told[3].tool_response, told[3].is_error], ['<path>C:\\w\\copy.txt</path>', false])
   // The turn's last words, its text parts joined.
   assert.deepEqual([told[4].stop_hook_active, told[4].last_assistant_message], [false, 'Done — copy.txt\nhas `hi`.'])
@@ -199,6 +201,25 @@ test('its word as DSH loads it, and as it is let go', async () => {
   real.effects[0].dispose()
   await her.close()
   fs.rmSync(dir, { recursive: true, force: true })
+})
+
+test('an edit reaches her with its text whole, up to 64 KB (zhoupengjie/Wakuwaku#73)', async () => {
+  const her = await fakeHer()
+  const { make } = await load()
+  const dsh = fakeDsh()
+  const plugin = make(dsh.ctx, { port: her.port }, { dir: '' })
+  plugin.listen()
+  const agent = agentOf(session('session-edit'))
+  const long = 'a'.repeat(5000)
+  const edit = { name: 'edit', arguments: { file_path: 'C:\\w\\notes.md', old_string: long, new_string: `${long}b`, replace_all: false }, callId: 'call_e', agent }
+  dsh.on['tools/pre-execute'].fn(edit, () => NEXT)
+  const huge = { name: 'str_replace_editor', arguments: { command: 'str_replace', path: 'C:\\w\\notes.md', old_str: 'x'.repeat(70000), new_str: 'y' }, callId: 'call_h', agent }
+  dsh.on['tools/pre-execute'].fn(huge, () => NEXT)
+  await plugin.idle()
+  await her.close()
+  const [whole, cut] = her.got.map(g => g.event)
+  assert.deepEqual([whole.tool_input.old_string.length, whole.tool_input.new_string.length, whole.tool_input.replace_all, 'tool_input_truncated' in whole], [5000, 5001, false, false])
+  assert.deepEqual([cut.tool_input.old_str.length, cut.tool_input.old_str.endsWith('…'), cut.tool_input.new_str, cut.tool_input_truncated], [64 * 1024, true, 'y', true])
 })
 
 test('its own digest, the same with its lines ending LF or CRLF', async () => {

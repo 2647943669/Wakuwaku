@@ -117,8 +117,9 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 // The island's own animation of taking her in, before she counts as in.
 const ABSORB_MS: u64 = 380;
 
-// Her port, unless WAKUWAKU_PORT says another (a test's copy, mostly).
-const DEFAULT_PORT: u16 = 47213;
+// Her port, unless WAKUWAKU_PORT says another (a test's copy, mostly): the
+// agents' hub's (agent-hub PORT), where its other apps find it.
+const DEFAULT_PORT: u16 = agent_hub::PORT;
 
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)

@@ -88,15 +88,38 @@ function clip(text, max = MAX_TEXT) {
   return typeof text === 'string' && text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
-// A tool's arguments as sent: long texts (a file written whole) cut short.
-function trimmed(value, depth = 0) {
-  if (typeof value === 'string') return clip(value)
-  if (value === null || typeof value !== 'object') return value
-  if (depth > 3) return undefined
-  if (Array.isArray(value)) return value.slice(0, 20).map(v => trimmed(v, depth + 1))
-  const out = {}
-  for (const [key, v] of Object.entries(value).slice(0, 40)) out[key] = trimmed(v, depth + 1)
-  return out
+// An edit's text, which says where it changes a file (an app that follows
+// the agents shows it: zhoupengjie/Wakuwaku#73), kept up to this much; omp's
+// edit takes it under any of these names.
+const MAX_EDIT = 64 * 1024
+const EDIT_FIELDS = new Set(['old_string', 'new_string', 'old_text', 'new_text', 'oldText', 'newText'])
+
+// A tool's arguments as sent: long texts (a file written whole) cut short,
+// an edit's text up to MAX_EDIT; and whether anything was cut.
+function trimmed(args) {
+  let cut = false
+  const walk = (value, depth, key) => {
+    if (typeof value === 'string') {
+      const max = EDIT_FIELDS.has(key) ? MAX_EDIT : MAX_TEXT
+      if (value.length > max) cut = true
+      return clip(value, max)
+    }
+    if (value === null || typeof value !== 'object') return value
+    if (depth > 3) {
+      cut = true
+      return undefined
+    }
+    if (Array.isArray(value)) {
+      if (value.length > 20) cut = true
+      return value.slice(0, 20).map(v => walk(v, depth + 1, key))
+    }
+    const entries = Object.entries(value)
+    if (entries.length > 40) cut = true
+    const out = {}
+    for (const [k, v] of entries.slice(0, 40)) out[k] = walk(v, depth + 1, k)
+    return out
+  }
+  return { input: walk(args, 0, '') ?? {}, cut }
 }
 
 // The text of a message's content.
@@ -256,16 +279,17 @@ export default function wakuwaku(pi) {
   on('session_branch', (e, ctx) => void begin(ctx, 'resume'))
   on('before_agent_start', (e, ctx) => void tell(ctx, 'UserPromptSubmit', { prompt: clip(typeof e.prompt === 'string' ? e.prompt : '', 4000) }))
   on('tool_execution_start', (e, ctx) => {
-    const tool = { name: e.toolName || '', input: trimmed(e.args) ?? {}, intent: clip(e.intent || '', 200) }
+    const { input, cut } = trimmed(e.args)
+    const tool = { name: e.toolName || '', input, cut, intent: clip(e.intent || '', 200) }
     remember(e.toolCallId, tool)
-    void tell(ctx, 'PreToolUse', { tool_name: tool.name, tool_input: tool.input, tool_use_id: e.toolCallId || '', intent: tool.intent })
+    void tell(ctx, 'PreToolUse', { tool_name: tool.name, tool_input: tool.input, ...(cut ? { tool_input_truncated: true } : {}), tool_use_id: e.toolCallId || '', intent: tool.intent })
   })
   on('tool_execution_end', (e, ctx) => {
     const tool = S.tools.get(e.toolCallId) || { name: e.toolName || '', input: {}, intent: '' }
     S.tools.delete(e.toolCallId)
     const details = e.result?.details || {}
     const file = [details.path, details.resolvedPath].find(p => typeof p === 'string' && p)
-    const fields = { tool_name: e.toolName || tool.name, tool_input: tool.input, tool_use_id: e.toolCallId || '', intent: tool.intent }
+    const fields = { tool_name: e.toolName || tool.name, tool_input: tool.input, ...(tool.cut ? { tool_input_truncated: true } : {}), tool_use_id: e.toolCallId || '', intent: tool.intent }
     if (file) fields.file = file
     if (e.isError) fields.error = clip(textOf(e.result?.content), 400)
     void tell(ctx, e.isError ? 'PostToolUseFailure' : 'PostToolUse', fields)

@@ -70,7 +70,8 @@ mod tests {
         let m = message("session.tool.called", json!({ "tool": "patch", "input": { "patchText": patch } })).unwrap();
         assert_eq!(m["step"], json!({ "key": "step.edit", "vars": { "file": "hello.txt +1" } }));
         let m = message("session.tool.success", json!({ "tool": "patch", "input": { "patchText": patch } })).unwrap();
-        assert_eq!((m["detail"].as_str(), m["file"].as_str()), (Some("apply_patch"), Some("hello.txt")));
+        // Its first file by its whole path (agent-core keeps every one: zhoupengjie/agent-hub#2).
+        assert_eq!((m["detail"].as_str(), m["file"].as_str()), (Some("apply_patch"), Some("Z:\\nowhere\\oc3\\hello.txt")));
         let m = message("session.tool.called", json!({ "tool": "read", "input": { "path": "/x/notes.md" } })).unwrap();
         assert_eq!(m["step"], json!({ "key": "step.read", "vars": { "file": "notes.md" } }));
         // A tool of its own (an MCP server's): by its name.

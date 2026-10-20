@@ -123,7 +123,22 @@ test('a subagent is not followed; errors and stops say so; long arguments are cu
   await port.close()
   assert.deepEqual(names(port.calls), ['PreToolUse', 'StopFailure', 'Interrupt'])
   assert.equal(port.calls[0].body.tool_input.content.length, 2000)
+  assert.equal(port.calls[0].body.tool_input_truncated, true)
   assert.equal(port.calls[1].body.error_details, 'Connection error.')
+})
+
+test('an edit reaches her with its text whole, up to 64 KB (zhoupengjie/Wakuwaku#73)', async () => {
+  const port = await her()
+  const on = await load(port.port)
+  const c = ctx()
+  const long = 'a'.repeat(5000)
+  on.tool_execution_start({ toolCallId: 'e', toolName: 'edit', args: { path: 'notes.md', oldText: long, newText: `${long}b` } }, c)
+  on.tool_execution_start({ toolCallId: 'm', toolName: 'edit', args: { path: 'notes.md', edits: [{ old_string: 'x'.repeat(70000), new_string: 'y' }] } }, c)
+  await settle()
+  await port.close()
+  const [whole, cut] = port.calls.map(call => call.body)
+  assert.deepEqual([whole.tool_input.oldText.length, whole.tool_input.newText.length, 'tool_input_truncated' in whole], [5000, 5001, false])
+  assert.deepEqual([cut.tool_input.edits[0].old_string.length, cut.tool_input.edits[0].new_string, cut.tool_input_truncated], [64 * 1024, 'y', true])
 })
 
 test('a session switched ends the one before', async () => {
