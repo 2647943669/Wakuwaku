@@ -86,7 +86,7 @@ src-tauri/
                           reasonix.rs、dsh.rs；lib.rs 的 read 按 agent 分派）；asks.rs 是等人回答的确认请求（面板要的数据、各家 hook 要的回复、什么时候算在别处答过、超时）；registry.rs 从这些事件记下有哪些会话：状态、回合、正在跑的调用、待办、这一轮改过的文件、最后说的话（中立的那一半，她自己的心情、看过没有、留多久在 state.rs；以后的 /v1 用它）；还有会话记录里的会话名和最后说的话、DSH 的会话日志和谁的会话、
                           补丁改了哪些文件、项目名。src-tauri 是 workspace 的根，锁文件、target、profile 和 patch 都还在那里；crate 放在它下面，
                           rustc 拿到的是相对路径（放在外面会把整条本机路径写进 exe 的 panic 信息）
-  crates/agent-hub/       把会话告诉本机别的应用（编辑器、脚本）：agent-core 的 registry、每个事件编号后留最近 512 个、订阅的人各自的队列
+  crates/agent-hub/       把会话告诉本机别的应用（编辑器、脚本）：agent-core 的 registry、每个事件编号后留最近 512 个（最多 8 MB）、订阅的人各自的队列
                           （读不动的放掉，不拖住 hook）、本机令牌、SSE 的写法；不带 HTTP 服务器，/v1 的请求由 server.rs 接（见「给别的应用：/v1」）
 integrations/claude-code/ Claude Code 插件 wakuwaku（只有 HTTP hooks）
 integrations/opencode/    OpenCode 2 的插件 wakuwaku.js（打进 exe，安装时写上端口放进 OpenCode 的插件文件夹）
@@ -262,7 +262,7 @@ hook 事件先由 agent-core 读成 `AgentEvent`（每家在它自己的模块�
 - **令牌**：`/v1/sessions` 和 `/v1/events` 要带 `Authorization: Bearer <令牌>`，令牌在数据目录的 `agent-hub\token`（第一次启动时生成，32 个十六进制字符，以后一直用它），文件在哪儿 `/v1/info` 会说。事件里有你问 agent 的话、Edit 前后的文件内容，没有令牌的话本机浏览器里的网页也能来读。另外 `Host` 不是 `127.0.0.1` / `localhost` / `[::1]` 的请求一概 404（防 DNS rebinding）。数据目录写不进去时令牌只在内存里，这次运行 /v1 谁也用不了（日志里有一行）。
 - **`/v1/info`**：`{ api: 1, hub, app: "wakuwaku", appVersion, boot, seq, capabilities: ["sessions", "events"], token: { header, file } }`。`boot` 是 hub 起来的时间（毫秒），变了就说明事件编号重新从 1 开始。
 - **`/v1/sessions`**：`{ boot, seq, sessions: [...] }`，每个会话是 registry 里的样子（`id`、`agent`、`cwd`、`project`、`title`、`prompt`、`status`（`idle` / `working` / `waiting` 带 `wait` / `done` 带 `edited` / `failed` 带 `error`）、`at`、`since`、`took`、`eventAt`、`turn`、`running`、`todos`、`files`、`reply`），最近变的在前。`?cwd=` 是那个文件夹和它下面的（斜杠方向、结尾的斜杠、Windows 上大小写都不管），`?agent=` 可以写几个，用逗号隔开。拿到的 `seq` 接着用 `/v1/events?since=<seq>`，中间一个都不丢。
-- **`/v1/events`**：`text/event-stream`，每个事件是 `id: <seq>`、`event: agent`、`data: <AgentEvent 的 JSON，多了 seq、at，cwd 没有时补上会话的>`；没事件时每 15 秒一行 `: ping`。`?since=<n>` 或断线重连时的 `Last-Event-ID` 先补上 n 之后留着的（最近 512 个）；漏掉的比留着的多、或者 hub 重启过（编号对不上），先发一个 `event: reset`，客户端应该重新读 `/v1/sessions`。超时没说结束的会话被放弃、安静太久的会话被忘掉时发 `event: sessions`（不编号），也是重新读 `/v1/sessions`。一个订阅者积着 256 个没读就被放掉（流结束），不会拖住 hook。要 HTTP/1.1（分块发送；1.0 的客户端要等流结束才收到）。
+- **`/v1/events`**：`text/event-stream`，每个事件是 `id: <seq>`、`event: agent`、`data: <AgentEvent 的 JSON，多了 seq、at，cwd 没有时补上会话的>`；没事件时每 15 秒一行 `: ping`。`?since=<n>` 或断线重连时的 `Last-Event-ID` 先补上 n 之后留着的（最近 512 个，最多 8 MB：一个事件可能带着整个文件）；漏掉的比留着的多、或者 hub 重启过（编号对不上），先发一个 `event: reset`，客户端应该重新读 `/v1/sessions`。超时没说结束的会话被放弃、安静太久的会话被忘掉时发 `event: sessions`（不编号），也是重新读 `/v1/sessions`。一个订阅者积着 256 个没读就被放掉（流结束），不会拖住 hook。要 HTTP/1.1（分块发送；1.0 的客户端要等流结束才收到）。
 
 ```bash
 curl http://127.0.0.1:47213/v1/info
