@@ -3840,6 +3840,7 @@
     body.classList.toggle('tb-mica', isMica())
     body.classList.toggle('tb-light', isLight())
     body.classList.toggle('tb-ink-light', isStripLight())
+    setAccent('--strip-accent', Mica.accentShade(look.accent, isStripLight()))
     body.classList.toggle('tb-capsule', isCapsule())
     body.classList.toggle('tb-clear', isClear())
     body.classList.toggle('tb-clear-mica', clearMica)
@@ -3966,16 +3967,23 @@
 
   // Windows' mode and accent colour (taskbar.rs). The accent as its own
   // taskbar draws with it: a lighter one on the dark strip, a darker one on
-  // the light (style.css --win-accent, for the monitor's icons and the line
-  // under the window in front; its own blue until it comes). Not --accent:
-  // that is her mood's colour (pet.js).
+  // the light (Mica.accentShade). --win-accent by Windows' mode, for the
+  // settings and what opens from the strip; --strip-accent by the strip's
+  // own words (drawMica), for what is drawn on it: the line under the window
+  // in front, a program's count, the privacy marks, where a dragged button
+  // lands. Their own blue until it comes. Not --accent: that is her mood's
+  // colour (pet.js).
+  function setAccent(name, colour) {
+    if (colour) document.documentElement.style.setProperty(name, colour)
+    else document.documentElement.style.removeProperty(name)
+  }
+
   window.pet.onLook(l => {
     look = { mode: l?.mode === 'light' ? 'light' : 'dark', accent: l?.accent || null, endTask: l?.endTask === true }
     // How many times a button flashes for attention (style.css .flash).
     if (l?.flashes !== undefined) barRest.style.setProperty('--flashes', l.flashes === 0 ? 'infinite' : String(l.flashes))
-    const colour = look.accent && (look.mode === 'light' ? look.accent.dark : look.accent.light)
-    if (colour) document.documentElement.style.setProperty('--win-accent', colour)
-    else document.documentElement.style.removeProperty('--win-accent')
+    setAccent('--win-accent', Mica.accentShade(look.accent, look.mode === 'light'))
+    setAccent('--strip-accent', Mica.accentShade(look.accent, isStripLight()))
     if (isOn() && home() === 'taskbar') {
       drawMica()
       update()

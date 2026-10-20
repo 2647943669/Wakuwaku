@@ -68,6 +68,45 @@ test("only the clear strip's own words go by the desktop under them", () => {
   assert.equal(Mica.stripInkLight({ light: false, clear: false, filled: false, backdrop: true }), false)
 })
 
+test("Windows' accent in the shade its taskbar takes for the words beside it", () => {
+  const accent = { light: '#4cc2ff', dark: '#0067c0' }
+  // Light words (the dark strip, or a deep plum wallpaper under the clear
+  // one in Windows' light mode): the lighter shade; dark words: the darker.
+  assert.equal(Mica.accentShade(accent, false), '#4cc2ff')
+  assert.equal(Mica.accentShade(accent, true), '#0067c0')
+  // Not known yet: none (style.css falls back to its own blue).
+  assert.equal(Mica.accentShade(null, true), null)
+  assert.equal(Mica.accentShade({ light: '#4cc2ff' }, true), null)
+})
+
+// What is drawn on the strip itself takes the accent by its words
+// (--strip-accent); the settings and what opens from the strip by Windows'
+// mode (--win-accent): a deep blue line under the window in front read dim
+// on light words over a dark wallpaper before.
+test("the strip's own marks take the accent by the strip's words", () => {
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const css = file => fs.readFileSync(path.join(__dirname, '..', 'src', 'pet', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const rules = text =>
+    text
+      .split('}')
+      .map(block => block.split('{'))
+      .filter(([, body]) => body)
+      .map(([head, body]) => ({ head: head.trim(), body }))
+  const style = rules(css('style.css'))
+  const by = name => style.filter(r => r.body.includes(name)).map(r => r.head)
+  for (const head of by('--strip-accent')) {
+    assert.match(head, /#bar-rest/, head)
+    assert.doesNotMatch(head, /\.wpop|\.tfly|#island/, head)
+  }
+  for (const mark of ['.win.front::after', '.win .count', '.tpriv .fi', '.drop-before', '.drop-after']) {
+    assert.ok(by('--strip-accent').some(h => h.includes(mark)), mark)
+    assert.ok(!by('--win-accent').some(h => h.includes(mark)), mark)
+  }
+  // The window list opened from the strip still as Windows' mode.
+  assert.ok(by('--win-accent').some(h => h.includes('.wpop')))
+})
+
 // The settings, what opens from the strip, her island and the picker stay
 // as Windows' mode (tb-light, isl-light): the strip's words (tb-ink-light)
 // turned them dark in Windows' light mode over a dark wallpaper before.

@@ -227,6 +227,13 @@
   // settings, what opens from the strip and her island go by Windows' mode.
   const stripInkLight = ({ light, clear, filled, backdrop }) => (clear && !filled && backdrop != null ? backdrop : !!light)
 
+  // Windows' accent as its own taskbar draws with it (taskbar.rs accent):
+  // its darker shade where the words are dark, its lighter where they are
+  // light; null while not known. island.js sets it twice: --win-accent by
+  // Windows' mode (the settings, what opens from the strip), --strip-accent
+  // by the strip's words (stripInkLight), for what is drawn on the strip.
+  const accentShade = (accent, light) => (accent ? (light ? accent.dark : accent.light) || null : null)
+
   // The Mica in box (the strip's own size): set to a picture (taskbar.rs's
   // paper), the strip's size and Windows' mode, drawn anew only when one
   // changes, the new faded in over the old; cleared.
@@ -273,7 +280,7 @@
     }
   }
 
-  const api = { place, draw, mount, glassPaper, lightness, wantsDarkInk, stripInkLight }
+  const api = { place, draw, mount, glassPaper, lightness, wantsDarkInk, stripInkLight, accentShade }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api

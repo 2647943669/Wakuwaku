@@ -1586,20 +1586,21 @@ body.home-taskbar {
   align-items: center;
 }
 
-/* In Windows' accent, as its own taskbar shows them (--win-accent: its
-   lighter shade on the dark strip, its darker on the light). */
+/* In Windows' accent, as its own taskbar shows them (--strip-accent: its
+   lighter shade where the strip's words are light, its darker where they
+   are dark, island.js). */
 #bar-rest .tpriv .fi {
   display: flex;
   align-items: center;
   height: 40px;
   padding: 0 7px;
   border-radius: 6px;
-  color: var(--win-accent, #4cc2ff);
+  color: var(--strip-accent, #4cc2ff);
   cursor: pointer;
 }
 
 .tb-ink-light #bar-rest .tpriv .fi {
-  color: var(--win-accent, #0067c0);
+  color: var(--strip-accent, #0067c0);
 }
 
 #bar-rest .tpriv .fi:hover {
@@ -1710,7 +1711,7 @@ body.home-taskbar {
 
 #bar-rest .win.front::after {
   width: 18px;
-  background: var(--win-accent, #5e9bff);
+  background: var(--strip-accent, #5e9bff);
 }
 
 #bar-rest .win.min {
@@ -1971,12 +1972,12 @@ body.home-taskbar {
    it would land beside. */
 #bar-rest .ticon.drop-before,
 #bar-rest .win.drop-before {
-  box-shadow: inset 2px 0 0 var(--win-accent, #5e9bff);
+  box-shadow: inset 2px 0 0 var(--strip-accent, #5e9bff);
 }
 
 #bar-rest .ticon.drop-after,
 #bar-rest .win.drop-after {
-  box-shadow: inset -2px 0 0 var(--win-accent, #5e9bff);
+  box-shadow: inset -2px 0 0 var(--strip-accent, #5e9bff);
 }
 
 /* A program kept on the taskbar, not running: its icon alone. Several
@@ -2043,7 +2044,7 @@ body.home-taskbar {
   height: 15px;
   padding: 0 4px;
   border-radius: 8px;
-  background: var(--win-accent, #5e9bff);
+  background: var(--strip-accent, #5e9bff);
   color: #fff;
   font-size: 10px;
   font-weight: 600;
@@ -2288,7 +2289,7 @@ body.home-taskbar {
 }
 
 .tb-ink-light #bar-rest .win.front::after {
-  background: var(--win-accent, #0067c0);
+  background: var(--strip-accent, #0067c0);
 }
 
 .tb-ink-light #bar-rest .win .letter,
@@ -2298,7 +2299,7 @@ body.home-taskbar {
 }
 
 .tb-ink-light #bar-rest.icons .win .count {
-  background: var(--win-accent, #0067c0);
+  background: var(--strip-accent, #0067c0);
   color: #fff;
   box-shadow: 0 0 0 1.5px #f3f3f3;
 }
