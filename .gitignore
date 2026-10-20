@@ -1,6 +1,8 @@
 # Rust build output, and the schemas tauri-build generates
 src-tauri/target/
 src-tauri/gen/
+# A checkout of agent-core and agent-hub patched in while changing them (docs/DEVELOPMENT.md)
+src-tauri/.cargo/config.toml
 
 # Her settings, pets and logs when run from source (see src-tauri/src/data.rs).
 data/
