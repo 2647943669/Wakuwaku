@@ -2655,24 +2655,26 @@ body:not(.tb-light) #bar-rest .ticon[data-mono='dark'] img {
   background: #f3f3f3;
 }
 
-/* Clear: a close ring and a soft shadow, dark under the dark taskbar's
-   white, light under the light one's black; the icons drawn as pictures
-   (the tray's, the monitor's) take it as a filter (--halo), after the
-   turn of one drawn in one colour for the other kind of taskbar. */
+/* Clear: the words already as light or as dark as the desktop under them
+   wants (island.js isLight, by backdropLight), so only a faint shadow, as
+   over iOS's glass, to lift them off a busy picture: white words a soft
+   dark one under them, dark words a soft light one round them (the heavy
+   ring before blurred them: Windows' light mode's dark words, ringed white,
+   on a dark wallpaper). The icons drawn as pictures (the tray's, the monitor's)
+   take it as a filter (--halo), after the turn of one drawn in one colour
+   for the other kind of taskbar. */
 .tb-clear:not(.tb-filled) #bar-rest {
-  --halo: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  --halo: drop-shadow(0 0 0.5px rgba(0, 0, 0, 0.45)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
   text-shadow:
-    0 0 1px rgba(0, 0, 0, 0.95),
-    0 0 2px rgba(0, 0, 0, 0.8),
-    0 1px 4px rgba(0, 0, 0, 0.6);
+    0 0 1px rgba(0, 0, 0, 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .tb-light.tb-clear:not(.tb-filled) #bar-rest {
-  --halo: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95)) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.6));
+  --halo: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55));
   text-shadow:
-    0 0 1px rgba(255, 255, 255, 1),
-    0 0 2px rgba(255, 255, 255, 0.9),
-    0 1px 4px rgba(255, 255, 255, 0.65);
+    0 0 1px rgba(255, 255, 255, 0.6),
+    0 0 3px rgba(255, 255, 255, 0.35);
 }
 
 .tb-clear:not(.tb-filled) #bar-rest .ticon img {

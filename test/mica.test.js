@@ -34,3 +34,19 @@ test('a spanned picture fills all the displays together', () => {
   const both = { ...paper('span'), screen: [0, -1104, 4096, 1152] }
   assert.deepEqual(Mica.place(both, { w: 7680, h: 2160 }), { x: 0, y: -1104, w: 4096, h: 1152 })
 })
+
+test("the clear strip's words dark only where black reads better than white", () => {
+  // The wallpaper under the strip in the report: a dark plum (#1c1318).
+  const lin = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  const y = (r, g, b) => 0.2126 * lin(r / 255) + 0.7152 * lin(g / 255) + 0.0722 * lin(b / 255)
+  assert.equal(Mica.wantsDarkInk(y(0x1c, 0x13, 0x18)), false)
+  assert.equal(Mica.wantsDarkInk(0), false)
+  assert.equal(Mica.wantsDarkInk(1), true)
+  // Windows' light grey taskbar, and a mid grey: dark; a deeper grey: light.
+  assert.equal(Mica.wantsDarkInk(y(0xf3, 0xf3, 0xf3)), true)
+  assert.equal(Mica.wantsDarkInk(y(0x80, 0x80, 0x80)), true)
+  assert.equal(Mica.wantsDarkInk(y(0x60, 0x60, 0x60)), false)
+  // The two read alike at about 0.18.
+  assert.equal(Mica.wantsDarkInk(0.17), false)
+  assert.equal(Mica.wantsDarkInk(0.19), true)
+})
