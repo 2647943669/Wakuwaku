@@ -9,16 +9,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "mood": "idle",
-      "project": "api",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-cc-a",
-      "title": "API refactor"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -88,15 +78,6 @@
     },
     "at": 1500,
     "event": "SessionStart",
-    "message": {
-      "mood": "idle",
-      "project": "docs",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-cc-b"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -203,13 +184,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "event": "turn-start",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "task": "Refactor the API client"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -328,24 +302,6 @@
     },
     "at": 2500,
     "event": "PreToolUse",
-    "message": {
-      "detail": "TaskCreate",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "step": {
-        "key": "step.plan",
-        "vars": {}
-      },
-      "todo": {
-        "add": {
-          "active": "Splitting the client",
-          "text": "Split the client"
-        }
-      },
-      "toolId": "toolu_a1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -486,14 +442,6 @@
     },
     "at": 2600,
     "event": "PostToolUse",
-    "message": {
-      "detail": "TaskCreate",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "toolId": "toolu_a1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -623,24 +571,6 @@
     },
     "at": 2700,
     "event": "PreToolUse",
-    "message": {
-      "detail": "TaskCreate",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "step": {
-        "key": "step.plan",
-        "vars": {}
-      },
-      "todo": {
-        "add": {
-          "active": "Adding retries",
-          "text": "Add retries"
-        }
-      },
-      "toolId": "toolu_a2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -787,14 +717,6 @@
     },
     "at": 2800,
     "event": "PostToolUse",
-    "message": {
-      "detail": "TaskCreate",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "toolId": "toolu_a2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -929,24 +851,6 @@
     },
     "at": 3000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "TaskUpdate",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "step": {
-        "key": "step.plan",
-        "vars": {}
-      },
-      "todo": {
-        "update": {
-          "id": "1",
-          "status": "in_progress"
-        }
-      },
-      "toolId": "toolu_a3"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1093,14 +997,6 @@
     },
     "at": 3100,
     "event": "PostToolUse",
-    "message": {
-      "detail": "TaskUpdate",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "toolId": "toolu_a3"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1227,21 +1123,6 @@
     },
     "at": 3500,
     "event": "PreToolUse",
-    "message": {
-      "detail": "mcp__github__get_issue",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "step": {
-        "key": "step.mcp",
-        "vars": {
-          "server": "github",
-          "tool": "get_issue"
-        }
-      },
-      "toolId": "toolu_a4"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1376,13 +1257,6 @@
     },
     "at": 4000,
     "event": "UserPromptSubmit",
-    "message": {
-      "event": "turn-start",
-      "mood": "working",
-      "project": "docs",
-      "session": "replay-cc-b",
-      "task": "Update the README"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1528,20 +1402,6 @@
     },
     "at": 4100,
     "event": "PreToolUse",
-    "message": {
-      "detail": "Agent",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "docs",
-      "session": "replay-cc-b",
-      "step": {
-        "key": "step.agent",
-        "vars": {
-          "what": "Explore the docs"
-        }
-      },
-      "toolId": "toolu_b1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1697,17 +1557,6 @@
     },
     "at": 4200,
     "event": "Elicitation",
-    "message": {
-      "detail": {
-        "key": "detail.needsInput",
-        "vars": {
-          "server": "linear"
-        }
-      },
-      "mood": "waiting",
-      "project": "docs",
-      "session": "replay-cc-b"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1875,14 +1724,6 @@
     },
     "at": 5000,
     "event": "PostToolUse",
-    "message": {
-      "detail": "mcp__github__get_issue",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "toolId": "toolu_a4"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -2019,7 +1860,6 @@
     "agentEvent": null,
     "at": 5500,
     "event": "SessionStart",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -2162,14 +2002,6 @@
     },
     "at": 6000,
     "event": "PostToolUse",
-    "message": {
-      "detail": "Agent",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "docs",
-      "session": "replay-cc-b",
-      "toolId": "toolu_b1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -2293,17 +2125,6 @@
     },
     "at": 6500,
     "event": "TaskCompleted",
-    "message": {
-      "project": "api",
-      "react": "jump",
-      "say": {
-        "key": "say.taskDone",
-        "vars": {
-          "task": "Split the client"
-        }
-      },
-      "session": "replay-cc-a"
-    },
     "outcome": {
       "alerts": [],
       "changed": false,
@@ -2449,24 +2270,6 @@
     },
     "at": 7000,
     "event": "PreToolUse",
-    "message": {
-      "detail": "TaskUpdate",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "step": {
-        "key": "step.plan",
-        "vars": {}
-      },
-      "todo": {
-        "update": {
-          "id": "1",
-          "status": "completed"
-        }
-      },
-      "toolId": "toolu_a5"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -2616,14 +2419,6 @@
     },
     "at": 7100,
     "event": "PostToolUse",
-    "message": {
-      "detail": "TaskUpdate",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "api",
-      "session": "replay-cc-a",
-      "toolId": "toolu_a5"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -2747,13 +2542,6 @@
     },
     "at": 8000,
     "event": "Stop",
-    "message": {
-      "event": "turn-end",
-      "mood": "done",
-      "project": "api",
-      "reply": "Done.",
-      "session": "replay-cc-a"
-    },
     "outcome": {
       "alerts": [
         [
@@ -2880,13 +2668,6 @@
     },
     "at": 9000,
     "event": "Stop",
-    "message": {
-      "event": "turn-end",
-      "mood": "done",
-      "project": "docs",
-      "reply": "The README is up to date.",
-      "session": "replay-cc-b"
-    },
     "outcome": {
       "alerts": [
         [
@@ -3328,12 +3109,6 @@
     },
     "at": 40000,
     "event": "SessionEnd",
-    "message": {
-      "event": "session-end",
-      "mood": "idle",
-      "project": "api",
-      "session": "replay-cc-a"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,

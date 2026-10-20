@@ -1173,7 +1173,7 @@ pub fn hover(sh: &Shared, is_over: bool) {
     }
     // The home opens up to say what happened while hovered, so it counts
     // as seen once the pointer leaves.
-    if !is_over && sh.pet.lock().unwrap().seen(crate::now_ms(), sh.hold()) {
+    if !is_over && sh.pet.lock().unwrap().seen(crate::now_ms()) {
         sh.redraw();
     }
 }

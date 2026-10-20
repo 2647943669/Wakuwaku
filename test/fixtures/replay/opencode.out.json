@@ -9,17 +9,6 @@
     },
     "at": 1000,
     "event": "session.created",
-    "message": {
-      "agent": "opencode",
-      "mood": "idle",
-      "project": "oc",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-oc",
-      "title": "Shell echo command"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -103,15 +92,6 @@
     },
     "at": 2000,
     "event": "session.execution.started",
-    "message": {
-      "agent": "opencode",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "task": "Run the shell command: echo hi",
-      "title": "Shell echo command"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -203,21 +183,6 @@
     },
     "at": 2500,
     "event": "session.tool.called",
-    "message": {
-      "agent": "opencode",
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "step": {
-        "key": "step.command",
-        "vars": {
-          "what": "echo hi"
-        }
-      },
-      "toolId": "call_1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -344,23 +309,6 @@
     },
     "at": 2600,
     "event": "permission.asked",
-    "message": {
-      "agent": "opencode",
-      "detail": {
-        "key": "detail.approve",
-        "vars": {
-          "what": {
-            "key": "step.command",
-            "vars": {
-              "what": "echo hi"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "oc",
-      "session": "replay-oc"
-    },
     "outcome": {
       "alerts": [
         [
@@ -509,12 +457,6 @@
     },
     "at": 5000,
     "event": "permission.replied",
-    "message": {
-      "agent": "opencode",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -624,15 +566,6 @@
     },
     "at": 5500,
     "event": "session.tool.success",
-    "message": {
-      "agent": "opencode",
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "toolId": "call_1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -733,21 +666,6 @@
     },
     "at": 6000,
     "event": "session.tool.called",
-    "message": {
-      "agent": "opencode",
-      "detail": "Edit",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "step": {
-        "key": "step.edit",
-        "vars": {
-          "file": "a.rs"
-        }
-      },
-      "toolId": "call_2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -869,16 +787,6 @@
     },
     "at": 6500,
     "event": "session.tool.success",
-    "message": {
-      "agent": "opencode",
-      "detail": "Edit",
-      "event": "tool-done",
-      "file": "Z:\\replay\\oc\\src\\a.rs",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "toolId": "call_2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -972,15 +880,6 @@
     },
     "at": 7000,
     "event": "form.created",
-    "message": {
-      "agent": "opencode",
-      "detail": {
-        "key": "detail.asksQuestion"
-      },
-      "mood": "waiting",
-      "project": "oc",
-      "session": "replay-oc"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1067,12 +966,6 @@
     },
     "at": 9000,
     "event": "form.replied",
-    "message": {
-      "agent": "opencode",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1163,15 +1056,6 @@
     },
     "at": 9500,
     "event": "session.tool.failed",
-    "message": {
-      "agent": "opencode",
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "toolId": "call_3"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1323,15 +1207,6 @@
     },
     "at": 10000,
     "event": "session.execution.succeeded",
-    "message": {
-      "agent": "opencode",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "oc",
-      "reply": "Done — the command output hi.",
-      "session": "replay-oc",
-      "title": "Shell echo command"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1526,14 +1401,6 @@
     },
     "at": 21000,
     "event": "session.execution.started",
-    "message": {
-      "agent": "opencode",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "oc",
-      "session": "replay-oc",
-      "task": "Try again"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1624,22 +1491,6 @@
     },
     "at": 22000,
     "event": "session.tool.failed",
-    "message": {
-      "agent": "opencode",
-      "detail": "Bash",
-      "event": "tool-failed",
-      "mood": "working",
-      "project": "oc",
-      "react": "failed",
-      "say": {
-        "key": "say.toolFailed",
-        "vars": {
-          "tool": "shell"
-        }
-      },
-      "session": "replay-oc",
-      "toolId": "call_4"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1743,17 +1594,6 @@
     },
     "at": 23000,
     "event": "session.execution.failed",
-    "message": {
-      "agent": "opencode",
-      "error": {
-        "key": "error.rate_limit",
-        "vars": {}
-      },
-      "event": "turn-end",
-      "mood": "error",
-      "project": "oc",
-      "session": "replay-oc"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1843,13 +1683,6 @@
     },
     "at": 24000,
     "event": "session.deleted",
-    "message": {
-      "agent": "opencode",
-      "event": "session-end",
-      "mood": "idle",
-      "project": "oc",
-      "session": "replay-oc"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,

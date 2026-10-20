@@ -19,7 +19,8 @@
 //   GET  /v1/events    (Server-Sent Events). The last two take the token in her data
 //                      folder's agent-hub\token (Authorization: Bearer <token>); none is
 //                      served to a request whose Host is not this machine (is_local)
-//   POST /state        a message (state.rs)
+//   POST /state        an AgentEvent (agent-core's, as /v1/events sends them): into her
+//                      sessions (state.rs) and to the apps listening, as a hook's is
 //   POST /widget       a widget for the island, from a script (widgets.rs)
 //   POST /come-home    started again while running: back into sight
 //   POST /after-update { pid, version }: a new version she started (an update, a restart) is
@@ -40,7 +41,7 @@ use serde_json::{json, Value};
 use tauri::Manager;
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 
-use agent_core::event::{Agent, AgentEvent};
+use agent_core::event::{Agent, AgentEvent, Kind};
 
 use crate::{events, events_agy, events_dsh, island, jump, now_ms, pet, Responder, Shared};
 
@@ -124,8 +125,8 @@ pub(crate) fn read_event(agent: Option<&str>, mut event: Value) -> Option<Value>
 // What an event she took (read_event) says a session is doing, each agent's
 // read its own way (agent-core) at `now`: Antigravity's given the person's
 // words and its reply from its transcript first; a DSH prompt she does not
-// hold (`held`) to be approved in DSH. Her message is made from it
-// (events.rs message_of), and the apps listening are sent it (agent-hub).
+// hold (`held`) to be approved in DSH. Her sessions are kept from it
+// (state.rs), and the apps listening are sent it (agent-hub).
 // Also the replay tests' way in (replay.rs).
 pub(crate) fn event_for(agent: Option<&str>, event: &mut Value, held: bool, now: u64, dsh_home: &Path) -> Option<AgentEvent> {
     let mut ev = agent_core::read(Agent::from_tag(agent), event, &agent_core::Context { now, dsh_home })?;
@@ -285,19 +286,16 @@ fn take(sh: &Shared, hook: Hook) {
             sh.log(&line);
         }
     }
-    if let Some(mut msg) = ev.map(|ev| events::message_of(&ev)) {
+    if let Some(ev) = ev {
         // Where the session runs, for going to its window (jump.rs);
         // none for one going (a DSH subagent's too: events_dsh.rs whose).
-        let chain = if msg["event"] == "session-end" { None } else { caller.and_then(|c| chain_of_caller(c, &event, agent)) };
+        let chain = if ev.kind == Kind::SessionEnd { None } else { caller.and_then(|c| chain_of_caller(c, &event, agent)) };
         if agent == Some("dsh") {
             if let Some(line) = events_dsh::log_line(&event, chain.as_ref().and_then(|c| c.first()).map(|c| c.0), &dsh_home) {
                 sh.log(&line);
             }
         }
-        if let Some(chain) = chain {
-            msg["chain"] = jump::chain_json(&chain);
-        }
-        sh.apply(&msg);
+        sh.apply_event(&ev, chain);
     } else if agent == Some("dsh") {
         // Her plugin's word as DSH loads it: said in her log, and the open
         // Connect page tells it loaded (connection.rs dsh_view).
@@ -468,9 +466,18 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool, hooks: &SyncSender
             }
             reply(req, 200, body)
         }
-        ("POST", "/state") => match read_json(&mut req) {
-            Some(msg) if sh.apply(&msg) => reply(req, 200, json!({ "ok": true })),
-            Some(_) => reply(req, 400, json!({ "error": "nothing to do" })),
+        // An AgentEvent from a script, as /v1/events sends them: into her
+        // sessions, and to the apps listening, as an agent's hook's is.
+        ("POST", "/state") => match read_json(&mut req).as_ref().map(AgentEvent::from_json) {
+            Some(Ok(ev)) => {
+                sh.hub.publish(&ev, now_ms());
+                if sh.apply_event(&ev, None) {
+                    reply(req, 200, json!({ "ok": true }))
+                } else {
+                    reply(req, 400, json!({ "error": "nothing to do" }))
+                }
+            }
+            Some(Err(why)) => reply(req, 400, json!({ "error": format!("not an AgentEvent: {why}") })),
             None => reply(req, 400, json!({ "error": "bad json" })),
         },
         // The sensor helper's CPU temperature and power (sensors.rs, #18 part

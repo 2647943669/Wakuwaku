@@ -1,28 +1,18 @@
-// What the pet is doing, from the messages the hooks bring (events.rs,
-// events_codex.rs). A message is
-//   { session?, project?, mood?, detail?, event?, react?, say?,
-//     title?, task?, step?, toolId?, todo?, file?, reply?, error?, agent?, turn? }
-//   mood     idle | working | waiting | done | review | error
-//   detail   a tool name, or { key, vars } to translate
-//   event    turn-start | tool-start | tool-done | tool-failed | turn-end | session-end
-//   react    wave | jump | failed: played once over the mood, `say` in the bubble
-//   agent    "codex", "agy", or none for Claude Code
-//   turn     the turn it belongs to (Codex): some of its hooks run in the
-//            background, so one can come after its turn ended (turn-end), and
-//            changes nothing then. Antigravity's turn-start has one too (the
-//            person's words it answers): it starts again, the same turn, once
-//            a task it left running in the background is done
-//   title    the session's name; task   the person's words for the work
-//   step     what a starting tool does, { key, vars }; toolId pairs it with its end
-//   todo     { set: [{ text, active, status }] }, { add: { text, active } }
-//            or { update: { id, status?, text?, active? } }
-//   file     a file just edited
-//   reply    how the turn ended, in Claude's words; error   why it failed
-//   chain    the processes it runs in, [[pid, started], ...] (jump.rs)
-//   within   true: a subagent's step, told as the session's it works for
-//            (DeepSeek Harness's: events_dsh.rs whose): only into a turn of
-//            that session's under way (working or waiting); it never starts
-//            a session, nor wakes one at rest or ended
+// What the pet shows of the agents' sessions. What each session is doing is
+// agent-core's registry (registry.rs: its status, its turn, the calls
+// running, its to-do list, the files its turn changed, how it ended, when it
+// was given up or forgotten), kept from the AgentEvents she hears (server.rs
+// take; POST /state). Here is only how she shows them (Look):
+//   mood     idle | working | waiting | done | review (a turn that changed
+//            files) | error; an ending she saw, or whose held time ran
+//            out, at rest from then (rested)
+//   detail   what the line says beside the mood: the tool, or what it waits
+//            on (events.rs detail_of), till the next event
+//   step     what the latest call running does, or thinking since the last
+//            ended (events.rs step_for)
+//   name     its title, else the person's words for the work (task)
+//   chain    the processes it runs in, for going to its window (jump.rs)
+//   hidden   out of sight, quiet too long (is_shown)
 //
 // Each session keeps its own mood; the pet shows the one that most wants you.
 // Instead of callbacks and timers, calls return what happened (Outcome) and
@@ -31,26 +21,14 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use crate::jump;
+use agent_core::event::{AgentEvent, Kind};
+use agent_core::registry::{Session, SessionRegistry, Status, FORGET_MS};
 
-const MOODS: [&str; 6] = ["idle", "working", "waiting", "done", "review", "error"];
-const REACTS: [&str; 3] = ["wave", "jump", "failed"];
-// apply_patch: every edit Codex makes.
-// Claude Code's, Codex's (apply_patch), Antigravity's (write_to_file, as
-// agy 1.3.4 names it; its edits by the names it keeps from Windsurf).
-const EDIT_TOOLS: [&str; 8] = ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "write_to_file", "replace_file_content", "multi_replace_file_content"];
-// The turns remembered as ended, per session.
-const ENDED_TURNS: usize = 4;
+use crate::{events, jump};
 
-// A session that died mid-turn never says idle: give up on it after this.
-pub const STALE_MS: u64 = 15 * 60 * 1000;
-// An ending nobody came to see, or a session gone quiet, after this.
-pub const FORGET_MS: u64 = 2 * 60 * 60 * 1000;
 // A session at rest, out of sight after this many minutes with nothing new
 // from it, unless set otherwise (idleHideMin; 0 never).
 pub const IDLE_HIDE_MIN: u64 = 30;
-// Never more than this many of a list kept for a session.
-const MAX_KEPT: usize = 100;
 // How long a name goes into a notification.
 const WHOSE_MAX: usize = 30;
 
@@ -70,11 +48,12 @@ fn is_ending(mood: &str) -> bool {
 }
 
 // Whether a session is in sight (Pet::hide_quiet). At work or waiting on
-// you, always (STALE_MS gives up on one stuck); an ending, until it is seen
-// (FORGET_MS at most: check_stale). At rest, until nothing has come from it
-// for `hide_ms` (0: always), counted from its last event, or from when its
-// ending was seen or its held time ran out, whichever came later. One out of
-// sight is still kept, and its next event brings it back as it was.
+// you, always (the registry gives up on one stuck); an ending, until it is
+// seen (FORGET_MS at most: check_stale). At rest, until nothing has come
+// from it for `hide_ms` (0: always), counted from its last event, or from
+// when its ending was seen or its held time ran out, whichever came later.
+// One out of sight is still kept, and its next event brings it back as it
+// was.
 pub fn is_shown(mood: &str, event_at: u64, seen_at: Option<u64>, now: u64, hide_ms: u64) -> bool {
     match mood {
         "idle" => {
@@ -108,104 +87,75 @@ pub struct Outcome {
     pub worked_ms: u64,
 }
 
-// A tool running now, and what it does.
-struct Running {
-    id: String,
-    step: Value,
-    since: u64,
-}
-
-struct Todo {
-    id: String,
-    text: String,
-    active: String,
-    status: String,
-}
-
-struct Session {
-    id: String,
-    project: String,
-    mood: String,
+// How she shows a session, beside what it is doing (the registry's).
+struct Look {
+    // An ending she saw, or whose held time ran out: at rest since then,
+    // whatever the registry still says of how it ended.
+    rested: Option<u64>,
     detail: Value,
-    at: u64,
-    since: Option<u64>,
-    took: Option<u64>,
-    has_edited: bool,
+    // Until when an ending stays (Hold::Secs).
     settle_at: Option<u64>,
+    // Its name, given; the person's words for the work.
     title: String,
     task: String,
-    // The tools running, the latest last (subagents run theirs inside one).
-    running: Vec<Running>,
-    // When the last tool ended, or the turn began: thinking since then.
+    // When the last call ended, or the turn began: thinking since then.
     thought_at: Option<u64>,
-    todos: Vec<Todo>,
-    // To-dos ever added one by one: Claude Code numbers them from 1.
-    added: u32,
-    // The files this turn edited.
-    files: Vec<String>,
-    reply: String,
-    error: Value,
-    agent: String,
-    // The processes it runs in, for going to its window.
     chain: jump::Chain,
-    // The turn under way, and the last few that ended (Codex).
-    turn: String,
-    ended_turns: Vec<String>,
-    // When its last event came (`at` moves too as an ending goes back to
-    // rest), and when its ending was seen or its held time ran out: how
-    // long it has been quiet. Out of sight as last looked at (is_shown).
-    event_at: u64,
+    // When its ending was seen or its held time ran out (how long it has
+    // been quiet), and out of sight as last looked at (is_shown).
     seen_at: Option<u64>,
     hidden: bool,
 }
 
-impl Session {
-    fn new(id: String, now: u64) -> Self {
-        Session {
-            id,
-            project: String::new(),
-            mood: "idle".into(),
-            detail: Value::String(String::new()),
-            at: now,
-            since: None,
-            took: None,
-            has_edited: false,
-            settle_at: None,
-            title: String::new(),
-            task: String::new(),
-            running: Vec::new(),
-            thought_at: None,
-            todos: Vec::new(),
-            added: 0,
-            files: Vec::new(),
-            reply: String::new(),
-            error: Value::Null,
-            agent: String::new(),
-            chain: Vec::new(),
-            turn: String::new(),
-            ended_turns: Vec::new(),
-            event_at: now,
-            seen_at: None,
-            hidden: false,
-        }
+impl Look {
+    fn new() -> Look {
+        Look { rested: None, detail: json!(""), settle_at: None, title: String::new(), task: String::new(), thought_at: None, chain: Vec::new(), seen_at: None, hidden: false }
     }
 
-    // What it is called: Claude Code's name for it, or the person's words.
+    // What it is called: its title, or the person's words.
     fn name(&self) -> &str {
         if self.title.is_empty() { &self.task } else { &self.title }
     }
 
-    fn whose(&self) -> String {
-        clip(if self.name().is_empty() { &self.project } else { self.name() }, WHOSE_MAX)
+    // At rest from `now`: an ending seen, or held its time.
+    fn rest(&mut self, now: u64) {
+        self.rested = Some(now);
+        self.seen_at = Some(now);
+        self.detail = json!("");
+        self.settle_at = None;
     }
+}
+
+// A session's mood, as she shows it.
+fn mood_of(s: &Session, look: &Look) -> &'static str {
+    if look.rested.is_some() {
+        return "idle";
+    }
+    match s.status {
+        Status::Idle => "idle",
+        Status::Working => "working",
+        Status::Waiting { .. } => "waiting",
+        Status::Done { edited: false } => "done",
+        Status::Done { edited: true } => "review",
+        Status::Failed { .. } => "error",
+    }
+}
+
+// When it last changed: its rest, if she put it to rest.
+fn at_of(s: &Session, look: &Look) -> u64 {
+    look.rested.unwrap_or(s.at)
+}
+
+fn whose(s: &Session, look: &Look) -> String {
+    clip(if look.name().is_empty() { s.project.as_deref().unwrap_or("") } else { look.name() }, WHOSE_MAX)
 }
 
 fn clip(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
 }
 
-// A text a message may carry: a string, or { key, vars } whose vars are
-// strings, numbers, or (once) a text of the same kind.
+// A text she shows: a string, or { key, vars } whose vars are strings,
+// numbers, or (once) a text of the same kind.
 fn text(value: Option<&Value>, max: usize) -> Value {
     text_in(value, max, true)
 }
@@ -231,45 +181,6 @@ fn text_in(value: Option<&Value>, max: usize, may_nest: bool) -> Value {
     }
 }
 
-fn str_field(msg: &Value, key: &str, max: usize) -> String {
-    msg.get(key).and_then(Value::as_str).map(|s| clip(s, max)).unwrap_or_default()
-}
-
-// A change to the session's to-do list.
-fn apply_todo(s: &mut Session, todo: &Value) {
-    let item = |v: &Value, id: String| Todo {
-        id,
-        text: str_field(v, "text", 80),
-        active: str_field(v, "active", 80),
-        status: str_field(v, "status", 20),
-    };
-    if let Some(items) = todo.get("set").and_then(Value::as_array) {
-        s.todos = items.iter().take(MAX_KEPT).enumerate().map(|(n, v)| item(v, (n + 1).to_string())).collect();
-    } else if let Some(v) = todo.get("add") {
-        s.added += 1;
-        let mut t = item(v, s.added.to_string());
-        if t.status.is_empty() {
-            t.status = "pending".into();
-        }
-        if s.todos.len() < MAX_KEPT {
-            s.todos.push(t);
-        }
-    } else if let Some(v) = todo.get("update") {
-        let id = str_field(v, "id", 40);
-        let status = str_field(v, "status", 20);
-        if status == "deleted" {
-            s.todos.retain(|t| t.id != id);
-        } else if let Some(t) = s.todos.iter_mut().find(|t| t.id == id) {
-            for (key, field) in [("status", &mut t.status), ("text", &mut t.text), ("active", &mut t.active)] {
-                let value = str_field(v, key, 80);
-                if !value.is_empty() {
-                    *field = value;
-                }
-            }
-        }
-    }
-}
-
 // How far down its to-do list a session is, and what it is on.
 fn todo_view(s: &Session) -> Value {
     if s.todos.is_empty() {
@@ -277,240 +188,159 @@ fn todo_view(s: &Session) -> Value {
     }
     let done = s.todos.iter().filter(|t| t.status == "completed").count();
     let active = s.todos.iter().find(|t| t.status == "in_progress").map_or("", |t| if t.active.is_empty() { &t.text } else { &t.active });
-    json!({ "done": done, "total": s.todos.len(), "active": active })
+    json!({ "done": done, "total": s.todos.len(), "active": events::clip(active, 80) })
 }
 
 // A session as the pages draw it.
-fn view(s: &Session) -> Value {
-    let is_working = s.mood == "working";
+fn view(s: &Session, look: &Look) -> Value {
+    let mood = mood_of(s, look);
     let (step, step_since) = match s.running.last() {
-        _ if !is_working => (Value::Null, None),
-        Some(r) => (r.step.clone(), Some(r.since)),
-        None => (json!({ "key": "step.thinking", "vars": {} }), s.thought_at),
+        _ if mood != "working" => (Value::Null, None),
+        Some(r) => (text(Some(&events::step_for(s.agent, &r.call)), 80), Some(r.since)),
+        None => (json!({ "key": "step.thinking", "vars": {} }), look.thought_at),
+    };
+    let reply = if is_ending(mood) { s.reply.as_deref().and_then(events::reply_of).unwrap_or_default() } else { String::new() };
+    let error = match (&s.status, mood) {
+        (Status::Failed { error }, "error") => text(Some(&events::error_of(error)), 80),
+        _ => Value::Null,
     };
     json!({
         "id": s.id,
-        "project": s.project,
-        "agent": s.agent,
+        "project": s.project.as_deref().unwrap_or(""),
+        "agent": s.agent.tag().unwrap_or(""),
         // A window to go to when clicked.
-        "jump": !s.chain.is_empty(),
-        "mood": s.mood,
-        "detail": s.detail,
-        "at": s.at,
+        "jump": !look.chain.is_empty(),
+        "mood": mood,
+        "detail": look.detail,
+        "at": at_of(s, look),
         "since": s.since,
         "took": s.took,
-        "name": s.name(),
+        "name": look.name(),
         "step": step,
         "stepSince": step_since,
         "todo": todo_view(s),
         "files": s.files.len(),
-        "reply": if is_ending(&s.mood) { s.reply.as_str() } else { "" },
-        "error": if s.mood == "error" { s.error.clone() } else { Value::Null },
+        "reply": reply,
+        "error": error,
+    })
+}
+
+// What the pet shows with no session.
+fn no_session(now: u64) -> Value {
+    json!({
+        "id": "", "project": "", "agent": "", "jump": false, "mood": "idle", "detail": "", "at": now, "since": null, "took": null,
+        "name": "", "step": null, "stepSince": null, "todo": null, "files": 0, "reply": "", "error": null,
     })
 }
 
 #[derive(Default)]
 pub struct Pet {
-    sessions: HashMap<String, Session>,
-}
-
-// Set a session's mood; Some(mood) when it wants a chime.
-fn set(s: &mut Session, mood: &str, detail: Value, now: u64, hold: Hold) -> Option<String> {
-    let was = std::mem::replace(&mut s.mood, mood.to_string());
-    s.settle_at = None;
-    s.detail = detail;
-    s.at = now;
-
-    if mood == "working" || mood == "waiting" {
-        s.since.get_or_insert(now);
-        s.took = None;
-    } else {
-        if let (Some(since), true) = (s.since, is_ending(mood)) {
-            s.took = Some(now - since);
-        }
-        s.since = None;
-        s.running.clear();
-    }
-
-    if let (true, Hold::Secs(secs)) = (is_ending(mood), hold) {
-        s.settle_at = Some(now + secs * 1000);
-    }
-    (mood != was && (mood == "waiting" || is_ending(mood))).then(|| mood.to_string())
+    sessions: SessionRegistry,
+    looks: HashMap<String, Look>,
 }
 
 impl Pet {
-    // Apply a message; None when it carries nothing we know.
-    pub fn apply(&mut self, msg: &Value, now: u64, hold: Hold) -> Option<Outcome> {
-        let mood = msg.get("mood").and_then(Value::as_str).filter(|m| MOODS.contains(m));
-        let react = msg.get("react").and_then(Value::as_str).filter(|r| REACTS.contains(r));
-        if mood.is_none() && react.is_none() {
+    // An event heard at `now`, with where its session runs when that was
+    // looked up (server.rs chain_of_caller); None when it is nothing to a
+    // session she shows (a subagent's with no turn of its session's under
+    // way).
+    pub fn apply(&mut self, ev: &AgentEvent, chain: Option<jump::Chain>, now: u64, hold: Hold) -> Option<Outcome> {
+        let id = ev.session.as_str();
+        let was = self.mood_by_id(id);
+        let before = self.sessions.get(id).map(|s| (s.since, s.at));
+        let did = self.sessions.apply(ev, now);
+        if did.left_out {
             return None;
         }
-        let mut out = Outcome::default();
-
-        if let Some(mood) = mood {
-            let id = str_field(msg, "session", 200);
-            let project = str_field(msg, "project", 200);
-            let detail = text(msg.get("detail"), 80);
-            let event = msg.get("event").and_then(Value::as_str).unwrap_or("");
-            let agent = str_field(msg, "agent", 20);
-            let turn = str_field(msg, "turn", 100);
-
-            let is_within = msg.get("within").and_then(Value::as_bool) == Some(true);
-            if is_within && !self.sessions.get(&id).is_some_and(|s| matches!(s.mood.as_str(), "working" | "waiting")) {
-                return None;
-            }
-            if event == "session-end" {
-                self.sessions.remove(&id);
-            } else {
-                let s = self.sessions.entry(id.clone()).or_insert_with(|| Session::new(id, now));
-                if !project.is_empty() {
-                    s.project = project;
-                }
-                let chain = jump::chain_from_json(msg.get("chain"));
-                if !chain.is_empty() {
-                    s.chain = chain;
-                }
-                if !agent.is_empty() {
-                    s.agent = agent;
-                }
-                let is_edit = event == "tool-done" && detail.as_str().is_some_and(|d| EDIT_TOOLS.contains(&d));
-                // Late, from a turn already over: only an edit counts, making its done a review.
-                if !turn.is_empty() && s.ended_turns.contains(&turn) {
-                    if is_edit && s.mood == "done" {
-                        s.mood = "review".into();
-                        out.changed = true;
-                    }
-                    return Some(out);
-                }
-                // Something new from it: back in sight at once, if it was out.
-                s.event_at = now;
-                s.hidden = false;
-                for (key, field) in [("title", &mut s.title), ("task", &mut s.task)] {
-                    let value = str_field(msg, key, 80);
-                    if !value.is_empty() {
-                        *field = value;
-                    }
-                }
-                if !turn.is_empty() && event == "turn-end" {
-                    s.ended_turns.push(turn.clone());
-                    if s.ended_turns.len() > ENDED_TURNS {
-                        s.ended_turns.remove(0);
-                    }
-                }
-                // A turn starting anew: its start, or a step of it heard first
-                // (Codex reports both in the background, connection.rs).
-                let is_new_turn = turn.is_empty() || turn != s.turn;
-                let is_step = matches!(event, "tool-start" | "tool-done" | "tool-failed");
-                let starts = is_new_turn && (event == "turn-start" || (!turn.is_empty() && is_step));
-                if !turn.is_empty() {
-                    s.turn = turn;
-                }
-                if starts {
-                    out.turns += 1;
-                    // The turn before never said it ended (stopped without a
-                    // word, or Antigravity's still waiting on a task of its
-                    // own): it worked until its last event.
-                    if let Some(since) = s.since.take() {
-                        out.worked_ms += s.at.saturating_sub(since);
-                    }
-                    s.has_edited = false;
-                    s.running.clear();
-                    s.thought_at = Some(now);
-                    s.files.clear();
-                    s.reply.clear();
-                    s.error = Value::Null;
-                    // A list all done belongs to the work before.
-                    if s.todos.iter().all(|t| t.status == "completed") {
-                        s.todos.clear();
-                    }
-                }
-                let tool_id = str_field(msg, "toolId", 200);
-                match event {
-                    "tool-start" => {
-                        s.running.retain(|r| tool_id.is_empty() || r.id != tool_id);
-                        if s.running.len() >= MAX_KEPT {
-                            s.running.remove(0);
-                        }
-                        s.running.push(Running { id: tool_id, step: text(msg.get("step"), 80), since: now });
-                    }
-                    "tool-done" | "tool-failed" => {
-                        // Its own start, or with no id to pair them by, the latest.
-                        match s.running.iter().rposition(|r| r.id == tool_id) {
-                            Some(at) => drop(s.running.remove(at)),
-                            None if tool_id.is_empty() => drop(s.running.pop()),
-                            None => {}
-                        }
-                        if s.running.is_empty() {
-                            s.thought_at = Some(now);
-                        }
-                    }
-                    _ => {}
-                }
-                if is_edit {
-                    s.has_edited = true;
-                }
-                let file = str_field(msg, "file", 400);
-                if !file.is_empty() && !s.files.contains(&file) && s.files.len() < MAX_KEPT {
-                    s.files.push(file);
-                }
-                if let Some(todo) = msg.get("todo") {
-                    apply_todo(s, todo);
-                }
-                let reply = str_field(msg, "reply", 160);
-                if !reply.is_empty() {
-                    s.reply = reply;
-                }
-                if msg.get("error").is_some() {
-                    s.error = text(msg.get("error"), 80);
-                }
-                let mut mood = mood;
-                if mood == "done" && s.has_edited {
-                    mood = "review";
-                }
-                if mood == "done" || mood == "review" {
-                    s.has_edited = false;
-                }
-                let whose = s.whose();
-                // How long the turn has gone on, should this end it.
-                let busy_for = s.since.map(|since| now.saturating_sub(since));
-                out.alerts.extend(set(s, mood, detail, now, hold).map(|m| (m, whose)));
-                // Its end: done, or stopped by the person, having worked till then.
-                if is_ending(mood) || (mood == "idle" && event == "turn-end") {
-                    out.worked_ms += busy_for.unwrap_or(0);
-                }
-            }
-            out.changed = true;
+        let react = events::reaction_of(ev).map(|r| json!({ "react": r["react"], "say": text(r.get("say"), 80) }));
+        let mut out = Outcome { react, ..Outcome::default() };
+        if matches!(ev.kind, Kind::TaskDone { .. }) {
+            return Some(out);
         }
-
-        if let Some(react) = react {
-            out.react = Some(json!({ "react": react, "say": text(msg.get("say"), 80) }));
+        out.changed = true;
+        if ev.kind == Kind::SessionEnd {
+            self.looks.remove(id);
+            return Some(out);
+        }
+        let look = self.looks.entry(id.to_string()).or_insert_with(Look::new);
+        if let Some(chain) = chain.filter(|c| !c.is_empty()) {
+            look.chain = chain;
+        }
+        let Some(s) = self.sessions.get(id) else { return Some(out) };
+        // Late, from a turn already over: only an edit counts, making its done a review.
+        if did.late {
+            out.changed = did.changed && look.rested.is_none();
+            return Some(out);
+        }
+        // Something new from it: back in sight at once, if it was out.
+        look.rested = None;
+        look.hidden = false;
+        if let Some(title) = ev.title.as_deref().map(|t| events::clip(t, 80)).filter(|t| !t.is_empty()) {
+            look.title = title;
+        }
+        if let Kind::TurnStart { prompt: Some(prompt) } = &ev.kind {
+            if let Some(task) = events::task_of(prompt) {
+                look.task = task;
+            }
+        }
+        if did.began {
+            out.turns += 1;
+            // The turn before never said it ended (stopped without a word, or
+            // Antigravity's still waiting on a task of its own): it worked
+            // until its last event.
+            if let Some((Some(since), at)) = before {
+                out.worked_ms += at.saturating_sub(since);
+            }
+            look.thought_at = Some(now);
+        }
+        if matches!(ev.kind, Kind::ToolDone { .. } | Kind::ToolFailed { .. }) && s.running.is_empty() {
+            look.thought_at = Some(now);
+        }
+        look.detail = text(Some(&events::detail_of(ev)), 80);
+        let mood = mood_of(s, look);
+        if mood != was && (mood == "waiting" || is_ending(mood)) {
+            out.alerts.push((mood.to_string(), whose(s, look)));
+        }
+        look.settle_at = match hold {
+            Hold::Secs(secs) if is_ending(mood) => Some(now + secs * 1000),
+            _ => None,
+        };
+        // Its end: done, failed, or stopped by the person, having worked till then.
+        if matches!(ev.kind, Kind::Done | Kind::Failed { .. } | Kind::Stopped) {
+            if let Some((Some(since), _)) = before {
+                out.worked_ms += now.saturating_sub(since);
+            }
         }
         Some(out)
     }
 
+    fn mood_by_id(&self, id: &str) -> &'static str {
+        match (self.sessions.get(id), self.looks.get(id)) {
+            (Some(s), Some(look)) => mood_of(s, look),
+            _ => "idle",
+        }
+    }
+
     // You looked: every ending goes back to rest, quiet from now on. True
     // when anything did.
-    pub fn seen(&mut self, now: u64, hold: Hold) -> bool {
+    pub fn seen(&mut self, now: u64) -> bool {
         let mut changed = false;
-        for s in self.sessions.values_mut().filter(|s| is_ending(&s.mood)) {
-            set(s, "idle", Value::String(String::new()), now, hold);
-            s.seen_at = Some(now);
-            changed = true;
+        for s in self.sessions.sessions() {
+            if let Some(look) = self.looks.get_mut(&s.id).filter(|look| is_ending(mood_of(s, look))) {
+                look.rest(now);
+                changed = true;
+            }
         }
         changed
     }
 
     // Endings held for a number of seconds go back to rest when it is up:
     // the island folds them away then, so they count as seen.
-    pub fn tick(&mut self, now: u64, hold: Hold) -> bool {
+    pub fn tick(&mut self, now: u64) -> bool {
         let mut changed = false;
-        for s in self.sessions.values_mut() {
-            if s.settle_at.is_some_and(|t| t <= now) {
-                set(s, "idle", Value::String(String::new()), now, hold);
-                s.seen_at = Some(now);
-                changed = true;
-            }
+        for look in self.looks.values_mut().filter(|look| look.settle_at.is_some_and(|t| t <= now)) {
+            look.rest(now);
+            changed = true;
         }
         changed
     }
@@ -520,24 +350,33 @@ impl Pet {
     // pages are given, but kept. True when any changed.
     pub fn hide_quiet(&mut self, now: u64, hide_ms: u64) -> bool {
         let mut changed = false;
-        for s in self.sessions.values_mut() {
-            let hidden = !is_shown(&s.mood, s.event_at, s.seen_at, now, hide_ms);
-            if s.hidden != hidden {
-                s.hidden = hidden;
+        for s in self.sessions.sessions() {
+            let Some(look) = self.looks.get_mut(&s.id) else { continue };
+            let hidden = !is_shown(mood_of(s, look), s.event_at, look.seen_at, now, hide_ms);
+            if look.hidden != hidden {
+                look.hidden = hidden;
                 changed = true;
             }
         }
         changed
     }
 
-    pub fn check_stale(&mut self, now: u64, hold: Hold) -> bool {
+    // Work that never said it ended given up, endings nobody saw at rest,
+    // and sessions quiet too long forgotten (the registry's rules; an ending
+    // she put to rest, from then). True when one in sight changed.
+    pub fn check_stale(&mut self, now: u64) -> bool {
+        let rested_long: Vec<String> = self.looks.iter().filter(|(_, look)| look.rested.is_some_and(|at| now.saturating_sub(at) > FORGET_MS)).map(|(id, _)| id.clone()).collect();
+        for id in rested_long {
+            self.sessions.forget(&id);
+            self.looks.remove(&id);
+        }
         let mut changed = false;
-        self.sessions.retain(|_, s| !(s.mood == "idle" && now.saturating_sub(s.at) > FORGET_MS));
-        for s in self.sessions.values_mut() {
-            let age = now.saturating_sub(s.at);
-            let is_stuck = (s.mood == "working" || s.mood == "waiting") && age > STALE_MS;
-            if is_stuck || (is_ending(&s.mood) && age > FORGET_MS) {
-                set(s, "idle", Value::String(String::new()), now, hold);
+        for id in self.sessions.check_stale(now) {
+            if self.sessions.get(&id).is_none() {
+                self.looks.remove(&id);
+            } else if let Some(look) = self.looks.get_mut(&id).filter(|look| look.rested.is_none()) {
+                look.detail = json!("");
+                look.settle_at = None;
                 changed = true;
             }
         }
@@ -545,70 +384,79 @@ impl Pet {
     }
 
     // The sessions in sight (hide_quiet).
-    fn shown(&self) -> impl Iterator<Item = &Session> {
-        self.sessions.values().filter(|s| !s.hidden)
+    fn shown(&self) -> impl Iterator<Item = (&Session, &Look)> {
+        self.sessions.sessions().filter_map(|s| self.looks.get(&s.id).filter(|look| !look.hidden).map(|look| (s, look)))
     }
 
     // What the pet shows: the session that most wants you, and the rest in
     // sight.
     pub fn get(&self, now: u64) -> Value {
-        let top = self
-            .shown()
-            .fold(None::<&Session>, |best, s| match best {
-                Some(b) if priority(&s.mood) < priority(&b.mood) => Some(b),
-                Some(b) if priority(&s.mood) == priority(&b.mood) && s.at < b.at => Some(b),
-                _ => Some(s),
-            });
-        let Some(top) = top else {
-            let mut empty = view(&Session::new(String::new(), now));
+        let top = self.shown().fold(None::<(&Session, &Look)>, |best, (s, look)| match best {
+            Some((b, bl)) if priority(mood_of(s, look)) < priority(mood_of(b, bl)) => best,
+            Some((b, bl)) if priority(mood_of(s, look)) == priority(mood_of(b, bl)) && at_of(s, look) < at_of(b, bl) => best,
+            _ => Some((s, look)),
+        });
+        let Some((top, top_look)) = top else {
+            let mut empty = no_session(now);
             empty["others"] = json!(0);
             empty["sessions"] = json!(0);
             return empty;
         };
-        let mut now = view(top);
-        now["others"] = json!(self.shown().filter(|s| s.id != top.id && s.mood != "idle").count());
+        let mut now = view(top, top_look);
+        now["others"] = json!(self.shown().filter(|(s, look)| s.id != top.id && mood_of(s, look) != "idle").count());
         now["sessions"] = json!(self.shown().count());
         now
+    }
+
+    // The sessions in sight, the one that most wants you first.
+    fn by_want(&self, busy: bool) -> Vec<(&Session, &Look)> {
+        let mut all: Vec<(&Session, &Look)> = self.shown().filter(|(s, look)| if busy { mood_of(s, look) != "idle" } else { !s.id.is_empty() || mood_of(s, look) != "idle" }).collect();
+        all.sort_by(|(a, al), (b, bl)| priority(mood_of(b, bl)).cmp(&priority(mood_of(a, al))).then(at_of(b, bl).cmp(&at_of(a, al))));
+        all
     }
 
     // Every session in sight, the one that most wants you first: the island's
     // open lines, the settings' list, the marks on the taskbar's buttons.
     pub fn list(&self) -> Value {
-        let mut all: Vec<&Session> = self.shown().filter(|s| !s.id.is_empty() || s.mood != "idle").collect();
-        all.sort_by(|a, b| priority(&b.mood).cmp(&priority(&a.mood)).then(b.at.cmp(&a.at)));
-        Value::Array(all.into_iter().map(view).collect())
+        Value::Array(self.by_want(false).into_iter().map(|(s, look)| view(s, look)).collect())
     }
 
     // The mood of the next session that wants something, after the one shown:
     // for the island's second bubble.
     pub fn second(&self) -> Option<String> {
-        let mut busy: Vec<&Session> = self.shown().filter(|s| s.mood != "idle").collect();
-        busy.sort_by(|a, b| priority(&b.mood).cmp(&priority(&a.mood)).then(b.at.cmp(&a.at)));
-        busy.get(1).map(|s| s.mood.clone())
+        self.by_want(true).get(1).map(|(s, look)| mood_of(s, look).to_string())
     }
 
     // Whether a session wants you: waiting on you, or an ending not yet seen.
     // Widgets keep to themselves meanwhile.
     pub fn wants_you(&self) -> bool {
-        self.sessions.values().any(|s| s.mood == "waiting" || is_ending(&s.mood))
+        self.sessions.sessions().any(|s| self.looks.get(&s.id).is_some_and(|look| matches!(mood_of(s, look), "waiting" | "done" | "review" | "error")))
     }
 
     // What the sessions are called (projects, titles, tasks): kept out of a
     // crash report (crash.rs).
     pub fn names(&self) -> Vec<String> {
-        self.sessions.values().flat_map(|s| [s.project.clone(), s.title.clone(), s.task.clone()]).filter(|n| !n.trim().is_empty()).collect()
+        self.sessions
+            .sessions()
+            .flat_map(|s| {
+                let look = self.looks.get(&s.id);
+                [s.project.clone().unwrap_or_default(), look.map(|l| l.title.clone()).unwrap_or_default(), look.map(|l| l.task.clone()).unwrap_or_default()]
+            })
+            .filter(|n| !n.trim().is_empty())
+            .collect()
     }
 
     // Whether a session already knows where it runs.
     pub fn has_chain(&self, id: &str) -> bool {
-        self.sessions.get(id).is_some_and(|s| !s.chain.is_empty())
+        self.looks.get(id).is_some_and(|look| !look.chain.is_empty())
     }
 
     // Where to go for a session: its chain, and the words its window's
     // title may hold (its name, its project).
     pub fn jump_target(&self, id: &str) -> Option<(jump::Chain, Vec<String>)> {
-        let s = self.sessions.get(id).filter(|s| !s.chain.is_empty())?;
-        Some((s.chain.clone(), vec![s.title.clone(), s.task.clone(), s.project.clone()]))
+        let look = self.looks.get(id).filter(|look| !look.chain.is_empty())?;
+        let project = self.sessions.get(id).and_then(|s| s.project.clone()).unwrap_or_default();
+        Some((look.chain.clone(), vec![look.title.clone(), look.task.clone(), project]))
     }
 
     pub fn mood(&self, now: u64) -> String {
@@ -618,18 +466,38 @@ impl Pet {
 
 #[cfg(test)]
 mod tests {
+    use agent_core::event::{Agent, Call, Failure, Todo, TodoItem, Wait};
+    use agent_core::registry::STALE_MS;
+
     use super::*;
 
-    fn msg(v: Value) -> Value {
-        v
+    fn ev(session: &str, kind: Kind) -> AgentEvent {
+        AgentEvent { agent: Agent::Claude, session: session.into(), within: false, cwd: None, turn: None, title: None, reply: None, kind }
+    }
+
+    // In a project's folder.
+    fn ev_in(session: &str, project: &str, kind: Kind) -> AgentEvent {
+        AgentEvent { cwd: Some(format!("Z:\\nowhere\\{project}")), ..ev(session, kind) }
+    }
+
+    fn call(id: &str, tool: &str) -> Call {
+        Call::new(id, tool, json!({}))
+    }
+
+    fn start() -> Kind {
+        Kind::TurnStart { prompt: None }
+    }
+
+    fn apply(pet: &mut Pet, ev: AgentEvent, at: u64) -> Option<Outcome> {
+        pet.apply(&ev, None, at, Hold::Seen)
     }
 
     #[test]
     fn a_turn_that_edited_ends_in_review() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 1, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "detail": "Edit", "event": "tool-done" })), 2, Hold::Seen);
-        let out = pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 5, Hold::Seen).unwrap();
+        apply(&mut pet, ev("a", start()), 1);
+        apply(&mut pet, ev("a", Kind::ToolDone { call: call("t1", "Edit") }), 2);
+        let out = apply(&mut pet, ev("a", Kind::Done), 5).unwrap();
         assert_eq!(pet.get(6)["mood"], "review");
         assert_eq!(pet.get(6)["took"], 4);
         assert_eq!(out.alerts, vec![("review".to_string(), String::new())]);
@@ -638,11 +506,12 @@ mod tests {
     #[test]
     fn the_session_that_most_wants_you_shows() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "waiting", "project": "one" })), 1, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "b", "mood": "working", "project": "two" })), 2, Hold::Seen);
+        apply(&mut pet, ev_in("a", "one", Kind::Waiting { wait: Wait::question() }), 1);
+        apply(&mut pet, ev_in("b", "two", Kind::Working), 2);
         let now = pet.get(3);
         assert_eq!(now["mood"], "waiting");
         assert_eq!(now["project"], "one");
+        assert_eq!(now["detail"], json!({ "key": "detail.asksQuestion", "vars": {} }));
         assert_eq!(now["others"], 1);
         assert_eq!(now["sessions"], 2);
     }
@@ -650,37 +519,55 @@ mod tests {
     #[test]
     fn endings_stay_until_seen_or_held_time() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 1, Hold::Seen);
-        assert!(!pet.tick(1_000_000, Hold::Seen));
-        assert!(pet.seen(2, Hold::Seen));
+        apply(&mut pet, ev("a", Kind::Done), 1);
+        assert!(!pet.tick(1_000_000));
+        assert!(pet.seen(2));
         assert_eq!(pet.get(3)["mood"], "idle");
 
-        pet.apply(&msg(json!({ "session": "a", "mood": "error" })), 10, Hold::Secs(8));
-        assert!(!pet.tick(8_009, Hold::Secs(8)));
-        assert!(pet.tick(8_010, Hold::Secs(8)));
-        assert_eq!(pet.get(8_011)["mood"], "idle");
+        pet.apply(&ev("a", Kind::Failed { error: Failure::Kind { kind: "rate_limit".into() } }), None, 10, Hold::Secs(8));
+        assert_eq!(pet.get(11)["error"], json!({ "key": "error.rate_limit", "vars": {} }));
+        assert!(!pet.tick(8_009));
+        assert!(pet.tick(8_010));
+        assert_eq!((pet.get(8_011)["mood"].as_str(), pet.get(8_011)["at"].as_u64(), pet.get(8_011)["error"].is_null()), (Some("idle"), Some(8_010), true));
     }
 
     #[test]
-    fn a_reaction_alone_changes_no_mood() {
+    fn a_task_done_is_a_reaction_alone() {
         let mut pet = Pet::default();
-        let out = pet.apply(&msg(json!({ "react": "jump", "say": { "key": "say.taskDone", "vars": { "task": "x", "n": 3, "bad": [] } } })), 1, Hold::Seen).unwrap();
+        let out = apply(&mut pet, ev("a", Kind::TaskDone { subject: Some("x".repeat(100)) }), 1).unwrap();
         assert!(!out.changed);
-        assert_eq!(out.react.unwrap()["say"], json!({ "key": "say.taskDone", "vars": { "task": "x", "n": "3" } }));
-        assert!(pet.apply(&msg(json!({ "mood": "sleepy" })), 1, Hold::Seen).is_none());
+        assert_eq!(out.react.unwrap(), json!({ "react": "jump", "say": { "key": "say.taskDone", "vars": { "task": "x".repeat(80) } } }));
+        assert_eq!(pet.get(2)["sessions"], 0);
+        // A session's start: a wave, and its line.
+        let out = apply(&mut pet, ev("a", Kind::SessionStart), 3).unwrap();
+        assert_eq!((out.changed, out.react.unwrap()["react"].as_str()), (true, Some("wave")));
     }
 
     #[test]
     fn stale_work_gives_up_and_quiet_sessions_are_forgotten() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "working" })), 0, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "b", "mood": "idle" })), 0, Hold::Seen);
-        assert!(pet.check_stale(STALE_MS + 1, Hold::Seen));
+        apply(&mut pet, ev("a", Kind::Working), 0);
+        apply(&mut pet, ev("b", Kind::Rest), 0);
+        assert!(pet.check_stale(STALE_MS + 1));
         assert_eq!(pet.get(STALE_MS + 2)["mood"], "idle");
-        pet.check_stale(FORGET_MS + 1, Hold::Seen);
+        pet.check_stale(FORGET_MS + 1);
         assert_eq!(pet.get(FORGET_MS + 2)["sessions"], 1);
-        pet.apply(&msg(json!({ "session": "a", "mood": "idle", "event": "session-end" })), 1, Hold::Seen);
+        apply(&mut pet, ev("a", Kind::SessionEnd), 1);
         assert_eq!(pet.get(FORGET_MS + 3)["sessions"], 0);
+    }
+
+    // An ending she saw is forgotten FORGET_MS after she saw it, as one at
+    // rest is; agent-core's registry alone keeps it as ended longer.
+    #[test]
+    fn a_seen_ending_is_forgotten_from_when_it_was_seen() {
+        let mut pet = Pet::default();
+        apply(&mut pet, ev("a", Kind::Done), 0);
+        pet.seen(1_000);
+        assert!(!pet.check_stale(FORGET_MS + 1_000));
+        assert_eq!(pet.get(FORGET_MS + 1_000)["sessions"], 1);
+        assert!(!pet.check_stale(FORGET_MS + 1_001));
+        assert_eq!(pet.get(FORGET_MS + 1_001)["sessions"], 0);
+        assert!(pet.names().is_empty() && pet.looks.is_empty());
     }
 
     #[test]
@@ -688,89 +575,91 @@ mod tests {
         let mut pet = Pet::default();
         let edit = json!({ "key": "step.edit", "vars": { "file": "a.rs" } });
         let agent = json!({ "key": "step.agent", "vars": { "what": "Explore" } });
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 10, Hold::Seen);
+        apply(&mut pet, ev("a", start()), 10);
         assert_eq!(pet.get(11)["step"]["key"], "step.thinking");
         assert_eq!(pet.get(11)["stepSince"], 10);
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "tool-start", "toolId": "1", "step": agent })), 20, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "tool-start", "toolId": "2", "step": edit })), 30, Hold::Seen);
-        assert_eq!((pet.get(31)["step"].clone(), pet.get(31)["stepSince"].clone()), (edit, json!(30)));
+        apply(&mut pet, ev("a", Kind::ToolStart { call: Call::new("1", "Agent", json!({ "description": "Explore" })) }), 20);
+        apply(&mut pet, ev("a", Kind::ToolStart { call: Call::new("2", "Edit", json!({ "file_path": "D:/p/a.rs" })) }), 30);
+        assert_eq!((pet.get(31)["step"].clone(), pet.get(31)["stepSince"].clone(), pet.get(31)["detail"].clone()), (edit, json!(30), json!("Edit")));
         // The subagent's tool ends: back to the agent, not to thinking.
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "tool-done", "toolId": "2", "detail": "Edit", "file": "D:/p/a.rs" })), 40, Hold::Seen);
+        apply(&mut pet, ev("a", Kind::ToolDone { call: Call { file: Some("D:/p/a.rs".into()), ..Call::new("2", "Edit", json!({ "file_path": "D:/p/a.rs" })) } }), 40);
         assert_eq!(pet.get(41)["step"], agent);
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "tool-failed", "toolId": "1" })), 50, Hold::Seen);
+        apply(&mut pet, ev("a", Kind::ToolFailed { call: call("1", "Agent"), quiet: false }), 50);
         assert_eq!((pet.get(51)["step"]["key"].clone(), pet.get(51)["stepSince"].clone()), (json!("step.thinking"), json!(50)));
         assert_eq!(pet.get(51)["files"], 1);
         // Waiting or done, there is no step.
-        pet.apply(&msg(json!({ "session": "a", "mood": "done", "reply": "改好了。" })), 60, Hold::Seen);
+        apply(&mut pet, AgentEvent { reply: Some("## 改好了\n\n改了 **a.rs**。".into()), ..ev("a", Kind::Done) }, 60);
         let now = pet.get(61);
-        assert_eq!((now["mood"].as_str(), now["step"].is_null(), now["reply"].as_str(), now["files"].as_u64()), (Some("review"), true, Some("改好了。"), Some(1)));
+        assert_eq!((now["mood"].as_str(), now["step"].is_null(), now["reply"].as_str(), now["files"].as_u64()), (Some("review"), true, Some("改好了：改了 a.rs。"), Some(1)));
         // The next turn starts clean.
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 70, Hold::Seen);
+        apply(&mut pet, ev("a", start()), 70);
         assert_eq!((pet.get(71)["files"].as_u64(), pet.get(71)["reply"].as_str()), (Some(0), Some("")));
     }
 
     #[test]
     fn a_subagent_s_steps_go_only_into_a_turn_under_way() {
         let mut pet = Pet::default();
-        let edit = json!({ "session": "a", "mood": "working", "detail": "Write", "event": "tool-done", "toolId": "c1", "file": "C:/w/notes.md", "agent": "dsh", "within": true });
+        let dsh = |kind| AgentEvent { agent: Agent::Dsh, ..ev("a", kind) };
+        let edit = AgentEvent { within: true, ..dsh(Kind::ToolDone { call: Call { file: Some("C:/w/notes.md".into()), ..call("c1", "Write") } }) };
         // No such session: none made.
-        assert!(pet.apply(&msg(edit.clone()), 1, Hold::Seen).is_none());
+        assert!(pet.apply(&edit, None, 1, Hold::Seen).is_none());
         assert_eq!(pet.get(2)["sessions"], 0);
         // At rest, or its turn ended (an idle review): left as it is.
-        pet.apply(&msg(json!({ "session": "a", "mood": "idle", "agent": "dsh" })), 3, Hold::Seen);
-        assert!(pet.apply(&msg(edit.clone()), 4, Hold::Seen).is_none());
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start", "task": "整理笔记" })), 5, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 6, Hold::Seen);
-        assert!(pet.apply(&msg(edit.clone()), 7, Hold::Seen).is_none());
+        apply(&mut pet, dsh(Kind::Rest), 3);
+        assert!(pet.apply(&edit, None, 4, Hold::Seen).is_none());
+        apply(&mut pet, dsh(Kind::TurnStart { prompt: Some("整理一下笔记".into()) }), 5);
+        apply(&mut pet, dsh(Kind::Done), 6);
+        assert!(pet.apply(&edit, None, 7, Hold::Seen).is_none());
         assert_eq!((pet.get(8)["mood"].as_str(), pet.get(8)["files"].as_u64()), (Some("done"), Some(0)));
         // Within its turn: its edit is the turn's, and the turn ends in review.
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 10, Hold::Seen);
-        assert!(pet.apply(&msg(edit), 11, Hold::Seen).unwrap().changed);
+        apply(&mut pet, dsh(start()), 10);
+        assert!(pet.apply(&edit, None, 11, Hold::Seen).unwrap().changed);
         assert_eq!(pet.get(12)["files"], 1);
-        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 13, Hold::Seen);
+        apply(&mut pet, dsh(Kind::Done), 13);
         assert_eq!(pet.get(14)["mood"], "review");
         // A subagent's own line, should one have been made: gone.
-        pet.apply(&msg(json!({ "session": "9d1f", "mood": "idle", "agent": "dsh" })), 15, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "9d1f", "mood": "idle", "event": "session-end", "agent": "dsh" })), 16, Hold::Seen);
+        apply(&mut pet, AgentEvent { session: "9d1f".into(), ..dsh(Kind::Rest) }, 15);
+        apply(&mut pet, AgentEvent { session: "9d1f".into(), ..dsh(Kind::SessionEnd) }, 16);
         assert_eq!(pet.get(17)["sessions"], 1);
     }
 
     #[test]
     fn a_session_is_named_by_its_title_or_else_its_task() {
         let mut pet = Pet::default();
-        let out = pet.apply(&msg(json!({ "session": "a", "project": "pet", "mood": "waiting" })), 1, Hold::Seen).unwrap();
+        let out = apply(&mut pet, ev_in("a", "pet", Kind::Waiting { wait: Wait::question() }), 1).unwrap();
         assert_eq!(out.alerts, vec![("waiting".to_string(), "pet".to_string())]);
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start", "task": "修复岛" })), 2, Hold::Seen);
-        assert_eq!(pet.get(3)["name"], "修复岛");
-        pet.apply(&msg(json!({ "session": "a", "mood": "done", "title": "岛的设置" })), 4, Hold::Seen);
+        apply(&mut pet, ev("a", Kind::TurnStart { prompt: Some("修复岛的设置\n细节……".into()) }), 2);
+        assert_eq!(pet.get(3)["name"], "修复岛的设置");
+        // A few words that only carry on name nothing.
+        apply(&mut pet, ev("a", Kind::TurnStart { prompt: Some("继续".into()) }), 3);
+        assert_eq!(pet.get(4)["name"], "修复岛的设置");
+        apply(&mut pet, AgentEvent { title: Some("岛的设置".into()), ..ev("a", Kind::Done) }, 4);
         assert_eq!(pet.get(5)["name"], "岛的设置");
         // A new task does not take over a title.
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start", "task": "下一件事" })), 6, Hold::Seen);
+        apply(&mut pet, ev("a", Kind::TurnStart { prompt: Some("下一件事情".into()) }), 6);
         assert_eq!(pet.list()[0]["name"], "岛的设置");
     }
 
     #[test]
     fn to_do_lists_count_what_is_done() {
-        let mut pet = Pet::default();
-        let todo = |pet: &mut Pet, todo: Value| {
-            pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "tool-start", "todo": todo })), 1, Hold::Seen);
+        let item = |text: &str, active: &str, status: &str| TodoItem { text: text.into(), active: active.into(), status: status.into() };
+        let todo = |pet: &mut Pet, todo: Todo| {
+            apply(pet, ev("a", Kind::ToolStart { call: Call { todo: Some(todo), ..call("", "TodoWrite") } }), 1);
             pet.get(2)["todo"].clone()
         };
-        let list = json!({ "set": [
-            { "text": "A", "active": "Doing A", "status": "completed" },
-            { "text": "B", "active": "Doing B", "status": "in_progress" },
-            { "text": "C", "active": "", "status": "pending" },
-        ] });
+        let mut pet = Pet::default();
+        let list = Todo::Set { items: vec![item("A", "Doing A", "completed"), item("B", "Doing B", "in_progress"), item("C", "", "pending")] };
         assert_eq!(todo(&mut pet, list), json!({ "done": 1, "total": 3, "active": "Doing B" }));
 
         let mut pet = Pet::default();
-        todo(&mut pet, json!({ "add": { "text": "A", "active": "" } }));
-        todo(&mut pet, json!({ "add": { "text": "B", "active": "Doing B" } }));
-        todo(&mut pet, json!({ "update": { "id": "1", "status": "completed" } }));
-        assert_eq!(todo(&mut pet, json!({ "update": { "id": "2", "status": "in_progress" } })), json!({ "done": 1, "total": 2, "active": "Doing B" }));
-        assert_eq!(todo(&mut pet, json!({ "update": { "id": "2", "status": "deleted" } })), json!({ "done": 1, "total": 1, "active": "" }));
+        let update = |id: &str, status: &str| Todo::Update { id: id.into(), status: Some(status.into()), text: None, active: None };
+        todo(&mut pet, Todo::Add { item: item("A", "", "") });
+        todo(&mut pet, Todo::Add { item: item("B", "Doing B", "") });
+        todo(&mut pet, update("1", "completed"));
+        assert_eq!(todo(&mut pet, update("2", "in_progress")), json!({ "done": 1, "total": 2, "active": "Doing B" }));
+        assert_eq!(todo(&mut pet, update("2", "deleted")), json!({ "done": 1, "total": 1, "active": "" }));
         // All done, and a new turn: the list is gone.
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 3, Hold::Seen);
+        apply(&mut pet, ev("a", start()), 3);
         assert!(pet.get(4)["todo"].is_null());
     }
 
@@ -780,21 +669,21 @@ mod tests {
         assert_eq!(text(Some(&nested), 80), json!({ "key": "detail.approve", "vars": { "what": { "key": "step.command", "vars": { "what": "git push" } } } }));
     }
 
-    // A Codex message: session c, turn t.
-    fn codex(turn: &str, more: Value) -> Value {
-        let mut m = json!({ "session": "c", "agent": "codex", "turn": turn });
-        for (k, v) in more.as_object().unwrap() {
-            m[k] = v.clone();
-        }
-        m
+    // A Codex event: session c, turn t.
+    fn codex(turn: &str, kind: Kind) -> AgentEvent {
+        AgentEvent { agent: Agent::Codex, turn: Some(turn.into()), ..ev("c", kind) }
+    }
+
+    fn patch() -> Kind {
+        Kind::ToolDone { call: call("", "apply_patch") }
     }
 
     #[test]
     fn a_codex_turn_with_a_patch_ends_in_review() {
         let mut pet = Pet::default();
-        pet.apply(&codex("t1", json!({ "mood": "working", "event": "turn-start" })), 1, Hold::Seen);
-        pet.apply(&codex("t1", json!({ "mood": "working", "detail": "apply_patch", "event": "tool-done" })), 2, Hold::Seen);
-        pet.apply(&codex("t1", json!({ "mood": "done", "event": "turn-end" })), 3, Hold::Seen);
+        apply(&mut pet, codex("t1", start()), 1);
+        apply(&mut pet, codex("t1", patch()), 2);
+        apply(&mut pet, codex("t1", Kind::Done), 3);
         assert_eq!(pet.get(4)["mood"], "review");
         assert_eq!(pet.get(4)["agent"], "codex");
         assert_eq!(pet.list()[0]["agent"], "codex");
@@ -804,56 +693,61 @@ mod tests {
     fn late_codex_events_change_nothing_but_a_late_edit() {
         let mut pet = Pet::default();
         // The turn's own start comes after one of its steps: it still counts the edit.
-        pet.apply(&codex("t1", json!({ "mood": "working", "detail": "apply_patch", "event": "tool-done" })), 1, Hold::Seen);
-        pet.apply(&codex("t1", json!({ "mood": "working", "event": "turn-start" })), 2, Hold::Seen);
-        pet.apply(&codex("t1", json!({ "mood": "done", "event": "turn-end" })), 3, Hold::Seen);
+        apply(&mut pet, codex("t1", patch()), 1);
+        apply(&mut pet, codex("t1", start()), 2);
+        apply(&mut pet, codex("t1", Kind::Done), 3);
         assert_eq!(pet.get(4)["mood"], "review");
 
         // A step after its turn ended: she stays done, not back at work.
-        pet.apply(&codex("t2", json!({ "mood": "working", "event": "turn-start" })), 10, Hold::Seen);
-        pet.apply(&codex("t2", json!({ "mood": "done", "event": "turn-end" })), 11, Hold::Seen);
-        pet.apply(&codex("t2", json!({ "mood": "working", "detail": "Bash", "event": "tool-start", "step": { "key": "step.command", "vars": { "what": "ls" } } })), 12, Hold::Seen);
+        apply(&mut pet, codex("t2", start()), 10);
+        apply(&mut pet, codex("t2", Kind::Done), 11);
+        let out = apply(&mut pet, codex("t2", Kind::ToolStart { call: Call::new("", "Bash", json!({ "command": "ls" })) }), 12).unwrap();
+        assert!(!out.changed);
         assert_eq!(pet.get(13)["mood"], "done");
         // A late edit makes that done a review.
-        pet.apply(&codex("t2", json!({ "mood": "working", "detail": "apply_patch", "event": "tool-done" })), 14, Hold::Seen);
+        assert!(apply(&mut pet, codex("t2", patch()), 14).unwrap().changed);
         assert_eq!(pet.get(15)["mood"], "review");
+        // Seen, it stays at rest.
+        pet.seen(16);
+        assert!(!apply(&mut pet, codex("t2", patch()), 17).unwrap().changed);
+        assert_eq!(pet.get(18)["mood"], "idle");
 
         // Interrupted: back to rest, and its stragglers too.
-        pet.apply(&codex("t3", json!({ "mood": "working", "event": "turn-start" })), 20, Hold::Seen);
-        pet.apply(&codex("t3", json!({ "mood": "idle", "event": "turn-end" })), 21, Hold::Seen);
-        pet.apply(&codex("t3", json!({ "mood": "working", "detail": "Bash" })), 22, Hold::Seen);
+        apply(&mut pet, codex("t3", start()), 20);
+        apply(&mut pet, codex("t3", Kind::Stopped), 21);
+        apply(&mut pet, codex("t3", Kind::ToolStart { call: call("", "Bash") }), 22);
         assert_eq!(pet.get(23)["mood"], "idle");
         // The next turn works as ever.
-        pet.apply(&codex("t4", json!({ "mood": "working", "event": "turn-start" })), 30, Hold::Seen);
+        apply(&mut pet, codex("t4", start()), 30);
         assert_eq!(pet.get(31)["mood"], "working");
     }
 
     #[test]
     fn a_codex_turn_heard_first_by_a_step_starts_anew() {
         let mut pet = Pet::default();
-        pet.apply(&codex("t1", json!({ "mood": "working", "event": "turn-start" })), 1_000, Hold::Seen);
-        pet.apply(&codex("t1", json!({ "mood": "working", "detail": "apply_patch", "event": "tool-done", "file": "a.rs" })), 2_000, Hold::Seen);
-        pet.apply(&codex("t1", json!({ "mood": "done", "event": "turn-end" })), 3_000, Hold::Seen);
+        apply(&mut pet, codex("t1", start()), 1_000);
+        apply(&mut pet, codex("t1", Kind::ToolDone { call: Call { file: Some("a.rs".into()), ..call("", "apply_patch") } }), 2_000);
+        apply(&mut pet, codex("t1", Kind::Done), 3_000);
         // The next turn's first step before its start: the edit and file before are gone, the turn counted once.
-        let out = pet.apply(&codex("t2", json!({ "mood": "working", "detail": "Bash", "event": "tool-start" })), 10_000, Hold::Seen).unwrap();
+        let out = apply(&mut pet, codex("t2", Kind::ToolStart { call: call("", "Bash") }), 10_000).unwrap();
         assert_eq!(out.turns, 1);
-        let out = pet.apply(&codex("t2", json!({ "mood": "working", "event": "turn-start" })), 10_100, Hold::Seen).unwrap();
+        let out = apply(&mut pet, codex("t2", start()), 10_100).unwrap();
         assert_eq!(out.turns, 0);
         assert_eq!(pet.get(10_200)["files"], 0);
-        pet.apply(&codex("t2", json!({ "mood": "done", "event": "turn-end" })), 12_000, Hold::Seen);
+        apply(&mut pet, codex("t2", Kind::Done), 12_000);
         assert_eq!(pet.get(12_100)["mood"], "done");
     }
 
     #[test]
     fn a_session_keeps_where_it_runs() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "project": "pet", "chain": [[10, 5], [8, 3]] })), 1, Hold::Seen);
+        pet.apply(&ev_in("a", "pet", Kind::Working), Some(vec![(10, 5), (8, 3)]), 1, Hold::Seen);
         assert!(pet.has_chain("a"));
         assert_eq!(pet.get(2)["jump"], true);
-        // A message without one keeps it.
-        pet.apply(&msg(json!({ "session": "a", "mood": "done", "title": "岛" })), 3, Hold::Seen);
+        // An event without one keeps it.
+        apply(&mut pet, AgentEvent { title: Some("岛".into()), ..ev("a", Kind::Done) }, 3);
         assert_eq!(pet.jump_target("a"), Some((vec![(10, 5), (8, 3)], vec!["岛".into(), String::new(), "pet".into()])));
-        pet.apply(&msg(json!({ "session": "b", "mood": "working" })), 4, Hold::Seen);
+        apply(&mut pet, ev("b", Kind::Working), 4);
         assert!(!pet.has_chain("b") && pet.jump_target("b").is_none());
         assert_eq!(pet.list().as_array().unwrap().iter().find(|s| s["id"] == "b").unwrap()["jump"], false);
     }
@@ -861,13 +755,13 @@ mod tests {
     #[test]
     fn a_turn_counts_for_today_and_an_ending_wants_you() {
         let mut pet = Pet::default();
-        let out = pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 1_000, Hold::Seen).unwrap();
+        let out = apply(&mut pet, ev("a", start()), 1_000).unwrap();
         assert_eq!((out.turns, out.worked_ms), (1, 0));
         assert!(!pet.wants_you());
-        let out = pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 61_000, Hold::Seen).unwrap();
+        let out = apply(&mut pet, ev("a", Kind::Done), 61_000).unwrap();
         assert_eq!((out.turns, out.worked_ms), (0, 60_000));
         assert!(pet.wants_you());
-        pet.seen(62_000, Hold::Seen);
+        pet.seen(62_000);
         assert!(!pet.wants_you());
     }
 
@@ -875,19 +769,19 @@ mod tests {
     fn a_stopped_turn_and_one_that_never_ended_count_too() {
         let mut pet = Pet::default();
         // Stopped by the person (Codex's Interrupt): it worked till then.
-        pet.apply(&codex("t1", json!({ "mood": "working", "event": "turn-start" })), 1_000, Hold::Seen);
-        let out = pet.apply(&codex("t1", json!({ "mood": "idle", "event": "turn-end" })), 21_000, Hold::Seen).unwrap();
+        apply(&mut pet, codex("t1", start()), 1_000);
+        let out = apply(&mut pet, codex("t1", Kind::Stopped), 21_000).unwrap();
         assert_eq!(out.worked_ms, 20_000);
         // A turn that never said it ended, then the next: up to its last event.
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 30_000, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "detail": "Bash", "event": "tool-done" })), 40_000, Hold::Seen);
-        let out = pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), 100_000, Hold::Seen).unwrap();
+        apply(&mut pet, ev("a", start()), 30_000);
+        apply(&mut pet, ev("a", Kind::ToolDone { call: call("", "Bash") }), 40_000);
+        let out = apply(&mut pet, ev("a", start()), 100_000).unwrap();
         assert_eq!((out.turns, out.worked_ms), (1, 10_000));
-        let out = pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 105_000, Hold::Seen).unwrap();
+        let out = apply(&mut pet, ev("a", Kind::Done), 105_000).unwrap();
         assert_eq!(out.worked_ms, 5_000);
         // Rest that ends no turn counts nothing.
-        pet.apply(&msg(json!({ "session": "b", "mood": "working", "event": "turn-start" })), 200_000, Hold::Seen);
-        assert_eq!(pet.apply(&msg(json!({ "session": "b", "mood": "idle" })), 210_000, Hold::Seen).unwrap().worked_ms, 0);
+        apply(&mut pet, ev("b", start()), 200_000);
+        assert_eq!(apply(&mut pet, ev("b", Kind::Rest), 210_000).unwrap().worked_ms, 0);
     }
 
     const HIDE: u64 = IDLE_HIDE_MIN * 60 * 1000;
@@ -918,36 +812,36 @@ mod tests {
     #[test]
     fn a_seen_ending_goes_out_of_sight_and_comes_back_as_it_was() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "project": "pet", "mood": "working", "event": "turn-start", "task": "修复岛" })), 1_000, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "a", "mood": "done" })), 61_000, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "b", "mood": "working", "event": "turn-start" })), 61_000, Hold::Seen);
+        apply(&mut pet, ev_in("a", "pet", Kind::TurnStart { prompt: Some("修复岛的设置".into()) }), 1_000);
+        apply(&mut pet, ev("a", Kind::Done), 61_000);
+        apply(&mut pet, ev("b", start()), 61_000);
         // Not seen yet: kept past the time, as is the one at work.
         let seen = 61_000 + HIDE * 2;
         assert!(!pet.hide_quiet(seen, HIDE));
         assert_eq!(ids(&pet), ["a", "b"]);
         // Seen: quiet from then on, and out of sight once it has been that long.
-        pet.seen(seen, Hold::Seen);
+        pet.seen(seen);
         assert!(!pet.hide_quiet(seen + HIDE - 1, HIDE));
         assert!(pet.hide_quiet(seen + HIDE, HIDE));
         assert_eq!(ids(&pet), ["b"]);
         let now = pet.get(seen + HIDE);
         assert_eq!((now["id"].as_str(), now["sessions"].as_u64(), now["others"].as_u64()), (Some("b"), Some(1), Some(0)));
         // Kept all the same: its names stay out of a crash report.
-        assert!(pet.names().contains(&"修复岛".to_string()));
+        assert!(pet.names().contains(&"修复岛的设置".to_string()));
         // Its next event brings it back at once, as it was.
         let back = seen + HIDE + 10;
-        pet.apply(&msg(json!({ "session": "a", "mood": "working", "event": "turn-start" })), back, Hold::Seen);
+        apply(&mut pet, ev("a", start()), back);
         assert!(!pet.hide_quiet(back, HIDE));
         let a = pet.list().as_array().unwrap().iter().find(|s| s["id"] == "a").cloned().unwrap();
-        assert_eq!((a["name"].as_str(), a["project"].as_str(), a["mood"].as_str()), (Some("修复岛"), Some("pet"), Some("working")));
+        assert_eq!((a["name"].as_str(), a["project"].as_str(), a["mood"].as_str()), (Some("修复岛的设置"), Some("pet"), Some("working")));
         assert_eq!(pet.get(back)["sessions"], 2);
     }
 
     #[test]
     fn an_ending_folded_away_counts_from_then() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "error" })), 0, Hold::Secs(8));
-        assert!(pet.tick(8_000, Hold::Secs(8)));
+        pet.apply(&ev("a", Kind::Failed { error: Failure::Said { said: "no".into() } }), None, 0, Hold::Secs(8));
+        assert!(pet.tick(8_000));
         assert!(!pet.hide_quiet(8_000 + HIDE - 1, HIDE));
         assert!(pet.hide_quiet(8_000 + HIDE, HIDE));
         assert!(ids(&pet).is_empty());
@@ -960,20 +854,20 @@ mod tests {
     #[test]
     fn work_given_up_and_endings_never_seen_count_from_their_last_event() {
         let mut pet = Pet::default();
-        pet.apply(&msg(json!({ "session": "a", "mood": "working" })), 0, Hold::Seen);
-        pet.apply(&msg(json!({ "session": "b", "mood": "done" })), 0, Hold::Seen);
+        apply(&mut pet, ev("a", Kind::Working), 0);
+        apply(&mut pet, ev("b", Kind::Done), 0);
         // Stuck work gone to rest stays in sight until quiet the time from its last event.
-        pet.check_stale(STALE_MS + 1, Hold::Seen);
+        pet.check_stale(STALE_MS + 1);
         assert!(!pet.hide_quiet(STALE_MS + 1, HIDE));
         assert!(pet.hide_quiet(HIDE, HIDE));
         assert_eq!(ids(&pet), ["b"]);
         // The ending nobody saw, given up after FORGET_MS: out of sight at once.
-        pet.check_stale(FORGET_MS + 1, Hold::Seen);
+        pet.check_stale(FORGET_MS + 1);
         assert!(pet.hide_quiet(FORGET_MS + 1, HIDE));
         assert!(ids(&pet).is_empty());
         // Forgotten as before, out of sight or not.
-        assert_eq!(pet.sessions.len(), 2);
-        pet.check_stale(STALE_MS + 1 + FORGET_MS + 1, Hold::Seen);
-        assert_eq!(pet.sessions.len(), 1);
+        assert_eq!(pet.sessions.sessions().count(), 2);
+        pet.check_stale(STALE_MS + 1 + FORGET_MS + 1);
+        assert_eq!(pet.sessions.sessions().count(), 1);
     }
 }

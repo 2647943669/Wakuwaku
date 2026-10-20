@@ -8,16 +8,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "agent": "codex",
-      "mood": "idle",
-      "project": "svc",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-codex"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -89,15 +79,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "codex",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "task": "Add a health endpoint",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -172,22 +153,6 @@
     },
     "at": 2100,
     "event": "PreToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "step": {
-        "key": "step.command",
-        "vars": {
-          "what": "rg -n health src"
-        }
-      },
-      "toolId": "c1",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -275,16 +240,6 @@
     },
     "at": 2600,
     "event": "PostToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "toolId": "c1",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -359,22 +314,6 @@
     },
     "at": 3000,
     "event": "PreToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "apply_patch",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "step": {
-        "key": "step.edit",
-        "vars": {
-          "file": "main.rs"
-        }
-      },
-      "toolId": "c2",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -470,24 +409,6 @@
     },
     "at": 3500,
     "event": "PermissionRequest",
-    "message": {
-      "agent": "codex",
-      "detail": {
-        "key": "detail.approve",
-        "vars": {
-          "what": {
-            "key": "step.command",
-            "vars": {
-              "what": "cargo test"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "svc",
-      "session": "replay-codex",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [
         [
@@ -601,17 +522,6 @@
     },
     "at": 6000,
     "event": "PostToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "apply_patch",
-      "event": "tool-done",
-      "file": "Z:\\replay\\svc\\src\\main.rs",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "toolId": "c2",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -688,22 +598,6 @@
     },
     "at": 6500,
     "event": "PreToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "step": {
-        "key": "step.command",
-        "vars": {
-          "what": "cargo test"
-        }
-      },
-      "toolId": "c3",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -793,16 +687,6 @@
     },
     "at": 9000,
     "event": "PostToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "toolId": "c3",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -873,15 +757,6 @@
     },
     "at": 9500,
     "event": "Stop",
-    "message": {
-      "agent": "codex",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "svc",
-      "reply": "Added /health; the tests pass.",
-      "session": "replay-codex",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [
         [
@@ -961,16 +836,6 @@
     },
     "at": 9600,
     "event": "PostToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "Bash",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "toolId": "c9",
-      "turn": "t1"
-    },
     "outcome": {
       "alerts": [],
       "changed": false,
@@ -1093,15 +958,6 @@
     },
     "at": 20000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "codex",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "task": "Bump the version",
-      "turn": "t2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1176,22 +1032,6 @@
     },
     "at": 20100,
     "event": "PreToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "apply_patch",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "step": {
-        "key": "step.edit",
-        "vars": {
-          "file": "Cargo.toml"
-        }
-      },
-      "toolId": "c5",
-      "turn": "t2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1273,15 +1113,6 @@
     },
     "at": 20200,
     "event": "Stop",
-    "message": {
-      "agent": "codex",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "svc",
-      "reply": "Bumped to 0.1.1.",
-      "session": "replay-codex",
-      "turn": "t2"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1360,17 +1191,6 @@
     },
     "at": 20300,
     "event": "PostToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "apply_patch",
-      "event": "tool-done",
-      "file": "Z:\\replay\\svc\\Cargo.toml",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "toolId": "c5",
-      "turn": "t2"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1489,15 +1309,6 @@
     },
     "at": 31000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "codex",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "task": "Run the linter",
-      "turn": "t3"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1572,22 +1383,6 @@
     },
     "at": 31100,
     "event": "PreToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": "Bash",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "svc",
-      "session": "replay-codex",
-      "step": {
-        "key": "step.command",
-        "vars": {
-          "what": "cargo clippy"
-        }
-      },
-      "toolId": "c6",
-      "turn": "t3"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1668,14 +1463,6 @@
     },
     "at": 32000,
     "event": "Interrupt",
-    "message": {
-      "agent": "codex",
-      "event": "turn-end",
-      "mood": "idle",
-      "project": "svc",
-      "session": "replay-codex",
-      "turn": "t3"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -1743,16 +1530,6 @@
     },
     "at": 33000,
     "event": "PreToolUse",
-    "message": {
-      "agent": "codex",
-      "detail": {
-        "key": "detail.asksQuestion"
-      },
-      "mood": "waiting",
-      "project": "svc",
-      "session": "replay-codex",
-      "turn": "t4"
-    },
     "outcome": {
       "alerts": [
         [
@@ -1827,13 +1604,6 @@
     },
     "at": 34000,
     "event": "SessionEnd",
-    "message": {
-      "agent": "codex",
-      "event": "session-end",
-      "mood": "idle",
-      "project": "svc",
-      "session": "replay-codex"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,

@@ -9,17 +9,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "agent": "dsh",
-      "mood": "idle",
-      "project": "dsh-bridge",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-dsh-c96",
-      "title": "Read note.txt and copy it"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -91,15 +80,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "dsh",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "dsh-bridge",
-      "session": "replay-dsh-c96",
-      "task": "Read note.txt, then create copy.txt",
-      "title": "Read note.txt and copy it"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -173,21 +153,6 @@
     },
     "at": 3000,
     "event": "PreToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Read",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "dsh-bridge",
-      "session": "replay-dsh-c96",
-      "step": {
-        "key": "step.read",
-        "vars": {
-          "file": "note.txt"
-        }
-      },
-      "toolId": "call_00_R"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -274,15 +239,6 @@
     },
     "at": 3500,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Read",
-      "event": "tool-done",
-      "mood": "working",
-      "project": "dsh-bridge",
-      "session": "replay-dsh-c96",
-      "toolId": "call_00_R"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -357,16 +313,6 @@
     },
     "at": 4000,
     "event": "PostToolUse",
-    "message": {
-      "agent": "dsh",
-      "detail": "Write",
-      "event": "tool-done",
-      "file": "Z:\\replay\\dsh-bridge\\copy.txt",
-      "mood": "working",
-      "project": "dsh-bridge",
-      "session": "replay-dsh-c96",
-      "toolId": "call_00_W"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -437,15 +383,6 @@
     },
     "at": 5000,
     "event": "Stop",
-    "message": {
-      "agent": "dsh",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "dsh-bridge",
-      "reply": "Done — note.txt contained hi, and copy.txt now has the same text.",
-      "session": "replay-dsh-c96",
-      "title": "Read note.txt and copy it"
-    },
     "outcome": {
       "alerts": [
         [

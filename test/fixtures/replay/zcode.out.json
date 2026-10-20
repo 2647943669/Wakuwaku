@@ -8,16 +8,6 @@
     },
     "at": 1000,
     "event": "SessionStart",
-    "message": {
-      "agent": "zcode",
-      "mood": "idle",
-      "project": "zc",
-      "react": "wave",
-      "say": {
-        "key": "say.hello"
-      },
-      "session": "replay-zc"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -88,14 +78,6 @@
     },
     "at": 2000,
     "event": "UserPromptSubmit",
-    "message": {
-      "agent": "zcode",
-      "event": "turn-start",
-      "mood": "working",
-      "project": "zc",
-      "session": "replay-zc",
-      "task": "Create a file named note.txt containing hi"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -170,21 +152,6 @@
     },
     "at": 2500,
     "event": "PreToolUse",
-    "message": {
-      "agent": "zcode",
-      "detail": "Write",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "zc",
-      "session": "replay-zc",
-      "step": {
-        "key": "step.write",
-        "vars": {
-          "file": "note.txt"
-        }
-      },
-      "toolId": "call_00_UlU5"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -282,23 +249,6 @@
     },
     "at": 2600,
     "event": "PermissionRequest",
-    "message": {
-      "agent": "zcode",
-      "detail": {
-        "key": "detail.approve",
-        "vars": {
-          "what": {
-            "key": "step.write",
-            "vars": {
-              "file": "note.txt"
-            }
-          }
-        }
-      },
-      "mood": "waiting",
-      "project": "zc",
-      "session": "replay-zc"
-    },
     "outcome": {
       "alerts": [
         [
@@ -415,16 +365,6 @@
     },
     "at": 4000,
     "event": "PostToolUse",
-    "message": {
-      "agent": "zcode",
-      "detail": "Write",
-      "event": "tool-done",
-      "file": "Z:\\replay\\zc\\note.txt",
-      "mood": "working",
-      "project": "zc",
-      "session": "replay-zc",
-      "toolId": "call_00_UlU5"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -500,21 +440,6 @@
     },
     "at": 4500,
     "event": "PreToolUse",
-    "message": {
-      "agent": "zcode",
-      "detail": "Task",
-      "event": "tool-start",
-      "mood": "working",
-      "project": "zc",
-      "session": "replay-zc",
-      "step": {
-        "key": "step.agent",
-        "vars": {
-          "what": "Explore the code"
-        }
-      },
-      "toolId": "call_01"
-    },
     "outcome": {
       "alerts": [],
       "changed": true,
@@ -591,7 +516,6 @@
     "agentEvent": null,
     "at": 5000,
     "event": "PostToolUseFailure",
-    "message": null,
     "outcome": null,
     "registry": [
       {
@@ -668,14 +592,6 @@
     },
     "at": 6000,
     "event": "Stop",
-    "message": {
-      "agent": "zcode",
-      "event": "turn-end",
-      "mood": "done",
-      "project": "zc",
-      "reply": "Created note.txt.",
-      "session": "replay-zc"
-    },
     "outcome": {
       "alerts": [
         [

@@ -123,7 +123,7 @@ mod tests {
     fn feed(pet: &mut crate::state::Pet, name: &str, more: Value, at: u64) -> (u64, u64) {
         let mut e = event(name, more);
         with_transcript(&mut e);
-        to_message(&e).and_then(|m| pet.apply(&m, at, crate::state::Hold::Seen)).map_or((0, 0), |out| (out.turns, out.worked_ms))
+        agent_core::agy::to_event(&mut e).and_then(|ev| pet.apply(&ev, None, at, crate::state::Hold::Seen)).map_or((0, 0), |out| (out.turns, out.worked_ms))
     }
 
     #[test]
