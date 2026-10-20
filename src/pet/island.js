@@ -398,8 +398,15 @@
   const isClear = () => isOn() && home() === 'taskbar' && config.taskbarMaterial === 'clear'
   const clearWhen = () => (['solid', 'always'].includes(config.taskbarClearWhen) ? config.taskbarClearWhen : 'mica')
   const isFilled = () => isClear() && clearWhen() !== 'always' && taskWindows.some(a => (a.windows || []).some(w => w.max && !w.min))
+  // How light the desktop under the clear strip is (mica.js lightness):
+  // true, light enough for dark words; null, not known (yet).
+  let backdropLight = null
   // The taskbar light, as Windows' own is in its light mode (taskbar.rs).
-  const isLight = () => isOn() && home() === 'taskbar' && look.mode === 'light'
+  // Clear, with the desktop showing through it: its words as dark or as
+  // light as the desktop under them wants (backdropLight), as text over
+  // iOS's glass goes by what is behind it, not by the system's mode; dark
+  // words on a dark wallpaper, haloed white, did not read.
+  const isLight = () => isOn() && home() === 'taskbar' && (isClear() && !isFilled() && backdropLight !== null ? backdropLight : look.mode === 'light')
   // Her end a capsule of its own in the strip (black, or light in Windows'
   // light mode), wherever the strip is not black itself: on the Mica, clear,
   // or light.
@@ -3833,6 +3840,36 @@
     if (isMica() || clearMica) mica.set(paper, isSide() ? TASKBAR_H : innerWidth, isSide() ? innerHeight : TASKBAR_H, look.mode)
     else mica.clear()
     drawIslandLook()
+    measureBackdrop()
+    // The strip's words turned light or dark (a window maximized over the
+    // clear strip fills it in, back to Windows' mode): what is drawn with
+    // their colour (stripHue, the widgets' cards) drawn again.
+    const light = isLight()
+    if (light !== stripWasLight) {
+      stripWasLight = light
+      requestAnimationFrame(() => update())
+    }
+  }
+  let stripWasLight = null
+
+  // The desktop under the clear strip looked at again when the picture or
+  // the strip's size changes; drawn anew once it is known.
+  let backdropKey = ''
+  function measureBackdrop() {
+    if (!isClear()) return
+    const width = isSide() ? TASKBAR_H : innerWidth
+    const height = isSide() ? innerHeight : TASKBAR_H
+    const key = JSON.stringify([paper, width, height])
+    if (!paper || key === backdropKey) return
+    backdropKey = key
+    Mica.lightness(paper, width, height).then(y => {
+      if (key !== backdropKey) return
+      const light = y === null ? null : Mica.wantsDarkInk(y)
+      console.log(`taskbar: the desktop under the clear strip ${y === null ? 'not read' : `${y.toFixed(3)} light, its words ${light ? 'dark' : 'light'}`}`)
+      if (light === backdropLight) return
+      backdropLight = light
+      drawMica()
+    })
   }
 
   // Windows' mode: as taskbar.rs tells the taskbar (taskbar:look), and in

@@ -163,6 +163,63 @@
     return { canvas: out, margin, scale }
   }
 
+  // How light the desktop is right under the strip, 0 (black) to 1 (white):
+  // the picture where it lies there, unblurred, its relative luminance (as
+  // WCAG takes it, from linear light) averaged. The clear strip's words go
+  // by it (island.js backdrop), as text over iOS's glass goes by what is
+  // behind it, not by the system's mode. null: not to be told (no paper, or
+  // a picture whose pixels cannot be read).
+  const LIGHT_SCALE = 0.1
+  async function lightness(paper, width, height) {
+    if (!paper) return null
+    let img = null
+    if (paper.url) {
+      img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.src = paper.url
+      try {
+        await img.decode()
+      } catch {
+        return null
+      }
+    }
+    const W = Math.max(1, Math.ceil(width * LIGHT_SCALE))
+    const H = Math.max(1, Math.ceil(height * LIGHT_SCALE))
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = H
+    const g = c.getContext('2d', { willReadFrequently: true })
+    g.fillStyle = paper.color || '#000'
+    g.fillRect(0, 0, W, H)
+    g.setTransform(LIGHT_SCALE, 0, 0, LIGHT_SCALE, 0, 0)
+    if (img) {
+      const at = place(paper, { w: img.naturalWidth, h: img.naturalHeight })
+      if (at.tile) {
+        const tiles = g.createPattern(img, 'repeat')
+        tiles.setTransform(new DOMMatrix().translate(at.x, at.y).scale(at.w / img.naturalWidth, at.h / img.naturalHeight))
+        g.fillStyle = tiles
+        g.fillRect(0, 0, width, height)
+      } else {
+        g.drawImage(img, at.x, at.y, at.w, at.h)
+      }
+      img.src = ''
+    }
+    let d
+    try {
+      d = g.getImageData(0, 0, W, H).data
+    } catch {
+      return null
+    }
+    const lin = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+    let sum = 0
+    for (let p = 0; p < d.length; p += 4) sum += 0.2126 * lin(d[p] / 255) + 0.7152 * lin(d[p + 1] / 255) + 0.0722 * lin(d[p + 2] / 255)
+    return sum / (d.length / 4)
+  }
+
+  // Light enough for dark words: where black reads better on it than white
+  // does (their contrast ratios even at about 0.18).
+  const wantsDarkInk = y => (y + 0.05) / 0.05 > 1.05 / (y + 0.05)
+
   // The Mica in box (the strip's own size): set to a picture (taskbar.rs's
   // paper), the strip's size and Windows' mode, drawn anew only when one
   // changes, the new faded in over the old; cleared.
@@ -209,7 +266,7 @@
     }
   }
 
-  const api = { place, draw, mount, glassPaper }
+  const api = { place, draw, mount, glassPaper, lightness, wantsDarkInk }
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api
