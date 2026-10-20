@@ -1,4 +1,4 @@
-// CI and pull requests from GitHub, as examples/widgets/ci.ps1 had them: how
+// CI and pull requests from GitHub, as the old ci.ps1 had them: how
 // the latest Actions run on main went, and (Prs) the checks on the open pull
 // requests. The island opens when a run seen going finishes: what was seen
 // is kept from turn to turn (the script, started anew each turn while she

@@ -3,7 +3,7 @@
 // from and what about. Private: while Wakuwaku's 显示具体内容 is off, only the
 // count shows. Thunderbird keeps the accounts and how they sign in (OAuth for
 // Gmail and Outlook too); this only reads and tells the pet, as any widget
-// script does (examples/widgets).
+// script does (docs/WIDGETS.md).
 //
 // Thunderbird 115 lists an account's folders in .folders, each with a .type;
 // later ones give a .rootFolder, and .specialUse instead of .type: both work.

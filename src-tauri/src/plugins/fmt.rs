@@ -1,4 +1,4 @@
-// Numbers as the example scripts wrote them (examples/widgets/*.ps1), so the
+// Numbers as the old example scripts wrote them (weather.ps1 and the rest), so the
 // widgets she makes herself read exactly as they did when PowerShell made
 // them. .NET rounds in more than one way, and the scripts met each:
 //

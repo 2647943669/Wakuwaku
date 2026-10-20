@@ -1,4 +1,4 @@
-// A deadline, as examples/widgets/countdown.ps1 had it: how long until it;
+// A deadline, as the old countdown.ps1 had it: how long until it;
 // the island opens an hour before it, and when it comes. Looked at each
 // minute; ten minutes past it, it goes.
 //

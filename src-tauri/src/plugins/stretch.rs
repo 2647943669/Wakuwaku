@@ -1,4 +1,4 @@
-// A reminder, as examples/widgets/stretch.ps1 had it: every so often the
+// A reminder, as the old stretch.ps1 had it: every so often the
 // island opens and says it (a nudge), unless a session needs you just then.
 // Between reminders it shows when the next one comes, looked at each minute.
 use std::time::Duration;

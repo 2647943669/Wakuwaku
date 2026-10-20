@@ -6,7 +6,7 @@ use std::sync::Arc;
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, WebviewWindow};
 
-use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet, plugins, scripts, set_display, set_out, shared, Shared};
+use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet, plugins, set_display, set_out, shared, Shared};
 
 const REPO: &str = "https://github.com/zhoupengjie/wakuwaku";
 
@@ -201,7 +201,6 @@ pub fn snapshot(sh: &Shared) -> Value {
         "netSystemProxy": crate::proxy::web_system_view(),
         // The mail kept changed: the Mail page asks for its list again.
         "mailRev": mail::rev(),
-        "waku": scripts::waku_path(sh).to_string_lossy(),
         "port": sh.port,
     })
 }

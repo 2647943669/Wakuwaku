@@ -1,8 +1,8 @@
 // The plugins she runs for you: the weather, stocks, a pomodoro, a deadline,
 // a stretch reminder, CI and dev servers, each running while its switch is
 // on (placed is on: the picker writes plugins[id].on). They were PowerShell
-// scripts she started hidden (examples/widgets, still there to read, and to
-// run by hand); they are done here now, inside her, each widget as its
+// scripts she started hidden (examples/widgets, since taken out of the
+// repository); they are done here now, inside her, each widget as its
 // script made it (the same words, numbers, colours, sizes and nudges, and
 // the same settings: their parameters keep the scripts' names). No
 // PowerShell, no process of their own: a resident one held 110 MB, starting
@@ -158,7 +158,7 @@ impl Conf<'_> {
     }
 }
 
-// The scripts' own parameters (examples/widgets/<id>.ps1) and periods.
+// The scripts' own parameters (the old <id>.ps1's) and periods.
 pub static PLUGINS: [Plugin; 7] = [
     Plugin { id: "weather", icon: "weather", params: &[p("City", Kind::Text, false)], by_lang: true, on_web: true, make: |c| Box::new(weather::Weather::new(c.text("City"), c.lang, web_fetch())) },
     Plugin {
@@ -408,7 +408,8 @@ fn keep_turns(sh: Arc<Shared>) {
 // The scripts she ran them by before, written out to <her folder>/plugins
 // (<id>.ps1, and <id>.log, what each printed), taken away once as she
 // starts: nothing runs them now, and they would only grow old there. waku.ps1
-// beside them stays (scripts.rs), and anything else of anyone's.
+// beside them stays, as anything else of anyone's: she writes it out no more,
+// but a terminal set up to run it still can (it only posts to /widget).
 fn clean_up(folder: &Path) -> Vec<String> {
     let mut gone = Vec::new();
     for p in &PLUGINS {
@@ -464,8 +465,6 @@ pub fn sync(sh: &Shared) -> bool {
     }
     drop(posting);
     if clean {
-        // waku, beside them, written out as she starts (as it was with them).
-        let _ = crate::scripts::waku_path(sh);
         let gone = clean_up(&sh.dir.join("plugins"));
         if !gone.is_empty() {
             sh.log(&format!("plugins: the scripts she ran them by before taken away: {}", gone.join(", ")));
@@ -532,8 +531,9 @@ pub(crate) mod tests {
     // --- For the plugins' own tests ---
 
     // What a script posted and warned, run with the web and the clock played
-    // back to it (test/fixtures/plugins/ps/<name>.json): each post's
-    // seconds since it started, and its body.
+    // back to it (test/fixtures/plugins/ps/<name>.json, recorded while the
+    // scripts were still in the repository, by a record.ps1 gone with them):
+    // each post's seconds since it started, and its body.
     pub fn golden(name: &str) -> (Vec<(f64, Value)>, Vec<String>) {
         let path = format!("{}/../test/fixtures/plugins/ps/{name}.json", env!("CARGO_MANIFEST_DIR"));
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
@@ -643,23 +643,26 @@ pub(crate) mod tests {
         assert_eq!(missing(plugin("weather").unwrap(), &json!({})), None);
     }
 
-    // Settings made for the scripts keep working: every parameter is one of
-    // its script's, by the same name (the scripts stay, as samples).
+    // Settings made for the scripts keep working: every parameter keeps the
+    // name it had when she ran them (the scripts' own, but for the stock's
+    // Colors, whose options were two of its script's switches).
     #[test]
     fn the_parameters_are_the_scripts_own() {
-        for p in &PLUGINS {
-            let script = std::fs::read_to_string(format!("{}/../examples/widgets/{}.ps1", env!("CARGO_MANIFEST_DIR"), p.id)).unwrap();
-            let block = script.split_once("param(").map(|(_, b)| b).unwrap_or("");
-            for param in p.params {
-                let names: Vec<&str> = match param.kind {
-                    Kind::Choice { options, .. } => options.to_vec(),
-                    _ => vec![param.name],
-                };
-                for name in names {
-                    assert!(block.contains(&format!("${name}")), "{}: ${name}", p.id);
-                }
-            }
+        let scripts: [(&str, &[&str]); 7] = [
+            ("weather", &["City"]),
+            ("stock", &["Symbol", "Name", "Colors"]),
+            ("pomodoro", &["Work", "Break"]),
+            ("countdown", &["At", "Title"]),
+            ("stretch", &["Minutes"]),
+            ("ci", &["Repo", "Prs"]),
+            ("devserver", &["Url"]),
+        ];
+        for (p, (id, names)) in PLUGINS.iter().zip(scripts) {
+            assert_eq!(p.id, id);
+            assert_eq!(p.params.iter().map(|q| q.name).collect::<Vec<_>>(), names, "{id}");
         }
+        let Kind::Choice { options, .. } = plugin("stock").unwrap().params[2].kind else { panic!() };
+        assert_eq!(options, ["RedUp", "GreenUp"]);
     }
 
     // The stock plugin's up and down colours (the one place every widget of
