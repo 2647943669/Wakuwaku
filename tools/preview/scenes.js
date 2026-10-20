@@ -741,6 +741,40 @@
         await p.wait(1800)
       },
     })),
+    // General's 网络代理 (zhoupengjie/Wakuwaku#68): Windows' proxy (Clash's,
+    // 127.0.0.1:7890) and what the Test found; one typed in (SOCKS5); none
+    // set in Windows and an update not downloaded, its line pointing there.
+    ...[
+      ['settings-net', '跟随系统，测试过', {}, null, true],
+      ['settings-net-manual', '手动 SOCKS5', { netProxy: { mode: 'manual', kind: 'socks5', address: '127.0.0.1:10808' } }, null, false],
+      [
+        'settings-net-update',
+        '更新下载失败，指到网络代理',
+        {},
+        {
+          latest: { version: '0.3.4', newer: true, canInstall: true },
+          error: { code: 'download', detail: 'GitHub: straight, github.com → release-assets.githubusercontent.com: timeout: connect' },
+        },
+        false,
+      ],
+    ].map(([id, name, config, update, test]) => ({
+      id,
+      section: 'settings',
+      title: `设置 · 通用 · 网络代理：${name}`,
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(660), 560, 660],
+      world: F => ({ ...busy(F), config, ...(update ? { update, netSystemProxy: null } : {}) }),
+      steps: async p => {
+        p.emit('island:settings', { tab: update ? 'update' : 'net' })
+        // Past the settings' last scroll to the part (1.6 s), as it stays.
+        await p.wait(1800)
+        if (test) {
+          p.click('#island-settings [data-net-test]')
+          await p.wait(600)
+        }
+      },
+    })),
     // Look's 位置 (zhoupengjie/Wakuwaku#59): at the top of the screen, three
     // places (at the left here, as the island is); on the taskbar, a line
     // and the way to drag her capsule.

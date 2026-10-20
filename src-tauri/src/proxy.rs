@@ -1,12 +1,24 @@
 // Proxies: Windows' own, as Settings (Network, Proxy) has it and as Clash or
-// v2rayN set it when their "system proxy" is on, read for the crash reports
-// (crash.rs: a URL for ureq) and for mail (mail/proxy.rs: an address and a
-// kind to go through); and a proxy as one is typed in. The registry's
-// ProxyServer is "host:port" for every protocol, or one for each:
+// v2rayN set it when their "system proxy" is on, read for the web (the
+// updates, the crash reports, LHM's download, the plugins: web_ways, a URL
+// for ureq, tried before going straight) and for mail (mail/proxy.rs: an
+// address and a kind to go through); and a proxy as one is typed in. The
+// registry's ProxyServer is "host:port" for every protocol, or one for each:
 // "http=host:port;https=host:port;socks=host:port"; ProxyOverride lists the
 // hosts reached straight ("localhost;127.*;10.*;<local>", <local> being a
 // name without a dot). A PAC script (AutoConfigURL, Clash's "PAC mode") is
 // not read: as no proxy.
+//
+// Which way, the General page's Network proxy says (the setting netProxy,
+// zhoupengjie/Wakuwaku#68): Windows' (the default), one typed in, or none;
+// mail follows it unless its page or an account says otherwise.
+
+use std::sync::Mutex;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+use ureq::config::ConfigBuilder;
+use ureq::typestate::AgentScope;
 
 // How a proxy is spoken to: HTTP's CONNECT, or SOCKS5.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -74,6 +86,46 @@ impl Proxy {
         let port = port.parse::<u16>().ok().filter(|p| *p > 0)?;
         let ok = !host.is_empty() && host.len() <= 253 && host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':'));
         ok.then(|| Proxy { kind, host: host.to_ascii_lowercase(), port })
+    }
+}
+
+// A way to go, as set: { mode: system | manual | none, kind: http | socks5,
+// address: "host:port" } (netProxy, mailProxy, an account's own).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub enum Via {
+    // Windows' proxy, read again at each connection: Clash's switched on or
+    // off meanwhile is taken at the next.
+    #[default]
+    System,
+    Manual(Proxy),
+    Straight,
+}
+
+impl Via {
+    // As kept in the settings; None when it is not one (a manual one with no
+    // address that reads as one, a key of another name).
+    pub fn of(v: &Value) -> Option<Via> {
+        let m = v.as_object()?;
+        if m.keys().any(|k| !matches!(k.as_str(), "mode" | "kind" | "address")) {
+            return None;
+        }
+        match m.get("mode")?.as_str()? {
+            "system" => Some(Via::System),
+            "none" => Some(Via::Straight),
+            "manual" => {
+                let kind = Kind::parse(m.get("kind").and_then(Value::as_str).unwrap_or("http"))?;
+                Proxy::parse(m.get("address")?.as_str()?, kind).map(Via::Manual)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn json(&self) -> Value {
+        match self {
+            Via::System => json!({ "mode": "system" }),
+            Via::Straight => json!({ "mode": "none" }),
+            Via::Manual(p) => json!({ "mode": "manual", "kind": p.kind.name(), "address": p.at() }),
+        }
     }
 }
 
@@ -158,6 +210,163 @@ pub fn system() -> Option<System> {
     None
 }
 
+// Windows' proxy as the web takes it, for the page: { kind, address }, or null.
+pub fn web_system_view() -> Value {
+    let p = system().and_then(|s| s.for_web()).and_then(|url| Proxy::parse(&url, Kind::Http));
+    p.map_or(Value::Null, |p| json!({ "kind": p.kind.name(), "address": p.at() }))
+}
+
+// --- The web (updates, crash reports, LHM's download, the plugins) --------
+
+// Every request of hers to the web goes one way, as netProxy says. Windows'
+// (system): through Windows' proxy first where one is set (and none in the
+// environment, which ureq takes by itself) and its list (ProxyOverride)
+// does not name the host; then as ureq would; a host the list names
+// straight. One typed in (manual): through it alone, our own way through
+// (mail/proxy.rs tunnel: HTTP's CONNECT or SOCKS5, the name looked up by
+// the proxy). None: straight. This computer itself always straight.
+// PowerShell, which ran the plugins before, went Windows' way.
+
+// netProxy as last set (set_web: as she starts, and when it is changed).
+static WEB: Mutex<Via> = Mutex::new(Via::System);
+
+pub fn set_web(v: &Value) {
+    *WEB.lock().unwrap() = Via::of(v).unwrap_or_default();
+}
+
+pub fn web_setting() -> Via {
+    WEB.lock().unwrap().clone()
+}
+
+// One way to try: through Windows' proxy (its URL), through the one typed
+// in, as ureq would by itself (the environment's proxy if one is set there,
+// else straight), or straight.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Way {
+    Through(String),
+    Manual(Proxy),
+    Default,
+    Straight,
+}
+
+// Connecting at most so long, and the answer's head in so long after: a
+// way that goes nowhere (one straight through a VPN's TUN may) fails in
+// seconds, not at the end of a download's ten minutes.
+const CONNECT: Duration = Duration::from_secs(15);
+const HEAD: Duration = Duration::from_secs(30);
+
+impl Way {
+    // For the log: "through Windows' proxy http://127.0.0.1:7890",
+    // "through the environment's proxy", "straight".
+    pub fn name(&self) -> String {
+        match self {
+            Way::Through(p) => format!("through Windows' proxy {p}"),
+            Way::Manual(p) => format!("through the proxy set, {} {}", p.kind.name(), p.at()),
+            Way::Default if ureq::Proxy::try_from_env().is_some() => "through the environment's proxy".into(),
+            Way::Default | Way::Straight => "straight".into(),
+        }
+    }
+
+    // The proxy's address, for the page ("127.0.0.1:7890"); none straight.
+    pub fn proxy_at(&self) -> Option<String> {
+        match self {
+            Way::Through(url) => Proxy::parse(url, Kind::Http).map(|p| p.at()),
+            Way::Manual(p) => Some(p.at()),
+            Way::Default | Way::Straight => None,
+        }
+    }
+
+    // An agent for it, a whole call at most `timeout` (and CONNECT, HEAD),
+    // its config as `tweak` makes it; none for a proxy ureq cannot take.
+    pub fn agent_with(&self, timeout: Duration, tweak: impl FnOnce(ConfigBuilder<AgentScope>) -> ConfigBuilder<AgentScope>) -> Option<ureq::Agent> {
+        let config = ureq::Agent::config_builder()
+            .timeout_global(Some(timeout))
+            .timeout_connect(Some(CONNECT.min(timeout)))
+            .timeout_recv_response(Some(HEAD.min(timeout)));
+        Some(match self {
+            Way::Through(p) => tweak(config.proxy(Some(ureq::Proxy::new(p).ok()?))).build().new_agent(),
+            Way::Manual(p) => crate::mail::proxy::through(p, CONNECT.min(timeout), tweak(config)),
+            Way::Straight => tweak(config.proxy(None)).build().new_agent(),
+            Way::Default => tweak(config).build().new_agent(),
+        })
+    }
+
+    // An agent for it: redirects followed as ureq does (10), statuses from
+    // 400 errors.
+    pub fn agent(&self, timeout: Duration) -> Option<ureq::Agent> {
+        self.agent_with(timeout, |c| c)
+    }
+}
+
+// The host of an address, lower case; IPv6 without its brackets.
+pub fn host_of(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split_once(']').map(|(h, _)| h)?,
+        None => authority.rsplit_once(':').map_or(authority, |(h, _)| h),
+    };
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
+// This computer itself: never through a proxy.
+pub fn is_loopback(host: &str) -> bool {
+    host == "localhost" || host.ends_with(".localhost") || host == "::1" || host.starts_with("127.")
+}
+
+fn ways(host: &str, via: &Via, system: Option<System>, env_proxy: bool) -> Vec<Way> {
+    if is_loopback(host) {
+        return vec![Way::Straight];
+    }
+    match (via, system) {
+        (Via::Manual(p), _) => vec![Way::Manual(p.clone())],
+        (Via::Straight, _) => vec![Way::Straight],
+        (Via::System, Some(s)) if s.bypasses(host) => vec![Way::Straight],
+        (Via::System, Some(s)) if !env_proxy => s.for_web().map(Way::Through).into_iter().chain([Way::Default]).collect(),
+        (Via::System, _) => vec![Way::Default],
+    }
+}
+
+// The ways to try for an address, in turn, as netProxy and the system have
+// them now.
+pub fn web_ways(url: &str) -> Vec<Way> {
+    web_ways_by(url, &web_setting())
+}
+
+// The same, for a way given (the page's test of one).
+pub fn web_ways_by(url: &str, via: &Via) -> Vec<Way> {
+    let system = if *via == Via::System { system() } else { None };
+    ways(&host_of(url).unwrap_or_default(), via, system, ureq::Proxy::try_from_env().is_some())
+}
+
+// The page's Test: GitHub asked the way given (each of its ways in turn, as
+// an update goes), any answer counting. { ok, via: the proxy it went
+// through or null, ms } or { ok: false, via, error }; and, should it fail,
+// a proxy listening on this computer at a port such apps use (Clash 7890,
+// Clash Verge 7897, v2rayN 10809 HTTP, 10808 SOCKS), for the page to
+// suggest: `listening`, { address, kind } or null.
+pub fn test(via: &Via) -> Value {
+    const URL: &str = "https://github.com/";
+    let mut failed = json!({ "ok": false, "via": null, "error": "no way" });
+    for way in web_ways_by(URL, via) {
+        let started = std::time::Instant::now();
+        let Some(agent) = way.agent_with(Duration::from_secs(10), |c| c.http_status_as_error(false).max_redirects(0)) else { continue };
+        match agent.get(URL).header("user-agent", &format!("wakuwaku/{}", crate::updates::current())).call() {
+            Ok(_) => return json!({ "ok": true, "via": way.proxy_at(), "ms": started.elapsed().as_millis() as u64 }),
+            Err(e) => failed = json!({ "ok": false, "via": way.proxy_at(), "error": e.to_string() }),
+        }
+    }
+    failed["listening"] = listening().map_or(Value::Null, |(port, kind)| json!({ "address": format!("127.0.0.1:{port}"), "kind": kind.name() }));
+    failed
+}
+
+fn listening() -> Option<(u16, Kind)> {
+    [(7890, Kind::Http), (7897, Kind::Http), (10809, Kind::Http), (10808, Kind::Socks5)].into_iter().find(|(port, _)| {
+        std::net::TcpStream::connect_timeout(&std::net::SocketAddr::from(([127, 0, 0, 1], *port)), Duration::from_millis(300)).is_ok()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +418,50 @@ mod tests {
         for bad in ["127.0.0.1", "127.0.0.1:0", "127.0.0.1:99999", ":7890", "a b:1", "::1:1080", "https://x:1", "x:1 --y"] {
             assert_eq!(p(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn hosts_are_read_from_addresses() {
+        assert_eq!(host_of("http://localhost:3000").as_deref(), Some("localhost"));
+        assert_eq!(host_of("https://API.github.com/repos/a/b").as_deref(), Some("api.github.com"));
+        assert_eq!(host_of("http://[::1]:5173/api").as_deref(), Some("::1"));
+        assert_eq!(host_of("http://user:pw@127.0.0.1:8080/x?y").as_deref(), Some("127.0.0.1"));
+        assert_eq!(host_of("https://Release-Assets.githubusercontent.com:443/a?b").as_deref(), Some("release-assets.githubusercontent.com"));
+        assert_eq!(host_of("http://").as_deref(), None);
+        assert!(is_loopback("127.0.0.1") && is_loopback("localhost") && is_loopback("::1") && is_loopback("app.localhost"));
+        assert!(!is_loopback("example.com") && !is_loopback("10.0.0.1"));
+    }
+
+    // This computer straight; Windows' proxy then as ureq would; straight
+    // for a host its list names; the environment's alone when one is set
+    // there.
+    #[test]
+    fn the_web_through_windows_proxy_first() {
+        let clash = || Some(System { server: "127.0.0.1:7890".into(), bypass: "localhost;127.*;192.168.*;<local>".into() });
+        let sys_way = &Via::System;
+        assert_eq!(ways("localhost", sys_way, clash(), false), [Way::Straight]);
+        assert_eq!(ways("github.com", sys_way, clash(), false), [Way::Through("http://127.0.0.1:7890".into()), Way::Default]);
+        assert_eq!(ways("192.168.1.5", sys_way, clash(), false), [Way::Straight]);
+        assert_eq!(ways("devbox", sys_way, clash(), false), [Way::Straight]);
+        assert_eq!(ways("api.github.com", sys_way, None, false), [Way::Default]);
+        assert_eq!(ways("api.github.com", sys_way, clash(), true), [Way::Default]);
+        assert_eq!(ways("::1", sys_way, None, true), [Way::Straight]);
+        assert_eq!(ways("127.0.0.1", sys_way, Some(sys("127.0.0.1:7890")), false), [Way::Straight]);
+    }
+
+    // One typed in (netProxy manual): through it alone, whatever Windows or
+    // the environment say; none: straight, the environment's too. This
+    // computer straight still.
+    #[test]
+    fn the_web_as_the_general_page_says() {
+        let socks = Proxy { kind: Kind::Socks5, host: "127.0.0.1".into(), port: 10808 };
+        let manual = Via::Manual(socks.clone());
+        assert_eq!(ways("github.com", &manual, Some(sys("127.0.0.1:7890")), true), [Way::Manual(socks.clone())]);
+        assert_eq!(ways("localhost", &manual, None, false), [Way::Straight]);
+        assert_eq!(ways("github.com", &Via::Straight, Some(sys("127.0.0.1:7890")), true), [Way::Straight]);
+        assert_eq!(Way::Manual(socks).proxy_at().as_deref(), Some("127.0.0.1:10808"));
+        assert_eq!(Way::Through("http://127.0.0.1:7890".into()).proxy_at().as_deref(), Some("127.0.0.1:7890"));
+        assert_eq!(Via::of(&json!({ "mode": "manual", "kind": "socks5", "address": "127.0.0.1:10808" })).map(|v| v.json()), Some(json!({ "mode": "manual", "kind": "socks5", "address": "127.0.0.1:10808" })));
+        assert_eq!(Via::of(&json!({ "mode": "follow" })), None);
     }
 }

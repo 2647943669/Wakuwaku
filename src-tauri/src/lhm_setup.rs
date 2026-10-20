@@ -925,29 +925,8 @@ fn testing() -> bool {
 }
 
 // Through Windows' proxy first, where one is set and none is in the
-// environment (ureq takes that by itself), then straight (as crash.rs).
-fn ways(url: &str) -> Vec<Option<String>> {
-    let mut ways = Vec::new();
-    #[cfg(windows)]
-    if !url.contains("://127.0.0.1") && !url.contains("://localhost") && ureq::Proxy::try_from_env().is_none() {
-        if let Some(p) = crate::proxy::system().and_then(|s| s.for_web()) {
-            ways.push(Some(p));
-        }
-    }
-    let _ = url;
-    ways.push(None);
-    ways
-}
-
-fn agent(proxy: Option<&str>, seconds: u64) -> Option<ureq::Agent> {
-    let config = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(seconds)));
-    let config = match proxy {
-        Some(p) => config.proxy(Some(ureq::Proxy::new(p).ok()?)),
-        None => config,
-    };
-    Some(config.build().new_agent())
-}
-
+// environment (ureq takes that by itself), then straight: proxy::web_ways,
+// as the updates and the crash reports.
 fn user_agent() -> String {
     format!("wakuwaku/{}", crate::updates::current())
 }
@@ -955,11 +934,11 @@ fn user_agent() -> String {
 fn latest() -> Result<Value, String> {
     let url = std::env::var(RELEASE_TEST).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| LATEST.to_string());
     let mut last = String::from("no way");
-    for way in ways(&url) {
-        let Some(agent) = agent(way.as_deref(), 20) else { continue };
+    for way in crate::proxy::web_ways(&url) {
+        let Some(agent) = way.agent(Duration::from_secs(20)) else { continue };
         match agent.get(&url).header("user-agent", &user_agent()).header("accept", "application/vnd.github+json").call() {
             Ok(mut res) => return res.body_mut().read_json::<Value>().map_err(|e| e.to_string()),
-            Err(e) => last = e.to_string(),
+            Err(e) => last = format!("{}: {e}", way.name()),
         }
     }
     Err(last)
@@ -968,12 +947,12 @@ fn latest() -> Result<Value, String> {
 // Downloaded to `to`, its SHA-256 as it comes; the progress for the settings.
 fn download(sh: &Shared, url: &str, to: &Path) -> Result<String, String> {
     let mut last = String::from("no way");
-    for way in ways(url) {
-        let Some(agent) = agent(way.as_deref(), 600) else { continue };
+    for way in crate::proxy::web_ways(url) {
+        let Some(agent) = way.agent(Duration::from_secs(600)) else { continue };
         let mut res = match agent.get(url).header("user-agent", &user_agent()).call() {
             Ok(res) => res,
             Err(e) => {
-                last = e.to_string();
+                last = format!("{}: {e}", way.name());
                 continue;
             }
         };

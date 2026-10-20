@@ -44,7 +44,7 @@
   // welcome shows is the welcome, at General's top.
   const TABS = ['now', 'agents', 'look', 'widgets', 'mail']
   const TAB_KEY = { now: 's.tabGeneral', agents: 's.tabAgents', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
-  const PART_OF = { pets: 'look', place: 'look', alerts: 'now', connect: 'agents', update: 'now', crash: 'now' }
+  const PART_OF = { pets: 'look', place: 'look', alerts: 'now', connect: 'agents', update: 'now', net: 'now', crash: 'now' }
   const HEAD_KEY = { working: 's.headWorking', waiting: 's.headWaiting', done: 's.headDone', review: 's.headReview', error: 's.headError' }
   const SIZES = [['small', 0.4], ['medium', 0.55], ['large', 0.75]]
   const HOMES = ['island', 'taskbar']
@@ -107,7 +107,7 @@
   let mailForm = null
   // An account's delete asked once: asked again, it goes.
   let mailDelete = ''
-  // The Mail page's proxy address as typed and not yet kept: being typed,
+  // A proxy address as typed and not yet kept (key: mailProxy, netProxy): being typed,
   // or (bad) not read as address:port.
   let proxyTyped = null
   // The Mail page's inbox: whose (an account id), its newest letters and how
@@ -1181,7 +1181,7 @@
     ['socks5', 'SOCKS5'],
   ]
   const PROXY_MODES = () => [
-    ['', T('mail.proxy.page', { what: T(`mail.proxy.${proxySetting().mode}Long`) })],
+    ['', T('mail.proxy.page', { what: T(`mail.proxy.${waySetting('mailProxy').mode}Long`) })],
     ['system', T('mail.proxy.systemLong')],
     ['manual', T('mail.proxy.manualLong')],
     ['none', T('mail.proxy.noneLong')],
@@ -1844,45 +1844,106 @@
     return `<div class="grp keep">${row(esc(T('mail.keep')), esc(note), seg('mailOffline', choices, value))}</div>`
   }
 
-  // How mail reaches its servers (the setting mailProxy, mail/proxy.rs):
-  // through Windows' proxy (the default; straight while none is set),
-  // through one typed in (HTTP or SOCKS5), or straight. A manual one's kind
-  // and address are kept while another is on.
+  // The ways out, as set: the General page's Network proxy (netProxy,
+  // proxy.rs: her updates, crash reports, plugins, LHM's download) and the
+  // Mail page's (mailProxy, mail/proxy.rs): through Windows' proxy
+  // (straight while none is set), through one typed in (HTTP or SOCKS5), or
+  // straight; mail's may follow the General page's (its default since
+  // zhoupengjie/Wakuwaku#68; one set before keeps its way). A manual one's
+  // kind and address are kept while another is on.
+  const WAY_MODES = { netProxy: ['system', 'manual', 'none'], mailProxy: ['follow', 'system', 'manual', 'none'] }
+  function waySetting(key) {
+    const p = snap.settings[key] || {}
+    const modes = WAY_MODES[key]
+    return { mode: modes.includes(p.mode) ? p.mode : modes[0], kind: p.kind === 'socks5' ? 'socks5' : 'http', address: p.address || '' }
+  }
+
+  // The Mail page's way as it goes: the General page's while it follows that.
   function proxySetting() {
-    const p = snap.settings.mailProxy || {}
-    return { mode: ['system', 'manual', 'none'].includes(p.mode) ? p.mode : 'system', kind: p.kind === 'socks5' ? 'socks5' : 'http', address: p.address || '' }
+    const p = waySetting('mailProxy')
+    return p.mode === 'follow' ? waySetting('netProxy') : p
+  }
+
+  // The General page's way in a few words: "手动 · 127.0.0.1:7890（HTTP）",
+  // "跟随系统 · Windows 没有设代理，直连".
+  function netNow() {
+    const p = waySetting('netProxy')
+    const sys = snap.netSystemProxy
+    const at = x => T('s.net.at', { proxy: x.address, kind: labelOf(PROXY_KINDS, x.kind) })
+    const how = p.mode === 'manual' ? at(p) : p.mode === 'none' ? T('s.net.straight') : sys ? at(sys) : T('s.net.noSystem')
+    return `${T(`s.net.mode.${p.mode}`)} · ${how}`
+  }
+
+  // A manual one's kind and address (its box: data-proxy-at, the setting's key); `extra` after the box.
+  function manualRow(key, p, extra = '') {
+    const typed = proxyTyped?.key === key ? proxyTyped.text : p.address
+    const bad = proxyTyped?.key === key && proxyTyped.bad ? `<div class="note err">${esc(T('mail.proxy.bad'))}</div>` : ''
+    return `<div class="r">${seg(`${key}.kind`, PROXY_KINDS, p.kind)}<input class="in grow" data-proxy-at="${key}" value="${esc(typed)}" placeholder="127.0.0.1:7890" spellcheck="false" autocomplete="off">${extra}</div>${bad}`
   }
 
   function proxyHTML() {
-    const p = proxySetting()
+    const p = waySetting('mailProxy')
     const sys = snap.mailSystemProxy
-    const now = p.mode === 'system' ? (sys ? T('mail.proxy.systemNow', { proxy: sys.address, kind: labelOf(PROXY_KINDS, sys.kind) }) : T('mail.proxy.systemNone')) : T(`mail.proxy.${p.mode}Note`)
-    const modes = ['system', 'manual', 'none'].map(m => [m, T(`mail.proxy.${m}`)])
-    const typed = proxyTyped ? proxyTyped.text : p.address
-    const manual =
-      p.mode === 'manual'
-        ? `<div class="r">${seg('mailProxy.kind', PROXY_KINDS, p.kind)}<input class="in grow" data-proxy-at value="${esc(typed)}" placeholder="127.0.0.1:7890" spellcheck="false" autocomplete="off"></div>${proxyTyped?.bad ? `<div class="note err">${esc(T('mail.proxy.bad'))}</div>` : ''}`
-        : ''
+    const now =
+      p.mode === 'follow'
+        ? T('mail.proxy.followNote', { what: netNow() })
+        : p.mode === 'system'
+          ? sys
+            ? T('mail.proxy.systemNow', { proxy: sys.address, kind: labelOf(PROXY_KINDS, sys.kind) })
+            : T('mail.proxy.systemNone')
+          : T(`mail.proxy.${p.mode}Note`)
+    const modes = WAY_MODES.mailProxy.map(m => [m, T(`mail.proxy.${m}`)])
+    const manual = p.mode === 'manual' ? manualRow('mailProxy', p) : ''
     return `<div class="grp proxy">${row(esc(T('mail.proxy')), esc(`${now} ${T('mail.proxy.perAccount')}`), seg('mailProxy.mode', modes, p.mode))}${manual}</div>`
   }
 
-  // The Mail page's proxy changed, kept whole; manual for the first time,
-  // Windows' proxy's address, else Clash's usual port, to change.
-  function setProxy(change) {
-    const next = { ...proxySetting(), ...change }
-    if (next.mode === 'manual' && !next.address) {
-      const sys = snap.mailSystemProxy
-      Object.assign(next, sys ? { kind: sys.kind, address: sys.address } : { address: '127.0.0.1:7890' })
-    }
-    proxyTyped = null
-    patch({ mailProxy: next })
+  // The Network proxy's Test (proxy.rs test): running, or what it found.
+  let netTest = null
+
+  // The General page's Network proxy: its way, a manual one's kind and
+  // address, the Test and what it found (Windows' way: on a row of its own).
+  function pageNet() {
+    const p = waySetting('netProxy')
+    const sys = snap.netSystemProxy
+    const note = p.mode === 'system' ? (sys ? T('s.net.systemNow', { proxy: sys.address, kind: labelOf(PROXY_KINDS, sys.kind) }) : T('s.net.systemNone')) : T(`s.net.${p.mode}Note`)
+    const modes = WAY_MODES.netProxy.map(m => [m, T(`s.net.mode.${m}`)])
+    const test = `<button class="pbtn sm" data-net-test ${netTest?.running ? 'disabled' : ''}>${esc(T('s.net.test'))}</button>`
+    const found = netTestHTML(p)
+    const more =
+      p.mode === 'manual' ? manualRow('netProxy', p, test) + found : p.mode === 'system' ? `<div class="r"><div class="grow d">${esc(T('s.net.testNote'))}</div>${test}</div>${found}` : ''
+    return `${sec(T('s.net'))}<div class="grp">${row(esc(T('s.netProxy')), esc(note), seg('netProxy.mode', modes, p.mode))}${more}</div>`
   }
 
-  // Its address as typed (Enter, or leaving the box): a scheme before it
+  // What the Test found: GitHub reached (through which proxy, how fast), or
+  // not (and a proxy heard on this computer at a usual port, to try).
+  function netTestHTML(p) {
+    const t = netTest
+    if (!t) return ''
+    if (t.running) return `<div class="note">${esc(T('s.net.testing'))}</div>`
+    if (t.ok) return `<div class="note ok">${esc(T(t.via ? 's.net.okVia' : 's.net.okStraight', { proxy: t.via || '', s: ((t.ms || 0) / 1000).toFixed(1) }))}</div>`
+    const heard = t.listening && !(p.mode === 'manual' && t.listening.address === p.address) ? ' ' + T('s.net.listening', { proxy: t.listening.address }) : ''
+    return `<div class="note err">${esc(T(t.via ? 's.net.badVia' : 's.net.badStraight', { proxy: t.via || '', error: t.error || '' }) + heard)}</div>`
+  }
+
+  // A way changed, kept whole; manual for the first time: the address known
+  // (the General page's typed one, for mail; Windows' proxy), else Clash's usual port, to change.
+  function setProxy(key, change) {
+    const next = { ...waySetting(key), ...change }
+    if (next.mode === 'manual' && !next.address) {
+      const net = waySetting('netProxy')
+      const known = key === 'mailProxy' && net.address ? net : key === 'netProxy' ? snap.netSystemProxy : snap.mailSystemProxy
+      Object.assign(next, known ? { kind: known.kind, address: known.address } : { address: '127.0.0.1:7890' })
+    }
+    if (proxyTyped?.key === key) proxyTyped = null
+    if (key === 'netProxy') netTest = null
+    patch({ [key]: next })
+  }
+
+  // An address as typed (Enter, or leaving the box): a scheme before it
   // (socks5://, http://) says the kind; kept once it reads as address:port.
-  function proxyAddress(text) {
+  function proxyAddress(key, text) {
     let address = String(text || '').trim()
-    let kind = proxySetting().kind
+    let kind = waySetting(key).kind
     const scheme = /^([a-z0-9]+):\/\//i.exec(address)
     if (scheme) {
       kind = /^socks/i.test(scheme[1]) ? 'socks5' : 'http'
@@ -1890,14 +1951,26 @@
     }
     const port = Number(address.split(':').pop())
     if (!/^(\[[0-9a-f:.]+\]|[a-z0-9._-]+):\d{1,5}$/i.test(address) || !(port > 0 && port < 65536)) {
-      proxyTyped = { text, bad: true }
+      proxyTyped = { key, text, bad: true }
       return draw()
     }
-    if (address === proxySetting().address && kind === proxySetting().kind) {
+    if (address === waySetting(key).address && kind === waySetting(key).kind) {
       proxyTyped = null
       return draw()
     }
-    setProxy({ kind, address })
+    setProxy(key, { kind, address })
+  }
+
+  // The Test: GitHub asked the way the page has it now.
+  function runNetTest() {
+    netTest = { running: true }
+    draw()
+    const p = waySetting('netProxy')
+    const typed = proxyTyped?.key === 'netProxy' && !proxyTyped.bad ? proxyTyped.text.trim() : p.address
+    window.pet.settings
+      .netTest(p.mode === 'manual' ? { ...p, address: typed } : { mode: p.mode })
+      .then(got => ((netTest = got), draw()))
+      .catch(e => ((netTest = { ok: false, error: String(e) }), draw()))
   }
 
   // The letters as the list shows them: a conversation folded in is the
@@ -2424,6 +2497,10 @@
     else if (latest) state = T('s.updateLatest')
     else if (u.checkedAt) state = T('s.updateNone')
     const busy = !!u.stage || !!u.checking
+    // Not reached (a look or a download): the way it went, and to the Network proxy below.
+    const unreached = !busy && ['check', 'download'].includes(u.error?.code)
+    if (unreached) state += (lang === 'zh' ? '。' : '. ') + T('s.updateProxyHint')
+    const way = unreached ? `<div class="r"><div class="grow d">${esc(T('s.net.now', { what: netNow() }))}</div><span class="link" data-net-go>${esc(T('s.netProxy'))} ›</span></div>` : ''
     const buttons = newer
       ? `<span class="btns"><button class="pbtn sm" data-update="page">${esc(T('s.updateNotes'))}</button><button class="pbtn sm al" data-update="update" ${busy || !latest.canInstall ? 'disabled' : ''}>${esc(T('s.updateInstall'))}</button></span>`
       : `<button class="pbtn sm" data-update="check" ${busy ? 'disabled' : ''}>${esc(T('s.updateCheck'))}</button>`
@@ -2432,7 +2509,7 @@
       ? T('s.updateCheckedAt', { time: new Date(u.checkedAt).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })
       : ''
     return `${sec(T('s.update'))}<div class="grp">
-        ${row(esc(title), esc(state), buttons)}
+        ${row(esc(title), esc(state), buttons)}${way}
         ${row(esc(T('s.updateAuto')), esc([T('s.updateAutoNote'), when].filter(Boolean).join(' · ')), sw('autoUpdateCheck', snap.settings.autoUpdateCheck !== false))}
         ${row(esc(T('s.updateFrom')), esc(T('s.updateFromNote')), seg('updateFrom', [['auto', T('s.updateFromAuto')], ['gitee', 'Gitee'], ['github', 'GitHub']], snap.settings.updateFrom || 'auto'))}
       </div>`
@@ -2646,6 +2723,7 @@
         ${row(esc(T('home.language')), '', seg('lang', [['auto', T('settings.languageAuto')], ['zh', '中文'], ['en', 'EN']], snap.settings.lang))}
       </div>
       ${part('update', pageUpdate())}
+      ${part('net', pageNet())}
       ${part('crash', pageCrash())}
       ${aboutHTML()}`
   }
@@ -2693,7 +2771,7 @@
     const box = body.contains(document.activeElement) && document.activeElement.matches('input, textarea') ? document.activeElement : null
     const which =
       box &&
-      (box.id ? `#${box.id}` : box.dataset.field ? `[data-field="${box.dataset.field}"]` : box.dataset.mon ? `[data-mon="${box.dataset.mon}"]` : box.dataset.hold ? '[data-hold]' : box.dataset.mf ? `[data-mf="${box.dataset.mf}"]` : box.dataset.w ? `[data-w="${box.dataset.w}"]` : box.dataset.proxyAt !== undefined ? '[data-proxy-at]' : null)
+      (box.id ? `#${box.id}` : box.dataset.field ? `[data-field="${box.dataset.field}"]` : box.dataset.mon ? `[data-mon="${box.dataset.mon}"]` : box.dataset.hold ? '[data-hold]' : box.dataset.mf ? `[data-mf="${box.dataset.mf}"]` : box.dataset.w ? `[data-w="${box.dataset.w}"]` : box.dataset.proxyAt !== undefined ? `[data-proxy-at="${box.dataset.proxyAt}"]` : null)
     const caret = which ? box.selectionStart : null
     const changed = setHTML(body, PAGES[tab]())
     if (reset) {
@@ -3113,6 +3191,10 @@
     // Her updates: look now, the release's notes, Update.
     const updateButton = at('[data-update]')
     if (updateButton && !updateButton.disabled) return window.pet.settings.update(updateButton.dataset.update).then(got => ((snap = got), draw()))
+    // The Network proxy: shown (from an update not reached), tried.
+    if (at('[data-net-go]')) return ((partToShow = 'net'), showPart())
+    const netButton = at('[data-net-test]')
+    if (netButton && !netButton.disabled) return runNetTest()
     if (at('[data-crash-show]')) return ((crashShown = !crashShown), draw())
     const crashButton = at('[data-crash]')
     if (crashButton && !crashButton.disabled) return window.pet.settings.crash(crashButton.dataset.crash).then(got => ((snap = got), draw()))
@@ -3221,10 +3303,11 @@
       handMenu(handMore)
       return true
     }
-    // The Mail page's proxy: its mode, a manual one's kind.
-    const way = at('[data-seg^="mailProxy."] > span')
+    // The Mail page's proxy, the General page's Network proxy: its mode, a manual one's kind.
+    const way = at('[data-seg^="mailProxy."] > span, [data-seg^="netProxy."] > span')
     if (way) {
-      setProxy({ [way.parentElement.dataset.seg.slice(10)]: way.dataset.value })
+      const [key, field] = way.parentElement.dataset.seg.split('.')
+      setProxy(key, { [field]: way.dataset.value })
       return true
     }
     // The inbox and a letter: handed to an agent (from a button or the
@@ -3655,7 +3738,7 @@
 
   layer.addEventListener('input', e => {
     if (e.target.dataset.mf && mailForm) mailForm[e.target.dataset.mf] = e.target.value
-    if (e.target.dataset.proxyAt !== undefined) proxyTyped = { text: e.target.value, bad: false }
+    if (e.target.dataset.proxyAt !== undefined) proxyTyped = { key: e.target.dataset.proxyAt, text: e.target.value, bad: false }
     if (e.target.dataset.w && draft) {
       draft[e.target.dataset.w] = e.target.value
       draft.touched = true
@@ -3685,7 +3768,7 @@
   layer.addEventListener('change', e => {
     if (e.target.matches('[data-w-file]')) return addFiles(e.target)
     if (e.target.dataset.ilook) return ilookInput(e.target, true)
-    if (e.target.dataset.proxyAt !== undefined) return proxyAddress(e.target.value)
+    if (e.target.dataset.proxyAt !== undefined) return proxyAddress(e.target.dataset.proxyAt, e.target.value)
     if (e.target.dataset.mon) return monitorField(e.target.dataset.mon)
     if (e.target.dataset.hold) return holdTyped(e.target)
     const key = e.target.dataset.field

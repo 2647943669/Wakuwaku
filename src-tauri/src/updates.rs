@@ -305,26 +305,98 @@ fn allowed(url: &str) -> bool {
     testing() || [GITHUB_REPO, GITEE_REPO].iter().any(|repo| url.get(..repo.len()).is_some_and(|p| p.eq_ignore_ascii_case(repo)))
 }
 
-fn agent(seconds: u64) -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(seconds))).build().new_agent()
+// At most so many redirects (GitHub's exe: one, to release-assets.githubusercontent.com).
+const HOPS: usize = 5;
+
+// A GET answered: the answer, the way it came (proxy::Way's name) and the
+// hosts it went by ("github.com → release-assets.githubusercontent.com").
+struct Answer {
+    res: ureq::http::Response<ureq::Body>,
+    way: String,
+    path: String,
+}
+
+// A GET not answered: not there (404, as the server says it), or what went
+// wrong each way it was tried: "<way>, <hosts>: <error>", "; " between.
+enum Miss {
+    NotThere,
+    Failed(String),
+}
+
+// A GET, each way in turn (proxy::web_ways: Windows' proxy first, where one
+// is set; then as is) till one is answered.
+fn get(url: &str, seconds: u64, accept: Option<&str>) -> Result<Answer, Miss> {
+    let mut failed = Vec::new();
+    for way in crate::proxy::web_ways(url) {
+        match get_way(&way, url, seconds, accept) {
+            Ok(answer) => return Ok(answer),
+            Err(None) => return Err(Miss::NotThere),
+            Err(Some(e)) => failed.push(format!("{}, {e}", way.name())),
+        }
+    }
+    Err(Miss::Failed(failed.join("; ")))
+}
+
+// One way: its redirects followed by hand (to https only, unless a test's),
+// so what goes wrong says at which host. Err(None): not there (404).
+fn get_way(way: &crate::proxy::Way, url: &str, seconds: u64, accept: Option<&str>) -> Result<Answer, Option<String>> {
+    let agent = way.agent_with(Duration::from_secs(seconds), |c| c.max_redirects(0)).ok_or_else(|| Some(format!("{}: not a proxy to go through", way.name())))?;
+    let mut at = url.to_string();
+    let mut hosts = vec![crate::proxy::host_of(url).unwrap_or_default()];
+    for _ in 0..=HOPS {
+        let path = hosts.join(" → ");
+        let mut req = agent.get(&at).header("user-agent", &format!("wakuwaku/{}", current()));
+        if let Some(accept) = accept {
+            req = req.header("accept", accept);
+        }
+        let res = match req.call() {
+            Err(ureq::Error::StatusCode(404)) => return Err(None),
+            Err(e) => return Err(Some(format!("{path}: {e}"))),
+            Ok(res) => res,
+        };
+        if !res.status().is_redirection() {
+            return Ok(Answer { res, way: way.name(), path });
+        }
+        let to = res.headers().get("location").and_then(|l| l.to_str().ok()).and_then(|l| redirected(&at, l));
+        at = to.ok_or_else(|| Some(format!("{path}: a {} to nowhere it may go", res.status().as_u16())))?;
+        hosts.push(crate::proxy::host_of(&at).unwrap_or_default());
+    }
+    Err(Some(format!("{}: more than {HOPS} redirects", hosts.join(" → "))))
+}
+
+// Where a redirect goes from `from`: its Location made whole (one that
+// starts with / or // is on the same host or scheme); https only, unless a
+// test's.
+fn redirected(from: &str, to: &str) -> Option<String> {
+    let to = to.trim();
+    let (scheme, rest) = from.split_once("://")?;
+    let url = if to.contains("://") {
+        to.to_string()
+    } else if let Some(net) = to.strip_prefix("//") {
+        format!("{scheme}://{net}")
+    } else if to.starts_with('/') {
+        format!("{scheme}://{}{to}", rest.split('/').next().unwrap_or(""))
+    } else {
+        return None;
+    };
+    (url.starts_with("https://") || (testing() && url.starts_with("http://"))).then_some(url)
 }
 
 // A JSON from there; none if it is not there (404: no release yet).
 fn get_json(url: &str, accept: &str) -> Result<Option<Value>, String> {
-    let res = agent(20).get(url).header("user-agent", &format!("wakuwaku/{}", current())).header("accept", accept).call();
-    match res {
-        Err(ureq::Error::StatusCode(404)) => Ok(None),
-        Err(e) => Err(e.to_string()),
-        Ok(mut res) => res.body_mut().read_json().map(Some).map_err(|e| e.to_string()),
+    match get(url, 20, Some(accept)) {
+        Err(Miss::NotThere) => Ok(None),
+        Err(Miss::Failed(e)) => Err(e),
+        Ok(mut a) => a.res.body_mut().read_json().map(Some).map_err(|e| format!("{}, {}: {e}", a.way, a.path)),
     }
 }
 
 // A text from there (at most `limit` bytes); none if it is not there (404).
 fn get_text(url: &str, limit: u64) -> Result<Option<String>, String> {
-    match agent(20).get(url).header("user-agent", &format!("wakuwaku/{}", current())).call() {
-        Err(ureq::Error::StatusCode(404)) => Ok(None),
-        Err(e) => Err(e.to_string()),
-        Ok(mut res) => res.body_mut().with_config().limit(limit).read_to_string().map(Some).map_err(|e| e.to_string()),
+    match get(url, 20, None) {
+        Err(Miss::NotThere) => Ok(None),
+        Err(Miss::Failed(e)) => Err(e),
+        Ok(mut a) => a.res.body_mut().with_config().limit(limit).read_to_string().map(Some).map_err(|e| format!("{}, {}: {e}", a.way, a.path)),
     }
 }
 
@@ -613,7 +685,7 @@ fn install(sh: &Arc<Shared>, r: &Release) -> Result<(), Value> {
             s.total = size;
         }
         sh.push_settings();
-        let got = match download(sh, url, &part) {
+        let (got, how) = match download(sh, url, &part) {
             Ok(got) => got,
             Err(e) => {
                 let _ = std::fs::remove_file(&part);
@@ -624,7 +696,7 @@ fn install(sh: &Arc<Shared>, r: &Release) -> Result<(), Value> {
         };
         stage(sh, "verify");
         if got == digest {
-            sh.log(&format!("update: v{} downloaded from {}, its SHA-256 as given", r.version, source.name()));
+            sh.log(&format!("update: v{} downloaded from {} ({how}), its SHA-256 as given", r.version, source.name()));
             done = true;
             break;
         }
@@ -807,32 +879,70 @@ pub fn take_name_back(dir: &Path) {
     *NAMED_BACK.lock().unwrap() = Some(line);
 }
 
-// Downloaded to `to`, its SHA-256 as it comes (lowercase hex); the progress
-// for the settings.
-fn download(sh: &Shared, url: &str, to: &Path) -> Result<String, String> {
-    let mut res = agent(600).get(url).header("user-agent", &format!("wakuwaku/{}", current())).call().map_err(|e| e.to_string())?;
-    let total = res.body().content_length().unwrap_or(0);
+// Downloaded to `to`: its SHA-256 as it comes (lowercase hex), and the way
+// it came ("<way>, <hosts>"); the progress for the settings. Each way in
+// turn (proxy::web_ways); the only one tried again once, three seconds on,
+// should it fail before the download began (a connection that did not
+// come, as one straight through a VPN's TUN may not).
+fn download(sh: &Shared, url: &str, to: &Path) -> Result<(String, String), String> {
+    let ways = crate::proxy::web_ways(url);
+    let tries = if ways.len() == 1 { 2 } else { ways.len() };
+    let mut failed: Vec<String> = Vec::new();
+    for i in 0..tries {
+        let way = &ways[i.min(ways.len() - 1)];
+        if i > 0 && ways.len() == 1 {
+            std::thread::sleep(Duration::from_secs(3));
+        }
+        STATE.lock().unwrap().got = 0;
+        match download_way(sh, way, url, to) {
+            Ok(done) => {
+                if !failed.is_empty() {
+                    sh.log(&format!("update: downloaded {}, after: {}", done.1, failed.join("; ")));
+                }
+                return Ok(done);
+            }
+            Err((e, began)) => {
+                let _ = std::fs::remove_file(to);
+                failed.push(format!("{}, {e}", way.name()));
+                if began && ways.len() == 1 {
+                    break;
+                }
+            }
+        }
+    }
+    Err(failed.join("; "))
+}
+
+// One way; Err: what went wrong, and whether the download had begun (an answer came).
+fn download_way(sh: &Shared, way: &crate::proxy::Way, url: &str, to: &Path) -> Result<(String, String), (String, bool)> {
+    let mut a = match get_way(way, url, 600, None) {
+        Ok(a) => a,
+        Err(None) => return Err((format!("{}: not there (404)", crate::proxy::host_of(url).unwrap_or_default()), false)),
+        Err(Some(e)) => return Err((e, false)),
+    };
+    let total = a.res.body().content_length().unwrap_or(0);
     if total > 0 {
         STATE.lock().unwrap().total = total;
     }
-    let mut reader = res.body_mut().with_config().limit(512 * 1024 * 1024).reader();
-    let mut file = std::fs::File::create(to).map_err(|e| e.to_string())?;
+    let mb = |n: u64| format!("{:.1}", n as f64 / 1_048_576.0);
+    let mut reader = a.res.body_mut().with_config().limit(512 * 1024 * 1024).reader();
+    let mut file = std::fs::File::create(to).map_err(|e| (format!("{}: {e}", to.display()), true))?;
     let mut hash = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     let mut got = 0u64;
     loop {
-        let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+        let n = reader.read(&mut buf).map_err(|e| (format!("{}: cut off at {} of {} MB: {e}", a.path, mb(got), mb(total)), true))?;
         if n == 0 {
             break;
         }
-        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        file.write_all(&buf[..n]).map_err(|e| (format!("{}: {e}", to.display()), true))?;
         hash.update(&buf[..n]);
         got += n as u64;
         STATE.lock().unwrap().got = got;
         sh.push_settings();
     }
-    file.flush().map_err(|e| e.to_string())?;
-    Ok(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    file.flush().map_err(|e| (format!("{}: {e}", to.display()), true))?;
+    Ok((hash.finalize().iter().map(|b| format!("{b:02x}")).collect(), format!("{}, {}", a.way, a.path)))
 }
 
 // Beside hers, its name kept (she may have been renamed): <name>.old.exe.
@@ -951,7 +1061,9 @@ fn say_up(port: u16, gone: impl Fn() -> bool) -> Result<(), String> {
 mod tests {
     use serde_json::json;
 
-    use super::{allowed, github_release, merge, newer, newest_tag, sums_of, Found, Source};
+    use std::io::{Read, Write};
+
+    use super::{allowed, get_way, github_release, merge, newer, newest_tag, redirected, sums_of, Found, Source};
 
     // Her version said the same everywhere it is said: what updates go by
     // (Cargo.toml), the exe's own and the settings' (tauri.conf.json), and
@@ -1102,6 +1214,13 @@ mod tests {
         let r = look();
         assert_eq!((r.version.as_str(), r.from.len(), r.conflict), ("0.2.2", 2, false));
         assert_eq!(r.from[1].digest, r.digest, "Gitee's .sha256, through its redirect, agrees with GitHub");
+        // Gitee's exe through its redirect, each hop said, as given.
+        let mut a = super::get_way(&crate::proxy::Way::Straight, r.from[1].exe.as_deref().unwrap(), 20, None).ok().unwrap();
+        assert_eq!(a.path, "127.0.0.1 → 127.0.0.1");
+        let mut exe = Vec::new();
+        a.res.body_mut().with_config().limit(1 << 30).reader().read_to_end(&mut exe).unwrap();
+        use sha2::Digest;
+        assert_eq!(Some(sha2::Sha256::digest(&exe).iter().map(|b| format!("{b:02x}")).collect::<String>()), r.digest);
         set("badSums=1");
         assert!(look().conflict);
         set("badSums=0&noDigest=1");
@@ -1153,5 +1272,53 @@ mod tests {
         assert!(!allowed("https://gitee.com.evil.example/zhoupengjie/Wakuwaku/"));
         assert!(!allowed("http://gitee.com/zhoupengjie/Wakuwaku/releases/download/v0.2.2/x.exe"));
         assert!(!allowed("https://gitee.com/zhoupengjie/Wakuwaku"));
+    }
+
+    #[test]
+    fn redirects_made_whole_https_only() {
+        let from = "https://github.com/zhoupengjie/Wakuwaku/releases/download/v0.3.3/x.exe";
+        let assets = "https://release-assets.githubusercontent.com/github-production-release-asset/1?sig=x";
+        assert_eq!(redirected(from, assets).as_deref(), Some(assets));
+        assert_eq!(redirected(from, "/a/b").as_deref(), Some("https://github.com/a/b"));
+        assert_eq!(redirected(from, "//objects.example.com/c").as_deref(), Some("https://objects.example.com/c"));
+        assert_eq!(redirected(from, "http://plain.example.com/x"), None);
+        assert_eq!(redirected(from, "relative/x"), None);
+    }
+
+    // A local server that answers each connection with the next of `answers`
+    // (a whole HTTP response), then closes; its port.
+    fn serve(answers: Vec<String>) -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for answer in answers {
+                let Ok((mut s, _)) = listener.accept() else { return };
+                let mut buf = [0u8; 4096];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(answer.replace("{port}", &port.to_string()).as_bytes());
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn each_hop_said_when_it_goes_wrong() {
+        let straight = crate::proxy::Way::Straight;
+        // Answered: the way and the hosts it went by.
+        let port = serve(vec!["HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nhi".into()]);
+        let mut a = get_way(&straight, &format!("http://127.0.0.1:{port}/x"), 5, None).ok().unwrap();
+        assert_eq!(a.path, "127.0.0.1");
+        assert_eq!(a.res.body_mut().read_to_string().unwrap(), "hi");
+        // Not there: none, not an error.
+        let port = serve(vec!["HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()]);
+        assert!(matches!(get_way(&straight, &format!("http://127.0.0.1:{port}/x"), 5, None), Err(None)));
+        // Redirected somewhere it may not go (plain http, outside a test): said with its host.
+        let port = serve(vec!["HTTP/1.1 302 Found\r\nlocation: http://localhost:1/y\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()]);
+        let e = get_way(&straight, &format!("http://127.0.0.1:{port}/x"), 5, None).err().flatten().unwrap();
+        assert!(e.starts_with("127.0.0.1: a 302 to nowhere"), "{e}");
+        // Nothing there to connect to: the host, and ureq's words.
+        let gone = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let e = get_way(&straight, &format!("http://127.0.0.1:{gone}/x"), 5, None).err().flatten().unwrap();
+        assert!(e.starts_with("127.0.0.1: "), "{e}");
     }
 }

@@ -262,6 +262,8 @@
       openSite: (place, account) => invoke('settings_open_site', { place, account: account || null }),
       // Her updates: 'check', 'page' (the release's), 'update' (updates.rs).
       update: what => invoke('settings_update', { what }),
+      // The Network proxy tried the way given ({ mode, kind, address }): GitHub reached or not (proxy.rs test).
+      netTest: proxy => invoke('settings_net_test', { proxy: proxy || null }),
       // LibreHardwareMonitor for the monitor: 'get', 'start', 'startup', 'noStartup',
       // 'usePort', 'folder', 'look', 'dismiss' (lhm_setup.rs).
       lhm: what => invoke('settings_lhm', { what: String(what) }),

@@ -197,6 +197,8 @@ pub fn snapshot(sh: &Shared) -> Value {
         "mailTalks": mail::agent::talks(sh),
         // Windows' proxy as mail would take it (the Mail page's "follow the system").
         "mailSystemProxy": mail::proxy::system_view(),
+        // Windows' proxy as the web takes it (the General page's Network proxy).
+        "netSystemProxy": crate::proxy::web_system_view(),
         // The mail kept changed: the Mail page asks for its list again.
         "mailRev": mail::rev(),
         "waku": scripts::waku_path(sh).to_string_lossy(),
@@ -601,8 +603,10 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // How much mail is kept whole offline (mail/store.rs Offline).
         "mailOffline" => matches!(v.as_str(), Some("90d" | "year" | "all" | "opened")),
         "mailAgentConf" => mail::agent::is_conf_ok(v),
-        // How mail reaches its servers (mail/proxy.rs).
-        "mailProxy" => mail::proxy::Via::of(v).is_some(),
+        // How mail reaches its servers (mail/proxy.rs): its own way, or the General page's.
+        "mailProxy" => mail::proxy::is_page_way(v),
+        // How her requests to the web go (proxy.rs web_ways), mail's too unless it has its own.
+        "netProxy" => crate::proxy::Via::of(v).is_some(),
         _ => false,
     }
 }
@@ -643,11 +647,16 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     }
     let plugins = rest.contains_key("plugins");
     let offline = rest.contains_key("mailOffline");
-    let mail_way = rest.contains_key("mailProxy");
+    let net_way = rest.contains_key("netProxy");
+    let mail_way = rest.contains_key("mailProxy") || net_way;
     let crash_auto = rest.get("crashReports").and_then(Value::as_str) == Some("auto");
     let island_pos = rest.contains_key("islandPos");
     if !rest.is_empty() {
         sh.change(Value::Object(rest));
+    }
+    // The web another way: taken at the next request.
+    if net_way {
+        crate::proxy::set_web(&sh.setting("netProxy"));
     }
     // The island at another side of the top of the screen: its window there now.
     if island_pos {
@@ -1021,6 +1030,15 @@ pub async fn settings_lhm(app: AppHandle, what: String) -> Value {
     let sh = shared(&app);
     crate::lhm_setup::act(&sh, &what);
     snapshot(&sh)
+}
+
+// The Network proxy tried (the General page's Test): GitHub reached the way
+// the page has it (a manual address typed and not yet kept too), else as set
+// (proxy.rs test).
+#[tauri::command]
+pub async fn settings_net_test(proxy: Option<Value>) -> Value {
+    let via = proxy.as_ref().and_then(crate::proxy::Via::of).unwrap_or_else(crate::proxy::web_setting);
+    tauri::async_runtime::spawn_blocking(move || crate::proxy::test(&via)).await.unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() }))
 }
 
 // Her crash reports, from the General page: the answer to her asking
