@@ -423,7 +423,7 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool, hooks: &SyncSender
             reply(req, 200, info)
         }
         ("GET", "/v1/sessions" | "/v1/events") if is_local(&req) && !sh.hub.allows(header(&req, "Authorization")) => {
-            reply(req, 401, json!({ "error": "the hub's token is asked for: Authorization: Bearer <token>", "tokenFile": sh.hub.token_file() }))
+            reply(req, 401, json!({ "error": "the hub's token is asked for: Authorization: Bearer <token>", "tokenFile": sh.hub.token_file_named() }))
         }
         // A query it cannot take (agents it does not know): 400, saying why.
         ("GET", "/v1/sessions") if is_local(&req) => match sh.hub.sessions(query(req.url())) {
