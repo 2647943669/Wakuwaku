@@ -44,10 +44,13 @@ fn dsh_block(sh: &Shared) -> Value {
 
 // Everything the settings show.
 pub fn snapshot(sh: &Shared) -> Value {
+    // The packs installed (packs.rs): a pet that is one says where it came from.
+    let packs = crate::packs::list(&sh.dir);
     let pets: Vec<Value> = data::pets(&sh.dir)
         .iter()
-        .map(|p| json!({ "id": p.id, "name": p.name, "author": p.author, "url": data::asset_url(&p.sheet), "version": p.version, "codex": p.from_codex }))
+        .map(|p| json!({ "id": p.id, "name": p.name, "author": p.author, "url": p.url(), "version": p.version, "codex": p.from_codex, "pack": crate::packs::of_pet(&packs, p) }))
         .collect();
+    let paper = crate::paper::now();
     let (now, sessions) = {
         let pet = sh.pet.lock().unwrap();
         (pet.get(now_ms()), pet.list())
@@ -163,7 +166,10 @@ pub fn snapshot(sh: &Shared) -> Value {
         // Windows' own mode and accent colour (settings_win_look sets them).
         "winLook": { "light": win_light, "accent": crate::theme::current_accent().or(win_accent.map(|a| a.base)) },
         // The desktop's picture as it is (paper.rs).
-        "winPaper": crate::paper::now(),
+        "winPaper": paper.clone(),
+        // The pets and wallpapers installed as packs, each in use or not
+        // (her pet; Windows' slideshow on its folder).
+        "packs": crate::packs::view(sh, &packs, &paper),
         "version": sh.app.package_info().version.to_string(),
         // Her updates: this version, the latest, an update under way (updates.rs).
         "update": crate::updates::view(&sh),
@@ -743,9 +749,11 @@ pub async fn settings_win_look(app: AppHandle, light: Option<bool>, accent: Opti
 }
 
 // The desktop's picture (paper.rs): a picture or a folder picked in Windows'
-// file dialog ("picture", "folder"), how it is laid ("position"), the
-// folder's turns ("every", "shuffle"), the next or the one before ("next",
-// "previous"); a change of these undone ("undo").
+// file dialog ("picture", "folder"), a wallpaper pack's folder by its id as
+// that folder picked ("pack": the Look page's 用这一包, packs.rs folder_of),
+// how it is laid ("position"), the folder's turns ("every", "shuffle"), the
+// next or the one before ("next", "previous"); a change of these undone
+// ("undo").
 #[tauri::command]
 pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<String>) -> Value {
     let sh = shared(&app);
@@ -753,6 +761,7 @@ pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<Stri
     let lang = sh.lang();
     let t = move |key: &str| crate::i18n::t(lang, key);
     let what_done = what.clone();
+    let dir = sh.dir.clone();
     // What changes the picture is kept to be undone ("undo"), once picked.
     let changed = |done: bool| {
         crate::paper::remember();
@@ -761,6 +770,7 @@ pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<Stri
     let done = tauri::async_runtime::spawn_blocking(move || match what.as_str() {
         "picture" => crate::paper::pick(false, &t("wallpaper.pickPicture"), &t("wallpaper.pictures"), owner).map(|p| (changed(true) && crate::paper::set_picture(&p), p)),
         "folder" => crate::paper::pick(true, &t("wallpaper.pickFolder"), "", owner).map(|p| (changed(true) && crate::paper::set_folder(&p), p)),
+        "pack" => value.as_deref().and_then(|id| crate::packs::folder_of(&dir, crate::addons::Kind::Wallpaper, id)).map(|f| f.to_string_lossy().into_owned()).map(|p| (changed(true) && crate::paper::set_folder(&p), p)),
         "position" => value.map(|v| (changed(true) && crate::paper::set_position(&v), v)),
         "every" => value.map(|v| (crate::paper::set_turns(v.parse().ok(), None), v)),
         "shuffle" => value.map(|v| (crate::paper::set_turns(None, Some(v == "true")), v)),

@@ -324,6 +324,17 @@ pub struct PetInfo {
     pub version: u8,
     // One of the pets Codex has (its desktop app keeps them in the same format).
     pub from_codex: bool,
+    // Its sheet's time (ms), in its address: one put in anew (a pack's
+    // update, a pet downloaded again) is loaded anew, not the old from the
+    // page's cache.
+    pub stamp: u64,
+}
+
+impl PetInfo {
+    // Its sheet's address for the pages (asset_url, its time after it).
+    pub fn url(&self) -> String {
+        format!("{}?v={}", asset_url(&self.sheet), self.stamp)
+    }
 }
 
 // The pets Codex has: only read, never written.
@@ -388,6 +399,7 @@ fn scan_pets(dir: &Path) -> Vec<PetInfo> {
                 .ok()
                 .and_then(|t| serde_json::from_str(&t).ok())
                 .unwrap_or(Value::Null);
+            let stamp = fs::metadata(&sheet).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64);
             found.push(PetInfo {
                 name: meta.get("displayName").and_then(Value::as_str).unwrap_or(&id).to_string(),
                 author: meta.get("author").and_then(Value::as_str).unwrap_or("").to_string(),
@@ -395,6 +407,7 @@ fn scan_pets(dir: &Path) -> Vec<PetInfo> {
                 id,
                 sheet,
                 from_codex: root == codex,
+                stamp,
             });
         }
     }

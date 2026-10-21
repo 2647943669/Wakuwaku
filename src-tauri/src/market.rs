@@ -15,14 +15,14 @@
 //
 // A plugin got from it: its zip downloaded beside the plugins
 // (.download-<id>.zip), its size and SHA-256 those the index gives, its
-// manifest's id and version the item's, then put in as one from a file is
-// (addons.rs put_in), recorded as the market's (reviewed), the permissions
-// it asks for granted. Each step told to the island's page as it goes
-// (market:progress { id, got, total, stage }). Packs (pets, wallpapers) not
-// yet: refused, saying so.
+// manifest's id, version and kind the item's, then put in as one from a
+// file is (addons.rs put_in), recorded as the market's (reviewed), the
+// permissions it asks for granted. Each step told to the island's page as
+// it goes (market:progress { id, got, total, stage }). A pack (a pet,
+// wallpapers) the same way, put where its kind goes (packs.rs).
 //
 // Updates: a sleeping thread looks a few minutes after she starts, then
-// once a day; with no plugin of the market's installed, it does nothing.
+// once a day; with nothing of the market's installed, it does nothing.
 // A newer version asking for nothing more than was granted goes in by
 // itself (pluginAutoUpdate, on unless turned off), and its frame loads it
 // anew; one asking for more waits, as all do with it off: those waiting are
@@ -438,7 +438,7 @@ pub fn updates_of(installed: &[addons::FromMarket], items: &[Item]) -> Vec<Updat
     installed
         .iter()
         .filter_map(|p| {
-            let i = items.iter().find(|i| i.id == p.id && i.kind == Kind::Plugin)?;
+            let i = items.iter().find(|i| i.id == p.id && i.kind == p.kind)?;
             crate::updates::newer(&i.version, &p.version).then(|| Update { id: p.id.clone(), name: p.name.clone(), from: p.version.clone(), to: i.version.clone(), new_perms: new_perms(&p.granted, &i.perms) })
         })
         .collect()
@@ -448,8 +448,15 @@ fn auto_update(sh: &Shared) -> bool {
     sh.setting("pluginAutoUpdate") != false
 }
 
+// What of the market's is here: its plugins (addons.rs) and its packs (packs.rs).
+fn installed(sh: &Shared) -> Vec<addons::FromMarket> {
+    let mut all = addons::from_market(sh.lang());
+    all.extend(crate::packs::from_market(&sh.dir, sh.lang()));
+    all
+}
+
 fn updates_now(sh: &Shared) -> Vec<Update> {
-    let installed = addons::from_market(sh.lang());
+    let installed = installed(sh);
     if installed.is_empty() {
         return Vec::new();
     }
@@ -473,7 +480,7 @@ pub fn updates_view(sh: &Shared) -> Value {
 // on), the rest left waiting.
 fn look(sh: &Arc<Shared>, every: u64) {
     state().next_look = now_ms() + every;
-    if addons::from_market(sh.lang()).is_empty() {
+    if installed(sh).is_empty() {
         return;
     }
     read_if_older(sh, HOUR_MS.min(every));
@@ -629,18 +636,15 @@ pub fn fetch_zip(bases: &[Base], item: &Item, to: &Path, cancel: &AtomicBool, te
 }
 
 // One from the market, by its id: downloaded, checked, put in (addons.rs
-// put_in, as the market's); the page told each step. Ok(what went in, as
-// a file's install says it) or Err { code, detail }: notFound, pack,
-// busy, download, size, digest, mismatch, refused (with addons.rs's
-// Refused), write, cancelled.
+// put_in, as the market's; a pack where its kind goes); the page told each
+// step. Ok(what went in, as a file's install says it) or Err { code,
+// detail }: notFound, busy, download, size, digest, mismatch, refused
+// (with addons.rs's Refused), write, cancelled.
 pub fn install(sh: &Arc<Shared>, id: &str) -> Result<Value, Value> {
     if item(id).is_none() {
         index(sh, false);
     }
     let item = item(id).ok_or_else(|| error("notFound", id))?;
-    if item.kind != Kind::Plugin {
-        return Err(error("pack", item.kind.name()));
-    }
     let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut jobs = JOBS.lock().unwrap_or_else(|e| e.into_inner());
@@ -682,8 +686,9 @@ fn get(sh: &Arc<Shared>, item: &Item, cancel: &AtomicBool) -> Result<Value, Valu
     let (how, bytes) = (how?, bytes?);
     tell(sh, id, item.size, item.size, "verify", Value::Null);
     let pkg = addons::open_package(bytes).map_err(|r| json!({ "code": "refused", "detail": r.detail, "refused": { "reason": r.reason, "file": r.file, "detail": r.detail } }))?;
-    if pkg.manifest.id != item.id || pkg.manifest.version != item.version {
-        return Err(error("mismatch", format!("{} {} in place of {} {}", pkg.manifest.id, pkg.manifest.version, item.id, item.version)));
+    // Its kind too: a pack's item asks nothing before it goes in.
+    if pkg.manifest.id != item.id || pkg.manifest.version != item.version || pkg.manifest.kind != item.kind {
+        return Err(error("mismatch", format!("{} {} {} in place of {} {} {}", pkg.manifest.kind.name(), pkg.manifest.id, pkg.manifest.version, item.kind.name(), item.id, item.version)));
     }
     tell(sh, id, item.size, item.size, "install", Value::Null);
     addons::put_in(sh, pkg, "market", &format!("the market ({how})"), &item.file).map_err(|r| json!({ "code": "refused", "detail": r.detail, "refused": { "reason": r.reason, "file": r.file, "detail": r.detail } }))
@@ -823,9 +828,9 @@ mod tests {
     #[test]
     fn newer_versions_by_number_each_with_its_new_permissions() {
         let installed = vec![
-            addons::FromMarket { id: "rain-alert".into(), name: "下雨提醒".into(), version: "1.9.0".into(), granted: perms(&["api.open-meteo.com"], false, true) },
-            addons::FromMarket { id: "fx".into(), name: "汇率".into(), version: "1.4.0".into(), granted: Perms::default() },
-            addons::FromMarket { id: "gone".into(), name: "Gone".into(), version: "1.0.0".into(), granted: Perms::default() },
+            addons::FromMarket { id: "rain-alert".into(), kind: Kind::Plugin, name: "下雨提醒".into(), version: "1.9.0".into(), granted: perms(&["api.open-meteo.com"], false, true) },
+            addons::FromMarket { id: "fx".into(), kind: Kind::Plugin, name: "汇率".into(), version: "1.4.0".into(), granted: Perms::default() },
+            addons::FromMarket { id: "gone".into(), kind: Kind::Plugin, name: "Gone".into(), version: "1.0.0".into(), granted: Perms::default() },
         ];
         let item = |id: &str, version: &str, p: Perms| {
             let mut i = item_of(&raw(id, json!({ "version": version }))).unwrap();
@@ -841,6 +846,14 @@ mod tests {
         assert!(held(ups.clone(), true).is_empty());
         assert_eq!(held(ups, false).len(), 1);
         assert_eq!(held(asks, true).len(), 1);
+        // A pack: by its kind too, asking for nothing, so it goes in by itself.
+        let cat = addons::FromMarket { id: "pixel-cat".into(), kind: Kind::Pet, name: "像素猫".into(), version: "1.0.0".into(), granted: Perms::default() };
+        let newer_cat = item_of(&raw("pixel-cat", json!({ "kind": "pet", "version": "1.1.0", "permissions": {}, "size": 2 << 20 }))).unwrap();
+        let a_plugin_of_that_name = item_of(&raw("pixel-cat", json!({ "version": "9.0.0" }))).unwrap();
+        let cat_ups = updates_of(std::slice::from_ref(&cat), &[newer_cat]);
+        assert_eq!(cat_ups, [Update { id: "pixel-cat".into(), name: "像素猫".into(), from: "1.0.0".into(), to: "1.1.0".into(), new_perms: vec![] }]);
+        assert!(held(cat_ups, true).is_empty());
+        assert!(updates_of(&[cat], &[a_plugin_of_that_name]).is_empty(), "not another kind's");
     }
 
     #[test]

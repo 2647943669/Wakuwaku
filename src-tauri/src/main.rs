@@ -82,6 +82,7 @@ mod mail;
 mod market;
 mod notch;
 mod notify;
+mod packs;
 mod paper;
 mod pet;
 mod pins;
@@ -373,7 +374,7 @@ impl Shared {
         };
         now["config"] = Value::Object(settings);
         now["lang"] = json!(self.lang());
-        now["sprite"] = sprite.map_or(Value::Null, |p| json!(data::asset_url(&p.sheet)));
+        now["sprite"] = sprite.map_or(Value::Null, |p| json!(p.url()));
         now["spriteVersion"] = json!(sprite.map_or(2, |p| p.version));
         // The next session that wants something, for the island's second bubble.
         now["second"] = json!(second);
@@ -1744,6 +1745,10 @@ fn main() {
                 }
                 let _ = app.asset_protocol_scope().allow_directory(&folder, true);
             }
+            // The wallpaper packs' previews, for the settings (packs.rs);
+            // what an install of a pack cut short left, cleared away.
+            let _ = app.asset_protocol_scope().allow_directory(packs::root(&dir, addons::Kind::Wallpaper).join(".previews"), true);
+            packs::start(&dir);
             notify::register(&dir);
 
             let today = widgets::Today::load(&dir, &widgets::local_date());

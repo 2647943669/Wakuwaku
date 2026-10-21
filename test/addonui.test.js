@@ -120,7 +120,7 @@ test('installing from a file: picked, looked at, asked about, installed; or why 
   assert.deepEqual(ask, { step: 'ask', path, summary: ok })
   const busy = A.next(ask, { type: 'go' })
   assert.equal(busy.step, 'installing')
-  assert.deepEqual(A.next(busy, { type: 'installed', result: { ...ok } }), { step: 'idle', done: { id: 'agent-board', name: 'Agent 排行' } })
+  assert.deepEqual(A.next(busy, { type: 'installed', result: { ...ok } }), { step: 'idle', done: { id: 'agent-board', name: 'Agent 排行', kind: 'plugin' } })
   // 取消 there: nothing.
   assert.deepEqual(A.next(ask, { type: 'cancel' }), { step: 'idle' })
   // An answer about another file (a slow one before) changes nothing; nor do events out of turn.
@@ -133,8 +133,10 @@ test('installing from a file: picked, looked at, asked about, installed; or why 
   const no = step(A.IDLE, { type: 'pick' }, { type: 'picked', path: 'cool-tool.zip' }, { type: 'looked', path: 'cool-tool.zip', summary: exe })
   assert.deepEqual(no, { step: 'refused', file: 'cool-tool.zip', refused: exe.refused })
   assert.deepEqual(A.next(no, { type: 'cancel' }), { step: 'idle' })
-  // A pack (phase 4), and no answer at all.
-  assert.equal(A.verdict('cat.zip', { ...ok, kind: 'pet' }).refused.reason, 'kind')
+  // A pack is asked about too; a kind she does not know is not; no answer at all.
+  assert.equal(A.verdict('cat.zip', { ...ok, kind: 'pet' }).step, 'ask')
+  assert.equal(A.verdict('beach.zip', { ...ok, kind: 'wallpaper' }).step, 'ask')
+  assert.equal(A.verdict('x.zip', { ...ok, kind: 'theme' }).refused.reason, 'kind')
   assert.deepEqual(A.verdict('C:\\x\\broken.zip', null), { step: 'refused', file: 'broken.zip', refused: { reason: 'read', file: null, detail: '' } })
   // Refused as it was written in (it changed meanwhile).
   const late = A.next(busy, { type: 'installed', result: { ok: false, file: 'agent-board.zip', refused: { reason: 'write', file: null, detail: 'not put in place: denied' } } })
@@ -348,7 +350,7 @@ test('why the market does not show: not open yet is no error; not reached says t
   assert.match(A.marketTroubleOf({ code: 'bad', detail: 'no items' }, en).text, /index doesn't read: no items/)
   assert.equal(A.marketTroubleOf(null, zh), null)
   const fail = e => A.marketFailOf(e, zh)
-  assert.equal(fail({ code: 'pack', detail: 'pet' }), '宠物和壁纸要等下一版才能从这里装')
+  assert.equal(fail({ code: 'refused', refused: { reason: 'packType', file: 'walk.js' } }), '装不了：包里有资源包不能带的文件：walk.js。资源包只有图片和说明文字，没有代码。')
   assert.equal(fail({ code: 'digest', detail: 'x' }), '下载的文件和目录给的校验值不一致，已放弃，没装')
   assert.equal(fail({ code: 'size', detail: 'x' }), '下载的文件和目录里写的大小不一样，已放弃，没装')
   assert.equal(fail({ code: 'download', detail: 'GitHub: straight, github.com: timeout' }), '下载失败：GitHub: straight, github.com: timeout')

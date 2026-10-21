@@ -45,7 +45,7 @@
   // welcome shows is the welcome, at General's top.
   const TABS = ['now', 'agents', 'look', 'widgets', 'mail']
   const TAB_KEY = { now: 's.tabGeneral', agents: 's.tabAgents', look: 's.tabLook', widgets: 's.tabWidgets', mail: 's.tabMail' }
-  const PART_OF = { pets: 'look', place: 'look', alerts: 'now', connect: 'agents', update: 'now', net: 'now', crash: 'now' }
+  const PART_OF = { pets: 'look', place: 'look', paper: 'look', alerts: 'now', connect: 'agents', update: 'now', net: 'now', crash: 'now' }
   const HEAD_KEY = { working: 's.headWorking', waiting: 's.headWaiting', done: 's.headDone', review: 's.headReview', error: 's.headError' }
   const SIZES = [['small', 0.4], ['medium', 0.55], ['large', 0.75]]
   const HOMES = ['island', 'taskbar']
@@ -98,11 +98,12 @@
   const drafts = {}
   // Other people's plugins (addons.rs; addonui.js the logic): a part of the
   // Plugins page opened in its place (sub: { page, id, back }: a plugin's
-  // own page, the market, one of the market's), the confirm layer over the panel
-  // (installing from a file, by AddonUI.next's steps; taking one away:
-  // gone { id, busy }), Windows' dialog open for a .zip (its focus does not
-  // close them), and those installed while they are open (their rows
-  // edged in the accent until they close).
+  // own page, a pack's ({ kind } too), the market, one of the market's),
+  // the confirm layer over the panel (installing from a file, by
+  // AddonUI.next's steps; taking one away: gone { id, busy }, a pack's with
+  // its kind), Windows' dialog open for a .zip (its focus does not close
+  // them), and those installed while they are open (their rows edged in
+  // the accent until they close; a pack's by AddonUI.packKey).
   let sub = null
   let flow = AddonUI.IDLE
   let gone = null
@@ -337,12 +338,21 @@
         .join('')}</div>`
   }
 
+  // A row to the market on its kind (spec §1: 获取更多宠物…, 获取更多壁纸…),
+  // at the end of what is installed: widgets:market:pet or :wallpaper.
+  const toMarketRow = (kind, title, note) =>
+    `<div class="r jumps mk-more" data-look-market="${kind}" role="button" tabindex="0"><span class="mk-big sm">&#xE719;</span><div class="grow"><div>${esc(T(title))}</div><div class="d">${esc(T(note))}</div></div><span class="chev">&#xE76C;</span></div>`
+
+  // Her pets: each with who made it and where it came from (a pack's:
+  // 来自市场, or 未经审核 from a file: AddonUI.petNote), the one in use or
+  // 使用; then 获取更多宠物… (the market on its pets); the gallery of
+  // codex-pets.net and its download box as ever.
   function pagePets() {
     const current = snap.settings.pet
     const installed = snap.pets.length
       ? snap.pets
           .map(
-            p => `<div class="r petrow">${thumb(52, p.url, p.version)}<div class="grow"><div>${esc(p.name)}</div><div class="d">${esc([p.author, p.codex ? T('s.fromCodex') : '', p.version === 1 ? T('home.v1') : ''].filter(Boolean).join(' · '))}</div></div>
+            p => `<div class="r petrow">${thumb(52, p.url, p.version)}<div class="grow"><div>${esc(p.name)}</div><div class="d">${esc(AddonUI.petNote(p, T))}</div></div>
             ${p.id === current ? `<span class="d in-use">${esc(T('home.inUse'))}</span>` : `<button class="pbtn" data-use="${esc(p.id)}">${esc(T('home.use'))}</button>`}</div>`,
           )
           .join('')
@@ -363,7 +373,7 @@
     const q = gallery.query
     const listTitle = !q ? T('home.gallery') : gallery.loading && !gallery.items.length ? T('s.searching', { q }) : T('s.found', { q, n: gallery.total })
     const none = q && !gallery.loading && !gallery.error && !gallery.items.length ? `<div class="note">${esc(T('s.foundNone', { q }))}</div>` : ''
-    return `${sec(T('home.installed'))}<div class="grp">${installed}</div>
+    return `${sec(T('home.installed'))}<div class="grp">${installed}${toMarketRow('pet', 'packs.morePets', 'packs.morePetsNote')}</div>
       ${sec(T('s.download'))}<div class="grp"><div class="r"><input class="in" id="s-ref" spellcheck="false" placeholder="${esc(T('s.fetchPlaceholder'))}"><button class="pbtn al" data-fetch ${fetching ? 'disabled' : ''}>${esc(fetchLabel)}</button></div>${note}</div>
       <div class="sec row-sec"><span class="ellip">${esc(listTitle)}</span><span class="grow"></span>${seg('gallery', [['popular', T('home.popular')], ['newest', T('home.newest')]], gallery.sort)}</div>
       ${gallery.error ? `<div class="note err">${esc(T('home.galleryError', { message: gallery.error }))}</div>` : ''}${none}
@@ -703,15 +713,31 @@
   function pagePaper() {
     const paper = snap.winPaper
     if (!paper) return ''
-    const now = paper.slideshow
-      ? T('s.paperNowFolder', { name: lastPart(paper.folder) || T('s.paperUnknown') })
-      : T('s.paperNowPicture', { name: lastPart(paper.file) || T('s.paperUnknown') })
+    // The slideshow on a wallpaper pack's folder: named as the pack.
+    const inUse = (snap.packs || []).find(p => p.kind === 'wallpaper' && p.inUse)
+    const now = inUse
+      ? T('s.paperNowPack', { name: inUse.name })
+      : paper.slideshow
+        ? T('s.paperNowFolder', { name: lastPart(paper.folder) || T('s.paperUnknown') })
+        : T('s.paperNowPicture', { name: lastPart(paper.file) || T('s.paperUnknown') })
     const every = PAPER_EVERY.map(ms => [ms, ms >= 86400000 ? T('s.paperDay') : ms >= 3600000 ? T('s.paperHours', { n: ms / 3600000 }) : T('settings.minutes', { n: ms / 60000 })])
     const button = (what, label) => `<button class="pbtn sm" data-paper="${what}" ${paperBusy ? 'disabled' : ''}>${esc(T(label))}</button>`
     // Back to the picture before the last change made here, while there is one.
     const pick = `<span class="btns">${button('picture', 's.paperPicture')}${button('folder', 's.paperFolder')}${paper.canUndo ? button('undo', 's.paperUndo') : ''}</span>`
-    return `${sec(T('s.wallpaper'))}<div class="grp">
+    // Under it the wallpaper packs (spec §1; packs.rs): each its picture,
+    // name, 「壁纸包 · N 张」, and 用这一包 (its folder as 选文件夹… would
+    // set it: settings_wallpaper pack), or 在用 while the slideshow is on
+    // it; then 获取更多壁纸…, with them.
+    const packs = (snap.packs || [])
+      .filter(p => p.kind === 'wallpaper')
+      .map(p => {
+        const end = p.inUse ? `<span class="d in-use">${esc(T('packs.inUse'))}</span>` : `<button class="pbtn sm" data-paper="pack" data-pack-id="${esc(p.id)}" ${paperBusy ? 'disabled' : ''}>${esc(T('packs.use'))}</button>`
+        return `<div class="r pk-row">${packTile(p)}<div class="grow"><div class="ellip">${esc(p.name)}</div><div class="d ellip">${esc(AddonUI.wallLine(p, T))}</div></div>${end}</div>`
+      })
+      .join('')
+    return `${part('paper', '')}${sec(T('s.wallpaper'))}<div class="grp">
         ${row(esc(T('s.paperNow')), esc(now), pick)}
+        ${packs}${toMarketRow('wallpaper', 'packs.moreWalls', 'packs.moreWallsNote')}
         ${row(esc(T('s.paperFit')), '', seg('paperPosition', PAPER_POSITIONS.map(p => [p, T(`s.paperPos.${p}`)]), paper.position))}
         ${
           paper.slideshow
@@ -773,8 +799,8 @@
 
   // The plugins page as rows, in the order the person put them in: the
   // built-in ones, the plugins she runs (with what their widgets say),
-  // other people's (addons.rs: plugins, not the packs of phase 4), and the
-  // widgets of anyone else's scripts.
+  // other people's (addons.rs: plugins; the packs are a group of their
+  // own, packsGroup), and the widgets of anyone else's scripts.
   function widgetRows() {
     const rank = key => {
       const i = (snap.settings.widgetOrder || []).indexOf(key)
@@ -897,6 +923,7 @@
   // itself then.
   const SUBS = {
     addon: s => addonById(s.id) && addonPage(addonById(s.id)),
+    pack: s => packById(s.kind, s.id) && packPage(packById(s.kind, s.id)),
     market: () => marketPage(),
     mkItem: s => marketItem(s.id) && marketItemPage(marketItem(s.id)),
   }
@@ -939,10 +966,52 @@
     return (list.length ? list : [{ icon: 'none', text: T('addons.perm.none') }]).map(p => line(PERM_GLYPH[p.icon], p.text)).join('') + line('E72E', T('addons.cannotDo'), true)
   }
 
+  // --- Packs (packs.rs view; addonui.js) ------------------------------------------------------
+  // The pets and wallpapers installed as packs, each by its kind and id.
+  const packsNow = () => snap?.packs || []
+  const packById = (kind, id) => packsNow().find(p => p.kind === kind && p.id === id) || null
+  // Its tile: its preview, else the first letter of its name.
+  const packTile = (p, big = false) => `<span class="pk-tile${big ? ' big' : ''}">${p.preview ? `<img src="${esc(p.preview)}" alt="" loading="lazy">` : Widgets.markHTML(p.name, null)}</span>`
+  // Its 在「外观」里选: the Look page, at its kind's part (her pets, the wallpaper).
+  const toLookButton = kind => `<button class="pbtn sm" data-pack-look="${esc(kind)}">${esc(T('packs.toLook'))}</button>`
+  function toLook(kind) {
+    tab = 'look'
+    sub = null
+    partToShow = AddonUI.lookPartOf(kind)
+    draw(true)
+    loadGallery(false)
+    relayout()
+    showPart()
+  }
+
+  // The 资源包 group (spec §3), after 插件和小工具, when there are any:
+  // each its tile, its name (a press opens its page), 未经审核 for one from
+  // a file, 「宠物 · @作者 · 大小」, and 在「外观」里选.
+  function packsGroup() {
+    const rows = packsNow().map(p => {
+      const key = AddonUI.packKey(p)
+      const name = `<button class="nm" data-pack="${esc(key)}">${esc(p.name)}</button>`
+      return `<div class="r pk-row${freshRows.has(key) ? ' fresh' : ''}" data-part="widgets:${esc(key)}">${packTile(p)}<div class="grow"><div class="ellip">${name}${unreviewedChip(p)}</div><div class="d ellip">${esc(AddonUI.packLine(p, T))}</div></div>${toLookButton(p.kind)}</div>`
+    })
+    return rows.length ? `${part('widgets:packs', '')}${sec(T('packs.section'))}<div class="grp">${rows.join('')}</div>` : ''
+  }
+
+  // A pack's own page (spec §3, as a plugin's: 插件 › 名字): its picture as
+  // a tile, its name and 未经审核, who made it, its version, size and kind,
+  // 在「外观」里选; its picture, what it is, 它能做的 (只有图片，没有代码), 卸载
+  // (asked first).
+  function packPage(p) {
+    const top = `<div class="ad-head">${packTile(p, true)}<div class="grow"><div class="ad-name ellip">${esc(p.name)}${unreviewedChip(p)}</div><div class="d ellip">${esc(AddonUI.packByline(p, T))}</div></div>${toLookButton(p.kind)}</div>`
+    const picture = p.preview ? `${sec(T('mk.picture'))}<div class="mk-preview"><img src="${esc(p.preview)}" alt=""></div>` : ''
+    const said = p.description ? `${sec(T('addons.about'))}<div class="grp"><div class="ad-text">${esc(p.description)}</div></div>` : ''
+    return `${crumbHTML([T('s.tabWidgets'), p.name])}${top}${picture}${said}${sec(T('addons.canDo'))}<div class="grp">${canDoHTML(null, p.kind)}</div><div class="ad-foot"><button class="pbtn no" data-pack-uninstall="${esc(AddonUI.packKey(p))}">${esc(T('addons.uninstall'))}</button></div>`
+  }
+
   // --- The market (market.rs; addonui.js) ------------------------------------------------
   // One of the index's, by its id; the version of it here (null: none).
   const marketItem = id => (market.items || []).find(i => i.id === id) || null
-  const installedOf = id => (snap?.addons || []).find(a => a.id === id)?.version || null
+  // The version of it here: a plugin's, a pack's of its kind (null: none).
+  const installedOf = id => AddonUI.installedOf(marketItem(id), snap || {})
   // Its icon in the list and on its page: its own .svg as a picture in one
   // colour (as her pages draw a plugin's: a mask, never its markup), one of
   // hers by name, else its name's first letter on its colour.
@@ -1082,8 +1151,12 @@
         market.jobs[id] = { ...(market.jobs[id] || {}), stage: got?.ok ? 'done' : 'failed' }
         if (got?.snapshot) snap = got.snapshot
         if (got?.ok) {
-          freshRows.add(id)
-          AddonUI.news.add(id)
+          // A pack's row is in 资源包, and no pack goes in the picker.
+          if (AddonUI.isPack(item)) freshRows.add(AddonUI.packKey(item))
+          else {
+            freshRows.add(id)
+            AddonUI.news.add(id)
+          }
           toast(AddonUI.marketDoneOf(item, T, lang))
         } else {
           const why = AddonUI.marketFailOf(got?.error, T)
@@ -1130,7 +1203,8 @@
   // developer docs, its buttons; nothing while none is asked.
   function sheetHTML() {
     const mk = mkAsk?.kind === 'install' ? marketAsk(mkAsk.id) : mkAsk?.kind === 'updates' ? AddonUI.updatesAskOf(snap?.marketUpdates, T, andList) : null
-    const l = gone ? AddonUI.uninstallLayerOf(addonById(gone.id) || { id: gone.id }, T, gone.busy) : mk || AddonUI.layerOf(flow, T, andList)
+    const out = gone && (gone.kind ? AddonUI.packUninstallLayerOf(packById(gone.kind, gone.id) || { id: gone.id, kind: gone.kind }, T, gone.busy) : AddonUI.uninstallLayerOf(addonById(gone.id) || { id: gone.id }, T, gone.busy))
+    const l = out || mk || AddonUI.layerOf(flow, T, andList)
     if (!l) return ''
     const warn = l.warn ? `<div class="sh-warn">${l.warn.head ? `<b>${esc(l.warn.head)}</b>` : ''}${esc(l.warn.text)}</div>` : ''
     const will = l.will.length ? `<div class="sh-will"><div class="d">${esc(l.willHead)}</div><ul>${l.will.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''
@@ -1180,29 +1254,34 @@
     const done = flow.done
     if (!done) return
     flow = AddonUI.IDLE
-    freshRows.add(done.id)
-    AddonUI.news.add(done.id)
+    // A pack's row is in 资源包 (its key its kind's and id), and none goes in the picker.
+    const key = AddonUI.isPack(done) ? AddonUI.packKey(done) : done.id
+    freshRows.add(key)
+    if (!AddonUI.isPack(done)) AddonUI.news.add(done.id)
     sub = null
-    toast(T('addons.installed', { name: done.name }))
+    toast(AddonUI.installedWords(done, T))
     snap = await window.pet.settings.get()
     draw()
     relayout()
-    partToShow = `widgets:${done.id}`
+    partToShow = `widgets:${key}`
     showPart()
   }
-  // Taken away, once asked (卸载 on its page): its page goes back to the list.
+  // Taken away, once asked (卸载 on its page): its page goes back to the
+  // list. A pack (gone.kind): its folder, what was in use falling back
+  // (packs.rs uninstall).
   async function uninstallGo() {
     if (!gone || gone.busy) return
-    const id = gone.id
-    gone = { id, busy: true }
+    const { id, kind } = gone
+    gone = { id, kind, busy: true }
     drawSheet()
-    const got = await window.pet.addons.uninstall(id).catch(e => ({ ok: false, error: String(e?.message || e || '') }))
+    const asked = kind ? window.pet.addons.uninstallPack(kind, id) : window.pet.addons.uninstall(id)
+    const got = await asked.catch(e => ({ ok: false, error: String(e?.message || e || '') }))
     gone = null
     if (got?.ok) {
       if (got.snapshot) snap = got.snapshot
-      freshRows.delete(id)
-      AddonUI.news.placed(id)
-      if (sub?.page === 'addon' && sub.id === id) sub = null
+      freshRows.delete(kind ? AddonUI.packKey({ kind, id }) : id)
+      if (!kind) AddonUI.news.placed(id)
+      if ((sub?.page === 'addon' || sub?.page === 'pack') && sub.id === id) sub = null
     } else if (got?.error) toast(got.error)
     draw(true)
     relayout()
@@ -1425,8 +1504,9 @@
   // by themselves, installing one from a file, and how to write one. At the
   // top, 获取更多 › (the market), and updates waiting under it. Other
   // people's among hers (addonRow), a folder that did not install a quiet
-  // line under them; one's own page, the market or one of its own in place
-  // of all this while it is open (sub).
+  // line under them; the packs installed after them (资源包, packsGroup);
+  // one's own page, a pack's, the market or one of its own in place of all
+  // this while it is open (sub).
   function pageWidgets() {
     const own = sub && SUBS[sub.page]?.(sub)
     if (own) return own
@@ -1470,6 +1550,7 @@
     const ups = AddonUI.updatesBanner(snap.marketUpdates, T)
     const banner = ups ? `<div class="mk-banner"><span class="grow">${esc(ups.text)}</span><button class="pbtn sm al" data-mk-all${market.updating ? ' disabled' : ''}>${esc(market.updating ? T('mk.updatingAll') : ups.button)}</button></div>` : ''
     return `${more}${banner}${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}${broken}</div>
+      ${packsGroup()}
       ${sec(T('w.show'))}<div class="grp">
         ${row(esc(T('w.spin')), '', seg('widgetSpin', spins, s.widgetSpin ?? 8))}
         ${row(esc(T('w.nudge')), esc(T('w.nudgeNote')), sw('widgetNudge', s.widgetNudge !== false))}
@@ -3587,6 +3668,27 @@
     // from a .zip (Windows' dialog, then asked); a choice of many, its list.
     const addon = at('[data-addon]')
     if (addon) return openSub({ page: 'addon', id: addon.dataset.addon })
+    // A pack: its own page (its name); 在「外观」里选, the Look page at its
+    // kind's part; 卸载 there, asked first.
+    const pack = at('[data-pack]')
+    if (pack) {
+      const [kind, id] = pack.dataset.pack.split(':')
+      return openSub({ page: 'pack', kind, id })
+    }
+    const look = at('[data-pack-look]')
+    if (look) return toLook(look.dataset.packLook)
+    const packOut = at('[data-pack-uninstall]')
+    if (packOut) {
+      const [kind, id] = packOut.dataset.packUninstall.split(':')
+      gone = { id, kind, busy: false }
+      return drawSheet()
+    }
+    // The Look page's 获取更多宠物… and 获取更多壁纸…: the market on its kind.
+    const lookMarket = at('[data-look-market]')
+    if (lookMarket) {
+      open(`widgets:market:${lookMarket.dataset.lookMarket}`)
+      return relayout()
+    }
     if (at('[data-sub-back]')) return backSub()
     // The market: opened (获取更多 ›); a row's button (安装, 更新; on its
     // page 添加小工具… or the Look page), then a row, to its page; read
@@ -3600,7 +3702,7 @@
       if (mkDo.disabled) return
       const id = mkDo.dataset.id
       if (mkDo.dataset.mkDo === 'install' || mkDo.dataset.mkDo === 'update') return marketInstall(id)
-      if (mkDo.dataset.mkDo === 'look') return setTab('look')
+      if (mkDo.dataset.mkDo === 'look') return toLook(marketItem(id)?.kind)
       if (mkDo.dataset.mkDo === 'add') {
         close('picker')
         return window.Picker?.fromMenu?.({ open: 'picker', focus: `plugin:${id}` })
@@ -3747,7 +3849,7 @@
     const crashButton = at('[data-crash]')
     if (crashButton && !crashButton.disabled) return window.pet.settings.crash(crashButton.dataset.crash).then(got => ((snap = got), draw()))
     const paperButton = at('[data-paper]')
-    if (paperButton && !paperButton.disabled) return paperDo(paperButton.dataset.paper)
+    if (paperButton && !paperButton.disabled) return paperDo(paperButton.dataset.paper, paperButton.dataset.packId)
     const accent = at('[data-accent]')
     if (accent && ACCENT_PICKER) return window.pet.settings.winLook({ accent: accent.dataset.accent }).then(got => ((snap = got), draw()))
     const use = at('[data-use]')
@@ -4404,7 +4506,7 @@
       return close('Esc')
     }
     // A row that is a button (从文件安装…, 获取更多, one of the market's), by the keyboard as a press.
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-addon-file], [data-mk-open], [data-mk-item]')) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-addon-file], [data-mk-open], [data-mk-item], [data-look-market]')) {
       e.preventDefault()
       return e.target.click()
     }

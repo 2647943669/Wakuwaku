@@ -714,7 +714,7 @@ pub fn refresh(sh: &Shared) {
             "sf": sf,
             "windows": buttons_for(&all, mon, false, spread),
             "asks": asks,
-            "sprite": sprite.as_ref().map(|p| crate::data::asset_url(&p.sheet)),
+            "sprite": sprite.as_ref().map(|p| p.url()),
             "spriteVersion": sprite.as_ref().map_or(2, |p| p.version),
             "paper": paper,
         });

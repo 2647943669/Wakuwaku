@@ -3132,6 +3132,55 @@
   object-fit: cover;
 }
 
+/* --- Packs (settings.js packsGroup, packPage, pagePaper; packs.rs) ------------------------- */
+
+/* A pack's tile: its preview filling a rounded square (a pet's frames, a
+   wallpaper's bit of sky), or its name's first letter on grey. */
+#island-settings .pk-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--g2);
+}
+
+#island-settings .pk-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#island-settings .pk-tile.big {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+#island-settings .pk-tile .wmark {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 6px;
+  font-size: 12px !important;
+}
+
+/* 获取更多宠物… and 获取更多壁纸… (the Look page): the market's glyph, smaller. */
+#island-settings .mk-big.sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Under her pets, as wide as their pictures, so its words line up with their names. */
+#island-settings .petrow ~ .mk-more .mk-big.sm {
+  width: 52px;
+  height: 40px;
+  border-radius: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #island-settings .sh {
     animation: s-fade 0.14s ease-out;

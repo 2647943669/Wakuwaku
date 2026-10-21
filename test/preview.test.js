@@ -194,6 +194,23 @@ test("the market's shots: its list, a category, an item's page, installing, not 
   for (const id of ['fx', 'agent-board', 'gh-notify']) assert.ok(F.MARKET.some(i => i.id === id), id)
 })
 
+test("the packs' shots: the Plugins page's 资源包, her pets and the wallpaper with theirs, a pack's page and 卸载, one from a file", () => {
+  const ids = ['settings-plugins-packs', 'settings-look-pets-packs', 'settings-look-wallpaper-packs', 'settings-pack-detail', 'settings-pack-uninstall-confirm', 'settings-pack-install-confirm']
+  for (const id of ids) assert.ok(Scenes.byId(id), id)
+  const w = Scenes.worldFor(Scenes.byId('settings-look-wallpaper-packs'), F)
+  // A pet and two wallpaper packs, one from a file; the slideshow on one of them.
+  assert.deepEqual(w.packs.map(p => [p.kind, p.id, p.reviewed]), [['pet', 'pet-pixelcat', true], ['wallpaper', 'wall-aurora', true], ['wallpaper', 'beach', false]])
+  assert.equal(w.paper.slideshow, true)
+  assert.equal(w.paper.folder, w.packs.find(p => p.id === 'wall-aurora').folder)
+  // Each as packs.rs view has it; her pets list the pack's pet.
+  for (const p of F.PACKS) for (const k of ['id', 'kind', 'name', 'author', 'version', 'source', 'reviewed', 'size', 'pictures', 'preview', 'folder']) assert.ok(k in p, `${p.id}: ${k}`)
+  assert.deepEqual(F.PACK_PETS.map(p => [p.id, p.pack.source]), [['pet-pixelcat', 'market']])
+  // The pet pack picked from a file is one; the one with a script is refused.
+  assert.equal(Scenes.worldFor(Scenes.byId('settings-pack-install-confirm'), F).addonPick, 'mochi.zip')
+  assert.equal(F.ADDON_FILES['mochi.zip'].kind, 'pet')
+  assert.equal(F.ADDON_FILES['walls-plus.zip'].refused.reason, 'packType')
+})
+
 test("a shot's world is its scene's, its own home over it; the play its scene's unless left out", () => {
   const shot = { id: 'x', scene: 'everyday', home: 'island', page: 'island' }
   const w = Scenes.worldFor(shot, F)

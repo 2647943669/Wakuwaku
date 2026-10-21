@@ -5,9 +5,10 @@
 // installed here and never placed since: 新), the steps of installing one
 // from a file and the confirm layer each shows, and a folder's line that
 // did not install; the market's list, buttons, layers, words for what went
-// wrong, and the widget its cards are drawn from (spec §1, §2, §5). The
-// words come from T(key, vars) as the page has them; the markup stays the
-// page's.
+// wrong, and the widget its cards are drawn from (spec §1, §2, §5); the
+// packs' rows on the Plugins page and the Look page (packs.rs; spec §1,
+// §3). The words come from T(key, vars) as the page has them; the markup
+// stays the page's.
 ;(function (root) {
   // The picker's kinds (picker.js CATS) for a manifest's category.
   const CATS = { system: 'system', productivity: 'work', info: 'info' }
@@ -108,13 +109,15 @@
   const IDLE = { step: 'idle' }
   const fileOf = path => String(path || '').split(/[\\/]/).pop()
 
-  // What inspect said, as a step: one to ask about (a plugin), or why not
-  // (a pack: not yet; no answer at all: the file not read).
+  // What inspect said, as a step: one to ask about (a plugin, a pack), or
+  // why not (a kind she does not know; no answer at all: the file not read).
+  const KINDS = ['plugin', 'pet', 'wallpaper']
+  const isPack = x => x?.kind === 'pet' || x?.kind === 'wallpaper'
   function verdict(path, summary) {
     const file = summary?.file || fileOf(path)
     if (!summary || typeof summary !== 'object') return { step: 'refused', file, refused: { reason: 'read', file: null, detail: '' } }
     if (!summary.ok) return { step: 'refused', file, refused: summary.refused || { reason: 'read', file: null, detail: '' } }
-    if (summary.kind !== 'plugin') return { step: 'refused', file, refused: { reason: 'kind', file: null, detail: '' } }
+    if (!KINDS.includes(summary.kind)) return { step: 'refused', file, refused: { reason: 'kind', file: null, detail: '' } }
     return { step: 'ask', path, summary }
   }
 
@@ -135,7 +138,7 @@
       case 'installed': {
         if (step !== 'installing') return s
         const r = e.result
-        if (r && r.ok) return { step: 'idle', done: { id: r.id, name: r.name || s.summary.name } }
+        if (r && r.ok) return { step: 'idle', done: { id: r.id, name: r.name || s.summary.name, kind: r.kind || s.summary.kind || 'plugin' } }
         return { step: 'refused', file: r?.file || fileOf(s.path), refused: r?.refused || { reason: 'write', file: null, detail: r?.error || '' } }
       }
     }
@@ -153,6 +156,18 @@
         return { head: T('addons.no.programHead'), text: T('addons.no.program', { file }) }
       case 'type':
         return { head: T('addons.no.typeHead'), text: T('addons.no.type', { file }) }
+      // A pack's (packs.rs check, may_go_in): a file no pack holds; a pet
+      // without its pet.json or sheet, or a pet.json that is none; a
+      // wallpaper pack with no pictures at its top; a pet or folder of that
+      // name there already that is the person's own.
+      case 'packType':
+        return { head: T('addons.no.packTypeHead'), text: T('addons.no.packType', { file }) }
+      case 'pet':
+        return { head: '', text: file ? T('addons.no.petJson', { detail: cut(detail, 120) }) : T('addons.no.pet') }
+      case 'pictures':
+        return { head: '', text: T('addons.no.pictures') }
+      case 'clash':
+        return { head: '', text: T(detail.startsWith('wallpaper') ? 'addons.no.clashWall' : 'addons.no.clashPet', { id: file }) }
       case 'path':
         return { head: '', text: T('addons.no.path', { file }) }
       case 'big': {
@@ -184,13 +199,15 @@
     if (s?.step === 'ask' || s?.step === 'installing') {
       const m = s.summary || {}
       const will = permLines(m.perms, T, list)
+      // A pack: pictures only, nothing it can do; replacing one keeps it in use.
+      const pack = isPack(m)
       return {
         kind: 'ask',
         title: T('addons.installAsk', { name: m.name || m.id || '' }),
-        warn: { head: T('addons.unreviewedHead'), text: T('addons.unreviewedText') },
+        warn: { head: T('addons.unreviewedHead'), text: T(pack ? 'addons.unreviewedPackText' : 'addons.unreviewedText') },
         willHead: T('addons.will'),
-        will: will.length ? will.map(x => x.text) : [T('addons.perm.none')],
-        notes: [m.replaces ? T('addons.replaces', { version: m.replaces }) : '', m.supported === false ? T('addons.needsNewer') : ''].filter(Boolean),
+        will: pack ? [T('mk.packOnly')] : will.length ? will.map(x => x.text) : [T('addons.perm.none')],
+        notes: [m.replaces ? T(pack ? 'addons.replacesPack' : 'addons.replaces', { version: m.replaces }) : '', m.supported === false && !pack ? T('addons.needsNewer') : ''].filter(Boolean),
         line: null,
         busy: s.step === 'installing',
         buttons: [
@@ -231,6 +248,40 @@
       ['uninstall', T('addons.uninstall'), 'no'],
     ],
   })
+
+  // A pack taken away, asked first: its files go, and what was in use falls
+  // back (packs.rs uninstall: her default pet; the desktop's picture kept).
+  const packUninstallLayerOf = (p, T, busy = false) => ({
+    ...uninstallLayerOf(p, T, busy),
+    notes: [T(p?.kind === 'wallpaper' ? 'packs.uninstallNote.wallpaper' : 'packs.uninstallNote.pet')],
+  })
+
+  // --- Packs (packs.rs view; spec §1, §3) ------------------------------------------------
+  // A pack by its kind and id, as the page names it (data-pack, its row's part).
+  const packKey = p => `${p?.kind}:${p?.id}`
+  // Its row's line on the Plugins page (spec §3): 「宠物 · @作者 · 大小」.
+  const packLine = (p, T) => [T(`mk.kind.${p?.kind}`), p?.author ? `@${p.author}` : '', p?.size ? sizeOf(p.size, T) : ''].filter(Boolean).join(' · ')
+  // Its own page's, under its name: @author · v1.1.0 · 2.1 MB · 宠物.
+  const packByline = (p, T) => [p?.author ? `@${p.author}` : '', p?.version ? `v${p.version}` : '', p?.size ? sizeOf(p.size, T) : '', T(`mk.kind.${p?.kind}`)].filter(Boolean).join(' · ')
+  // Where it is picked (its 在「外观」里选): the Look page's part for its kind.
+  const lookPartOf = kind => (kind === 'wallpaper' ? 'paper' : 'pets')
+  // A pet's line in the Look page's list (spec §1): who made it, then where
+  // it came from (Codex's; a pack's: 来自市场, or 未经审核 from a file), and
+  // an old sheet's note.
+  const petNote = (p, T) => [p?.author || '', p?.codex ? T('s.fromCodex') : '', p?.pack ? T(p.pack.reviewed ? 'packs.fromMarket' : 'addons.unreviewed') : '', p?.version === 1 ? T('home.v1') : ''].filter(Boolean).join(' · ')
+  // A wallpaper pack's line on the Look page: 「壁纸包 · N 张」, who made it,
+  // 未经审核 for one from a file.
+  const wallLine = (p, T) => [T(p?.pictures === 1 ? 'packs.wallLineOne' : 'packs.wallLine', { n: p?.pictures || 0 }), p?.author ? `@${p.author}` : '', p?.reviewed ? '' : T('addons.unreviewed')].filter(Boolean).join(' · ')
+  // The version of a market's item here (null: none): a plugin among the
+  // plugins, a pack among the packs of its kind.
+  function installedOf(item, { addons = [], packs = [] } = {}) {
+    if (!item) return null
+    const here = isPack(item) ? (packs || []).find(p => p.kind === item.kind && p.id === item.id) : (addons || []).find(a => a.id === item.id && a.kind !== 'pet' && a.kind !== 'wallpaper')
+    return here?.version || null
+  }
+  // Installed from a file: the word at the panel's foot (spec §2, §3): a
+  // plugin, where to put it; a pack, the Look page.
+  const installedWords = (done, T) => T(isPack(done) ? 'mk.installedPack' : 'addons.installed', { name: done?.name || '' })
 
   // --- What did not go in ----------------------------------------------------------------
   // A folder in plugins whose manifest will not do (addons.rs broken_view),
@@ -400,8 +451,6 @@
   function marketFailOf(err, T) {
     const detail = cut(err?.detail || '', 160)
     switch (err?.code) {
-      case 'pack':
-        return T('mk.no.pack')
       case 'download':
         return T('mk.no.download', { detail })
       case 'size':
@@ -458,6 +507,7 @@
   const api = {
     CATS, catOf, byline, labelOf, clockOf, stoppedWords, statusOf, aboutOf, permLines, isSensitive, freshFirst, badgeOf, makeNews, IDLE, verdict, next, refusedWords, layerOf, uninstallLayerOf, brokenLine, cut, fileOf,
     MARKET_CATS, marketCat, wordsIn, marketLink, marketList, isNewer, marketButton, sizeOf, marketAbout, marketByline, permsBeyond, marketAskOf, permsOfNew, updatesBanner, updatesAskOf, marketTroubleOf, marketFailOf, marketDoneOf, sampleWidget, sampleSizes,
+    isPack, packKey, packLine, packByline, lookPartOf, petNote, wallLine, installedOf, installedWords, packUninstallLayerOf,
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else {

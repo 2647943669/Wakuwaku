@@ -1,6 +1,6 @@
 # Writing a Wakuwaku plugin
 
-> Status: the contract for plugin API version 1. Phases 1–4 implement it on the `plugins` branch. The product decisions (where things go, how they look) are in `docs/design/specs/plugins.md`.
+> Status: the contract for plugin API version 1 and for packs, implemented on the `plugins` branch (phases 1–4). The product decisions (where things go, how they look) are in `docs/design/specs/plugins.md`.
 
 A plugin is a folder of web files: a `manifest.json`, a `main.js`, and optionally a `view.html` plus images. It contains no programs. Wakuwaku runs it in a sandboxed iframe. Her own page talks to it with messages, and the plugin reaches everything else (the web, its settings, its storage, her) through a small `waku` object.
 
@@ -153,11 +153,24 @@ While nobody is about, while the desktop is covered, or while Windows has animat
 
 ## Packs
 
-A pack has no code. Its `manifest.json` has `kind` `pet` or `wallpaper`, with `id`, `name`, `description`, `version` and `author` as above, and no `main`, `view`, `settings` or `permissions`.
+A pack has no code: nothing in it runs, and installing one asks for nothing. Its `manifest.json` has `kind` `pet` or `wallpaper`, with `id`, `name`, `description`, `version` and `author` as above, and no `main`, `view`, `settings` or `permissions` (`api` may be left out). It holds pictures and a few words alone: a file of any other type (a `.js`, a `.css`, a `.html`) keeps it from installing, from the market or from a file.
 
-- `pet`: the files of a pet as she reads them already: both `pet.json` and `spritesheet.webp` are required, at the pack's top level beside its `manifest.json`. Installed into `wakuwaku-data\pets\<id>\` and chosen on the Look page.
-- `wallpaper`: images (`.jpg .jpeg .png .webp`), at the pack's top level (pictures in sub-folders are not used). Installed into `wakuwaku-data\wallpapers\<id>\` and used from the Look page like a folder of wallpapers.
-- Either may have a `preview.webp`, `preview.png` or `preview.jpg` at its top level, 64 KB or less: the market's page shows it. It is neither a wallpaper nor part of the pet.
+```
+pixel-cat/                  three-skies/
+  manifest.json               manifest.json
+  pet.json                    dusk.png
+  spritesheet.webp            lake.png
+  preview.png    optional     aurora.jpg
+  LICENSE.txt    optional     preview.png    optional
+```
+
+- `pet`: the files of a pet as she reads them already: both `pet.json` (a JSON object: `displayName`, `author`, `spriteVersionNumber` 2 for the 8 × 11 sheet) and `spritesheet.webp` are required, at the pack's top level beside its `manifest.json`; other pictures (`.webp .png .jpg .jpeg`) and words (`.json .md .txt`) may come along. Installed into `wakuwaku-data\pets\<id>\`, it is listed with her other pets on the Look page (来自市场, From the market, or 未经审核, Not reviewed, under its name) and chosen there with 使用 (Use).
+- `wallpaper`: pictures (`.jpg .jpeg .png .webp`), at the pack's top level, one at least; words (`.json .md .txt`) may come along. Pictures in sub-folders are not installed. Installed into `wakuwaku-data\wallpapers\<id>\`, it gets a row under the Look page's Desktop, 「壁纸包 · N 张」 (Wallpaper pack · N pictures), and 用这一包 (Use this pack) makes that folder Windows' slideshow, as 选文件夹… (Folder…) with it would.
+- Either may have a `preview.webp`, `preview.png` or `preview.jpg` at its top level, 64 KB or less: the market's page shows it, and once installed her pages draw it as the pack's tile. It is neither a wallpaper nor part of the pet: it is kept beside the packs' folders, not in its own.
+- An `id` is unique among packs of its kind. A pet pack whose `id` is the name of a pet already there that is no pack's (the default `claude-chan`, one downloaded from codex-pets.net, one made by hand, one of Codex's) is refused, and that pet is left as it is; so is a wallpaper pack whose `id` is a folder in her wallpapers that is no pack's. She marks each pack's folder with a `pack.json` of her own (a pack's own `pack.json` is replaced by hers).
+- The same `id` again is its update (from the market's daily look, or a newer `.zip` from a file): the files are replaced, and what was chosen stays chosen: the pet in use is still her, the slideshow on its folder goes on. Uninstalled from its page on the Plugins page (资源包, Packs), the pet in use gives way to the default pet; a slideshow on its folder ends on the picture it showed, so the desktop stays as it was.
+- From a file, as a plugin: Plugins page › 显示 › 从文件安装… (Install from file…). She asks first, marks it not reviewed, and says it is pictures only.
+- `examples/packs/wallpaper-sample` is a wallpaper pack (three gradients and a preview). There is no example pet pack: the default pet's art is not free to hand on as a pack of its own.
 
 ## The market
 
@@ -167,5 +180,5 @@ In Wakuwaku it is Plugins › 获取更多 (Get more), and the widget library's 
 
 - Its index is read when the page opens and is an hour old, through the Network proxy setting, from GitHub, or Gitee first in China (as her own updates go), the other when one fails. While the repository does not exist, the page says the market is not open yet.
 - Each entry's page shows your cards drawn from `widget.sample`, or a pack's preview, then the description and what it can do, as a plugin's page does once installed.
-- Installing: one that asks for `agents`, `hardware` or `notify` is asked about first; one that asks for the web alone installs at once (its hosts are listed on its page). The zip is installed only when its size and SHA-256 are the index's and its manifest's `id` and `version` are the entry's; then it is checked as any zip is. It is marked reviewed, and the permissions it asks for are recorded as granted. Packs install from the market in a later version.
-- Updates: she looks once a day (only when something from the market is installed). A newer version asking for nothing beyond what was granted installs by itself and its frame loads again, unless 插件自动更新 (Update plugins automatically) is off. One asking for more waits: the Plugins page says 「N 个插件有更新」 with 全部更新 (Update all), which first lists what each newly asks for. Raise `version` for every change, or nobody gets it.
+- Installing: one that asks for `agents`, `hardware` or `notify` is asked about first; one that asks for the web alone installs at once (its hosts are listed on its page), and so does a pack. The zip is installed only when its size and SHA-256 are the index's and its manifest's `id`, `version` and `kind` are the entry's; then it is checked as any zip is. It is marked reviewed, and the permissions it asks for are recorded as granted. The Look page's 获取更多宠物… (Get more pets…) and 获取更多壁纸… (Get more wallpapers…) open the market on its pets and its wallpapers.
+- Updates: she looks once a day (only when something from the market is installed). A newer version asking for nothing beyond what was granted (a pack's always) installs by itself and its frame loads again, unless 插件自动更新 (Update plugins automatically) is off. One asking for more waits: the Plugins page says 「N 个插件有更新」 with 全部更新 (Update all), which first lists what each newly asks for. Raise `version` for every change, or nobody gets it.

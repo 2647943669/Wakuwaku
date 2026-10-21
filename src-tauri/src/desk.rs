@@ -225,7 +225,7 @@ pub fn refresh(sh: &Shared) {
 fn sprite_url(sh: &Shared) -> Value {
     let id = sh.setting("pet");
     let id = id.as_str().unwrap_or("");
-    crate::data::pets(&sh.dir).iter().find(|p| p.id == id).map_or(Value::Null, |p| json!(crate::data::asset_url(&p.sheet)))
+    crate::data::pets(&sh.dir).iter().find(|p| p.id == id).map_or(Value::Null, |p| json!(p.url()))
 }
 
 // Windows' mode and accent ({ base, light, dark }, or null), as last read

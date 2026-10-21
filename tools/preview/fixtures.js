@@ -401,6 +401,9 @@
     'agent-board.zip': addon('agent-board', { name: 'Agent 排行', description: '今天哪个项目让 agent 干得最多', author: 'mika', version: '0.9.1', category: 'productivity', color: '#f08a62', icon: { name: 'chart' }, perms: { net: [], agents: true, hardware: false, notify: true }, sensitive: true }),
     'cool-tool.zip': { refused: { reason: 'program', file: 'helper.exe', detail: 'a program' } },
     'hello-1.1.0.zip': { ...ADDONS[1], version: '1.1.0', installedAt: T0 },
+    // A pet pack someone sent (packs.rs: pictures alone), and one with a script in it.
+    'mochi.zip': { id: 'mochi', kind: 'pet', name: '团子', description: '一只圆滚滚的小团子', author: 'mika', version: '1.0.0', perms: { net: [], agents: false, hardware: false, notify: false }, sensitive: false, size: 1.4 * 1048576, pictures: 0 },
+    'walls-plus.zip': { refused: { reason: 'packType', file: 'slideshow.js', detail: 'a pack holds pictures and words alone' } },
   }
 
   // --- The plugin market (market.rs index, as the page gets it) -------------------------
@@ -418,6 +421,14 @@
     colors.forEach((color, i) => sky.addColorStop(i / (colors.length - 1), color))
     g.fillStyle = sky
     g.fillRect(0, 0, 480, 200)
+    if (kind === 'beach') {
+      // The sea under the sky, a pale strip of sand.
+      g.fillStyle = '#2f7fa8'
+      g.fillRect(0, 110, 480, 90)
+      g.fillStyle = '#f1dfb8'
+      g.fillRect(0, 168, 480, 32)
+      return c.toDataURL('image/jpeg', 0.8)
+    }
     if (kind === 'aurora') {
       // Bands of light over a dark sky, and the hills under them.
       for (let i = 0; i < 3; i++) {
@@ -492,6 +503,48 @@
     item('pet-shiba', 'pet', { name: { en: 'Shiba Hachi', zh: '柴犬小八' }, description: { en: 'A shiba that wags, nine moves', zh: '一只会摇尾巴的柴犬，9 种动作' }, author: 'kai', version: '1.0.0', size: 3.2 * 1048576, preview: preview('shiba', ['#ffd9a8', '#e8a25c']) }),
     item('wall-aurora', 'wallpaper', { name: { en: 'Aurora', zh: '极光' }, description: { en: 'Six aurora wallpapers, 4K', zh: '6 张极光壁纸，4K' }, author: 'sora', version: '1.0.0', size: 18 * 1048576, preview: preview('aurora', ['#081a2e', '#12324a', '#1f8a6c']) }),
   ]
+  // --- Packs installed (packs.rs view; the Plugins page's 资源包, the Look page) ------------
+  // 像素猫 from the market (a pet among hers), 极光 from the market (Windows'
+  // slideshow on it in the shots that say so), 海边 from a file (未经审核).
+  // Where each is (folder) is the fake's alone, to know the slideshow's.
+  const DATA = 'C:\\Users\\you\\wakuwaku-data'
+  const marketPreview = id => MARKET.find(i => i.id === id)?.preview || null
+  const pack = (id, kind, more) => ({
+    id, kind, description: null, author: '', version: '1.0.0', source: 'market', reviewed: true, installedAt: T0 - 3 * 86400e3, size: 0, pictures: 0, preview: null, inUse: false,
+    folder: `${DATA}\\${kind === 'pet' ? 'pets' : 'wallpapers'}\\${id}`, ...more,
+  })
+  const PACKS = [
+    pack('pet-pixelcat', 'pet', { name: '像素猫', description: '16 位像素风的小猫', author: 'neko', version: '1.1.0', size: 2.1 * 1048576, preview: marketPreview('pet-pixelcat') }),
+    pack('wall-aurora', 'wallpaper', { name: '极光', description: '6 张极光壁纸，4K', author: 'sora', size: 18 * 1048576, pictures: 6, preview: marketPreview('wall-aurora') }),
+    pack('beach', 'wallpaper', { name: '海边', description: '自己拍的三张海边', author: 'you', version: '0.1.0', source: 'file', reviewed: false, size: 4.2 * 1048576, pictures: 3, preview: preview('beach', ['#9fd0f0', '#e6f3fb']) }),
+  ]
+  // 像素猫's sheet as her pets' list draws it (every cell the same cat, a
+  // little higher every other frame: data.rs pets, 8 × 11 cells of 192 × 208).
+  function petSheet() {
+    if (!canDraw) return NO_ICON
+    const c = document.createElement('canvas')
+    c.width = 1536
+    c.height = 2288
+    const g = c.getContext('2d')
+    for (let row = 0; row < 11; row++) {
+      for (let col = 0; col < 8; col++) {
+        const x = col * 192 + 96
+        const y = row * 208 + 120 - (col % 2) * 6
+        g.fillStyle = '#e59a52'
+        for (let px = -4; px < 4; px++) for (let py = -4; py < 4; py++) if (px * px + py * py < 15) g.fillRect(x + px * 12, y + py * 12, 12, 12)
+        g.fillRect(x - 48, y - 60, 12, 24)
+        g.fillRect(x + 36, y - 60, 12, 24)
+        g.fillStyle = '#2b2018'
+        g.fillRect(x - 20, y - 8, 8, 8)
+        g.fillRect(x + 12, y - 8, 8, 8)
+      }
+    }
+    return c.toDataURL('image/png')
+  }
+  // Her pets as the snapshot lists them (settings.rs: pack, where a pack is
+  // one): 像素猫 among them, from the market.
+  const PACK_PETS = [{ id: 'pet-pixelcat', name: '像素猫', author: 'neko', url: petSheet(), version: 2, codex: false, pack: { source: 'market', reviewed: true } }]
+
   // Updates waiting for the person (the snapshot's marketUpdates): 下雨提醒
   // asking for one more host, 天气雷达 asking for nothing new (shown as
   // waiting with auto-update off).
@@ -643,7 +696,7 @@
     },
   }
 
-  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDON_VIEWS, ADDON_BOARD, ADDONS_BROKEN, ADDON_FILES, MARKET, MARKET_UPDATES, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDON_VIEWS, ADDON_BOARD, ADDONS_BROKEN, ADDON_FILES, MARKET, MARKET_UPDATES, PACKS, PACK_PETS, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Fixtures = api
 })(typeof window !== 'undefined' ? window : globalThis)

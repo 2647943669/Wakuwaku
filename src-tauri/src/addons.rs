@@ -370,7 +370,7 @@ fn is_color(c: &str) -> bool {
     matches!(hex.len(), 3 | 6) && hex.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-fn ext_of(name: &str) -> String {
+pub(crate) fn ext_of(name: &str) -> String {
     let last = name.rsplit(['/', '\\']).next().unwrap_or(name);
     last.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
 }
@@ -398,8 +398,12 @@ pub fn manifest_of(v: &Value) -> Result<Manifest, String> {
     if is_reserved(id) {
         return Err(format!("id: {id} is one of Wakuwaku's own"));
     }
-    let api = m.get("api").and_then(Value::as_u64).filter(|n| *n >= 1).ok_or("api: 1")?;
     let kind = m.get("kind").and_then(Value::as_str).and_then(Kind::of).ok_or("kind: plugin, pet or wallpaper")?;
+    // A pack runs nothing, so it may leave its API out.
+    let api = match m.get("api") {
+        None if kind != Kind::Plugin => 1,
+        api => api.and_then(Value::as_u64).filter(|n| *n >= 1).ok_or("api: 1")?,
+    };
     let name = Words::of(m.get("name"), 24).map_err(|e| format!("name: {e}"))?;
     let version = m.get("version").and_then(Value::as_str).filter(|v| is_version(v)).ok_or("version: x.y.z")?.to_string();
     // A description longer than is shown is taken all the same, and cut
@@ -1235,7 +1239,7 @@ pub fn view(sh: &Shared) -> Value {
 }
 
 // Words as they are shown: so many characters at most, longer cut with ….
-fn shown(text: &str, max: usize) -> String {
+pub(crate) fn shown(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
@@ -1257,8 +1261,11 @@ fn perms_of_id(id: &str) -> Option<Perms> {
 
 // Why a package will not go in: what (zip: not one, or damaged; big; files:
 // too many; path: a name out of its folder; type: a file of a type not
-// allowed; program: a program, by its first bytes; manifest; kind: a pack,
-// not yet; read: the file), the file in it it is about, and the words.
+// allowed; program: a program, by its first bytes; manifest; read: the
+// file; a pack's (packs.rs): packType, a file no pack holds; pet, its
+// pet.json or sheet missing or wrong; pictures, none at its top; clash, a
+// pet or folder of that name there already that is no pack's), the file in
+// it it is about, and the words.
 #[derive(Debug, PartialEq)]
 pub struct Refused {
     pub reason: &'static str,
@@ -1266,12 +1273,12 @@ pub struct Refused {
     pub detail: String,
 }
 
-fn refused(reason: &'static str, file: Option<&str>, detail: impl Into<String>) -> Refused {
+pub(crate) fn refused(reason: &'static str, file: Option<&str>, detail: impl Into<String>) -> Refused {
     Refused { reason, file: file.map(str::to_string), detail: detail.into() }
 }
 
 impl Refused {
-    fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         json!({ "reason": self.reason, "file": self.file, "detail": self.detail })
     }
 }
@@ -1280,8 +1287,8 @@ impl Refused {
 // in the folder), its SHA-256.
 pub struct Package {
     pub manifest: Manifest,
-    bytes: Vec<u8>,
-    files: Vec<(zip::Entry, String)>,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) files: Vec<(zip::Entry, String)>,
     pub sha256: String,
 }
 
@@ -1339,11 +1346,15 @@ pub fn open_package(bytes: Vec<u8>) -> Result<Package, Refused> {
             return Err(refused("program", Some(path), "a program"));
         }
     }
+    // A pack: its kind's files alone (pictures and words), and what its kind needs.
+    if manifest.kind != Kind::Plugin {
+        crate::packs::check(&manifest, &files, &bytes)?;
+    }
     let sha256 = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
     Ok(Package { manifest, bytes, files, sha256 })
 }
 
-fn strip_bom(b: &[u8]) -> &[u8] {
+pub(crate) fn strip_bom(b: &[u8]) -> &[u8] {
     b.strip_prefix(b"\xef\xbb\xbf").unwrap_or(b)
 }
 
@@ -1357,12 +1368,13 @@ fn read_package(path: &Path) -> Result<Package, Refused> {
 
 // What a package would do, for the page's confirm (nothing written): its
 // id, name, version, author, kind, permissions, whether any is one to ask
-// about, the version it replaces; or why it will not go in.
-pub fn summary(pkg: &Result<Package, Refused>, lang: &str, file: &str) -> Value {
+// about, the version it replaces (a pack's, the pack of its kind here:
+// packs.rs); or why it will not go in.
+pub fn summary(dir: &Path, pkg: &Result<Package, Refused>, lang: &str, file: &str) -> Value {
     match pkg {
         Ok(p) => {
             let m = &p.manifest;
-            let replaces = read(|r| r.manifest(&m.id).map(|old| old.version.clone()));
+            let replaces = if m.kind == Kind::Plugin { read(|r| r.manifest(&m.id).map(|old| old.version.clone())) } else { crate::packs::version_here(dir, m.kind, &m.id) };
             json!({
                 "ok": true,
                 "file": file,
@@ -1386,7 +1398,7 @@ pub fn summary(pkg: &Result<Package, Refused>, lang: &str, file: &str) -> Value 
 // Its files written into a folder of their own beside the plugins (one
 // beginning with a dot, which no scan takes for one), then put in place of
 // the one there: that one moved aside first, and back should the swap
-// fail; thrown away once it is done.
+// fail; thrown away once it is done. (A pack's: packs.rs write.)
 fn unpack(pkg: &Package, root: &Path) -> Result<(), String> {
     let id = &pkg.manifest.id;
     let n = now_ms();
@@ -1430,7 +1442,7 @@ fn unpack(pkg: &Package, root: &Path) -> Result<(), String> {
 
 // A folder renamed, tried again a few times: a file in it being read a
 // moment (her scheme serving it, an antivirus) keeps Windows from it.
-fn rename_soon(from: &Path, to: &Path) -> std::io::Result<()> {
+pub(crate) fn rename_soon(from: &Path, to: &Path) -> std::io::Result<()> {
     let mut last = None;
     for _ in 0..10 {
         match std::fs::rename(from, to) {
@@ -1455,11 +1467,12 @@ pub fn install(sh: &Shared, path: &Path) -> Result<Value, Refused> {
 // zip's SHA-256 and size as the index said), the permissions granted as
 // it went in (its manifest's). Its settings and storage, if it was here
 // before, stay: an update; its frame loads it anew (its record's time in
-// its rev). Plugins alone for now; packs (pets, wallpapers) come later.
-// `from`: what the log says it came from; `file`: its zip's name.
+// its rev). A pack (a pet, wallpapers) goes where its kind goes, marked
+// as one (packs.rs put_in). `from`: what the log says it came from;
+// `file`: its zip's name.
 pub fn put_in(sh: &Shared, pkg: Package, source: &'static str, from: &str, file: &str) -> Result<Value, Refused> {
     if pkg.manifest.kind != Kind::Plugin {
-        return Err(refused("kind", None, "packs (pets, wallpapers) come in a later version"));
+        return crate::packs::put_in(sh, pkg, source, from, file);
     }
     let m = &pkg.manifest;
     let replaces = read(|r| r.manifest(&m.id).map(|old| old.version.clone()));
@@ -1478,16 +1491,18 @@ pub fn put_in(sh: &Shared, pkg: Package, source: &'static str, from: &str, file:
     if crate::plugins::sync(sh) {
         sh.redraw_widgets();
     }
-    let mut out = summary(&Ok(pkg), sh.lang(), file);
+    let mut out = summary(&sh.dir, &Ok(pkg), sh.lang(), file);
     out["replaces"] = json!(replaces);
     Ok(out)
 }
 
 // Those installed from the market, for its updates (market.rs): each id,
-// its name in her language, the version here and the permissions granted
-// as it went in (none recorded: those it asks for now).
+// its kind, its name in her language, the version here and the
+// permissions granted as it went in (none recorded: those it asks for
+// now; a pack's, none). The packs' are packs.rs from_market.
 pub struct FromMarket {
     pub id: String,
+    pub kind: Kind,
     pub name: String,
     pub version: String,
     pub granted: Perms,
@@ -1501,7 +1516,7 @@ pub fn from_market(lang: &str) -> Vec<FromMarket> {
             .filter_map(|(id, f)| {
                 let m = f.manifest.as_ref().ok()?;
                 let granted = perms_of(&r.record(id)["grantedPerms"]).unwrap_or_else(|_| m.perms.clone());
-                Some(FromMarket { id: id.clone(), name: m.name.get(lang).to_string(), version: m.version.clone(), granted })
+                Some(FromMarket { id: id.clone(), kind: Kind::Plugin, name: m.name.get(lang).to_string(), version: m.version.clone(), granted })
             })
             .collect()
     })
@@ -2205,10 +2220,12 @@ fn said(sh: &Shared, id: &str, line: &str) {
 }
 
 // The settings' doings with packages: inspect (a .zip looked at for the
-// page's confirm, nothing written), install (after it), uninstall (a plugin
-// taken away, with its settings, storage and places), pick (a .zip picked
-// in Windows' own dialog over her island: { path }, null when closed),
-// revive (one stopped turned on again). `arg`: the path, or the id.
+// page's confirm, nothing written; a pack whose pet or folder is someone
+// else's, refused already), install (after it), uninstall (a plugin taken
+// away, with its settings, storage and places), uninstallPack (a pack,
+// arg "<kind>:<id>": packs.rs uninstall), pick (a .zip picked in Windows'
+// own dialog over her island: { path }, null when closed), revive (one
+// stopped turned on again). `arg`: the path, or the id.
 #[tauri::command]
 pub async fn addon_manage(app: AppHandle, what: String, arg: Option<String>) -> Value {
     let sh = shared(&app);
@@ -2218,7 +2235,7 @@ pub async fn addon_manage(app: AppHandle, what: String, arg: Option<String>) -> 
 fn manage(sh: &Shared, what: &str, arg: &str) -> Value {
     let file = || Path::new(arg).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     match what {
-        "inspect" => summary(&read_package(Path::new(arg)), sh.lang(), &file()),
+        "inspect" => summary(&sh.dir, &read_package(Path::new(arg)).and_then(|p| crate::packs::may_go_in(&sh.dir, &p.manifest).map(|_| p)), sh.lang(), &file()),
         "install" => install(sh, Path::new(arg)).unwrap_or_else(|r| {
             sh.log(&format!("addons: {arg} not installed: {} ({})", r.detail, r.reason));
             json!({ "ok": false, "file": file(), "refused": r.json() })
@@ -2227,6 +2244,13 @@ fn manage(sh: &Shared, what: &str, arg: &str) -> Value {
             Ok(()) => json!({ "ok": true, "snapshot": crate::settings::snapshot(sh) }),
             Err(e) => json!({ "ok": false, "error": e }),
         },
+        "uninstallPack" => {
+            let (kind, id) = arg.split_once(':').unwrap_or(("", arg));
+            match Kind::of(kind).filter(|k| *k != Kind::Plugin).ok_or_else(|| format!("{arg}: <pet|wallpaper>:<id>")).and_then(|kind| crate::packs::uninstall(sh, kind, id)) {
+                Ok(()) => json!({ "ok": true, "snapshot": crate::settings::snapshot(sh) }),
+                Err(e) => json!({ "ok": false, "error": e }),
+            }
+        }
         "pick" => {
             let lang = sh.lang();
             let picked = crate::paper::pick_file(&crate::i18n::t(lang, "addons.pickZip"), &crate::i18n::t(lang, "addons.zips"), "*.zip", crate::island::hwnd(sh));
@@ -2243,7 +2267,7 @@ fn manage(sh: &Shared, what: &str, arg: &str) -> Value {
             }
             crate::settings::snapshot(sh)
         }
-        _ => json!({ "ok": false, "error": format!("{what}: inspect, install, uninstall, pick or revive") }),
+        _ => json!({ "ok": false, "error": format!("{what}: inspect, install, uninstall, uninstallPack, pick or revive") }),
     }
 }
 

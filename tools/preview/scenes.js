@@ -426,6 +426,16 @@
     await p.wait(900)
   }
   const addonShot = (id, title, steps, more = {}, shot = {}) => ({ id, section: 'settings', title: `设置 · 插件 · ${title}`, page: 'island', home: 'taskbar', view: [0, above(660), 560, 660], world: F => ({ ...withAddons(F), ...more }), steps, ...shot })
+  // The packs installed (fixtures.js PACKS), 像素猫 among her pets, Windows'
+  // slideshow on 极光's folder.
+  const withPacks = F => ({
+    ...withAddons(F),
+    packs: F.PACKS,
+    packPets: F.PACK_PETS,
+    paper: { file: `${F.PACKS[1].folder}\\3.jpg`, slideshow: true, folder: F.PACKS[1].folder, position: 'fill', every: 1800000, shuffle: false },
+  })
+  // Most of them scroll to a part of the page first (1.6 s): a longer budget.
+  const packShot = (id, title, steps, more = {}) => ({ ...addonShot(id, title, steps), title: `设置 · ${title}`, world: F => ({ ...withPacks(F), ...more }), budget: 4000 })
   const WHOLE = [0, 0, SCREEN[0], SCREEN[1]]
   const STRIP_VIEW = [0, above(88), SCREEN[0], 88]
   const CLOSED = [0, above(80), 440, 80]
@@ -850,6 +860,27 @@
       }),
       world: F => ({ ...withAddons(F), marketUpdates: F.MARKET_UPDATES, config: { pluginAutoUpdate: false } }),
     },
+    // Packs (docs/design/specs/plugins.md §1, §3; packs.rs; fixtures.js
+    // PACKS): the Plugins page's 资源包 (像素猫 and 极光 from the market, 海边
+    // from a file); her pets with 像素猫 among them and 获取更多宠物…; the
+    // wallpaper's rows (极光 in use: Windows' slideshow on it), 获取更多壁纸…;
+    // a pack's page, 卸载 asked first; a pet pack from a file, asked.
+    packShot('settings-plugins-packs', '资源包：宠物和壁纸，从文件装的标未经审核，右边「在「外观」里选」', p => openPluginsPage(p, 'widgets:packs')),
+    packShot('settings-look-pets-packs', '外观 · 她的宠物：资源包的像素猫写「来自市场」，下面「获取更多宠物…」', p => openPluginsPage(p, 'pets')),
+    packShot('settings-look-wallpaper-packs', '外观 · 壁纸：两个壁纸包，在用的写「在用」，另一个「用这一包」，然后「获取更多壁纸…」', p => openPluginsPage(p, 'paper')),
+    packShot('settings-pack-detail', '像素猫的详情：预览图、介绍、只有图片没有代码、卸载', async p => {
+      await openPluginsPage(p, 'widgets:packs')
+      p.click('#island-settings [data-pack="pet:pet-pixelcat"]')
+      await p.wait(400)
+    }),
+    packShot('settings-pack-uninstall-confirm', '卸载资源包先问一句：正用着的宠物换回默认的', async p => {
+      await openPluginsPage(p, 'widgets:packs')
+      p.click('#island-settings [data-pack="pet:pet-pixelcat"]')
+      await p.wait(300)
+      p.click('#island-settings [data-pack-uninstall]')
+      await p.wait(400)
+    }),
+    packShot('settings-pack-install-confirm', '从文件安装宠物包：未经审核，只有图片没有代码', installFromFile, { addonPick: 'mochi.zip' }),
 
     // General's 提醒: 她有事告诉你时, and just under it 停留多久, its note for
     // the cue chosen (zhoupengjie/Wakuwaku#59, #65): a ring, Custom's 45 s

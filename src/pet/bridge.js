@@ -248,11 +248,13 @@
       // rev }), a message of it for its main.js.
       view: (what, widget, message) => invoke('addon_view', { what: String(what), widget: String(widget), message: message ?? null }),
       // From the settings: a package looked at, installed, a plugin taken
-      // away, a .zip picked in Windows' dialog ({ path }, null: closed), one
+      // away, a pack taken away (its kind, pet or wallpaper, and id), a
+      // .zip picked in Windows' dialog ({ path }, null: closed), one
       // stopped turned on again.
       inspect: path => invoke('addon_manage', { what: 'inspect', arg: String(path) }),
       install: path => invoke('addon_manage', { what: 'install', arg: String(path) }),
       uninstall: id => invoke('addon_manage', { what: 'uninstall', arg: String(id) }),
+      uninstallPack: (kind, id) => invoke('addon_manage', { what: 'uninstallPack', arg: `${kind}:${id}` }),
       pickZip: () => invoke('addon_manage', { what: 'pick', arg: null }).then(r => r?.path ?? null, () => null),
       revive: id => invoke('addon_manage', { what: 'revive', arg: String(id) }),
     },
@@ -275,7 +277,7 @@
       login: on => invoke('settings_login', { on: on === true }),
       // Windows' own mode ({ light }) or accent colour ({ accent: "#rrggbb" }).
       winLook: ({ light, accent } = {}) => invoke('settings_win_look', { light: typeof light === 'boolean' ? light : null, accent: typeof accent === 'string' ? accent : null }),
-      // The desktop's picture: picked (picture, folder), laid (position), its turns (every, shuffle), the next now.
+      // The desktop's picture: picked (picture, folder), a wallpaper pack's folder by its id (pack), laid (position), its turns (every, shuffle), the next now.
       wallpaper: (what, value) => invoke('settings_wallpaper', { what: String(what), value: value == null ? null : String(value) }),
       hooks: action => invoke('settings_hooks', { action }),
       codexHooks: action => invoke('settings_codex_hooks', { action }),
