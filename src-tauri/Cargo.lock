@@ -19,8 +19,8 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agent-core"
-version = "0.2.3"
-source = "git+https://github.com/zhoupengjie/agent-hub?tag=v0.2.3#4deee165679ee181fb5b8407461286869c76e100"
+version = "0.2.4"
+source = "git+https://github.com/zhoupengjie/agent-hub?tag=v0.2.4#25ae44df62e194b632c91621b7da0b55b3fbee76"
 dependencies = [
  "ruzstd",
  "serde",
@@ -29,8 +29,8 @@ dependencies = [
 
 [[package]]
 name = "agent-hub"
-version = "0.2.3"
-source = "git+https://github.com/zhoupengjie/agent-hub?tag=v0.2.3#4deee165679ee181fb5b8407461286869c76e100"
+version = "0.2.4"
+source = "git+https://github.com/zhoupengjie/agent-hub?tag=v0.2.4#25ae44df62e194b632c91621b7da0b55b3fbee76"
 dependencies = [
  "agent-core",
  "libc",
