@@ -416,7 +416,12 @@ fn handle(sh: &Arc<Shared>, mut req: Request, is_debug: bool, hooks: &SyncSender
             }
         }
         // The agents' sessions, for other apps on this machine (agent-hub).
-        ("GET", "/v1/info") if is_local(&req) => reply(req, 200, sh.hub.info("wakuwaku", env!("CARGO_PKG_VERSION"))),
+        // With ?nonce=, the hub's proof that it knows its token (a client's
+        // check before it sends the token: agent-hub's proves).
+        ("GET", "/v1/info") if is_local(&req) => {
+            let info = sh.hub.info_for("wakuwaku", env!("CARGO_PKG_VERSION"), query(req.url()));
+            reply(req, 200, info)
+        }
         ("GET", "/v1/sessions" | "/v1/events") if is_local(&req) && !sh.hub.allows(header(&req, "Authorization")) => {
             reply(req, 401, json!({ "error": "the hub's token is asked for: Authorization: Bearer <token>", "tokenFile": sh.hub.token_file() }))
         }
