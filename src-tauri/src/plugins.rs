@@ -191,10 +191,14 @@ fn plugin(id: &str) -> Option<&'static Plugin> {
 }
 
 // A "plugins" setting: only the plugins here, each with "on" and its own
-// parameters, text without control characters, numbers as text.
+// parameters, text without control characters, numbers as text; and the
+// third-party ones installed, each by its manifest (addons.rs is_conf_ok).
 pub fn is_ok(v: &Value) -> bool {
     let Some(all) = v.as_object() else { return false };
     all.iter().all(|(id, conf)| {
+        if plugin(id).is_none() {
+            return crate::addons::is_conf_ok(id, conf).unwrap_or(false);
+        }
         let (Some(s), Some(conf)) = (plugin(id), conf.as_object()) else { return false };
         conf.iter().all(|(key, v)| match (key.as_str(), s.params.iter().find(|p| p.name == key)) {
             ("on", _) => v.is_boolean(),
@@ -243,8 +247,13 @@ fn key_of(p: &Plugin, conf: &Value, lang: &'static str) -> Value {
     Value::Object(key)
 }
 
-// Which plugin a widget comes from, by the ids they give them.
-pub fn owner_of(widget: &str) -> Option<&'static str> {
+// Which plugin a widget comes from, by the ids they give them: one of
+// hers, or a third-party one installed (addons.rs owner_of).
+pub fn owner_of(widget: &str) -> Option<String> {
+    built_in_owner(widget).map(str::to_string).or_else(|| crate::addons::owner_of(widget))
+}
+
+fn built_in_owner(widget: &str) -> Option<&'static str> {
     match widget {
         "weather" | "pomodoro" | "countdown" | "stretch" | "devserver" => plugin(widget).map(|s| s.id),
         w if w.starts_with("stock-") => Some("stock"),
@@ -460,10 +469,13 @@ pub fn sync(sh: &Shared) -> bool {
         }
     }
     // Stopped, or started again with other settings: what it showed goes.
-    if !stale.is_empty() && sh.widgets.lock().unwrap().remove_scripted(|id| owner_of(id).is_some_and(|o| stale.contains(&o))) {
+    if !stale.is_empty() && sh.widgets.lock().unwrap().remove_scripted(|id| built_in_owner(id).is_some_and(|o| stale.contains(&o))) {
         changed = true;
     }
     drop(posting);
+    // The third-party ones as their switches say too: the island's page
+    // told which to run (addons.rs).
+    changed |= crate::addons::sync(sh);
     if clean {
         let gone = clean_up(&sh.dir.join("plugins"));
         if !gone.is_empty() {
@@ -700,9 +712,9 @@ pub(crate) mod tests {
 
     #[test]
     fn widgets_are_told_apart_by_plugin() {
-        assert_eq!(owner_of("weather"), Some("weather"));
-        assert_eq!(owner_of("stock-600519-ss"), Some("stock"));
-        assert_eq!(owner_of("prs-a-b"), Some("ci"));
+        assert_eq!(owner_of("weather").as_deref(), Some("weather"));
+        assert_eq!(owner_of("stock-600519-ss").as_deref(), Some("stock"));
+        assert_eq!(owner_of("prs-a-b").as_deref(), Some("ci"));
         assert_eq!(owner_of("mail-thunderbird"), None);
         assert_eq!(owner_of("today"), None);
     }

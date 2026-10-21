@@ -1,0 +1,20 @@
+{
+  "id": "rain-alert",
+  "kind": "plugin",
+  "name": { "en": "Rain alert", "zh": "下雨提醒" },
+  "description": { "en": "Will it rain in the next hours, and when", "zh": "接下来几小时会不会下雨，几点开始" },
+  "version": "1.0.0",
+  "author": "wakuwaku",
+  "homepage": "https://open-meteo.com/",
+  "api": 1,
+  "main": "main.js",
+  "category": "info",
+  "widget": { "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "weather" },
+  "settings": [
+    { "key": "City", "type": "text", "required": true, "label": { "en": "City", "zh": "城市" }, "hint": { "en": "e.g. Dresden", "zh": "比如 Dresden" } },
+    { "key": "Hours", "type": "choice", "options": ["3", "6", "12"], "default": "6", "label": { "en": "Look ahead", "zh": "往后看" },
+      "optionLabels": { "3": { "en": "3 hours", "zh": "3 小时" }, "6": { "en": "6 hours", "zh": "6 小时" }, "12": { "en": "12 hours", "zh": "12 小时" } } },
+    { "key": "Alert", "type": "flag", "default": true, "label": { "en": "Tell me before it rains", "zh": "下雨前提醒我" } }
+  ],
+  "permissions": { "net": ["api.open-meteo.com", "geocoding-api.open-meteo.com"], "notify": true }
+}

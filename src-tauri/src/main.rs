@@ -34,12 +34,16 @@
 //   starts.rs      what starts her (the hooks, at login, by hand), whether it may, and who did
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
 //   plugins.rs     the plugins she runs for you (weather, stocks, timers, CI, dev servers)
+//   addons.rs      third-party plugins: installed from a zip, run in sandboxed frames of
+//                  the island's page (src/pet/addons.js), served by wakuplugin://
+//   zip.rs         zips read and unpacked (LHM's download, a plugin's package)
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // The settings' snapshot (settings.rs) is one json! with every agent's part
 // in it: past the default 128 it no longer expands.
 #![recursion_limit = "256"]
 
+mod addons;
 mod appbar;
 mod asks;
 mod audio;
@@ -103,6 +107,7 @@ mod updates;
 mod wallpaper;
 mod widgets;
 mod winkeys;
+mod zip;
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -545,11 +550,16 @@ impl Shared {
     // Every widget, in the person's order, on or off.
     pub fn widgets_view(&self) -> Value {
         let (off, order) = (self.list_setting("widgetsOff"), self.list_setting("widgetOrder"));
-        self.widgets.lock().unwrap().view(now_ms(), &off, &order, &plugins::owner_of)
+        self.widgets.lock().unwrap().view(now_ms(), &off, &order, &|id: &str| plugins::owner_of(id))
     }
 
-    // A widget from a script: there it is, and it may open the island for itself.
+    // A widget from a script: there it is, and it may open the island for
+    // itself. Never one by the ids of a third-party plugin installed: those
+    // are its own (addons.rs).
     pub fn put_widget(&self, v: &Value) -> Result<(), &'static str> {
+        if v.get("id").and_then(Value::as_str).and_then(addons::owner_of).is_some() {
+            return Err("id: taken by a plugin");
+        }
         let put = self.widgets.lock().unwrap().put(v, now_ms())?;
         self.redraw();
         if let Some(words) = put.nudge {
@@ -1696,7 +1706,17 @@ fn main() {
             taskbar::taskbar_tray_pin,
             taskbar::taskbar_app,
             taskbar::taskbar_thumbs,
+            addons::addons_running,
+            addons::addon_call,
+            addons::addon_manage,
         ])
+        // Third-party plugins' files, for their sandboxed frames in the
+        // island's page (addons.rs serve): http://wakuplugin.localhost/<id>/…
+        // on Windows. Off the main thread: a file read from the disk.
+        .register_asynchronous_uri_scheme_protocol(addons::SCHEME, |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(addons::serve(&app, &request)));
+        })
         .on_menu_event(|app, event| tray::on_menu(&shared(app), event.id().as_ref()))
         .setup(move |app| {
             // On macOS she is an accessory, as a menu-bar app is: no Dock icon,
@@ -1765,6 +1785,8 @@ fn main() {
             // Her requests to the web the way the General page says (proxy.rs).
             proxy::set_web(&sh.setting("netProxy"));
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
+            // The third-party plugins here, before anything checks a setting naming one.
+            addons::start(&sh);
             if let Some(e) = hub_failed {
                 sh.log(&format!("agent-hub: its token not kept in her data folder ({e}): /v1 serves nobody this run"));
             }

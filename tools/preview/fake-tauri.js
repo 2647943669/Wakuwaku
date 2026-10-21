@@ -395,6 +395,9 @@
       cpuSensors: { state: 'off' },
       lhmSetup: {},
       plugins: pluginsNow(),
+      // Third-party plugins installed (addons.rs view), none here yet.
+      addons: [],
+      addonsBroken: [],
       // The mail accounts with how each is going, the agents found, their
       // models, the talks about letters, Windows' proxy, the store's revision.
       mail: mailView(),
@@ -859,6 +862,8 @@
       return new Promise(done => setTimeout(() => done({ ok: true, via, ms: 412 }), 300))
     },
     session_jump: () => true,
+    // Third-party plugins to run in the island's page (addons.js): none here.
+    addons_running: () => [],
     pet_walk: () => false,
     pet_answer: ({ id }) => {
       const ok = answered(id)

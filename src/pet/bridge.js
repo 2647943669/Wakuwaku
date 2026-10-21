@@ -232,6 +232,23 @@
     },
     // Windows' Start menu opened or closed ({ open }), for the Start button.
     onStart: on('taskbar:start'),
+    // Third-party plugins (addons.rs; the island's page runs them, addons.js):
+    // which to run as that changes ([{ id, version, rev, main, perms, settings }]).
+    onAddons: on('addons:changed'),
+    addons: {
+      running: () => invoke('addons_running').catch(() => []),
+      // A running plugin's asking (widget, remove, fetch, storage, notify,
+      // hardware, said), in its name: addons.js knows it by its frame.
+      call: (what, args) => invoke('addon_call', { id: String(args?.id || ''), what: String(what), args: args || {} }),
+      // From the settings: a package looked at, installed, a plugin taken
+      // away, a .zip picked in Windows' dialog ({ path }, null: closed), one
+      // stopped turned on again.
+      inspect: path => invoke('addon_manage', { what: 'inspect', arg: String(path) }),
+      install: path => invoke('addon_manage', { what: 'install', arg: String(path) }),
+      uninstall: id => invoke('addon_manage', { what: 'uninstall', arg: String(id) }),
+      pickZip: () => invoke('addon_manage', { what: 'pick', arg: null }).then(r => r?.path ?? null, () => null),
+      revive: id => invoke('addon_manage', { what: 'revive', arg: String(id) }),
+    },
     settings: {
       get: () => invoke('settings_get'),
       set: patch => invoke('settings_set', { patch }),

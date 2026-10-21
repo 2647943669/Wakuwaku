@@ -65,6 +65,8 @@ src-tauri/
     widgets.rs            岛上的插件（第一层）：脚本发来的、内置的（今天、今天的 token、监控），什么时候冒头
     tokens.rs             今天的 token：读 Claude Code、Codex 和 Antigravity 自己的会话记录
     plugins.rs, plugins/  她替你跑的插件（天气、股票、番茄钟、倒计时、久坐提醒、CI、开发服务器）：开关、参数、在她自己的进程里按各自的节拍跑
+    addons.rs             第三方插件：从 .zip 装进 <数据目录>/plugins/<id>（校验、解压、原子换入）、注册表、manifest 校验、各插件在灵动岛页面的沙盒 iframe 里跑，用 wakuplugin:// 送文件
+    zip.rs                读 zip、解压（LHM 下载、插件包共用；原来在 lhm_setup.rs）
     scripts.rs            写出 waku 给终端用；邮件的 agent 启动 PowerShell 脚本时用的引号和 job object
     mail.rs, mail/        邮件：找服务器（像 Thunderbird 那样）、IMAP（io-imap）、每个邮箱一个线程盯着收件箱、收件箱和读信、写信和发信（SMTP）、走代理、交给 Claude / Codex / Antigravity、密码存进凭据管理器
     notify.rs             系统通知（登记 AppUserModelId 后发 toast）
@@ -418,9 +420,20 @@ omp 的计划审批也走这里（`tool_name: "ExitPlanMode"`，面板上标着 
 
 **邮件**：她自己收（「邮件」页，见下面的「邮件」）；用 Thunderbird 收信的可以装 Thunderbird 扩展，它只往 `/widget` 发未读数。以前的 `mail-imap.ps1`、`mail-microsoft.ps1` 已经删了。
 
-**以后的两层**：插件文件夹里的脚本由宠物定时运行（像 xbar），以及插件自己画的界面（要关进碰不到 IPC 的沙盒，否则能替你点"允许"）。
+## 第三方插件（addons.rs、src/pet/addons.js）
 
-## 邮件（mail.rs、mail/）
+别人写的插件，和她替你跑的内置插件排在一起，但代码不在她进程里跑，而在灵动岛页面里一个个隐藏的沙盒 iframe 里（`sandbox="allow-scripts"`，没有同源，碰不到她的页面、别的插件、IPC）。契约在 `docs/PLUGINS.md`，产品定稿在 `docs/design/specs/plugins.md`。这一期（1a）是运行环境和后端，设置页的行、从文件安装的流程、选择器卡片、市场都在 1b/3/4。
+
+- **装在哪**：`<数据目录>/plugins/<id>/`，每个一个 manifest.json、main.js，可能还有图片，不含程序。`installed.json` 记每个从哪来（文件 / 市场，审没审过）、zip 的 SHA-256、版本、装时给的权限。
+- **装（addons.rs）**：`inspect`（给确认层看一眼）、`install`。复用 `zip.rs`（原来在 lhm_setup.rs）。查扩展名白名单、按文件头查可执行文件（MZ/ELF/Mach-O，哪怕改了名）、路径不出文件夹、大小（插件 5 MB 压缩 / 20 MB 解开，资源包 50/200，最多 500 个文件）。先解到旁边的暂存文件夹，再原子换入；更新时旧的留到换成功。重装同一个 id 当更新，设置（`plugins[id]`）和存储（`plugin-data/<id>.json`，上限 1 MB）保留。manifest 坏了的那个文件夹跳过、列出原因，不崩。
+- **wakuplugin:// 协议（main.rs `register_asynchronous_uri_scheme_protocol`）**：`http://wakuplugin.localhost/<id>/<路径>`，只发这个插件文件夹里的文件；带 CSP（`default-src 'none'`，脚本 / 样式 / 图片 / 字体 / 媒体只许它自己这个前缀加 `data:`/`blob:`，`connect-src 'none'`，没有网络、框架、表单），`Access-Control-Allow-Origin: *` 让模块脚本能进这个空源的 iframe。生成的 `__waku/main.html` 先加载 `__waku/sdk.js`（SDK，仓库里 `src/addon/sdk.js`，`include_str!` 嵌进去），再加载 manifest 的 `main`。view.html（第 2 档）是第 2 期，这里留了缝没做。
+- **跑（addons.js、addons.rs）**：放了就跑（必填设置填了、API 她支持、没被停用）。页面给每个该跑的留一个 iframe。消息按 `event.source`（iframe 的 `contentWindow`）认是哪个插件，不认它自己说的 id。设置、语言、主题、静默变了推给它；agents（从页面已有的会话里脱敏出来）和 hardware 只推给有那权限的。
+- **命令（main.rs 注册）**：`addons_running`（页面该跑哪些，变了发 `addons:changed` 事件，监听带 window target）；`addon_call(id, what, args)`（跑着的插件的请求：widget / remove / fetch / storage / notify / hardware / said，一条命令全包，省 exe 的胶水）；`addon_manage(what, arg)`（设置页用：inspect / install / uninstall / pick / revive）。小工具 id 是 `<id>` 和 `<id>_<sub>`（sub `^[a-z0-9]{1,16}$`，最多 8 个），照 `POST /widget` 校验，外加一个 32 KB 的 `view` 字段留给第 2 期；`plugins::owner_of`（和它的 addon 版）把它们认到插件头上，页面看到 `plugin: <id>`。`addon_fetch` 在别的线程上，只许 manifest 的 `net` 主机、80/443、不许本机和内网地址（连跳转也查），走 `proxy::web_ways`，1 MB、15 秒上限。
+- **硬件（widgets.rs `reading_now`）**：按需读 CPU（两次取样之间的忙占比）、内存、网速，不另起常驻线程；显卡那些要开 Windows 计数器（几 MB、三分之一秒），只有监控插件留着，所以这里是 null。
+- **看门狗**：addons.js 里 SDK 会答 ping（`ping`/`pong`），真正的看门狗是第 2 期，这里只留了缝。几个插件共用一个渲染进程（`--renderer-process-limit=1`，省内存那次留下的），所以一个插件死循环会卡住别的插件、但卡不住灵动岛页面（实测灵动岛的 eval 往返一直 5～9 ms）——和设计规格第 8 节「所有插件共用一个进程」一致。
+- **测试**：`cargo test addons`（manifest 校验、各种精心构造的 zip、主机规则、设置校验、owner、存储上限、卸载不留痕、示例读得出）、`test/addons.test.js`（页面路由、SDK 用 node 的 vm 跑）；示例在 `examples/plugins/hello`、`examples/plugins/rain-alert`。
+
+**邮件**：她自己收
 
 设置里的「邮件」页，照 Thunderbird 添加账户的样子：填邮箱地址和密码，点「继续」去找服务器；找到了显示一行设置和来源，下面是折起来的「高级设置」；没找到就直接展开它。点「完成」先真的登录一次（收件和发件服务器都登录），能登录才保存。下面是收件箱：最新的信，点开读一封，右键交给 Claude Code、Codex 或 Antigravity；写信、回复、回复全部、转发，经发件服务器（SMTP）发出去。默认是双栏，像 Thunderbird：左边收件箱，右边读信或写信。
 

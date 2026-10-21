@@ -1,0 +1,24 @@
+{
+  "id": "hello",
+  "kind": "plugin",
+  "name": { "en": "Hello", "zh": "数数" },
+  "description": { "en": "Counts up, and remembers how far it got", "zh": "一直往上数，记得数到了几" },
+  "version": "1.0.0",
+  "author": "wakuwaku",
+  "api": 1,
+  "main": "main.js",
+  "category": "productivity",
+  "widget": { "sizes": ["s", "m"], "color": "#7fd8a6", "icon": "star" },
+  "settings": [
+    { "key": "Step", "type": "number", "default": 1, "label": { "en": "Count by", "zh": "每次加" } },
+    {
+      "key": "Every",
+      "type": "choice",
+      "options": ["1", "5", "60"],
+      "default": "5",
+      "label": { "en": "How often", "zh": "多久加一次" },
+      "optionLabels": { "1": { "en": "Every second", "zh": "每秒" }, "5": { "en": "Every 5 seconds", "zh": "每 5 秒" }, "60": { "en": "Every minute", "zh": "每分钟" } }
+    },
+    { "key": "Word", "type": "text", "label": { "en": "Its name", "zh": "名字" }, "hint": { "en": "e.g. Sheep", "zh": "比如 数羊" } }
+  ]
+}

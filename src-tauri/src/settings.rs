@@ -186,6 +186,10 @@ pub fn snapshot(sh: &Shared) -> Value {
         "lhmSetup": crate::lhm_setup::view(sh, &lhm_status, lhm_shown),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": plugins::view(sh),
+        // The third-party ones installed (addons.rs view), and the folders
+        // there whose manifest will not do, each with why.
+        "addons": crate::addons::view(sh),
+        "addonsBroken": crate::addons::broken_view(),
         // The mail accounts, each with how its watch is going.
         "mail": mail::view(sh),
         // Who a letter can go to (claude, codex, agy: found or not; looked
@@ -264,11 +268,12 @@ fn is_name(n: &str) -> bool {
     n.chars().count() <= 40 && !n.chars().any(char::is_control)
 }
 
-// A widget by its id, or a plugin she runs.
+// A widget by its id, or a plugin she runs: hers, or a third-party one
+// installed (its folder there, its manifest good or not: addons.rs is_known).
 fn is_source_of(kind: &str, of: &str) -> bool {
     match kind {
         "widget" => crate::widgets::is_id(of),
-        "plugin" => crate::plugins::PLUGINS.iter().any(|s| s.id == of),
+        "plugin" => crate::plugins::PLUGINS.iter().any(|s| s.id == of) || crate::addons::is_known(of),
         _ => false,
     }
 }
@@ -293,7 +298,7 @@ pub fn is_on_taskbar(layout: &Value, widget: &str) -> bool {
     let owner = crate::plugins::owner_of(widget);
     let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
-        (Some("plugin"), Some(of)) => Some(of) == owner,
+        (Some("plugin"), Some(of)) => Some(of) == owner.as_deref(),
         _ => false,
     };
     layout
@@ -469,7 +474,7 @@ pub fn is_on_desk(layout: &Value, widget: &str) -> bool {
     let owner = crate::plugins::owner_of(widget);
     let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
-        (Some("plugin"), Some(of)) => Some(of) == owner,
+        (Some("plugin"), Some(of)) => Some(of) == owner.as_deref(),
         _ => false,
     };
     layout.as_array().into_iter().flatten().any(|e| shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))

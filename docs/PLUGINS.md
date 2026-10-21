@@ -1,0 +1,156 @@
+# Writing a Wakuwaku plugin
+
+> Status: the contract for plugin API version 1. Phases 1–4 implement it on the `plugins` branch. The product decisions (where things go, how they look) are in `docs/design/specs/plugins.md`.
+
+A plugin is a folder of web files: a `manifest.json`, a `main.js`, and optionally a `view.html` plus images. It contains no programs. Wakuwaku runs it in a sandboxed iframe. Her own page talks to it with messages, and the plugin reaches everything else (the web, its settings, its storage, her) through a small `waku` object.
+
+There are three ways to put something on her widgets:
+
+| Tier | What you write | Where it shows | In the market |
+|---|---|---|---|
+| 1. Data | `main.js` calls `waku.widget.set({...})` | Everywhere widgets go (taskbar, capsule, desktop), drawn by her built-in cards | Yes |
+| 2. Own view | Tier 1, plus a `view.html` | Desktop M/L cards and the capsule's unfolded card draw your view; everywhere else uses your tier-1 data | Yes |
+| 3. External program | Any program that POSTs to `http://127.0.0.1:47213/widget` (`examples/widgets/README.md`) | Like tier 1 | **Never.** You run it yourself |
+
+## Folder and manifest
+
+```
+rain-alert/
+  manifest.json
+  main.js        runs in the background while the widget is placed
+  view.html      optional (tier 2)
+  icon.svg       optional
+```
+
+```json
+{
+  "id": "rain-alert",
+  "kind": "plugin",
+  "name": { "en": "Rain alert", "zh": "下雨提醒" },
+  "description": { "en": "Will it rain in the next hours, and when", "zh": "接下来几小时会不会下雨，几点开始" },
+  "version": "1.2.0",
+  "author": "lin",
+  "homepage": "https://github.com/lin/rain-alert",
+  "api": 1,
+  "main": "main.js",
+  "view": "view.html",
+  "category": "info",
+  "widget": { "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "cloud" },
+  "settings": [
+    { "key": "City", "type": "text", "required": true,
+      "label": { "en": "City", "zh": "城市" }, "hint": { "en": "e.g. Dresden", "zh": "比如 Dresden" } },
+    { "key": "Hours", "type": "choice", "options": ["3", "6", "12"], "default": "6",
+      "label": { "en": "Look ahead", "zh": "往后看" } },
+    { "key": "Alert", "type": "flag", "default": true, "label": { "en": "Tell me before it rains", "zh": "下雨前提醒我" } }
+  ],
+  "permissions": { "net": ["api.open-meteo.com"], "notify": true }
+}
+```
+
+| Field | Rule |
+|---|---|
+| `id` | `^[a-z][a-z0-9-]{1,39}$`, unique in the market. Built-in ids (`weather`, `stock`, `pomodoro`, `countdown`, `stretch`, `ci`, `devserver`, `monitor`, `today`, `tokens`, `mail…`, `waku`) are refused, and so are ids beginning as her own widgets' do (`stock-`, `ci-`, `prs-`, `inbox-`). |
+| `kind` | `plugin`. Packs use `pet` or `wallpaper` (see Packs). |
+| `name`, `description` | A string, or `{ "en": …, "zh": … }`. Name ≤ 24 characters, description ≤ 60. English is the fallback. |
+| `version` | `x.y.z`. |
+| `author` | ≤ 40 characters. |
+| `api` | `1`. A plugin asking for a newer API waits for a newer Wakuwaku and says so on the Plugins page. |
+| `main` | Required for `plugin`. A `.js` file in the folder. |
+| `view` | Optional. An `.html` file in the folder. |
+| `category` | `system`, `productivity` or `info`: the widget library's 系统 / 效率 / 信息. |
+| `widget.sizes` | A subset of `s`, `m`, `l`. Default `["s", "m"]`. |
+| `widget.color` | `#rgb` or `#rrggbb`. Used only on the icon, progress and corner glow, as for built-in widgets. |
+| `widget.icon` | One of her built-in icon names (`examples/widgets/README.md`), or an `.svg` in the folder (single-colour, drawn in the text colour). Without one, the first letter of the name in a tinted square. |
+| `settings` | Fields drawn on the Plugins page, values stored in her settings. `type` is `text`, `number`, `flag` or `choice` (with `options`, and optional `optionLabels: { option: {en, zh} }`). `key` matches `^[A-Za-z][A-Za-z0-9]{0,31}$` and is not `on` (her switch). A `required` field left empty keeps the plugin from running ("needs settings"). |
+| `permissions` | See below. Anything not asked for is not available. |
+
+## Permissions
+
+| Permission | Gives | Asked at install |
+|---|---|---|
+| (none) | Its own widget(s), its settings, its storage, theme, language, quiet | — |
+| `net: [hosts]` | `waku.fetch` to those hosts only: exact names, or `*.example.com` (the names under it, not `example.com` itself). Ports 80 and 443 only. Never `localhost`, IP literals or private addresses. | No. Listed on the detail page |
+| `agents: true` | `waku.agents`: each agent session's state | Yes |
+| `hardware: true` | `waku.hardware`: CPU, memory, GPU, network readings | Yes |
+| `notify: true` | `waku.notify`: a nudge on her widget | Yes |
+
+## The `waku` object
+
+`main.js` runs in a hidden sandboxed frame while the plugin's widget is placed somewhere. Placing it turns the plugin on, and taking it from its last place turns it off, as for built-in plugins. The frame has no storage of its own, and no network except `waku.fetch`.
+
+```js
+// main.js
+async function look () {
+  const { City, Hours } = waku.settings
+  const r = await waku.fetch(`https://api.open-meteo.com/v1/forecast?...&city=${encodeURIComponent(City)}`)
+  const data = await r.json()
+  waku.widget.set({
+    value: '70%',
+    detail: { extra: '17:00 起有雨', series: { points: data.hourly.slice(0, Number(Hours)), unit: '%' } },
+    view: { hours: data.hourly }
+  })
+}
+waku.on('settings', look)
+waku.every(600, look)
+look()
+```
+
+| API | What it does |
+|---|---|
+| `waku.id`, `waku.version` | This plugin's id and version. |
+| `waku.lang` | `'zh'` or `'en'`. Changes fire `waku.on('lang')`. |
+| `waku.theme` | `'dark'` or `'light'`. Changes fire `waku.on('theme')`. |
+| `waku.quiet` | `true` while nobody is at the computer. Changes fire `waku.on('quiet')`. |
+| `waku.settings` | The current values, keyed by `settings[].key`. Changes fire `waku.on('settings', values)`. |
+| `waku.widget.set(data)`, `waku.widget.set(sub, data)` | Show data on the plugin's widget, or on a second widget `sub` (`^[a-z0-9]{1,16}$`, its id `<id>_<sub>` 40 characters at most; at most 8 per plugin). `data` follows the `POST /widget` format: `label` (default: the plugin's name), `value`, `color`, `icon`, `private`, and `detail` `{ sizes, series, rows, extra }`. On top of that, `view`: any JSON up to 32 KB, handed to `view.html`. Widgets stay while the plugin runs, so no `ttl` is needed. |
+| `waku.widget.remove(sub?)` | Take a widget away. |
+| `waku.every(seconds, fn)` | Call `fn` every `seconds` (at least 1). While `waku.quiet`, the interval is three times as long. Returns a function that stops it. |
+| `waku.fetch(url, { method, headers, body })` | Resolves to `{ status, ok, headers, text(), json() }`. Allowed only by `net`, through the user's proxy setting (General › Network proxy). Bodies are text, up to 1 MB each way. Times out after 15 s. |
+| `waku.storage.get(key)`, `.set(key, value)`, `.remove(key)`, `.all()` | Promises. JSON values, up to 1 MB per plugin in total, kept across updates and deleted with the plugin. |
+| `waku.agents.list()` | (`agents`) A promise of `[{ id, agent, project, mood, since, detail }]`, where `mood` is `idle`, `working`, `waiting`, `done`, `review` or `error`. `waku.on('agents', list)` fires on change, at most once a second. |
+| `waku.hardware.read()` | (`hardware`) A promise of `{ cpu, memory, gpu, netDown, netUp }`. Percentages are 0–100 and rates are bytes per second; a field is `null` when not known. `waku.on('hardware', r)` fires every few seconds while someone listens. |
+| `waku.notify(text)` | (`notify`) Nudges her widget with `text` (≤ 60 characters). At most once a minute, never while she is asking you something, and only if "plugins may open the island" is on. |
+| `waku.on('view', fn)` | Messages from `view.html` (`waku.send`). |
+| `waku.log(...)` | One line in her log, with the plugin's id. An uncaught error is logged the same way, and its message shows under the plugin on the Plugins page. |
+
+### view.html (tier 2)
+
+`view.html` is drawn inside her card on the desktop (M and L) and in the capsule's unfolded card. Her card supplies the glass, corners, hover buttons and menu; you draw what goes inside. The `waku` object is there too:
+
+| API | What it does |
+|---|---|
+| `waku.size` | `'m'` or `'l'`. |
+| `waku.data` | The `view` field of the widget's last `waku.widget.set`. `waku.on('data', fn)` fires when it changes. |
+| `waku.send(message)` | Sends any JSON to `main.js` (`waku.on('view')`). |
+| `waku.theme`, `waku.lang`, `waku.on('theme' / 'lang')` | As in `main.js`. |
+| CSS variables | `--waku-fg`, `--waku-muted`, `--waku-color` (the widget's colour), `--waku-font`, `--waku-font-display`. The body is transparent. |
+
+While nobody is about, while the desktop is covered, or while Windows has animations turned off, the view is taken away and the card falls back to your tier-1 data. Keep animations short and let them stop (`docs/design/style.md`: no endless motion).
+
+## The sandbox
+
+- The frame is `sandbox="allow-scripts"`, so it has no origin of its own: no cookies, `localStorage` or IndexedDB, no forms, no popups, and no reaching her page or other plugins.
+- Its files come from `http://wakuplugin.localhost/<id>/`. A Content-Security-Policy allows scripts, styles, images and fonts from your own folder and `data:` / `blob:`, and blocks all network access (`connect-src 'none'`). Use `waku.fetch`. That includes your own folder: `import` your modules, and put data your code needs in a `.js` module rather than fetching a `.json`.
+- `main.js` is loaded as a module (`import`, top-level `await`).
+- It cannot reach her local port (`127.0.0.1:47213`), the file system, other programs or Windows.
+- Watchdog: she pings every plugin every 5 s. One that does not answer within 3 s is reloaded. One that hangs again is turned off and marked "not responding" on the Plugins page, until the user turns it back on.
+
+## Packaging and installing
+
+- A plugin is a `.zip` of the folder: its files at the root, or in one top folder.
+- Allowed file types: `.js .mjs .json .html .htm .css .svg .png .jpg .jpeg .webp .gif .avif .woff .woff2 .ttf .otf .mp3 .ogg .wav .txt .md .wasm`. Anything else is refused, a file with no extension too (name it `LICENSE.txt`). What a Mac's or Windows' zipping adds (`__MACOSX/`, `.DS_Store`, `Thumbs.db`, `desktop.ini`) is left out.
+- Files are also checked by their first bytes, so a renamed program (`MZ`, ELF, Mach-O) is refused whatever its name.
+- Limits: plugins 5 MB zipped and 20 MB unpacked; packs 50 MB and 200 MB; 500 files at most.
+- From a file: Plugins page › 从文件安装… (Install from file…). The plugin is marked "not reviewed".
+- From the market: Plugins page › 获取更多 (Get more). Market entries are reviewed.
+
+## Packs
+
+A pack has no code. Its `manifest.json` has `kind` `pet` or `wallpaper`, with `id`, `name`, `description`, `version` and `author` as above, and no `main`, `view`, `settings` or `permissions`.
+
+- `pet`: the files of a pet as she reads them already (`pet.json`, `spritesheet.webp`). Installed into `wakuwaku-data\pets\<id>\` and chosen on the Look page.
+- `wallpaper`: images (`.jpg .jpeg .png .webp`). Installed into `wakuwaku-data\wallpapers\<id>\` and used from the Look page like a folder of wallpapers.
+
+## The market
+
+The market is a public repository of packages and an `index.json` built from them, served from GitHub and from Gitee for China. Authors open a pull request. A check runs first (`tools/market/check.js`: format, file types, programs, size), then the maintainer reviews and merges. `tools/market/README.md` says how to run the checks yourself before you submit.

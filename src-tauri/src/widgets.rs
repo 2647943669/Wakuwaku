@@ -30,7 +30,8 @@
 //   tokens   today's tokens, Claude Code's, Codex's and Antigravity's (tokens.rs)
 //
 // Hers too, never expiring and never a script's: each mail account's
-// (mail.rs, "inbox-<id>").
+// (mail.rs, "inbox-<id>"). And a third-party plugin's (addons.rs, "<id>"
+// and "<id>_<sub>"), checked as a script's, kept while it runs.
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -43,6 +44,8 @@ pub const ICONS: [&str; 26] = [
 // The built-in ones: id, icon, colour.
 pub const BUILT_IN: [(&str, &str, &str); 3] = [("today", "today", "#34d27b"), ("tokens", "code", "#ff9f0a"), ("monitor", "gauge", "#5e9bff")];
 const MAX_SCRIPTED: usize = 32;
+// A plugin's view (tier 2), as JSON, at most.
+const VIEW: usize = 32 * 1024;
 const DEFAULT_TTL: u64 = 300;
 const NUDGE_EVERY_MS: u64 = 60_000;
 
@@ -58,6 +61,10 @@ pub struct Widget {
     until: Option<u64>,
     at: u64,
     private: bool,
+    // A third-party plugin's (addons.rs): kept while it runs, gone as it
+    // stops; and what it gave for its own view (tier 2, kept for then).
+    addon: bool,
+    view: Value,
 }
 
 #[derive(Default)]
@@ -228,17 +235,7 @@ impl Widgets {
             return Err("label: some words, up to 40");
         }
         let ttl = v.get("ttl").and_then(Value::as_u64).unwrap_or(DEFAULT_TTL).clamp(10, 86_400);
-        let widget = Widget {
-            id: id.into(),
-            label: json!(label),
-            value: json!(clip(s("value"), 24)),
-            detail: detail_of(v.get("detail")),
-            icon: if ICONS.contains(&s("icon")) { s("icon").into() } else { "dot".into() },
-            color: if is_color(s("color")) { s("color").into() } else { String::new() },
-            until: Some(now + ttl * 1000),
-            at: now,
-            private: v.get("private").and_then(Value::as_bool) == Some(true),
-        };
+        let widget = made(v, id, label, Some(now + ttl * 1000), now);
         let scripted = self.list.iter().filter(|w| w.until.is_some()).count();
         match self.list.iter_mut().find(|w| w.id == id) {
             Some(old) => *old = widget,
@@ -256,6 +253,63 @@ impl Widgets {
             self.nudged.insert(id.into(), now);
         }
         Ok(Put { id: id.into(), nudge })
+    }
+
+    // A third-party plugin's widget (addons.rs; its id `<plugin>` or
+    // `<plugin>_<sub>`), checked as a script's is, its label the plugin's
+    // name when none is given. No time to live: it stays while the plugin
+    // runs, and goes as it stops (remove_addons). What it gives for its own
+    // view (tier 2) is kept, up to VIEW bytes of JSON. Never a nudge: that is
+    // waku.notify's, by its permission.
+    pub fn put_addon(&mut self, id: &str, v: &Value, name: &str, now: u64) -> Result<(), &'static str> {
+        if !is_id(id) {
+            return Err("id: a-z 0-9 _ -, up to 40");
+        }
+        if BUILT_IN.iter().any(|b| b.0 == id) || self.list.iter().any(|w| w.id == id && w.until.is_none() && !w.addon) {
+            return Err("id: taken by a built-in widget");
+        }
+        let given = clip(v.get("label").and_then(Value::as_str).unwrap_or(""), 40);
+        let label = if given.is_empty() { clip(name, 40) } else { given };
+        if label.is_empty() {
+            return Err("label: some words, up to 40");
+        }
+        let view = v.get("view").cloned().unwrap_or(Value::Null);
+        if view.to_string().len() > VIEW {
+            return Err("view: up to 32 KB of JSON");
+        }
+        let widget = Widget { addon: true, view, ..made(v, id, label, None, now) };
+        match self.list.iter_mut().find(|w| w.id == id) {
+            Some(old) => *old = widget,
+            None => self.list.push(widget),
+        }
+        Ok(())
+    }
+
+    // How many widgets a plugin has up (`mine`: its ids).
+    pub fn addons_of(&self, mine: impl Fn(&str) -> bool) -> usize {
+        self.list.iter().filter(|w| w.addon && mine(&w.id)).count()
+    }
+
+    // Plugins' widgets gone with them (stopped, taken away). True when any were there.
+    pub fn remove_addons(&mut self, gone: impl Fn(&str) -> bool) -> bool {
+        let before = self.list.len();
+        self.list.retain(|w| !(w.addon && gone(&w.id)));
+        self.list.len() != before
+    }
+
+    // What a plugin's widget gave for its own view (tier 2), if it is up.
+    pub fn view_of(&self, id: &str) -> Option<Value> {
+        self.list.iter().find(|w| w.id == id && w.addon).map(|w| w.view.clone())
+    }
+
+    // Whether a widget may open the island now, by the same once a minute a
+    // script's nudge has (put); counted from now when it may.
+    pub fn may_nudge(&mut self, id: &str, now: u64) -> bool {
+        let may = self.nudged.get(id).is_none_or(|&t| now.saturating_sub(t) >= NUDGE_EVERY_MS);
+        if may {
+            self.nudged.insert(id.into(), now);
+        }
+        may
     }
 
     // A built-in widget's words, now. True when they changed.
@@ -286,7 +340,7 @@ impl Widgets {
     // True when they changed.
     #[allow(clippy::too_many_arguments)]
     pub fn put_owned(&mut self, id: &str, icon: &str, color: &str, label: Value, value: Value, detail: Value, private: bool, now: u64) -> bool {
-        let widget = Widget { id: id.into(), label, value, detail, icon: icon.into(), color: color.into(), until: None, at: now, private };
+        let widget = Widget { id: id.into(), label, value, detail, icon: icon.into(), color: color.into(), until: None, at: now, private, addon: false, view: Value::Null };
         match self.list.iter_mut().find(|w| w.id == id) {
             Some(old) if old.label == widget.label && old.value == widget.value && old.color == widget.color && old.detail == widget.detail => false,
             Some(old) => {
@@ -337,15 +391,16 @@ impl Widgets {
     // The built-in ones not measured (off, or nothing to read yet, like a
     // battery on a desktop) are there too, with no value, so they can be
     // turned on.
-    pub fn view(&self, now: u64, off: &[String], order: &[String], owner: &dyn Fn(&str) -> Option<&'static str>) -> Value {
+    pub fn view(&self, now: u64, off: &[String], order: &[String], owner: &dyn Fn(&str) -> Option<String>) -> Value {
         let unread: Vec<Widget> = BUILT_IN.iter().filter(|b| !self.list.iter().any(|w| w.id == b.0)).map(|b| built_in(b.0)).collect();
         let measured = self.list.iter().take_while(|w| is_built_in(&w.id)).count();
-        let mut all: Vec<&Widget> = self.list[..measured].iter().chain(&unread).chain(&self.list[measured..]).collect();
-        let rank = |w: &Widget| order.iter().position(|o| *o == w.id || Some(o.as_str()) == owner(&w.id)).unwrap_or(usize::MAX);
+        let all: Vec<&Widget> = self.list[..measured].iter().chain(&unread).chain(&self.list[measured..]).collect();
+        let mut all: Vec<(&Widget, Option<String>)> = all.into_iter().map(|w| (w, owner(&w.id))).collect();
+        let rank = |(w, of): &(&Widget, Option<String>)| order.iter().position(|o| *o == w.id || Some(o) == of.as_ref()).unwrap_or(usize::MAX);
         all.sort_by_key(|w| rank(w));
         Value::Array(
             all.into_iter()
-                .map(|w| {
+                .map(|(w, of)| {
                     json!({
                         "id": w.id,
                         "label": w.label,
@@ -354,9 +409,10 @@ impl Widgets {
                         "icon": w.icon,
                         "color": w.color,
                         "builtIn": is_built_in(&w.id),
-                        // builtIn, mail (hers, a mail account's), or script.
-                        "from": if is_built_in(&w.id) { "builtIn" } else if w.until.is_none() { "mail" } else { "script" },
-                        "plugin": owner(&w.id),
+                        // builtIn, mail (hers, a mail account's), addon (a
+                        // third-party plugin's: addons.rs), or script.
+                        "from": if is_built_in(&w.id) { "builtIn" } else if w.addon { "addon" } else if w.until.is_none() { "mail" } else { "script" },
+                        "plugin": of,
                         "on": !off.contains(&w.id),
                         "leftMs": w.until.map(|t| t.saturating_sub(now)),
                         "at": w.at,
@@ -375,7 +431,26 @@ fn is_built_in(id: &str) -> bool {
 // A built-in widget with nothing to say yet.
 fn built_in(id: &str) -> Widget {
     let (icon, color) = BUILT_IN.iter().find(|b| b.0 == id).map_or(("dot", ""), |b| (b.1, b.2));
-    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: Value::Null, icon: icon.into(), color: color.into(), until: None, at: 0, private: false }
+    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: Value::Null, icon: icon.into(), color: color.into(), until: None, at: 0, private: false, addon: false, view: Value::Null }
+}
+
+// A widget as sent (a script's, a plugin's), its label given: its value,
+// detail, icon, colour and privacy checked and cut.
+fn made(v: &Value, id: &str, label: String, until: Option<u64>, now: u64) -> Widget {
+    let s = |key: &str| v.get(key).and_then(Value::as_str).unwrap_or("");
+    Widget {
+        id: id.into(),
+        label: json!(label),
+        value: json!(clip(s("value"), 24)),
+        detail: detail_of(v.get("detail")),
+        icon: if ICONS.contains(&s("icon")) { s("icon").into() } else { "dot".into() },
+        color: if is_color(s("color")) { s("color").into() } else { String::new() },
+        until,
+        at: now,
+        private: v.get("private").and_then(Value::as_bool) == Some(true),
+        addon: false,
+        view: Value::Null,
+    }
 }
 
 // --- Today: what the day has seen ---------------------------------------------------
@@ -955,6 +1030,45 @@ pub fn rate(bytes_per_sec: f64) -> String {
     if n < 10.0 { format!("{n:.1}{unit}") } else { format!("{n:.0}{unit}") }
 }
 
+// The machine as a plugin reads it (addons.rs, waku.hardware), when it asks
+// and on no thread of its own: the CPU's share of time busy and the
+// network's pace since the asking before (GetSystemTimes and the adapters'
+// counters, as the monitor reads them where Windows' own count is not to be
+// had), and the memory's load. Asked for the first time, or after a long
+// while, it reads twice a third of a second apart. The graphics card's use
+// is null: its readings (hw.rs) need a query of Windows' counters, some 4 MB
+// and a third of a second to open, which only the monitor keeps.
+pub fn reading_now() -> Value {
+    struct Last {
+        at: std::time::Instant,
+        times: Option<(u64, u64)>,
+        bytes: Option<(u64, u64)>,
+        net: sys::Net,
+    }
+    static LAST: std::sync::Mutex<Option<Last>> = std::sync::Mutex::new(None);
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    // (times, bytes, whether the adapters counted changed, when).
+    let take = |net: &mut sys::Net| {
+        let read = net.read();
+        (sys::times(), read.map(|(a, b, _)| (a, b)), read.is_some_and(|r| r.2), std::time::Instant::now())
+    };
+    if last.as_ref().is_none_or(|l| l.at.elapsed() > std::time::Duration::from_secs(30)) {
+        let mut net = last.take().map_or_else(sys::Net::new, |l| l.net);
+        let (times, bytes, _, at) = take(&mut net);
+        *last = Some(Last { at, times, bytes, net });
+        std::thread::sleep(std::time::Duration::from_millis(330));
+    }
+    let Some(l) = last.as_mut() else { return Value::Null };
+    let (times, bytes, other, at) = take(&mut l.net);
+    let secs = at.duration_since(l.at).as_secs_f64().max(0.1);
+    let cpu = times.zip(l.times).and_then(|(now, then)| cpu_share(None, Some((now.0.saturating_sub(then.0), now.1.saturating_sub(then.1)))));
+    // The counters are 32 bits: they come round again after 4 GB.
+    let pace = |a: u64, b: u64| ((a as u32).wrapping_sub(b as u32) as f64 / secs).round();
+    let net = bytes.zip(l.bytes).filter(|_| !other).map(|(now, then)| (pace(now.0, then.0), pace(now.1, then.1)));
+    (l.at, l.times, l.bytes) = (at, times, bytes);
+    json!({ "cpu": cpu, "memory": sys::memory_load(), "gpu": null, "netDown": net.map(|n| n.0), "netUp": net.map(|n| n.1) })
+}
+
 // The monitor's settings: which parts are on, and how often it reads; the
 // hardware's sensors, built in (hw.rs) or from LibreHardwareMonitor
 // (lhm.rs), by the source chosen ("monitorSource"; none chosen, decided as
@@ -1426,6 +1540,32 @@ mod tests {
         assert!(scripted(w.view(3_000, &[], &[], &|_| None)).as_array().unwrap().is_empty());
     }
 
+    // A third-party plugin's widget (addons.rs): checked as a script's, its
+    // name for a label none is given, no time to live, its own and no
+    // script's; gone with it.
+    #[test]
+    fn a_plugins_widget_stays_while_it_runs() {
+        let mut w = Widgets::default();
+        w.put_addon("hello", &json!({ "value": "3", "icon": "star", "detail": { "sizes": ["s", "m"] }, "view": { "n": 3 } }), "数数", 0).unwrap();
+        w.put_addon("hello_two", &json!({ "label": "Two", "value": "x".repeat(30) }), "数数", 0).unwrap();
+        let view = scripted(w.view(10_000_000, &[], &[], &|id| (id == "hello" || id.starts_with("hello_")).then(|| "hello".to_string())));
+        assert_eq!(view.as_array().unwrap().len(), 2);
+        assert_eq!((view[0]["label"].as_str(), view[0]["from"].as_str(), view[0]["plugin"].as_str(), view[0]["leftMs"].is_null()), (Some("数数"), Some("addon"), Some("hello"), true));
+        assert_eq!((view[1]["label"].as_str(), view[1]["value"].as_str().map(|v| v.chars().count())), (Some("Two"), Some(24)));
+        assert!(view[0].get("view").is_none(), "its view kept here, not sent with every widget");
+        assert_eq!(w.view_of("hello"), Some(json!({ "n": 3 })));
+        assert!(!w.expire(u64::MAX));
+        // A script cannot take its id; nor can it take a built-in one's or a big view.
+        assert!(w.put(&json!({ "id": "hello", "label": "fake" }), 0).is_err());
+        assert!(w.put_addon("monitor", &json!({}), "x", 0).is_err());
+        assert!(w.put_addon("hello", &json!({ "view": "x".repeat(VIEW) }), "x", 0).is_err());
+        assert_eq!(w.addons_of(|id| id.starts_with("hello")), 2);
+        assert!(w.may_nudge("addon:hello", 0) && !w.may_nudge("addon:hello", 59_000) && w.may_nudge("addon:hello", 60_000));
+        assert!(w.remove_addons(|id| id == "hello_two"));
+        assert!(w.remove_addons(|id| id.starts_with("hello")));
+        assert!(scripted(w.view(0, &[], &[], &|_| None)).as_array().unwrap().is_empty());
+    }
+
     #[test]
     fn bad_widgets_say_why() {
         let mut w = Widgets::default();
@@ -1464,7 +1604,7 @@ mod tests {
         assert_eq!(ids(w.view(0, &[], &["a".into()], &none))[0], "a");
         assert_eq!(w.view(0, &["tokens".into()], &[], &none)[2]["on"], false);
         // A plugin's widgets go where the plugin was put, and say whose they are.
-        let mine = |id: &str| (id == "a").then_some("mine");
+        let mine = |id: &str| (id == "a").then(|| "mine".to_string());
         let view = w.view(0, &[], &["mine".into()], &mine);
         assert_eq!((view[0]["id"].clone(), view[0]["plugin"].clone()), (json!("a"), json!("mine")));
         assert!(w.remove_scripted(|id| id == "a") && !w.remove_scripted(|id| id == "sys"));
