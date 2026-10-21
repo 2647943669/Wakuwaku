@@ -35,7 +35,8 @@
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
 //   plugins.rs     the plugins she runs for you (weather, stocks, timers, CI, dev servers)
 //   addons.rs      third-party plugins: installed from a zip, run in sandboxed frames of
-//                  the island's page (src/pet/addons.js), served by wakuplugin://
+//                  the island's page (src/pet/addons.js), their views in the cards
+//                  (src/pet/views.js), served by wakuplugin://
 //   zip.rs         zips read and unpacked (LHM's download, a plugin's package)
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -262,6 +263,8 @@ impl Shared {
             }
             self.log(&format!("quiet: {quiet} (efficiency mode set: {eco}; for {webview_eco} of WebView2's processes; memory {} for {} pages)", if quiet { "low" } else { "normal" }, windows.len()));
             self.to_pages("pet:quiet", json!({ "on": quiet }));
+            // The plugins' views on the desktop away while nobody is about.
+            desk::views(self);
             wake_monitor();
             // The plugins she runs at their quiet pace, or back to their own.
             plugins::wake();
@@ -1709,10 +1712,12 @@ fn main() {
             addons::addons_running,
             addons::addon_call,
             addons::addon_manage,
+            addons::addon_view,
         ])
         // Third-party plugins' files, for their sandboxed frames in the
-        // island's page (addons.rs serve): http://wakuplugin.localhost/<id>/…
-        // on Windows. Off the main thread: a file read from the disk.
+        // island's page and their views in the cards (addons.rs serve):
+        // http://wakuplugin.localhost/<id>/… on Windows. Off the main
+        // thread: a file read from the disk.
         .register_asynchronous_uri_scheme_protocol(addons::SCHEME, |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn_blocking(move || responder.respond(addons::serve(&app, &request)));

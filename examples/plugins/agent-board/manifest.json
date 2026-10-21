@@ -1,0 +1,14 @@
+{
+  "id": "agent-board",
+  "kind": "plugin",
+  "name": { "en": "Agent board", "zh": "Agent 排行" },
+  "description": { "en": "Which project kept your agents busiest today", "zh": "今天哪个项目让 agent 干得最多" },
+  "version": "1.0.0",
+  "author": "wakuwaku",
+  "api": 1,
+  "main": "main.js",
+  "view": "view.html",
+  "category": "productivity",
+  "widget": { "sizes": ["s", "m", "l"], "color": "#f5a35c", "icon": "chart" },
+  "permissions": { "agents": true }
+}

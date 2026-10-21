@@ -231,6 +231,9 @@ test('the live playground: a stylesheet swapped, a script its frames reloaded, i
   assert.deepEqual(at('src/pet/index.html'), { frames: ['island'] })
   assert.deepEqual(at('tools/preview/boot.js'), { frames: ['island', 'desk'] })
   assert.deepEqual(at('pets/claude-chan/spritesheet.webp'), { frames: ['island', 'desk'] })
+  // A plugin's view and her SDK, which the fake writes into a card's frame.
+  assert.deepEqual(at('examples/plugins/agent-board/view.js'), { frames: ['island', 'desk'] })
+  assert.deepEqual(at('src/addon/sdk.js'), { frames: ['island', 'desk'] })
   for (const f of ['playground.html', 'playground.js', 'fake-tauri.js', 'fixtures.js', 'scenes.js']) assert.deepEqual(at(`tools/preview/${f}`), { page: true }, f)
   assert.deepEqual(at('tools/preview/assets/wall.jpg'), { page: true })
   // Not the playground's: nothing to do.
@@ -255,6 +258,9 @@ test('a build has every file its two pages load', () => {
   const plan = publish.plan()
   for (const role of ['island', 'desk']) for (const pub of publish.framePages()[role]) assert.ok(plan.has(pub), pub)
   for (const f of ['playground.html', 'preview/scenes.js', 'preview/fixtures.js', 'preview/playground.js', 'assets/wall.jpg', 'pets/claude-chan/spritesheet.webp']) assert.ok(plan.has(f), f)
+  // The example plugin with a view of its own, and her SDK, for the cards that draw it.
+  for (const f of ['addon/sdk.js', 'plugins/agent-board/view.html', 'plugins/agent-board/view.js', 'plugins/agent-board/view.css', 'plugins/agent-board/manifest.json']) assert.ok(plan.has(f), f)
+  assert.ok(![...plan.keys()].some(f => f.startsWith('plugins/hello/')), 'none without a view')
 })
 
 // --- compare.js: PNGs read, pictures compared -----------------------------------------------

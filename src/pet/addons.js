@@ -9,10 +9,27 @@
 // theme and whether anybody is about are told to it as they change; the
 // agents' sessions (from what the page already hears) and the hardware's
 // readings only to one whose manifest asks for them, and only once it
-// listens. A widget's words go at most once a second, a few requests at
-// once, a few log lines a minute. A frame that loads its page again (sent
-// elsewhere and kept back by guard_frames, or reloaded) starts over; one
-// that keeps doing it is left stopped until it changes.
+// listens; its view's messages (addons:view, from a card's frame on the
+// desktop or in the capsule: views.js) as they come. A widget's words go at
+// most once a second, a few requests at once, a few log lines a minute.
+//
+// The watchdog (docs/design/specs/plugins.md §8), while any runs: each frame
+// pinged every 5 s (15 s while nobody is about), the SDK answering with how
+// long its own long tasks took since. One that does not answer within 3 s
+// is loaded again; one that does not again within ten minutes is stopped
+// (hung), as is one over 2 s of long tasks in a minute (busy), and one whose
+// page keeps loading again (crashed): stopped in her, until turned on again
+// on the Plugins page. All their frames share one renderer process, so one
+// plugin held in a loop holds them all: when every one is silent at the same
+// ping, no one is blamed for it; all go (and the process with them, the
+// cards' views taken away meanwhile, as they may be in it too), then, once
+// it has had time to end, start again one at a time, 2 s apart, each
+// answering before the next: the one
+// after whose start they fall silent again is the one, stopped; the others
+// are started again. Found no one (it hangs a while after it starts), the
+// next time each is given as long as that took. A check that comes late
+// (the page itself held, or the computer asleep) counts for nothing. No
+// timer runs while no plugin does.
 //
 // The host itself (createHost) is plain logic over what it is given, for
 // the tests (test/addons.test.js); the page's part is boot().
@@ -30,6 +47,25 @@
   const HARDWARE_EVERY = 5000
   const DATA_MAX = 64 * 1024
   const RESTARTS = 3
+  // The watchdog: a ping so often (three times as long while nobody is
+  // about), its answer within so long, a check later than that by more than
+  // so much not counted; a frame not pinged until it has had so long to load;
+  // two misses within so long stop it; long tasks over so much in a minute
+  // stop it; frames started again one at a time so far apart (a minute at
+  // most); and so long after their old frames went. A process held in a
+  // loop is not ended as its frames go: the next frame made is put in it
+  // again, held as it is, and only once that one goes too is it ended (on a
+  // test copy, 2026-10-21, each time; within 1.5 s then). So the first one
+  // started again not answering is not blamed at once (step).
+  const PING_EVERY = 5000
+  const ANSWER_MS = 3000
+  const LATE_MS = 1500
+  const GRACE_MS = 3000
+  const AGAIN_MS = 10 * 60_000
+  const BUSY_MS = 2000
+  const STAGGER_MS = 2000
+  const HUNT_MAX_MS = 60_000
+  const RELOAD_MS = 4000
 
   const pageOf = id => `${ORIGIN}/${id}/__waku/main.html`
   const json = v => {
@@ -58,13 +94,16 @@
   }
 
   // deps: invoke(cmd, args) a promise; make(id, src) → { el, win } a frame;
-  // drop(rec) takes one away; post(win, message); log(line); now(); and
-  // the timers.
-  function createHost({ invoke, make, drop, post, log = () => {}, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout }) {
+  // drop(rec) takes one away; post(win, message); log(line); now(); the
+  // timers; views(on), the cards' views of this page taken away or back
+  // (the desktop's are told by her: invoke views).
+  function createHost({ invoke, make, drop, post, log = () => {}, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, views = () => {} }) {
     const recs = new Map()
     const bySource = new Map()
-    // Kept stopped (loaded again too often), by id: its rev then.
+    // Kept stopped (given up on), by id: its rev then, until she sends it changed.
     const held = new Map()
+    // The last list she sent, by id.
+    const want = new Map()
     const env = { lang: 'zh', theme: 'dark', quiet: false }
     let known = false
     let pending = null
@@ -86,12 +125,14 @@
           e => reply(rec, n, false, e),
         )
     }
+    const quietly = promise => Promise.resolve(promise).catch(() => {})
 
     function start(item) {
       const { el, win } = make(item.id, pageOf(item.id))
-      const rec = { id: item.id, item, el, win, ready: false, loads: 0, restarts: [], fetches: 0, logs: [], listens: new Set(), widgets: new Map(), lastPong: 0 }
+      const rec = { id: item.id, item, el, win, ready: false, loads: 0, restarts: [], fetches: 0, logs: [], listens: new Set(), widgets: new Map(), startedAt: now(), answered: 0 }
       recs.set(item.id, rec)
       bySource.set(win, rec)
+      keepWatch()
       return rec
     }
     function stop(rec) {
@@ -99,30 +140,39 @@
       bySource.delete(rec.win)
       for (const w of rec.widgets.values()) clearTimer(w.timer)
       drop(rec)
+      keepWatch()
     }
 
     // The list she sent: those not in it stopped, new ones started, one
     // changed (another version, its manifest edited, other permissions)
-    // started over, one whose settings changed told them.
+    // started over, one whose settings changed told them. While the frames
+    // start again one by one (recovering), the new and the changed wait their
+    // turn there.
     function apply(list) {
       const items = (Array.isArray(list) ? list : []).filter(i => i && typeof i.id === 'string' && /^[a-z][a-z0-9-]{1,39}$/.test(i.id))
       if (!known) {
         pending = items
         return
       }
-      const ids = new Set(items.map(i => i.id))
-      for (const rec of [...recs.values()]) if (!ids.has(rec.id)) stop(rec)
-      for (const [id, rev] of [...held]) if (!ids.has(id) || items.find(i => i.id === id).rev !== rev) held.delete(id)
+      want.clear()
+      for (const item of items) want.set(item.id, item)
+      for (const rec of [...recs.values()]) if (!want.has(rec.id)) stop(rec)
+      for (const [id, rev] of [...held]) if (!want.has(id) || want.get(id).rev !== rev) held.delete(id)
+      for (const id of [...trouble.keys()]) if (!want.has(id)) trouble.delete(id)
+      if (recovering) recovering.queue = recovering.queue.filter(i => want.has(i.id)).map(i => want.get(i.id))
       for (const item of items) {
         if (held.has(item.id)) continue
         const rec = recs.get(item.id)
         if (!rec) {
-          start(item)
+          if (recovering) {
+            if (!recovering.queue.some(i => i.id === item.id)) recovering.queue.push(item)
+          } else start(item)
           continue
         }
         if (rec.item.rev !== item.rev || rec.item.main !== item.main || json(rec.item.perms) !== json(item.perms)) {
           stop(rec)
-          start(item)
+          if (recovering) recovering.queue.push(item)
+          else start(item)
           continue
         }
         const changed = json(rec.item.settings) !== json(item.settings)
@@ -144,7 +194,10 @@
         }
       }
       for (const rec of recs.values()) if (rec.ready) for (const key of changed) tell(rec, key, env[key])
-      if (changed.includes('quiet')) keepHardware(true)
+      if (changed.includes('quiet')) {
+        keepHardware(true)
+        keepWatch(true)
+      }
       // Her language known: the frames may start.
       if (!known && 'lang' in patch) {
         known = true
@@ -279,10 +332,11 @@
           logLine(rec, m.line)
           return
         case 'error':
-          if (logLine(rec, `error: ${str(m.line, 300)}`)) Promise.resolve(invoke('said', { id: rec.id, line: str(m.line, 300) })).catch(() => {})
+          if (logLine(rec, `error: ${str(m.line, 300)}`)) quietly(invoke('said', { id: rec.id, line: str(m.line, 300) }))
           return
         case 'pong':
-          rec.lastPong = now()
+          if (Number.isFinite(m.n)) rec.answered = Math.max(rec.answered, m.n)
+          busy(rec, m.busy)
           return
       }
     }
@@ -295,9 +349,18 @@
       return true
     }
 
+    // A message of a plugin's view (her addons:view: who it is, the view's
+    // card known by its frame where it is), to its main.js as it runs.
+    function fromView(id, sub, message) {
+      const rec = recs.get(id)
+      if (!rec?.ready) return false
+      tell(rec, 'view', { message: message ?? null, sub: typeof sub === 'string' ? sub : '' })
+      return true
+    }
+
     // A frame's page loaded: the first time, as it should; again (sent
     // elsewhere and kept back, or reloaded), it starts over, and one that
-    // keeps doing so is left stopped until she sends it changed.
+    // keeps doing so is stopped (crashed).
     function loaded(id, el) {
       const rec = recs.get(id)
       if (!rec || rec.el !== el) return
@@ -307,30 +370,259 @@
       const restarts = [...rec.restarts.filter(at => t - at < 60_000), t]
       stop(rec)
       if (restarts.length > RESTARTS) {
-        held.set(id, rec.item.rev)
-        log(`plugin ${id}: loaded its page again ${restarts.length} times in a minute: stopped`)
-        Promise.resolve(invoke('said', { id, line: 'loaded its page again and again: stopped until it changes' })).catch(() => {})
-        return
+        log(`plugin ${id}: loaded its page again ${restarts.length} times in a minute`)
+        return giveUp(id, 'crashed', restarts)
       }
       log(`plugin ${id}: its page loaded again: started over`)
       start(rec.item).restarts = restarts
     }
 
-    // Phase 2's watchdog will ping each frame here (the SDK answers pong).
+    // --- The watchdog ----------------------------------------------------------------------
+    // Each plugin's misses (unanswered pings, by when) and its long tasks
+    // ([when, ms]), kept across its frames; the pings' count; the timers.
+    const trouble = new Map()
+    const tasks = new Map()
+    let pings = 0
+    let pingTimer = 0
+    let checkTimer = 0
+    let reloadTimer = 0
+    // Starting them again one at a time: { queue, started, timer }, or null.
+    let recovering = null
+    let viewsOn = true
+
+    // The cards' views here and on the desktop: taken away while frames are
+    // started again (they may share their process), back after.
+    function setViews(on) {
+      if (viewsOn === on) return
+      viewsOn = on
+      views(on)
+      quietly(invoke('views', { id: '', on }))
+    }
+
+    // The next ping armed while any frame is up (again: from now, its pace
+    // changed); none, none.
+    function keepWatch(again = false) {
+      if (again || !recs.size || recovering) {
+        clearTimer(pingTimer)
+        pingTimer = 0
+      }
+      if (!recs.size || recovering) {
+        clearTimer(checkTimer)
+        checkTimer = 0
+        return
+      }
+      if (!pingTimer) pingTimer = setTimer(pingAll, PING_EVERY * (env.quiet ? 3 : 1))
+    }
+
+    // Each frame that has had time to load pinged; their answers looked at
+    // in 3 s; the next ping in 5.
+    function pingAll() {
+      pingTimer = 0
+      if (!recs.size || recovering) return
+      const at = now()
+      const n = ++pings
+      const asked = [...recs.values()].filter(rec => at - rec.startedAt >= GRACE_MS)
+      for (const rec of asked) post(rec.win, { waku: 1, t: 'ping', n })
+      if (asked.length) {
+        clearTimer(checkTimer)
+        checkTimer = setTimer(() => check(n, at, asked), ANSWER_MS)
+      }
+      keepWatch()
+    }
+
+    function check(n, at, asked) {
+      checkTimer = 0
+      const live = asked.filter(rec => recs.get(rec.id) === rec)
+      const missed = live.filter(rec => rec.answered < n)
+      if (now() - at <= ANSWER_MS + LATE_MS && missed.length) {
+        // All those asked silent, and another there (one just started, too
+        // soon to be asked, among them): their process held, by any of them.
+        if (recs.size >= 2 && missed.length === live.length) {
+          recover()
+          return
+        }
+        for (const rec of missed) miss(rec)
+      }
+      keepWatch()
+    }
+
+    // A miss, kept; the second within ten minutes stops it (hung), the
+    // first loads it again.
+    function missed(id) {
+      const t = now()
+      const times = [...(trouble.get(id) || []).filter(at => t - at < AGAIN_MS), t]
+      trouble.set(id, times)
+      return times
+    }
+    function miss(rec) {
+      const times = missed(rec.id)
+      if (times.length >= 2) return giveUp(rec.id, 'hung', times)
+      log(`plugin ${rec.id}: did not answer: loaded again`)
+      reload(rec)
+    }
+    // Its frame taken away, the views with it; started again a moment later.
+    function reload(rec) {
+      const item = rec.item
+      stop(rec)
+      setViews(false)
+      clearTimer(reloadTimer)
+      reloadTimer = setTimer(() => {
+        reloadTimer = 0
+        const now = want.get(item.id)
+        if (now && !held.has(item.id) && !recs.has(item.id) && !recovering) start(now)
+        if (!recovering) setViews(true)
+      }, RELOAD_MS)
+    }
+
+    // Stopped in her (stop: why, since its first miss, how many), its frame
+    // gone, not started again here until she sends it changed.
+    function giveUp(id, why, times = []) {
+      const rec = recs.get(id)
+      if (rec) stop(rec)
+      held.set(id, want.get(id)?.rev ?? rec?.item.rev)
+      trouble.delete(id)
+      tasks.delete(id)
+      log(`plugin ${id}: stopped (${why})`)
+      quietly(invoke('stop', { id, why, since: times[0] ?? now(), times: why === 'hung' ? times.length : 0 }))
+    }
+
+    // Its own long tasks since the last ping: over 2 s in the last minute,
+    // stopped (busy).
+    function busy(rec, ms) {
+      if (!Number.isFinite(ms) || ms <= 0) return
+      const t = now()
+      const list = [...(tasks.get(rec.id) || []).filter(([at]) => t - at < 60_000), [t, ms]]
+      tasks.set(rec.id, list)
+      if (list.reduce((sum, [, x]) => sum + x, 0) > BUSY_MS) giveUp(rec.id, 'busy')
+    }
+
+    // All silent at once: no one blamed for it; all their frames taken
+    // away, the views too; then started again one at a time (step), each
+    // given 2 s. One that hangs only a while after it starts gets past that,
+    // and they all fall silent again once all are up: the next time within
+    // ten minutes, each is given as long as that took (a minute at most)
+    // before the next starts.
+    let fruitless = null
+    function recover() {
+      const order = [...recs.values()].map(rec => rec.item)
+      const t = now()
+      const wait = fruitless && t - fruitless < AGAIN_MS ? Math.min(HUNT_MAX_MS, Math.max(STAGGER_MS, t - fruitless)) : STAGGER_MS
+      log(`plugins ${order.map(i => i.id).join(', ')}: none answered: started again one at a time, ${Math.round(wait / 1000)} s each`)
+      for (const rec of [...recs.values()]) stop(rec)
+      clearTimer(reloadTimer)
+      reloadTimer = 0
+      setViews(false)
+      recovering = { queue: order, started: [], timer: 0, since: t, wait, at: 0 }
+      keepWatch()
+      recovering.timer = setTimer(step, RELOAD_MS)
+    }
+    // The next one started; every 2 s, all those started pinged: all
+    // answer, again until it has had its while, then the next; one does not,
+    // the one just started stopped (hung: silent with the rest, then again),
+    // the others taken away and started again (their process held by it),
+    // one by one.
+    function step() {
+      const r = recovering
+      if (!r) return
+      r.timer = 0
+      let item = r.queue.shift()
+      while (item && (!want.has(item.id) || held.has(item.id) || recs.has(item.id))) item = r.queue.shift()
+      if (!item) return finish()
+      const rec = start(item)
+      r.started.push(rec)
+      r.at = now()
+      probe(r, rec)
+    }
+    function probe(r, rec) {
+      r.timer = setTimer(() => {
+        r.timer = 0
+        const n = ++pings
+        const up = r.started.filter(x => recs.get(x.id) === x)
+        for (const x of up) post(x.win, { waku: 1, t: 'ping', n })
+        r.timer = setTimer(() => {
+          r.timer = 0
+          if (recovering !== r) return
+          const live = up.filter(x => recs.get(x.id) === x)
+          if (live.every(x => x.answered >= n)) {
+            r.answered = true
+            return now() - r.at >= r.wait ? step() : probe(r, rec)
+          }
+          // None has answered since their frames went: the old process may
+          // be there still (held); all away again, and twice as long a wait,
+          // once, before the one just started is blamed.
+          if (!r.answered && !r.again) {
+            r.again = true
+            log(`plugin ${rec.id}: no answer yet, their old process may be there still: all away, again in ${(2 * RELOAD_MS) / 1000} s`)
+            for (const x of live) stop(x)
+            r.queue = [...live.map(x => x.item), ...r.queue]
+            r.started = []
+            r.timer = setTimer(step, 2 * RELOAD_MS)
+            return
+          }
+          const others = live.filter(x => x !== rec)
+          giveUp(rec.id, 'hung', [r.since, ...missed(rec.id)])
+          r.found = true
+          for (const x of others) stop(x)
+          r.queue = [...others.map(x => x.item), ...r.queue]
+          r.started = []
+          r.wait = STAGGER_MS
+          r.answered = r.again = false
+          r.timer = setTimer(step, RELOAD_MS)
+        }, ANSWER_MS)
+      }, STAGGER_MS)
+    }
+    // All up again: watched as before; when the hunt found no one, when the
+    // last of them started kept in mind (the next one gives each as long).
+    function finish() {
+      fruitless = recovering?.found ? null : recovering?.at || now()
+      recovering = null
+      setViews(true)
+      keepWatch()
+    }
+
+    // One pinged now, by hand (the tests).
     function ping(id, n = now()) {
       const rec = recs.get(id)
       if (rec?.ready) post(rec.win, { waku: 1, t: 'ping', n })
       return !!rec
     }
 
-    return { apply, setEnv, setAgents, receive, loaded, ping, recs, env, held, get agents() { return agents } }
+    return {
+      apply,
+      setEnv,
+      setAgents,
+      receive,
+      fromView,
+      loaded,
+      ping,
+      recs,
+      env,
+      held,
+      trouble,
+      get recovering() {
+        return recovering
+      },
+      get viewsOn() {
+        return viewsOn
+      },
+      get watching() {
+        return !!(pingTimer || checkTimer || recovering)
+      },
+      get agents() {
+        return agents
+      },
+    }
   }
 
   // --- In her island's page -------------------------------------------------------------
   function boot() {
+    // Their frames out of sight, off the page's left, never under the
+    // pointer; not display: none, under which WebView2 tells a frame none of
+    // its long tasks (the watchdog's budget: the SDK's PerformanceObserver).
     const box = document.createElement('div')
     box.id = 'addon-frames'
-    box.hidden = true
+    box.setAttribute('aria-hidden', 'true')
+    box.style.cssText = 'position:fixed;left:-10000px;top:0;width:300px;height:150px;overflow:hidden;pointer-events:none;contain:strict'
     document.body.appendChild(box)
     let payload = null
     let look = null
@@ -357,9 +649,12 @@
         } catch {}
       },
       log: line => console.log(line),
+      // The capsule's card's view (views.js, this page's), taken away a while.
+      views: on => root.Views?.island?.pause(!on),
     })
     window.addEventListener('message', e => host.receive(e.source, e.data))
     window.pet.onAddons(list => host.apply(list))
+    window.pet.onAddonView?.(v => host.fromView(String(v?.id || ''), v?.sub, v?.message))
     window.pet.onUpdate(p => {
       payload = p
       host.setEnv({ lang: p?.lang, quiet: p?.quiet === true, theme: themeNow() })
@@ -374,7 +669,7 @@
     api.host = host
   }
 
-  const api = { createHost, agentsOf, pageOf, ORIGIN }
+  const api = { createHost, agentsOf, pageOf, ORIGIN, PING_EVERY, ANSWER_MS, AGAIN_MS, BUSY_MS, STAGGER_MS, RELOAD_MS, GRACE_MS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else {
     root.Addons = api

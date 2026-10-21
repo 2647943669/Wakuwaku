@@ -235,11 +235,18 @@
     // Third-party plugins (addons.rs; the island's page runs them, addons.js):
     // which to run as that changes ([{ id, version, rev, main, perms, settings }]).
     onAddons: on('addons:changed'),
+    // A message of a plugin's view to its main.js ({ id, sub, message }:
+    // addons.rs addon_view, the page holding the view knowing it by its frame).
+    onAddonView: on('addons:view'),
     addons: {
       running: () => invoke('addons_running').catch(() => []),
       // A running plugin's asking (widget, remove, fetch, storage, notify,
-      // hardware, said), in its name: addons.js knows it by its frame.
+      // hardware, said), in its name: addons.js knows it by its frame; and
+      // its watchdog's (stop, views).
       call: (what, args) => invoke('addon_call', { id: String(args?.id || ''), what: String(what), args: args || {} }),
+      // A card's view (views.js): what a widget's view shows ({ page, data,
+      // rev }), a message of it for its main.js.
+      view: (what, widget, message) => invoke('addon_view', { what: String(what), widget: String(widget), message: message ?? null }),
       // From the settings: a package looked at, installed, a plugin taken
       // away, a .zip picked in Windows' dialog ({ path }, null: closed), one
       // stopped turned on again.

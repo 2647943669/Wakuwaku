@@ -46,8 +46,18 @@ test('a row says how it is, then who made it and which version (the spec’s 运
   // What went wrong while it shows nothing, as hers say it; with widgets up, as hers, it runs.
   assert.deepEqual(at({ said: 'TypeError: x is undefined' }, { placed: true, mine: [] }), { text: '还没显示：TypeError: x is undefined', bad: true })
   assert.equal(at({ said: 'TypeError' }, { placed: true, mine: [widget] }).text, '运行中 · @lin · v1.2.0')
-  // Not responding: turned off, with 重新启用; when and why once the watchdog says.
+  // Not responding: turned off, with 重新启用; since when and how many
+  // times, as the watchdog says (spec §3); too busy (§8); loading again
+  // and again. Placed or not.
   assert.deepEqual(at({ state: 'stopped' }, { placed: true }), { text: '无响应，已停用 · @lin · v1.2.0', bad: true, revive: true })
+  const since = new Date(2026, 9, 21, 10, 12).getTime()
+  assert.equal(at({ state: 'stopped', stopped: { why: 'hung', since, at: since + 9000, times: 3 } }, { placed: true }).text, '无响应，已停用 · 10:12 起 3 次没回答 · @lin · v1.2.0')
+  assert.equal(at({ state: 'stopped', stopped: { why: 'hung', since: new Date(2026, 9, 21, 9, 5).getTime(), times: 2 } }, { placed: false }).text, '无响应，已停用 · 09:05 起 2 次没回答 · @lin · v1.2.0')
+  assert.deepEqual(at({ state: 'stopped', stopped: { why: 'busy', since, times: 0 } }, { placed: true }), { text: '太忙，已停用 · @lin · v1.2.0', bad: true, revive: true })
+  assert.equal(at({ state: 'stopped', stopped: { why: 'crashed', since, times: 0 } }, { placed: true }).text, '反复重新载入，已停用 · @lin · v1.2.0')
+  assert.equal(A.statusOf({ ...rain, state: 'stopped', stopped: { why: 'hung', since, times: 3 } }, { T: en }).text, 'Stopped responding, turned off · no answer 3 times since 10:12 · @lin · v1.2.0')
+  assert.equal(A.statusOf({ ...rain, state: 'stopped', stopped: { why: 'busy', since, times: 0 } }, { T: en }).text, 'Too busy, turned off · @lin · v1.2.0')
+  // Without the watchdog's say (an older one's): what it said.
   assert.equal(at({ state: 'stopped', said: '10:12 起 3 次没回答' }, { placed: true }).text, '无响应，已停用 · 10:12 起 3 次没回答 · @lin · v1.2.0')
   // A newer API than hers: it waits for a newer Wakuwaku, placed or not.
   assert.deepEqual(at({ state: 'unsupported' }, { placed: false }), { text: '需要新版 Wakuwaku · @lin · v1.2.0', bad: true })
@@ -58,6 +68,12 @@ test('a row says how it is, then who made it and which version (the spec’s 运
 test('the picker’s kinds for a manifest’s category: 系统, 效率, 信息', () => {
   assert.deepEqual(['system', 'productivity', 'info', undefined, 'games'].map(category => A.catOf({ category })), ['system', 'work', 'info', 'info', 'info'])
   assert.equal(zh(`picker.cat.${A.catOf({ category: 'productivity' })}`), '效率')
+})
+
+test('its page says who made it, its kind, and 自绘界面 for one with a view of its own', () => {
+  assert.equal(A.aboutOf(rain, zh), '@lin · v1.2.0 · 信息')
+  assert.equal(A.aboutOf({ ...rain, view: true, category: 'productivity' }, zh), '@lin · v1.2.0 · 效率 · 自绘界面')
+  assert.equal(A.aboutOf({ ...rain, view: true }, en), '@lin · v1.2.0 · Info · Own view')
 })
 
 test('what it may do, a line each; the web is no question at install, the rest are', () => {

@@ -5347,6 +5347,39 @@ body.has-news #island[data-view='compact'] .news-dot {
   animation: none;
 }
 
+/* A plugin's own view in it (views.js): the card a medium one's height, the view's frame over its
+   words, the pointer through it to the card; seen once it says it is ready, the words under it
+   hidden then (until then, and whenever it is not shown, those words are what the card shows). */
+#island-expanded .icard.has-view {
+  position: relative;
+  box-sizing: border-box;
+  height: 150px;
+  overflow: hidden;
+}
+
+#island-expanded .icard > .wview {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  width: calc(100% - 24px);
+  height: 128px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease-out;
+}
+
+#island-expanded .icard > .wview.ready {
+  opacity: 1;
+}
+
+#island-expanded .icard:has(> .wview.ready) > :not(.wview) {
+  visibility: hidden;
+}
+
 @keyframes icard-unfold {
   from {
     opacity: 0;

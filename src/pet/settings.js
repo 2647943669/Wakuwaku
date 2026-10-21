@@ -903,14 +903,15 @@
   }
 
   // A plugin's own page (spec §3; the mockup's detail): its icon, name and
-  // 未经审核, who made it, its version and kind, and where it is (or
-  // 添加小工具…); what it says it is; what it may do, a line each, then what
-  // no plugin can; 卸载 (asked first, over the panel).
+  // 未经审核, who made it, its version and kind (自绘界面 for one with a view
+  // of its own), and where it is (or 添加小工具…); what it says it is; what
+  // it may do, a line each, then what no plugin can; 卸载 (asked first,
+  // over the panel).
   const PERM_GLYPH = { net: 'E774', agents: 'E756', hardware: 'E950', notify: 'EA8F', none: 'EA18' }
   function addonPage(a) {
     const mine = (snap.widgets || []).filter(w => w.plugin === a.id)
     const place = placeOf({ plugin: a.id }, a.on)
-    const about = [AddonUI.byline(a), T(`picker.cat.${AddonUI.catOf(a)}`)].filter(Boolean).join(' · ')
+    const about = AddonUI.aboutOf(a, T)
     const top = `<div class="ad-head"><span class="ad-tile" style="--c:${esc(addonColor(a, mine))}">${addonIcon(a)}</span><div class="grow"><div class="ad-name ellip">${esc(a.name)}${unreviewedChip(a)}</div><div class="d ellip">${esc(about)}</div></div>${placeHTML(place, `plugin:${a.id}`)}</div>`
     const said = a.description ? `${sec(T('addons.about'))}<div class="grp"><div class="ad-text">${esc(a.description)}</div></div>` : ''
     const perms = AddonUI.permLines(a.perms, T, andList)

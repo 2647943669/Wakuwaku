@@ -772,6 +772,20 @@
     addonShot('settings-plugins-install-confirm', '从文件安装：要权限的，先问', installFromFile, { addonPick: 'agent-board.zip' }),
     addonShot('settings-plugins-install-update', '从文件安装：同一个插件的新版，替换旧版', installFromFile, { addonPick: 'hello-1.1.0.zip' }),
     addonShot('settings-plugins-install-refused', '从文件安装：包里有程序，装不了', installFromFile, { addonPick: 'cool-tool.zip' }),
+    // A plugin with a view of its own (Agent 排行): its page says 自绘界面;
+    // too busy for the watchdog, stopped, its row says so (spec §3, §8).
+    {
+      ...addonShot('settings-plugins-addon-busy', 'Agent 排行（自绘界面）太忙，已停用', p => openPluginsPage(p, 'widgets:agent-board')),
+      world: F => ({ ...withAddons(F), addons: [...F.ADDONS, { ...F.ADDON_BOARD, state: 'stopped', stopped: { why: 'busy', since: F.T0 - 20 * 60e3, at: F.T0 - 20 * 60e3, times: 0 } }] }),
+    },
+    {
+      ...addonShot('settings-plugins-addon-detail-view', 'Agent 排行的详情：类别后面标「自绘界面」', async p => {
+        await openPluginsPage(p)
+        p.click('#island-settings [data-addon="agent-board"]')
+        await p.wait(400)
+      }),
+      world: F => ({ ...withAddons(F), addons: [...F.ADDONS, F.ADDON_BOARD] }),
+    },
     addonShot(
       'settings-plugins-installed',
       '从文件安装：装好了，提示和标出来的那一行',
@@ -1038,6 +1052,46 @@
           { id: 'wa6', type: 'plugin', of: 'weather-radar', size: 's', name: '天气雷达', d: 'd1', at: { d1: [4, 2] } },
         ],
       }),
+    },
+    // A plugin's own view (tier 2, spec §4: examples/plugins/agent-board,
+    // its view.html in her card, the card's glass, corners and buttons hers):
+    // medium and large on the desktop; small, and another's medium beside,
+    // drawn from their data.
+    {
+      id: 'widgets-addon-view-desk',
+      section: 'widgets',
+      title: '桌面上插件自绘的界面：Agent 排行的中档和大档；小档和下雨提醒用数据画',
+      page: 'desk',
+      view: [0, 0, 1100, 420],
+      budget: 5000,
+      settle: 900,
+      world: F => ({
+        widgets: [],
+        addons: [F.ADDON_BOARD, ...addonsRunning(F)],
+        deskLayout: [
+          { id: 'wv1', type: 'widget', of: 'agent-board', size: 'm', d: 'd1', at: { d1: [0, 0] } },
+          { id: 'wv2', type: 'plugin', of: 'agent-board', size: 'l', name: 'Agent 排行', icon: 'chart', d: 'd1', at: { d1: [5, 0] } },
+          { id: 'wv3', type: 'widget', of: 'agent-board', size: 's', d: 'd1', at: { d1: [10, 0] } },
+          { id: 'wv4', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 2] } },
+        ],
+      }),
+    },
+    // In the open capsule: its row drawn from its data, its card unfolded the view.
+    {
+      id: 'widgets-addon-view-capsule',
+      section: 'widgets',
+      title: '展开的胶囊里，Agent 排行的卡片打开：插件自绘的界面',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(460), 520, 460],
+      budget: 5000,
+      settle: 900,
+      world: F => ({ ...home(F), widgets: F.widgets('weather'), addons: [F.ADDON_BOARD], sessions: [F.session('working')] }),
+      steps: async p => {
+        await openIsland(p)
+        p.click('#island-expanded [data-widget="agent-board"]')
+        await p.wait(900)
+      },
     },
 
     // --- The desktop -------------------------------------------------------------------------

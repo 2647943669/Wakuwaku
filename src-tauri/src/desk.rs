@@ -74,6 +74,9 @@ struct Desk {
     stale: bool,
     // Its work area (physical): the display less its taskbar's strip.
     work: Mon,
+    // Whether its cards' plugin views may show, as its page was last told
+    // (views; none told: they may).
+    views_on: Option<bool>,
 }
 
 static DESKS: Mutex<Vec<Desk>> = Mutex::new(Vec::new());
@@ -131,7 +134,7 @@ pub fn sync(sh: &Arc<Shared>) {
         for (a, key, _) in &want {
             if !desks.iter().any(|d| d.key == *key) {
                 let label = format!("desk-{}", NEXT.fetch_add(1, Ordering::SeqCst));
-                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, picked: false, icons: Vec::new(), icons_at: None, entries: Vec::new(), stale: false, work: (a.x, a.y, a.w, a.h) });
+                desks.push(Desk { label: label.clone(), key: key.clone(), mon: a.mon, sf: a.sf, hwnd: 0, ready: false, sent: Value::Null, paper: Value::Null, shapes: Vec::new(), menu: false, held: false, catching: false, was_down: false, picked: false, icons: Vec::new(), icons_at: None, entries: Vec::new(), stale: false, work: (a.x, a.y, a.w, a.h), views_on: None });
                 made.push((label, *a));
             }
         }
@@ -263,6 +266,7 @@ pub fn push_widgets(sh: &Shared) {
     if waits {
         imp::arm_stale();
     }
+    views(sh);
 }
 
 // Those not told while unseen, told now if they are seen again; the
@@ -275,6 +279,31 @@ pub fn catch_up(sh: &Shared) {
     if stale.iter().any(|&mon| seen_now(sh, mon)) {
         push_widgets(sh);
         crate::wake_monitor();
+    } else {
+        views(sh);
+    }
+}
+
+// Whether each page's cards may show their plugins' views (tier 2,
+// src/pet/views.js), told as it changes (desk:views { on }): not while
+// nobody is about, nor while its desktop is not seen (as its words are not
+// sent then: push_widgets), nor while the island's watchdog has them taken
+// away (addons.rs pause_views). Looked at only while a plugin with a view
+// runs: with none, nothing is.
+pub fn views(sh: &Shared) {
+    if !crate::addons::views_running() {
+        return;
+    }
+    let desks: Vec<(String, Mon, bool)> = DESKS.lock().unwrap().iter().filter(|d| d.ready).map(|d| (d.label.clone(), d.mon, d.views_on.unwrap_or(true))).collect();
+    let away = sh.is_quiet() || crate::addons::views_paused();
+    for (label, mon, told) in desks {
+        let on = !away && seen_now(sh, mon);
+        if let Some(d) = DESKS.lock().unwrap().iter_mut().find(|d| d.label == label) {
+            d.views_on = Some(on);
+        }
+        if on != told {
+            emit(sh, &label, "desk:views", json!({ "on": on }));
+        }
     }
 }
 
@@ -389,6 +418,8 @@ fn create(sh: &Arc<Shared>, label: String, area: Area) {
         let hwnd = 0;
         crate::tasks::no_transitions(hwnd);
         sh.own_window(&win);
+        // Its cards' plugin views kept to their own page (addons.rs guard_frames).
+        crate::addons::guard_frames(&sh, &win, false);
         lay(&win, area.mon);
         let _ = win.set_ignore_cursor_events(true);
         let gone = {
@@ -708,6 +739,7 @@ pub async fn desk_ready(app: tauri::AppHandle, window: WebviewWindow) {
         d.ready = true;
         d.sent = Value::Null;
         d.paper = Value::Null;
+        d.views_on = None;
         d.key.clone()
     });
     refresh(&sh);

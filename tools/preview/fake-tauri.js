@@ -34,6 +34,9 @@
   const ROOT = new URL(IN_REPO ? '../../' : '../', HERE).href
   const PAGES = new URL(IN_REPO ? 'src/pet/' : 'pet/', ROOT).href
   const ASSETS = IN_REPO ? new URL('assets/', HERE).href : new URL('assets/', ROOT).href
+  // The example plugins' folders (their views) and her SDK, as published.
+  const PLUGIN_FILES = new URL(IN_REPO ? 'examples/plugins/' : 'plugins/', ROOT).href
+  const SDK_FILE = new URL(IN_REPO ? 'src/addon/sdk.js' : 'addon/sdk.js', ROOT).href
   const Q = new URLSearchParams(location.search)
   const HOST_PAGE = window.WAKU_HOST_PAGE === true
   const host = (() => {
@@ -496,6 +499,8 @@
       emit('desk:state', deskState())
       emit('desk:widgets', { widgets: widgetsNow() })
       emit('desk:paper', deskPaper())
+      // The plugins' views here: not while nobody is about (desk.rs views).
+      emit('desk:views', { on: !world.quiet })
       return
     }
     if (role === 'island') {
@@ -922,6 +927,64 @@
     return { ok: false, error: `${what}: inspect, install, uninstall, pick or revive` }
   }
 
+  // --- A plugin's own view (addons.rs addon_view, serve) ----------------------------------
+  // Its view.html as her scheme serves it, here from the example's folder
+  // (examples/plugins/<id>/, published as plugins/<id>/): her SDK the first
+  // script in its head, its own scripts and styles written into it (the
+  // frame, sandboxed, has no origin to fetch them from over file://), all
+  // as one data: page. Its transitions held at their end for the gallery's
+  // shots, as boot.js holds the page's. The widget's view the fixtures' (ADDON_VIEWS).
+  const viewPages = new Map()
+  const readText = url => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', url, false)
+    xhr.send()
+    return xhr.responseText
+  }
+  function viewPage(id, file) {
+    const key = `${id}/${file}`
+    if (viewPages.has(key)) return viewPages.get(key)
+    let page = null
+    try {
+      const base = new URL(`${id}/`, PLUGIN_FILES)
+      const src = new URL(file, base)
+      const doc = new DOMParser().parseFromString(readText(src.href), 'text/html')
+      for (const link of doc.querySelectorAll('link[rel="stylesheet"][href]')) {
+        const style = doc.createElement('style')
+        style.textContent = readText(new URL(link.getAttribute('href'), src).href)
+        link.replaceWith(style)
+      }
+      for (const script of doc.querySelectorAll('script[src]')) {
+        const inline = doc.createElement('script')
+        inline.textContent = readText(new URL(script.getAttribute('src'), src).href)
+        script.replaceWith(inline)
+      }
+      const sdk = doc.createElement('script')
+      sdk.textContent = readText(SDK_FILE)
+      doc.head.prepend(sdk)
+      if (Q.get('scene') || Q.get('still') === '1') {
+        const still = doc.createElement('style')
+        still.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }'
+        doc.head.append(still)
+      }
+      page = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>\n${doc.documentElement.outerHTML}`)}`
+    } catch (err) {
+      report(err)
+    }
+    viewPages.set(key, page)
+    return page
+  }
+  function addonView(what, widget) {
+    const w = widgetsNow().find(x => x.id === widget && x.from === 'addon' && Number.isFinite(x.viewRev))
+    const a = w && addonsNow().find(x => x.id === w.plugin && x.view && x.state === 'running')
+    if (!a) return { error: `${widget}: no view running` }
+    if (what === 'send') return { ok: true }
+    // The examples' view is their view.html.
+    const page = viewPage(a.id, 'view.html')
+    if (!page) return { error: `${widget}: its view.html not read` }
+    return { page, data: clone(world.addonViews?.[widget] ?? window.Fixtures?.ADDON_VIEWS?.[widget] ?? null), rev: w.viewRev }
+  }
+
   // --- What the page asks ---------------------------------------------------------------
   const later = fn => setTimeout(fn, 0)
   const ANSWERS = {
@@ -952,6 +1015,8 @@
     addons_running: () => [],
     // The Plugins page's doings with them (addons.rs addon_manage).
     addon_manage: ({ what, arg }) => addonManage(what, arg),
+    // A card's plugin view: its page and data; what it sends (kept in calls).
+    addon_view: ({ what, widget }) => addonView(what, widget),
     pet_walk: () => false,
     pet_answer: ({ id }) => {
       const ok = answered(id)

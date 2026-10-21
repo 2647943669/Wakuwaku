@@ -355,7 +355,8 @@
     }),
     addon('weather-radar', {
       name: '天气雷达', description: '附近的雨云往哪儿走', author: 'hiro', version: '0.3.0', category: 'info', color: '#6fa6ff',
-      perms: { net: ['api.rainviewer.com'], agents: false, hardware: false, notify: false }, source: 'market', reviewed: true, on: true, state: 'stopped', said: '10:12 起 3 次没回答',
+      perms: { net: ['api.rainviewer.com'], agents: false, hardware: false, notify: false }, source: 'market', reviewed: true, on: true, state: 'stopped',
+      stopped: { why: 'hung', since: new Date(2026, 9, 17, 10, 12).getTime(), at: new Date(2026, 9, 17, 10, 12, 18).getTime(), times: 3 },
     }),
   ]
   // What each says once it runs (addons.rs widget: its name its label, its
@@ -364,7 +365,32 @@
     'rain-alert': { id: 'rain-alert', plugin: 'rain-alert', from: 'addon', on: true, icon: 'weather', color: '#8cc8ff', label: '下雨提醒', value: '70%', detail: { sizes: ['s', 'm'], extra: '17:00 起有雨 · Dresden', series: { points: [10, 15, 30, 55, 70, 62, 40, 22, 12], unit: '%', lo: 0, hi: 100 } } },
     hello: { id: 'hello', plugin: 'hello', from: 'addon', on: true, icon: 'dot', iconUrl: TALLY, color: '#7fd8a6', label: '数羊', value: '42', detail: { sizes: ['s', 'm'], extra: '每 5 秒加 1' } },
     'weather-radar': { id: 'weather-radar', plugin: 'weather-radar', from: 'addon', on: true, icon: 'dot', color: '#6fa6ff', label: '天气雷达', value: '无雨', detail: { sizes: ['s', 'm'], extra: '50 公里内' } },
+    // A view of its own (examples/plugins/agent-board): its revision in the
+    // widget, the view itself asked for (addon_view: ADDON_VIEWS).
+    'agent-board': {
+      id: 'agent-board', plugin: 'agent-board', from: 'addon', on: true, icon: 'chart', color: '#f5a35c', label: '最忙：pet', value: '96 分钟', viewRev: 1,
+      detail: { sizes: ['s', 'm', 'l'], extra: '4 个项目 · 共 211 分钟', rows: [{ name: 'pet', value: '96 分钟' }, { name: 'agent-hub', value: '58 分钟' }, { name: 'md-editor', value: '41 分钟' }, { name: 'dotfiles', value: '16 分钟' }], series: { points: [96, 58, 41, 16], unit: 'min' } },
+    },
   }
+  // What a widget drawn by its plugin's view gives it (addons.rs addon_view:
+  // its widget's view), by widget id: agent-board's ranking, as its main.js makes it.
+  const ADDON_VIEWS = {
+    'agent-board': {
+      day: '2026-10-17',
+      total: 211,
+      rows: [
+        { project: 'pet', minutes: 96, on: true },
+        { project: 'agent-hub', minutes: 58, on: false },
+        { project: 'md-editor', minutes: 41, on: true },
+        { project: 'dotfiles', minutes: 16, on: false },
+      ],
+    },
+  }
+  // Agent 排行 installed (from the market), running, with its view.
+  const ADDON_BOARD = addon('agent-board', {
+    name: 'Agent 排行', description: '今天哪个项目让 agent 干得最多', author: 'wakuwaku', version: '1.0.0', category: 'productivity', sizes: ['s', 'm', 'l'], color: '#f5a35c', icon: { name: 'chart' }, view: true,
+    perms: { net: [], agents: true, hardware: false, notify: false }, sensitive: true, source: 'market', reviewed: true, on: true, state: 'running',
+  })
   // A folder in her plugins that did not install (addons.rs broken_view).
   const ADDONS_BROKEN = [{ folder: 'old-clock', reason: 'no manifest.json' }]
   // .zip files to install from (the fake's addon_manage, by file name):
@@ -520,7 +546,7 @@
     },
   }
 
-  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDONS_BROKEN, ADDON_FILES, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDON_VIEWS, ADDON_BOARD, ADDONS_BROKEN, ADDON_FILES, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Fixtures = api
 })(typeof window !== 'undefined' ? window : globalThis)

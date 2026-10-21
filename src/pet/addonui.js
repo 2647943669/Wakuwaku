@@ -17,18 +17,39 @@
   // A setting's label by its key (what is to be filled in first).
   const labelOf = (a, key) => (Array.isArray(a?.settings) ? a.settings.find(f => f.key === key)?.label : '') || key || ''
 
+  // A time of day as her clock says it: 10:12.
+  const pad = n => String(n).padStart(2, '0')
+  const clockOf = ms => {
+    const d = new Date(ms)
+    return Number.isFinite(d.getTime()) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : ''
+  }
+
+  // Why the watchdog stopped it (addons.rs view: stopped { why, since,
+  // times }), in words: not answering, since when and how many times (spec
+  // §3: 无响应，已停用 · 10:12 起 3 次没回答); too busy (§8: 太忙，已停用);
+  // its page loading again and again. Without the watchdog's say (an older
+  // one): not responding, and what it said.
+  function stoppedWords(a, T) {
+    const s = a?.stopped
+    if (!s || typeof s !== 'object') return [T('addons.stopped'), a?.said].filter(Boolean).join(' · ')
+    if (s.why === 'busy') return T('addons.busy')
+    if (s.why === 'crashed') return T('addons.crashed')
+    const time = clockOf(s.since)
+    return [T('addons.stopped'), time && s.times > 0 ? T('addons.stoppedSince', { time, n: s.times }) : ''].filter(Boolean).join(' · ')
+  }
+
   // What its row says under its name (spec §3), as the built-ins' do
   // (settings.js pluginNote), with who made it and its version after: one
-  // that waits for a newer Wakuwaku says so; one not responding, turned off
-  // (and when and why, once the watchdog says: its said), with 重新启用;
-  // put nowhere, 没放; put somewhere: starting, a setting to fill in first,
-  // what went wrong while it shows nothing, or 运行中. placed: put
-  // somewhere; mine: its widgets up now. { text, bad, revive }.
+  // that waits for a newer Wakuwaku says so; one the watchdog stopped, why
+  // (stoppedWords), with 重新启用; put nowhere, 没放; put somewhere:
+  // starting, a setting to fill in first, what went wrong while it shows
+  // nothing, or 运行中. placed: put somewhere; mine: its widgets up now.
+  // { text, bad, revive }.
   function statusOf(a, { placed = false, mine = [], T }) {
     const by = byline(a)
     const tail = text => [text, by].filter(Boolean).join(' · ')
     if (a.state === 'unsupported') return { text: tail(T('addons.newerApp')), bad: true }
-    if (a.state === 'stopped') return { text: [T('addons.stopped'), a.said, by].filter(Boolean).join(' · '), bad: true, revive: true }
+    if (a.state === 'stopped') return { text: tail(stoppedWords(a, T)), bad: true, revive: true }
     if (!placed) return { text: tail(T('pl.unplaced')) }
     if (a.state === 'off') return { text: tail(T('pl.starting')) }
     if (a.state === 'needs') return { text: T('pl.needs', { what: labelOf(a, a.missing) }), bad: true }
@@ -231,7 +252,12 @@
     return chars.length > n ? `${chars.slice(0, n - 1).join('')}…` : chars.join('')
   }
 
-  const api = { CATS, catOf, byline, labelOf, statusOf, permLines, isSensitive, freshFirst, badgeOf, makeNews, IDLE, verdict, next, refusedWords, layerOf, uninstallLayerOf, brokenLine, cut, fileOf }
+  // What its page says of it after who made it (spec §2's 自绘界面 too):
+  // its version and author, its kind in the library, and that it draws a
+  // view of its own.
+  const aboutOf = (a, T) => [byline(a), T(`picker.cat.${catOf(a)}`), a?.view ? T('addons.ownView') : ''].filter(Boolean).join(' · ')
+
+  const api = { CATS, catOf, byline, labelOf, clockOf, stoppedWords, statusOf, aboutOf, permLines, isSensitive, freshFirst, badgeOf, makeNews, IDLE, verdict, next, refusedWords, layerOf, uninstallLayerOf, brokenLine, cut, fileOf }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else {
     // The page's own: those installed since it came up (settings.js marks

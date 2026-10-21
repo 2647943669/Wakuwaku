@@ -89,6 +89,23 @@
   const find = id => layout.find(e => e.id === id)
   const isBoard = n => !!n && G.isBoard(n.entry)
 
+  // Plugins' own views in the medium and large cards (views.js): their data
+  // asked of her as it changes, what they send their main.js passed on, the
+  // card's colours and fonts given them; the cards drawn again as one comes
+  // or goes. Not while desk.rs says this desktop is not seen or nobody is
+  // about (desk:views).
+  const cssOf = name => getComputedStyle(document.body).getPropertyValue(name).trim()
+  const views = window.Views
+    ? window.Views.boot({
+        ask: widget => invoke('addon_view', { what: 'data', widget, message: null }),
+        send: (widget, message) => invoke('addon_view', { what: 'send', widget, message }),
+        styleOf: w => ({ fg: cssOf('--w-fg'), muted: cssOf('--w-2'), color: WCards.colorOf(w, ctx()), font: cssOf('--font-ui'), fontDisplay: cssOf('--font-num') }),
+        look: () => ({ theme: here?.light ? 'light' : 'dark', lang: lang() }),
+        changed: () => draw(),
+        log: line => console.log(line),
+      })
+    : null
+
   // --- What is drawn ---------------------------------------------------------------------
   function draw() {
     if (!here) return
@@ -122,6 +139,8 @@
       }
     for (const id of [...selected]) if (!ids.has(id)) selected.delete(id)
     for (const e of entries) drawEntry(e, at.get(e.id))
+    // The plugins' views whose card went with what was drawn anew.
+    views?.sweep()
     if (menu && !nodes.has(menu.id)) closeMenu()
     if (lib && !nodes.has(lib.id)) closeLib()
     if (asking) nodes.has(asking.id) ? placeAsk() : endAsk(false)
@@ -161,12 +180,13 @@
 
   // What a node shows changes with: its entry, the one on top, the words of
   // its widgets, the mode, the language, the specifics, and a member just
-  // put there (loading) or not; a board's name as shown too.
+  // put there (loading) or not; a board's name as shown too; the plugins'
+  // views here (made, gone, allowed or not: views.stamp).
   function contentKey(e) {
-    const ws = G.membersOf(e).map(m => Widgets.sourcesOf(m, all).map(w => [w.id, w.label, w.value, w.detail, w.color, w.private]))
+    const ws = G.membersOf(e).map(m => Widgets.sourcesOf(m, all).map(w => [w.id, w.label, w.value, w.detail, w.color, w.private, w.viewRev != null]))
     const loading = G.membersOf(e).map(m => isLoading(e, m))
     const board = G.isBoard(e) ? [boardLabel(e), e.folded, e.items.map(x => [x.size, x.at])] : null
-    return JSON.stringify([e.type, e.size, G.membersOf(e), topOf(e), ws, here.light, lang(), here.detailed, here.sprite, loading, board])
+    return JSON.stringify([e.type, e.size, G.membersOf(e), topOf(e), ws, here.light, lang(), here.detailed, here.sprite, loading, board, views?.stamp || 0])
   }
   const topOf = e => (G.isStack(e) ? Math.min(tops.get(e.id) || 0, e.items.length - 1) : 0)
   // Just put there, its plugin starting: a glint where its value goes, five
@@ -211,8 +231,11 @@
   const toolTitles = root => {
     for (const b of root.querySelectorAll('.tools button')) b.title = t(b.dataset.act === 'size' ? 'menu.size' : 'desk.more')
   }
-  // A member's words into its card's body, as they changed.
-  function fillBody(wd, e, m, size) {
+  // A member's words into its card's body, as they changed; drawn by its
+  // plugin's own view over that, where it has one and this card may show it
+  // (medium or large, alone, on top of a stack, a tile of a board unfolded:
+  // views.js). key: the card's, its entry's id and its place in it.
+  function fillBody(wd, e, m, size, key, mayView = true) {
     const body = wd?.querySelector('.wbody')
     if (!body) return
     const f = face(e, m, size)
@@ -224,6 +247,7 @@
     wd.classList.toggle('empty-w', !f.w)
     if (f.color) wd.style.setProperty('--c', f.color)
     else wd.style.removeProperty('--c')
+    views?.place(wd, key, mayView ? f.w : null, size)
   }
   // Loading (just put there, its plugin starting): drawn again once that is
   // over, no data then greyed; one timer, not a loop.
@@ -255,7 +279,7 @@
       toolTitles(n.el)
       n.painted = ''
     }
-    G.membersOf(e).forEach((m, i) => fillBody(n.el.querySelectorAll('.wd')[i], e, m, e.size))
+    G.membersOf(e).forEach((m, i) => fillBody(n.el.querySelectorAll('.wd')[i], e, m, e.size, `${e.id}:${i}`, !G.isStack(e) || i === top))
     if (G.isStack(e)) {
       n.el.querySelectorAll('.layer').forEach((l, i) => {
         for (const k of ['top', 'b1', 'b2', 'rest', 'gone']) l.classList.toggle(k, k === layerOf(i, top, e.items.length))
@@ -322,7 +346,7 @@
     fold.innerHTML = e.folded ? '&#xE70D;' : '&#xE70E;'
     const empty = n.el.querySelector('.bempty')
     if (empty) empty.textContent = t('desk.boardEmpty')
-    e.items.forEach((x, i) => fillBody(n.el.querySelector(`.tile[data-i="${i}"]`), e, G.memberOf(x), x.size))
+    e.items.forEach((x, i) => fillBody(n.el.querySelector(`.tile[data-i="${i}"]`), e, G.memberOf(x), x.size, `${e.id}:${i}`, !e.folded))
     paint(n)
     loadingTimer(n, e)
   }
@@ -1553,13 +1577,19 @@
       if (accent) document.body.style.setProperty('--w-accent', accent)
       else document.body.style.removeProperty('--w-accent')
       draw()
+      views?.relook(all)
     }),
     on('desk:widgets', p => {
       const before = all
       all = Array.isArray(p?.widgets) ? p.widgets : []
       draw()
+      views?.widgets(all)
       news(before)
     }),
+    // Whether the plugins' views may show here (desk.rs views): not while
+    // this desktop is covered, nobody is about, or the island's watchdog
+    // has them away a while.
+    on('desk:views', p => views?.set({ on: p?.on !== false })),
     on('desk:paper', p => setPaper(p)),
     // The window took the mouse (where the pointer is: the widget under it
     // shown hovered at once, before any move, a board's tile too), or lets
@@ -1601,6 +1631,8 @@
   // For the tests' eyes: what is drawn where.
   window.Desk = {
     state: () => ({ here, layout, spots: Object.fromEntries(spots), icons, paper: !!paper, paper40: !!paper40, shapes: sentShapes }),
+    // The plugins' views here (views.js), for the tests' eyes.
+    views,
     draw,
     turn: (id, by) => nodes.get(id) && turn(nodes.get(id), by),
     openMenu,

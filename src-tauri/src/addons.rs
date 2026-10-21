@@ -23,12 +23,22 @@
 // (addon_fetch: the hosts its manifest names alone, ports 80 and 443, never
 // this computer or the network at home, the way her other requests go), its
 // storage (a file, 1 MB at most), a nudge (by its permission). A frame sent
-// anywhere but its own first page stays where it was (guard_frames).
+// anywhere but its own first page stays where it was (guard_frames). The
+// page's watchdog stops one that hangs or is too busy (stop: stopped until
+// turned on again).
+//
+// Its view (tier 2: view.html, src/pet/views.js) is drawn in the desktop's
+// medium and large cards and the capsule's unfolded card, served with her
+// SDK first in its head (view_page); a widget it draws carries a revision
+// of what it gave for it (widgets.rs viewRev), the view itself asked for
+// as that changes (addon_view data), its messages for its main passed on
+// to the island's page (addon_view send, addons:view).
 //
 // Settings: "plugins": { <id>: { "on": bool, <key>: value } }, as hers are,
 // each value by its manifest's field (is_conf_ok).
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 
@@ -1005,15 +1015,44 @@ struct Run {
     sent: Option<Value>,
     // What went wrong last in each (an uncaught error, waku.log's warning).
     said: HashMap<String, String>,
-    // Those stopped (phase 2's watchdog: not answering), with why, until
-    // turned on again (addon_revive).
-    stopped: HashMap<String, String>,
+    // Those stopped by the island's watchdog (addons.js), until turned on
+    // again (revive) or installed anew.
+    stopped: HashMap<String, Stopped>,
+    // Each plugin's views' messages to its main this second (addon_view
+    // send): when it began, how many.
+    sends: HashMap<String, (u64, u32)>,
+}
+
+// A plugin stopped, and why: hung (its frame did not answer the watchdog,
+// again within ten minutes of being loaded again for it), crashed (its page
+// loaded again and again), busy (over its long tasks' budget); when, since
+// when it was not answering, how many times it did not.
+#[derive(Clone, Debug, PartialEq)]
+struct Stopped {
+    why: &'static str,
+    at: u64,
+    since: u64,
+    times: u64,
 }
 
 static RUN: LazyLock<Mutex<Run>> = LazyLock::new(|| Mutex::new(Run::default()));
 
 fn run() -> std::sync::MutexGuard<'static, Run> {
     RUN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+// Whether a plugin with a view runs (the desktop's pages are told when their
+// views may show only then: desk.rs views), and whether the island's
+// watchdog has the views taken away for a while (pause_views).
+static VIEWS: AtomicBool = AtomicBool::new(false);
+static VIEWS_PAUSED: AtomicBool = AtomicBool::new(false);
+
+pub fn views_running() -> bool {
+    VIEWS.load(Ordering::Relaxed)
+}
+
+pub fn views_paused() -> bool {
+    VIEWS_PAUSED.load(Ordering::Relaxed)
 }
 
 // Those the page should run now, each { id, version, rev, main, perms,
@@ -1061,6 +1100,7 @@ pub fn sync(sh: &Shared) -> bool {
     };
     let _ = sh.app.emit_to("island", "addons:changed", &list);
     let now = ids_of(&list);
+    note_views(sh, &now);
     let stopped: Vec<String> = before.map(|b| ids_of(&b)).unwrap_or_default().into_iter().filter(|id| !now.contains(id)).collect();
     sh.push_settings();
     if stopped.is_empty() {
@@ -1075,10 +1115,29 @@ fn is_running(id: &str) -> bool {
     run().sent.as_ref().is_some_and(|l| ids_of(l).contains(id))
 }
 
-// The plugins installed, for the settings (the Plugins page, phase 1b), in
-// her language: its words, where it came from, its permissions, how it is
-// (state: off, needs (a setting), running, stopped, unsupported (a newer
-// API)), what went wrong last, and its settings as the page draws them.
+// Whether one of those running has a view; one just come, the desktop's
+// pages told whether theirs may show (desk.rs views).
+fn note_views(sh: &Shared, running: &HashSet<String>) {
+    let views = read(|r| running.iter().any(|id| r.manifest(id).is_some_and(|m| m.view.is_some())));
+    if views && !VIEWS.swap(true, Ordering::Relaxed) {
+        crate::desk::views(sh);
+    }
+    VIEWS.store(views, Ordering::Relaxed);
+}
+
+// The plugin running whose widget this is, with its view's file: one drawn
+// by a view (addon_view).
+fn view_owner(widget: &str) -> Option<(String, String)> {
+    let id = owner_of(widget)?;
+    let view = read(|r| r.manifest(&id).filter(|m| m.runs()).and_then(|m| m.view.clone()))?;
+    is_running(&id).then_some((id, view))
+}
+
+// The plugins installed, for the settings (the Plugins page), in her
+// language: its words, where it came from, its permissions, whether it has
+// a view of its own, how it is (state: off, needs (a setting), running,
+// stopped, unsupported (a newer API)), what went wrong last, why it was
+// stopped, and its settings as the page draws them.
 pub fn view(sh: &Shared) -> Value {
     let conf = sh.setting("plugins");
     let lang = sh.lang();
@@ -1153,7 +1212,10 @@ pub fn view(sh: &Shared) -> Value {
                         "on": on,
                         "state": state,
                         "missing": missing,
-                        "said": stopped.get(id).or(said.get(id)),
+                        "said": said.get(id),
+                        // Stopped by the watchdog: why, when, since when it
+                        // did not answer and how many times (addonui.js says it).
+                        "stopped": stopped.get(id).filter(|_| state == "stopped").map(|s| json!({ "why": s.why, "at": s.at, "since": s.since, "times": s.times })),
                         "settings": settings,
                     }))
                 })
@@ -1385,7 +1447,12 @@ pub fn install(sh: &Shared, path: &Path) -> Result<Value, Refused> {
     records_write(&sh.dir, |r| {
         r.insert(m.id.clone(), rec);
     });
-    run().said.remove(&m.id);
+    // A new copy: what was said of the old one forgotten, and one stopped tried again.
+    {
+        let mut r = run();
+        r.said.remove(&m.id);
+        r.stopped.remove(&m.id);
+    }
     sh.log(&format!("addons: {} {} installed from {}{}", m.id, m.version, path.display(), replaces.as_ref().map(|v| format!(", in place of {v}")).unwrap_or_default()));
     if crate::plugins::sync(sh) {
         sh.redraw_widgets();
@@ -1676,6 +1743,42 @@ fn host_page(id: &str) -> String {
     format!("<!doctype html>\n<html><head><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><title>{id}</title></head><body><script src=\"/{id}/__waku/sdk.js\"></script></body></html>\n")
 }
 
+// Its view.html (tier 2) as a card's frame gets it: her SDK the first
+// script in its head (a head made for it where it has none), so the waku
+// object is there before anything of the plugin's runs; the SDK knows it is
+// a view's by its page (any but __waku/main.html).
+fn view_page(id: &str, html: &str) -> String {
+    let html = html.strip_prefix('\u{feff}').unwrap_or(html);
+    let tag = format!("<script src=\"/{id}/__waku/sdk.js\"></script>");
+    let lower = html.to_ascii_lowercase();
+    let (at, text) = match (tag_end(&lower, "<head"), tag_end(&lower, "<html"), tag_end(&lower, "<!doctype")) {
+        (Some(at), _, _) => (at, tag),
+        (None, Some(at), _) | (None, None, Some(at)) => (at, format!("<head>{tag}</head>")),
+        (None, None, None) => (0, format!("<head>{tag}</head>")),
+    };
+    format!("{}{text}{}", &html[..at], &html[at..])
+}
+
+// Where the first tag of that name (`<head`, not `<header`) ends, just
+// after its `>`, in markup lowered as ASCII (its places as the original's).
+fn tag_end(lower: &str, name: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(i) = lower[from..].find(name) {
+        let at = from + i;
+        if matches!(lower.as_bytes().get(at + name.len()), Some(b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r' | b'\x0c')) {
+            return lower[at..].find('>').map(|j| at + j + 1);
+        }
+        from = at + name.len();
+    }
+    None
+}
+
+// A path in its folder as an address has it: each byte but letters,
+// digits, - . _ ~ and / as %xx (decoded's other way).
+fn url_path(path: &str) -> String {
+    path.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~/".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
 // %xx in a path made bytes again (UTF-8); None for one that is no text.
 fn decoded(path: &str) -> Option<String> {
     let b = path.as_bytes();
@@ -1695,8 +1798,9 @@ fn decoded(path: &str) -> Option<String> {
 }
 
 // A plugin's file for its frame, by her scheme: /<id>/<path> from its own
-// folder (the types a package may hold, inside it), or her own two
-// (__waku/main.html, __waku/sdk.js); each with the plugin's policy.
+// folder (the types a package may hold, inside it), its view.html with her
+// SDK in it (view_page), or her own two (__waku/main.html, __waku/sdk.js);
+// each with the plugin's policy.
 pub fn serve(app: &AppHandle, req: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
     let dir = app.try_state::<Arc<Shared>>().map(|s| s.dir.clone());
     let path = req.uri().path().to_string();
@@ -1707,15 +1811,15 @@ pub fn serve(app: &AppHandle, req: &tauri::http::Request<Vec<u8>>) -> tauri::htt
     let Some(dir) = dir else { return status(503, "not up yet") };
     let (id, file) = path.trim_start_matches('/').split_once('/').unwrap_or((path.trim_start_matches('/'), ""));
     let id = id.to_string();
-    let runs = is_id(&id) && read(|r| r.manifest(&id).is_some_and(Manifest::runs));
-    if !runs {
+    let Some(view) = (if is_id(&id) { read(|r| r.manifest(&id).filter(|m| m.runs()).map(|m| m.view.clone())) } else { None }) else {
         return status(404, "no such plugin");
-    }
+    };
     let (body, kind) = match file {
         "__waku/main.html" => (host_page(&id).into_bytes(), "text/html; charset=utf-8"),
         "__waku/sdk.js" => (SDK.as_bytes().to_vec(), "text/javascript; charset=utf-8"),
         f if f.starts_with("__waku/") => return status(404, "not found"),
         f => match own_file(&plugins_dir(&dir).join(&id), f) {
+            Some((bytes, kind)) if view.is_some() && decoded(f) == view => (view_page(&id, &String::from_utf8_lossy(&bytes)).into_bytes(), kind),
             Some(found) => found,
             None => return status(404, "not found"),
         },
@@ -1756,19 +1860,47 @@ fn status(code: u16, words: &str) -> tauri::http::Response<Vec<u8>> {
     tauri::http::Response::builder().status(code).header("content-type", "text/plain; charset=utf-8").header("access-control-allow-origin", "*").body(words.as_bytes().to_vec()).unwrap_or_default()
 }
 
-// The one page a plugin's frame may show: its own first page.
-pub fn is_frame_page(uri: &str) -> bool {
-    let Some(rest) = uri.strip_prefix(ORIGIN).and_then(|r| r.strip_prefix('/')) else { return false };
-    let Some(id) = rest.strip_suffix("/__waku/main.html") else { return false };
-    is_id(id) && read(|r| r.manifest(id).is_some_and(Manifest::runs))
+// The pages a plugin's frame may show: its own first page (main: in the
+// island's page alone), and its view.html (a card's, there or on the
+// desktop), as served, nothing after them.
+pub fn is_frame_page(uri: &str, main: bool) -> bool {
+    read(|r| r.is_frame_page(uri, main))
 }
 
-// Her island's page's frames kept where they were put: a frame (a plugin's)
-// sent anywhere but a plugin's first page (is_frame_page) is not, so one
+impl Registry {
+    fn is_frame_page(&self, uri: &str, main: bool) -> bool {
+        let Some(rest) = uri.strip_prefix(ORIGIN).and_then(|r| r.strip_prefix('/')) else { return false };
+        let Some((id, file)) = rest.split_once('/') else { return false };
+        is_id(id) && self.manifest(id).is_some_and(|m| m.runs() && ((main && file == "__waku/main.html") || (m.view.is_some() && decoded(file) == m.view)))
+    }
+}
+
+// The pages that may ask for a card's view (addon_view): her island's, and
+// the desktop's.
+fn may_view(label: &str) -> bool {
+    label == "island" || label.strip_prefix("desk-").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+// A plugin's views' messages this second ((since, how many)): one more, if
+// it may (ten a second).
+fn may_send(sent: &mut (u64, u32), now: u64) -> bool {
+    if now.saturating_sub(sent.0) >= 1000 {
+        *sent = (now, 0);
+    }
+    if sent.1 >= 10 {
+        return false;
+    }
+    sent.1 += 1;
+    true
+}
+
+// A page's frames kept where they were put: a frame (a plugin's) sent
+// anywhere but a plugin's own page (is_frame_page; main: the island's,
+// which runs their main.js too, the desktop's only views) is not, so one
 // cannot leave its sandbox's rules by going to another address, nor carry
 // what it knows there in the address. Said in her log, once in a while.
 #[cfg(windows)]
-pub fn guard_frames(sh: &Arc<Shared>, window: &WebviewWindow) {
+pub fn guard_frames(sh: &Arc<Shared>, window: &WebviewWindow, main: bool) {
     use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2NavigationStartingEventArgs;
     use webview2_com::NavigationStartingEventHandler;
     let sh = sh.clone();
@@ -1782,7 +1914,7 @@ pub fn guard_frames(sh: &Arc<Shared>, window: &WebviewWindow) {
                 let mut uri = windows_core::PWSTR::null();
                 args.Uri(&mut uri)?;
                 let uri = webview2_com::take_pwstr(uri);
-                if !is_frame_page(&uri) {
+                if !is_frame_page(&uri, main) {
                     args.SetCancel(true)?;
                     let mut last = said.lock().unwrap_or_else(|e| e.into_inner());
                     if last.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
@@ -1800,12 +1932,14 @@ pub fn guard_frames(sh: &Arc<Shared>, window: &WebviewWindow) {
 }
 
 #[cfg(not(windows))]
-pub fn guard_frames(_sh: &Arc<Shared>, _window: &WebviewWindow) {}
+pub fn guard_frames(_sh: &Arc<Shared>, _window: &WebviewWindow, _main: bool) {}
 
 // --- From the island's page --------------------------------------------------------------
-// Three commands for all of it (each command costs the exe some KB of glue):
+// Four commands for all of it (each command costs the exe some KB of glue):
 // which to run, what a running plugin asks (in its name, as the page knows
-// it by its frame), what the settings do with packages.
+// it by its frame) and what the watchdog does to one, what the settings do
+// with packages; and from any page holding a card drawn by a view, that
+// view's data and its messages (addon_view).
 
 // Which to run, now (the page as it starts; addons:changed as it changes).
 #[tauri::command]
@@ -1813,13 +1947,17 @@ pub async fn addons_running(app: AppHandle) -> Value {
     let sh = shared(&app);
     let list = wanted(&sh);
     run().sent = Some(list.clone());
+    note_views(&sh, &ids_of(&list));
     list
 }
 
 // A running plugin's asking (src/pet/addons.js), from the island's page
 // alone: widget { sub, data }, remove { sub }, fetch { url, method, headers,
 // body }, storage { op, key, value }, notify { text }, hardware, said {
-// line }. Its answer, or { error }.
+// line }. And its watchdog's: stop { why, since, times } (one not answering
+// or too busy, stopped until turned on again), views { on } (every view
+// taken away while it starts the plugins' frames anew, and back; id "").
+// Its answer, or { error }.
 #[tauri::command]
 pub async fn addon_call(app: AppHandle, window: WebviewWindow, id: String, what: String, args: Value) -> Value {
     if window.label() != "island" {
@@ -1837,11 +1975,16 @@ fn call(sh: &Shared, id: &str, what: &str, a: &Value) -> Value {
         }
         return Value::Null;
     }
+    if what == "views" {
+        pause_views(sh, a["on"] == false);
+        return Value::Null;
+    }
     if !is_running(id) {
         return json!({ "error": format!("{id}: not running") });
     }
     let perms = perms_of_id(id).unwrap_or_default();
     let got = match what {
+        "stop" => stop(sh, id, s("why").unwrap_or(""), a["since"].as_u64(), a["times"].as_u64()),
         "widget" => widget(sh, id, s("sub"), &a["data"]),
         "remove" => widget_id(id, s("sub")).map(|wid| {
             if sh.widgets.lock().unwrap().remove_addons(|w| w == wid) {
@@ -1884,14 +2027,14 @@ fn widget(sh: &Shared, id: &str, sub: Option<&str>, data: &Value) -> Result<Valu
     let wid = widget_id(id, sub)?;
     let mut data = data.as_object().cloned().ok_or("a widget: { label, value, detail, … }")?;
     let lang = sh.lang();
-    let (name, sizes, color, icon, picture) = read(|r| {
+    let (name, sizes, color, icon, picture, has_view) = read(|r| {
         let m = r.manifest(id);
         let (icon, picture) = match m.map(|m| &m.icon) {
             Some(Icon::Named(n)) => (Some(n.clone()), None),
             Some(Icon::Svg(f)) => (None, Some(format!("{ORIGIN}/{id}/{f}"))),
             _ => (None, None),
         };
-        (m.map(|m| m.name.get(lang).to_string()).unwrap_or_default(), m.map(|m| m.sizes.clone()).unwrap_or_default(), m.and_then(|m| m.color.clone()), icon, picture)
+        (m.map(|m| m.name.get(lang).to_string()).unwrap_or_default(), m.map(|m| m.sizes.clone()).unwrap_or_default(), m.and_then(|m| m.color.clone()), icon, picture, m.is_some_and(|m| m.view.is_some()))
     });
     for k in ["id", "ttl", "nudge", "remove"] {
         data.remove(k);
@@ -1916,10 +2059,81 @@ fn widget(sh: &Shared, id: &str, sub: Option<&str>, data: &Value) -> Result<Valu
         if widgets.view_of(&wid).is_none() && widgets.addons_of(|w| is_widget_of(id, w)) >= WIDGETS {
             return Err("8 widgets at most".into());
         }
-        widgets.put_addon(&wid, &Value::Object(data), &name, picture, now_ms())?;
+        widgets.put_addon(&wid, &Value::Object(data), &name, picture, has_view, now_ms())?;
     }
     sh.redraw_widgets();
     Ok(json!({ "ok": true }))
+}
+
+// One the watchdog gave up on (addons.js): stopped until turned on again,
+// with why (hung, crashed, busy), since when it did not answer, how many
+// times; its frame and its widgets gone with it (sync).
+fn stop(sh: &Shared, id: &str, why: &str, since: Option<u64>, times: Option<u64>) -> Result<Value, String> {
+    let why = match why {
+        "hung" => "hung",
+        "crashed" => "crashed",
+        "busy" => "busy",
+        _ => return Err("why: hung, crashed or busy".into()),
+    };
+    let at = now_ms();
+    // Since when: within the last hour, else now.
+    let since = since.filter(|t| *t <= at && at - *t <= 3_600_000).unwrap_or(at);
+    let times = times.unwrap_or(0).min(99);
+    run().stopped.insert(id.to_string(), Stopped { why, at, since, times });
+    sh.log(&format!("addons: {id} stopped by the watchdog: {why}{}", if times > 0 { format!(", {times} pings unanswered") } else { String::new() }));
+    if crate::plugins::sync(sh) {
+        sh.redraw_widgets();
+    }
+    Ok(json!({ "ok": true }))
+}
+
+// Every view taken away a while (the island's watchdog starting the
+// plugins' frames anew: the one process they share must end, a view's frame
+// too), or back; the desktop's pages told (desk.rs views).
+fn pause_views(sh: &Shared, paused: bool) {
+    if VIEWS_PAUSED.swap(paused, Ordering::Relaxed) != paused {
+        sh.log(&format!("addons: views {}", if paused { "taken away a while" } else { "back" }));
+        crate::desk::views(sh);
+    }
+}
+
+// A card's view (src/pet/views.js), from her island's page or a desktop's:
+// data, the page to show for a widget drawn by its plugin's view and what
+// to hand it ({ page, data, rev }); send { message }, a message of the view
+// for its plugin's main.js, told the island's page (addons:view { id, sub,
+// message }), as the page holding the view knows it by its frame. Ten a
+// second for each plugin at most, 64 KB each. { error } when not.
+#[tauri::command]
+pub async fn addon_view(app: AppHandle, window: WebviewWindow, what: String, widget: String, message: Option<Value>) -> Value {
+    if !may_view(window.label()) {
+        return json!({ "error": "her pages only" });
+    }
+    let sh = shared(&app);
+    view_call(&sh, &what, &widget, message).unwrap_or_else(|e| json!({ "error": e }))
+}
+
+fn view_call(sh: &Shared, what: &str, widget: &str, message: Option<Value>) -> Result<Value, String> {
+    let (id, view) = view_owner(widget).ok_or_else(|| format!("{widget}: no view running"))?;
+    match what {
+        "data" => {
+            let (data, rev) = sh.widgets.lock().unwrap().view_shown(widget).ok_or_else(|| format!("{widget}: no view given"))?;
+            Ok(json!({ "page": format!("{ORIGIN}/{id}/{}", url_path(&view)), "data": data, "rev": rev }))
+        }
+        "send" => {
+            let message = message.unwrap_or(Value::Null);
+            if message.to_string().len() > 64 * 1024 {
+                return Err("a message is JSON, up to 64 KB".into());
+            }
+            let now = now_ms();
+            if !may_send(run().sends.entry(id.clone()).or_insert((now, 0)), now) {
+                return Err("ten messages a second at most".into());
+            }
+            let sub = widget.strip_prefix(id.as_str()).and_then(|r| r.strip_prefix('_')).unwrap_or("");
+            let _ = sh.app.emit_to("island", "addons:view", json!({ "id": id, "sub": sub, "message": message }));
+            Ok(json!({ "ok": true }))
+        }
+        _ => Err(format!("{what}: data or send")),
+    }
 }
 
 // A nudge on its widget (waku.notify, by its permission): the way a
@@ -2058,13 +2272,87 @@ mod tests {
     // hers would.
     #[test]
     fn the_examples_read() {
-        for id in ["hello", "rain-alert"] {
+        for id in ["hello", "rain-alert", "agent-board"] {
             let m = read_manifest(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins").join(id), id).unwrap();
             assert!(m.runs(), "{id}");
         }
         let rain = read_manifest(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins/rain-alert"), "rain-alert").unwrap();
         assert_eq!(rain.perms.net, ["api.open-meteo.com", "geocoding-api.open-meteo.com"]);
         assert!(rain.perms.notify && !rain.perms.agents);
+        // The one with a view of its own: the agents alone, and its view's files there.
+        let board = read_manifest(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins/agent-board"), "agent-board").unwrap();
+        assert_eq!((board.view.as_deref(), board.sizes.clone()), (Some("view.html"), vec!["s", "m", "l"]));
+        assert!(board.perms.agents && board.perms.net.is_empty() && !board.perms.notify && !board.perms.hardware);
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins/agent-board");
+        let html = std::fs::read_to_string(folder.join("view.html")).unwrap();
+        assert!(view_page("agent-board", &html).contains("<head><script src=\"/agent-board/__waku/sdk.js\"></script>\n    <meta charset=\"utf-8\" />"));
+        for f in ["view.js", "view.css"] {
+            assert!(own_file(&folder, f).is_some(), "{f}");
+        }
+    }
+
+    // A view.html as a card's frame gets it: her SDK the first script in
+    // its head, whatever the head is like; none, one made for it.
+    #[test]
+    fn a_view_gets_her_sdk_first() {
+        let tag = "<script src=\"/demo/__waku/sdk.js\"></script>";
+        assert_eq!(view_page("demo", "<!doctype html><html><head><title>x</title></head><body></body></html>"), format!("<!doctype html><html><head>{tag}<title>x</title></head><body></body></html>"));
+        assert_eq!(view_page("demo", "<HTML lang=en><HEAD data-x='1'><script src=a.js></script></HEAD>"), format!("<HTML lang=en><HEAD data-x='1'>{tag}<script src=a.js></script></HEAD>"));
+        // <header> is no head; none: one made after <html>, else after the doctype, else first.
+        assert_eq!(view_page("demo", "<html><body><header>hi</header></body></html>"), format!("<html><head>{tag}</head><body><header>hi</header></body></html>"));
+        assert_eq!(view_page("demo", "<!DOCTYPE html>\n<div>hi</div>"), format!("<!DOCTYPE html><head>{tag}</head>\n<div>hi</div>"));
+        assert_eq!(view_page("demo", "<div>你好</div>"), format!("<head>{tag}</head><div>你好</div>"));
+        assert_eq!(view_page("demo", "\u{feff}<p>x</p>"), format!("<head>{tag}</head><p>x</p>"));
+        assert_eq!(tag_end("<head\n  class=\"a\">", "<head"), Some(18));
+        assert_eq!(tag_end("<headx><head>", "<head"), Some(13));
+        assert_eq!(url_path("ui/view 1.html"), "ui/view%201.html");
+        assert_eq!(url_path("界面.html"), "%E7%95%8C%E9%9D%A2.html");
+        assert_eq!(decoded(&url_path("ui/界面 #1.html")).as_deref(), Some("ui/界面 #1.html"));
+    }
+
+    // The pages a plugin's frame may be at: its first page in the island's
+    // page alone, its view.html (as served) in any; nothing else of its own,
+    // nor another's, nor one that is no plugin's or does not run.
+    #[test]
+    fn a_frame_stays_at_its_own_pages() {
+        let mut reg = Registry::default();
+        reg.found.insert("rain-alert".into(), Found { manifest: Ok(manifest_of(&rain()).unwrap()), stamp: None });
+        let mut ui = rain();
+        ui["id"] = json!("board");
+        ui["view"] = json!("ui/界面.html");
+        reg.found.insert("board".into(), Found { manifest: Ok(manifest_of(&ui).unwrap()), stamp: None });
+        let mut plain = rain();
+        plain["id"] = json!("plain");
+        plain.as_object_mut().unwrap().remove("view");
+        reg.found.insert("plain".into(), Found { manifest: Ok(manifest_of(&plain).unwrap()), stamp: None });
+        reg.found.insert("later".into(), Found { manifest: Ok(manifest_of(&json!({ "id": "later", "kind": "plugin", "name": "L", "version": "2.0.0", "api": 2 })).unwrap()), stamp: None });
+        let at = |uri: &str, main: bool| reg.is_frame_page(uri, main);
+        assert!(at("http://wakuplugin.localhost/rain-alert/__waku/main.html", true));
+        assert!(!at("http://wakuplugin.localhost/rain-alert/__waku/main.html", false), "no main.js on the desktop");
+        assert!(at("http://wakuplugin.localhost/rain-alert/view.html", false) && at("http://wakuplugin.localhost/rain-alert/view.html", true));
+        assert!(at(&format!("http://wakuplugin.localhost/board/{}", url_path("ui/界面.html")), false));
+        for bad in [
+            "http://wakuplugin.localhost/rain-alert/main.js",
+            "http://wakuplugin.localhost/rain-alert/view.html?x=1",
+            "http://wakuplugin.localhost/rain-alert/other.html",
+            "http://wakuplugin.localhost/plain/view.html",
+            "http://wakuplugin.localhost/later/__waku/main.html",
+            "http://wakuplugin.localhost/nobody/view.html",
+            "http://tauri.localhost/pet/index.html",
+            "https://example.com/rain-alert/view.html",
+            "http://wakuplugin.localhost.example.com/rain-alert/view.html",
+            "about:blank",
+        ] {
+            assert!(!at(bad, true), "{bad}");
+        }
+        // Who may ask for a card's view: her island's page, the desktop's.
+        for (label, may) in [("island", true), ("desk-1", true), ("desk-12", true), ("desk-", false), ("desk-x", false), ("pet", false), ("bar-1", false), ("barpop", false), ("islandx", false)] {
+            assert_eq!(may_view(label), may, "{label}");
+        }
+        // Ten messages a second for a plugin's views, then none until it is up.
+        let mut sent = (0, 0);
+        assert_eq!((0..12).filter(|_| may_send(&mut sent, 500)).count(), 10);
+        assert!(!may_send(&mut sent, 999) && may_send(&mut sent, 1000));
     }
 
     #[test]

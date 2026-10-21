@@ -179,6 +179,31 @@ body {
   position: relative;
 }
 
+/* A plugin's own view (views.js): its frame over the body, as big as the body is, the pointer
+   through it to the card; seen once it says it is ready, the card's words under it hidden then
+   (until then, and whenever it is not shown, those words are what the card shows). */
+.wd > .wview {
+  position: absolute;
+  inset: 14px 16px;
+  width: calc(100% - 32px);
+  height: calc(100% - 28px);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease-out;
+}
+
+.wd > .wview.ready {
+  opacity: 1;
+}
+
+.wd:has(> .wview.ready) > .wbody {
+  visibility: hidden;
+}
+
 .wd.s {
   width: 156px;
   height: 156px;

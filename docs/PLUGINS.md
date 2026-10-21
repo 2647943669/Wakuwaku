@@ -110,22 +110,25 @@ look()
 | `waku.agents.list()` | (`agents`) A promise of `[{ id, agent, project, mood, since, detail }]`, where `mood` is `idle`, `working`, `waiting`, `done`, `review` or `error`. `waku.on('agents', list)` fires on change, at most once a second. |
 | `waku.hardware.read()` | (`hardware`) A promise of `{ cpu, memory, gpu, netDown, netUp }`. Percentages are 0–100 and rates are bytes per second; a field is `null` when not known. `waku.on('hardware', r)` fires every few seconds while someone listens. |
 | `waku.notify(text)` | (`notify`) Nudges her widget with `text` (≤ 60 characters). At most once a minute, never while she is asking you something, and only if "plugins may open the island" is on. |
-| `waku.on('view', fn)` | Messages from `view.html` (`waku.send`). |
+| `waku.on('view', fn)` | Messages from `view.html` (`waku.send`): `fn(message, { sub })`, `sub` the widget whose card sent it (`''` for the plugin's own). |
 | `waku.log(...)` | One line in her log, with the plugin's id. An uncaught error is logged the same way, and its message shows under the plugin on the Plugins page. |
 
 ### view.html (tier 2)
 
-`view.html` is drawn inside her card on the desktop (M and L) and in the capsule's unfolded card. Her card supplies the glass, corners, hover buttons and menu; you draw what goes inside. The `waku` object is there too:
+`view.html` is drawn inside her card on the desktop (M and L) and in the capsule's unfolded card (shown for a widget with an `l` size). Her card supplies the glass, corners, hover buttons and menu; you draw what goes inside. A widget is drawn by your view once it gives a `view` field (`waku.widget.set({ ..., view: {...} })`); one that gives none keeps her drawing of its data. The `waku` object is there too, before your own scripts run:
 
 | API | What it does |
 |---|---|
-| `waku.size` | `'m'` or `'l'`. |
-| `waku.data` | The `view` field of the widget's last `waku.widget.set`. `waku.on('data', fn)` fires when it changes. |
-| `waku.send(message)` | Sends any JSON to `main.js` (`waku.on('view')`). |
+| `waku.size` | `'m'` or `'l'`: the desktop's medium card (292 × 128 px inside) or large one (292 × 296). The capsule's card is `'m'`, as wide as the capsule's lines (266 to 312) and 128 high. |
+| `waku.data` | The `view` field of the widget's last `waku.widget.set`, there from the start. `waku.on('data', fn)` fires when it changes. |
+| `waku.send(message)` | Sends any JSON to `main.js` (`waku.on('view')`): up to 64 KB, ten a second. |
 | `waku.theme`, `waku.lang`, `waku.on('theme' / 'lang')` | As in `main.js`. |
-| CSS variables | `--waku-fg`, `--waku-muted`, `--waku-color` (the widget's colour), `--waku-font`, `--waku-font-display`. The body is transparent. |
+| `waku.log(...)` | One line in her log, with the plugin's id. |
+| CSS variables | `--waku-fg`, `--waku-muted`, `--waku-color` (the widget's colour), `--waku-font`, `--waku-font-display`, on `:root`, changed with her theme. The body is transparent, with no margin and nothing to scroll; leave `color-scheme` as it is, or the frame gets an opaque ground. |
 
-While nobody is about, while the desktop is covered, or while Windows has animations turned off, the view is taken away and the card falls back to your tier-1 data. Keep animations short and let them stop (`docs/design/style.md`: no endless motion).
+It is for showing: the pointer passes through it to her card, so dragging, double-clicking and the card's menu stay hers, and the view gets no clicks. Her two buttons show at the card's top right while the pointer is on it: keep that corner (about 60 × 30 px) free of anything that matters.
+
+While nobody is about, while the desktop is covered, or while Windows has animations turned off, the view is taken away and the card falls back to your tier-1 data, as it does until your view has loaded. A view that does not load within a few seconds, or does not answer her pings, is not shown again until she restarts. Keep animations short and let them stop (`docs/design/style.md`: no endless motion). `examples/plugins/agent-board` is a plugin with a view.
 
 ## The sandbox
 
@@ -133,7 +136,7 @@ While nobody is about, while the desktop is covered, or while Windows has animat
 - Its files come from `http://wakuplugin.localhost/<id>/`. A Content-Security-Policy allows scripts, styles, images and fonts from your own folder and `data:` / `blob:`, and blocks all network access (`connect-src 'none'`). Use `waku.fetch`. That includes your own folder: `import` your modules, and put data your code needs in a `.js` module rather than fetching a `.json`.
 - `main.js` is loaded as a module (`import`, top-level `await`).
 - It cannot reach her local port (`127.0.0.1:47213`), the file system, other programs or Windows.
-- Watchdog: she pings every plugin every 5 s. One that does not answer within 3 s is reloaded. One that hangs again is turned off and marked "not responding" on the Plugins page, until the user turns it back on.
+- Watchdog: she pings every plugin every 5 s. One that does not answer within 3 s is reloaded. One that hangs again within ten minutes is turned off and marked "not responding" on the Plugins page, until the user turns it back on. So is one whose own long tasks (the main thread held 50 ms or more at a time) add up to over 2 s in a minute ("too busy"). All plugins share one process: when none answers, she restarts them one at a time to find the one that hangs. Do heavy work in small pieces.
 
 ## Packaging and installing
 

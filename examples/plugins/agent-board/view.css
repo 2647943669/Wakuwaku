@@ -1,0 +1,88 @@
+/* Agent board's view: her card's colours and fonts (--waku-*), as quiet as her own widgets; the
+   bars in the widget's colour, grown once into place as the view comes and as the minutes change,
+   then still. */
+#board {
+  box-sizing: border-box;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font: 12px/1.35 var(--waku-font);
+  color: var(--waku-fg);
+}
+
+.hd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--waku-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hd .total {
+  margin-left: auto;
+  font-weight: 500;
+}
+
+.rows {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.l .rows {
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 84px 1fr 52px;
+  align-items: center;
+  gap: 10px;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--waku-fg) 12%, transparent);
+  overflow: hidden;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--waku-color);
+  transition: width 0.45s cubic-bezier(0.3, 1.2, 0.45, 1);
+}
+
+/* The one working now: its name a little stronger. */
+.row.on .name {
+  font-weight: 600;
+}
+
+.min {
+  text-align: right;
+  color: var(--waku-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.first .min {
+  color: var(--waku-fg);
+  font: 300 16px/1 var(--waku-font-display);
+}
+
+.none {
+  margin: auto;
+  color: var(--waku-muted);
+  font-size: 12.5px;
+}
