@@ -242,12 +242,9 @@
   }
 
   // --- Names: never an id, never a bare "widget" (the design session) --------------------------
-  // A plugin's own name ("天气"), none for one she does not know.
-  function pluginName(plugin, ctx) {
-    const key = `w.ex.${plugin}`
-    const said = plugin ? t(ctx, key) : ''
-    return said && said !== key ? said : ''
-  }
+  // A plugin's own name ("天气"; someone else's, as its widgets say it:
+  // widgets.js pluginName), none for one she does not know.
+  const pluginName = (plugin, ctx) => (plugin ? Widgets.pluginName(ctx.lang, plugin, ctx.all || []) : '')
   // The plugin a widget comes from: its own say, else its id's first part
   // as plugins name theirs ("stock-aapl").
   const pluginOf = id => (/^([a-z]+)-/.exec(String(id || '')) || [])[1] || ''

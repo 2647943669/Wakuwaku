@@ -65,6 +65,9 @@ pub struct Widget {
     // stops; and what it gave for its own view (tier 2, kept for then).
     addon: bool,
     view: Value,
+    // Its plugin's own picture for its icon (an .svg in its folder, by her
+    // scheme), where it gave none of hers: the pages draw it in one colour.
+    picture: Option<String>,
 }
 
 #[derive(Default)]
@@ -260,8 +263,9 @@ impl Widgets {
     // name when none is given. No time to live: it stays while the plugin
     // runs, and goes as it stops (remove_addons). What it gives for its own
     // view (tier 2) is kept, up to VIEW bytes of JSON. Never a nudge: that is
-    // waku.notify's, by its permission.
-    pub fn put_addon(&mut self, id: &str, v: &Value, name: &str, now: u64) -> Result<(), &'static str> {
+    // waku.notify's, by its permission. picture: its manifest's .svg for an
+    // icon (sent as iconUrl), for one that gives none of hers.
+    pub fn put_addon(&mut self, id: &str, v: &Value, name: &str, picture: Option<String>, now: u64) -> Result<(), &'static str> {
         if !is_id(id) {
             return Err("id: a-z 0-9 _ -, up to 40");
         }
@@ -277,7 +281,9 @@ impl Widgets {
         if view.to_string().len() > VIEW {
             return Err("view: up to 32 KB of JSON");
         }
-        let widget = Widget { addon: true, view, ..made(v, id, label, None, now) };
+        let made = made(v, id, label, None, now);
+        let picture = picture.filter(|_| made.icon == "dot");
+        let widget = Widget { addon: true, view, picture, ..made };
         match self.list.iter_mut().find(|w| w.id == id) {
             Some(old) => *old = widget,
             None => self.list.push(widget),
@@ -340,7 +346,7 @@ impl Widgets {
     // True when they changed.
     #[allow(clippy::too_many_arguments)]
     pub fn put_owned(&mut self, id: &str, icon: &str, color: &str, label: Value, value: Value, detail: Value, private: bool, now: u64) -> bool {
-        let widget = Widget { id: id.into(), label, value, detail, icon: icon.into(), color: color.into(), until: None, at: now, private, addon: false, view: Value::Null };
+        let widget = Widget { id: id.into(), label, value, detail, icon: icon.into(), color: color.into(), until: None, at: now, private, addon: false, view: Value::Null, picture: None };
         match self.list.iter_mut().find(|w| w.id == id) {
             Some(old) if old.label == widget.label && old.value == widget.value && old.color == widget.color && old.detail == widget.detail => false,
             Some(old) => {
@@ -401,7 +407,7 @@ impl Widgets {
         Value::Array(
             all.into_iter()
                 .map(|(w, of)| {
-                    json!({
+                    let mut out = json!({
                         "id": w.id,
                         "label": w.label,
                         "value": w.value,
@@ -417,7 +423,12 @@ impl Widgets {
                         "leftMs": w.until.map(|t| t.saturating_sub(now)),
                         "at": w.at,
                         "private": w.private,
-                    })
+                    });
+                    // A plugin's own picture for its icon (none for the rest: not sent).
+                    if let Some(p) = &w.picture {
+                        out["iconUrl"] = json!(p);
+                    }
+                    out
                 })
                 .collect(),
         )
@@ -431,7 +442,7 @@ fn is_built_in(id: &str) -> bool {
 // A built-in widget with nothing to say yet.
 fn built_in(id: &str) -> Widget {
     let (icon, color) = BUILT_IN.iter().find(|b| b.0 == id).map_or(("dot", ""), |b| (b.1, b.2));
-    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: Value::Null, icon: icon.into(), color: color.into(), until: None, at: 0, private: false, addon: false, view: Value::Null }
+    Widget { id: id.into(), label: json!({ "key": format!("widget.{id}") }), value: Value::Null, detail: Value::Null, icon: icon.into(), color: color.into(), until: None, at: 0, private: false, addon: false, view: Value::Null, picture: None }
 }
 
 // A widget as sent (a script's, a plugin's), its label given: its value,
@@ -450,6 +461,7 @@ fn made(v: &Value, id: &str, label: String, until: Option<u64>, now: u64) -> Wid
         private: v.get("private").and_then(Value::as_bool) == Some(true),
         addon: false,
         view: Value::Null,
+        picture: None,
     }
 }
 
@@ -1542,23 +1554,26 @@ mod tests {
 
     // A third-party plugin's widget (addons.rs): checked as a script's, its
     // name for a label none is given, no time to live, its own and no
-    // script's; gone with it.
+    // script's; gone with it. Its plugin's own picture for an icon goes as
+    // iconUrl, only while it gives none of hers.
     #[test]
     fn a_plugins_widget_stays_while_it_runs() {
         let mut w = Widgets::default();
-        w.put_addon("hello", &json!({ "value": "3", "icon": "star", "detail": { "sizes": ["s", "m"] }, "view": { "n": 3 } }), "数数", 0).unwrap();
-        w.put_addon("hello_two", &json!({ "label": "Two", "value": "x".repeat(30) }), "数数", 0).unwrap();
+        let picture = || Some("http://wakuplugin.localhost/hello/icon.svg".to_string());
+        w.put_addon("hello", &json!({ "value": "3", "icon": "star", "detail": { "sizes": ["s", "m"] }, "view": { "n": 3 } }), "数数", picture(), 0).unwrap();
+        w.put_addon("hello_two", &json!({ "label": "Two", "value": "x".repeat(30) }), "数数", picture(), 0).unwrap();
         let view = scripted(w.view(10_000_000, &[], &[], &|id| (id == "hello" || id.starts_with("hello_")).then(|| "hello".to_string())));
         assert_eq!(view.as_array().unwrap().len(), 2);
         assert_eq!((view[0]["label"].as_str(), view[0]["from"].as_str(), view[0]["plugin"].as_str(), view[0]["leftMs"].is_null()), (Some("数数"), Some("addon"), Some("hello"), true));
         assert_eq!((view[1]["label"].as_str(), view[1]["value"].as_str().map(|v| v.chars().count())), (Some("Two"), Some(24)));
         assert!(view[0].get("view").is_none(), "its view kept here, not sent with every widget");
+        assert_eq!((view[0].get("iconUrl"), view[1]["icon"].as_str(), view[1]["iconUrl"].as_str()), (None, Some("dot"), Some("http://wakuplugin.localhost/hello/icon.svg")));
         assert_eq!(w.view_of("hello"), Some(json!({ "n": 3 })));
         assert!(!w.expire(u64::MAX));
         // A script cannot take its id; nor can it take a built-in one's or a big view.
         assert!(w.put(&json!({ "id": "hello", "label": "fake" }), 0).is_err());
-        assert!(w.put_addon("monitor", &json!({}), "x", 0).is_err());
-        assert!(w.put_addon("hello", &json!({ "view": "x".repeat(VIEW) }), "x", 0).is_err());
+        assert!(w.put_addon("monitor", &json!({}), "x", None, 0).is_err());
+        assert!(w.put_addon("hello", &json!({ "view": "x".repeat(VIEW) }), "x", None, 0).is_err());
         assert_eq!(w.addons_of(|id| id.starts_with("hello")), 2);
         assert!(w.may_nudge("addon:hello", 0) && !w.may_nudge("addon:hello", 59_000) && w.may_nudge("addon:hello", 60_000));
         assert!(w.remove_addons(|id| id == "hello_two"));

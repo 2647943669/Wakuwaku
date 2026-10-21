@@ -321,6 +321,62 @@
     stretch: { id: 'stretch', plugin: 'stretch', from: 'script', on: true, icon: 'timer', color: '#b18cff', label: '久坐提醒', value: '32 分钟后' },
   }
 
+  // --- Other people's plugins (addons.rs view; the Plugins page, the picker) -------------
+  // Three installed, as the settings' snapshot has them: 下雨提醒 from the
+  // market, at work on the desktop (examples/plugins/rain-alert); 数数 from a
+  // file, not reviewed, not placed yet, its own picture for an icon (an
+  // .svg: here as data, there by her scheme); 天气雷达 from the market,
+  // turned off for not responding (its when and why as phase 2's watchdog
+  // will say them). Each field as addons.rs view sends it.
+  const TALLY = `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#000' stroke-width='2' stroke-linecap='round'><path d='M6 5v14M10 5v14M14 5v14M18 5v14M3.5 15.5l17-7'/></svg>")}`
+  const field = (key, type, label, more = {}) => ({ key, type, label, hint: null, required: false, value: null, default: null, options: null, optionLabels: null, ...more })
+  const addon = (id, more) => ({
+    id, kind: 'plugin', description: '', author: '', version: '1.0.0', homepage: null, api: 1, category: 'info', sizes: ['s', 'm'], color: null, icon: null, view: false,
+    perms: { net: [], agents: false, hardware: false, notify: false }, sensitive: false, source: 'file', reviewed: false, installedAt: T0 - 86400e3,
+    on: false, state: 'off', missing: null, said: null, settings: [], ...more,
+  })
+  const ADDONS = [
+    addon('rain-alert', {
+      name: '下雨提醒', description: '接下来几小时会不会下雨，几点开始', author: 'lin', version: '1.2.0', homepage: 'https://github.com/lin/rain-alert', category: 'info', color: '#8cc8ff', icon: { name: 'weather' },
+      perms: { net: ['api.open-meteo.com', 'geocoding-api.open-meteo.com'], agents: false, hardware: false, notify: true }, sensitive: true, source: 'market', reviewed: true, on: true, state: 'running',
+      settings: [
+        field('City', 'text', '城市', { required: true, hint: '比如 Dresden', value: 'Dresden' }),
+        field('Hours', 'choice', '往后看', { options: ['3', '6', '12'], optionLabels: ['3 小时', '6 小时', '12 小时'], default: '6' }),
+        field('Alert', 'flag', '下雨前提醒我', { default: true }),
+      ],
+    }),
+    addon('hello', {
+      name: '数数', description: '一直往上数，记得数到了几', author: 'wakuwaku', version: '1.0.0', category: 'productivity', color: '#7fd8a6', icon: { url: TALLY },
+      settings: [
+        field('Step', 'number', '每次加', { default: 1 }),
+        field('Every', 'choice', '多久加一次', { options: ['1', '5', '60'], optionLabels: ['每秒', '每 5 秒', '每分钟'], default: '5' }),
+        field('Word', 'text', '名字', { hint: '比如 数羊' }),
+      ],
+    }),
+    addon('weather-radar', {
+      name: '天气雷达', description: '附近的雨云往哪儿走', author: 'hiro', version: '0.3.0', category: 'info', color: '#6fa6ff',
+      perms: { net: ['api.rainviewer.com'], agents: false, hardware: false, notify: false }, source: 'market', reviewed: true, on: true, state: 'stopped', said: '10:12 起 3 次没回答',
+    }),
+  ]
+  // What each says once it runs (addons.rs widget: its name its label, its
+  // manifest's sizes, colour, icon; its own picture as iconUrl).
+  const ADDON_WIDGETS = {
+    'rain-alert': { id: 'rain-alert', plugin: 'rain-alert', from: 'addon', on: true, icon: 'weather', color: '#8cc8ff', label: '下雨提醒', value: '70%', detail: { sizes: ['s', 'm'], extra: '17:00 起有雨 · Dresden', series: { points: [10, 15, 30, 55, 70, 62, 40, 22, 12], unit: '%', lo: 0, hi: 100 } } },
+    hello: { id: 'hello', plugin: 'hello', from: 'addon', on: true, icon: 'dot', iconUrl: TALLY, color: '#7fd8a6', label: '数羊', value: '42', detail: { sizes: ['s', 'm'], extra: '每 5 秒加 1' } },
+    'weather-radar': { id: 'weather-radar', plugin: 'weather-radar', from: 'addon', on: true, icon: 'dot', color: '#6fa6ff', label: '天气雷达', value: '无雨', detail: { sizes: ['s', 'm'], extra: '50 公里内' } },
+  }
+  // A folder in her plugins that did not install (addons.rs broken_view).
+  const ADDONS_BROKEN = [{ folder: 'old-clock', reason: 'no manifest.json' }]
+  // .zip files to install from (the fake's addon_manage, by file name):
+  // one asking for the web alone, one asking for the agents and nudges,
+  // one with a program in it, a newer 数数 (an update).
+  const ADDON_FILES = {
+    'my-plugin.zip': addon('my-plugin', { name: '我的测试插件', description: '自己写着玩的', author: 'you', version: '0.1.0', category: 'productivity', perms: { net: ['api.example.com'], agents: false, hardware: false, notify: false } }),
+    'agent-board.zip': addon('agent-board', { name: 'Agent 排行', description: '今天哪个项目让 agent 干得最多', author: 'mika', version: '0.9.1', category: 'productivity', color: '#f08a62', icon: { name: 'chart' }, perms: { net: [], agents: true, hardware: false, notify: true }, sensitive: true }),
+    'cool-tool.zip': { refused: { reason: 'program', file: 'helper.exe', detail: 'a program' } },
+    'hello-1.1.0.zip': { ...ADDONS[1], version: '1.1.0', installedAt: T0 },
+  }
+
   // --- The taskbar ------------------------------------------------------------------------
   let apps = 0
   const app = (name, color, letter, titles, opts = {}) => {
@@ -464,7 +520,7 @@
     },
   }
 
-  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDONS_BROKEN, ADDON_FILES, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Fixtures = api
 })(typeof window !== 'undefined' ? window : globalThis)

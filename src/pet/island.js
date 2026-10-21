@@ -2012,16 +2012,24 @@
 
   // A member's name, as put there (a plugin's, a widget's label as it was).
   const memberName = m => Widgets.nameOf(lang, { ...m, id: 'w0' }, allWidgets, isDetailed())
+  // The name kept with someone else's plugin as it is put somewhere (her
+  // own she knows by their ids): its own, as its widgets say it, for while
+  // it has nothing to say.
+  function ownName(id) {
+    const name = t(lang, `w.ex.${id}`) === `w.ex.${id}` ? Widgets.pluginName(lang, id, allWidgets) : ''
+    return name ? { name: [...name].slice(0, 40).join('') } : {}
+  }
 
-  // The plugins she runs as settings_get says, for which want their
-  // settings filled in first (missing: a parameter they need): asked for
-  // while a plugin on the strip has nothing to say, twice a minute at most,
-  // and once the layout is kept.
+  // The plugins she runs as settings_get says, and other people's
+  // (addons.rs), for which want their settings filled in first (missing: a
+  // parameter they need) or were stopped: asked for while a plugin on the
+  // strip has nothing to say, twice a minute at most, and once the layout
+  // is kept.
   const pluginsSaid = { at: 0, list: [] }
   function askPlugins(now = false) {
     if (!now && Date.now() - pluginsSaid.at < 30000) return
     pluginsSaid.at = Date.now()
-    window.pet.settings.get().then(got => tellPlugins(got?.plugins))
+    window.pet.settings.get().then(got => tellPlugins(got && [...(got.plugins || []), ...(got.addons || [])]))
   }
   function tellPlugins(list) {
     if (!Array.isArray(list)) return
@@ -2983,7 +2991,7 @@
   function putOnBar(w) {
     const source = w.plugin ? { type: 'plugin', of: w.plugin } : { type: 'widget', of: w.id }
     if (Widgets.shownOn(tbLayout(), allWidgets).has(w.id)) return
-    const named = w.private || w.plugin ? {} : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') }
+    const named = w.private ? {} : w.plugin ? ownName(w.plugin) : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') }
     const entry = { id: newId(), ...source, size: Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...(w.icon in Widgets.ICONS ? { icon: w.icon } : {}), ...named }
     const layout = tbLayout()
     layout.right.unshift(entry)
@@ -3046,7 +3054,7 @@
       }
       const w = item.plugin ? null : allWidgets.find(x => x.id === item.id)
       const source = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
-      const named = w && !w.private ? { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') } : {}
+      const named = w && !w.private ? { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') } : item.plugin ? ownName(item.plugin) : {}
       const icon = (w?.icon || item.icon) in Widgets.ICONS ? { icon: w?.icon || item.icon } : {}
       layout.right.unshift({ id: newId(), ...source, size: !w || Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...icon, ...named })
       placedAt.set(key, Date.now())

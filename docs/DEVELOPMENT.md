@@ -17,6 +17,7 @@ src/                      页面，Tauri 直接把整个文件夹打进 exe（ta
     sprite.js             图集布局、16 个注视方向
     status.js             把一个会话说成话：名字、当前这一步、任务清单进度、结果（岛、设置、她的提示共用）
     widgets.js            岛上插件的图标和文字；明细（detail）、大小、任务栏上的布局和几个共用一格（轮播、叠放）、轮播的节奏
+    addonui.js            别人写的插件在「插件」页和小工具库里的逻辑：一行底下说什么、属于库里哪一类、能做的事怎么说、「新」排最前、从文件安装的几步和每一步的确认层（不碰页面，测试直接调）
     wcards.js             小工具按大小画（2026-10-16 的小工具设计）：任务栏上的小档、中档，胶囊里的行和点开的卡片，叠放展开后的一行；每种的颜色、Windows 自己的图标、曲线、圆环、柱子
     agents.js             她跟的 agent 一张表：名字、怎么连、写在哪、她能替它做的五件事、要注意的；从设置的快照算出每个的状态和按钮（Agent 页、欢迎卡片、「通用」那一行、邮件页的 agent 都从这里画）
     mica.js               任务栏的云母：把桌面壁纸按 Windows 的摆法画到条带下面，模糊、调色；桌面小工具的玻璃也从它取（glassPaper）
@@ -422,7 +423,7 @@ omp 的计划审批也走这里（`tool_name: "ExitPlanMode"`，面板上标着 
 
 ## 第三方插件（addons.rs、src/pet/addons.js）
 
-别人写的插件，和她替你跑的内置插件排在一起，但代码不在她进程里跑，而在灵动岛页面里一个个隐藏的沙盒 iframe 里（`sandbox="allow-scripts"`，没有同源，碰不到她的页面、别的插件、IPC）。契约在 `docs/PLUGINS.md`，产品定稿在 `docs/design/specs/plugins.md`。这一期（1a）是运行环境和后端，设置页的行、从文件安装的流程、选择器卡片、市场都在 1b/3/4。
+别人写的插件，和她替你跑的内置插件排在一起，但代码不在她进程里跑，而在灵动岛页面里一个个隐藏的沙盒 iframe 里（`sandbox="allow-scripts"`，没有同源，碰不到她的页面、别的插件、IPC）。契约在 `docs/PLUGINS.md`，产品定稿在 `docs/design/specs/plugins.md`。1a 是运行环境和后端，1b 是「插件」页、从文件安装和小工具库里的卡片；市场和资源包在第 3、4 期。
 
 - **装在哪**：`<数据目录>/plugins/<id>/`，每个一个 manifest.json、main.js，可能还有图片，不含程序。`installed.json` 记每个从哪来（文件 / 市场，审没审过）、zip 的 SHA-256、版本、装时给的权限。
 - **装（addons.rs）**：`inspect`（给确认层看一眼）、`install`。复用 `zip.rs`（原来在 lhm_setup.rs）。查扩展名白名单、按文件头查可执行文件（MZ/ELF/Mach-O，哪怕改了名）、路径不出文件夹、大小（插件 5 MB 压缩 / 20 MB 解开，资源包 50/200，最多 500 个文件）。先解到旁边的暂存文件夹，再原子换入；更新时旧的留到换成功。重装同一个 id 当更新，设置（`plugins[id]`）和存储（`plugin-data/<id>.json`，上限 1 MB）保留。manifest 坏了的那个文件夹跳过、列出原因，不崩。
@@ -431,7 +432,11 @@ omp 的计划审批也走这里（`tool_name: "ExitPlanMode"`，面板上标着 
 - **命令（main.rs 注册）**：`addons_running`（页面该跑哪些，变了发 `addons:changed` 事件，监听带 window target）；`addon_call(id, what, args)`（跑着的插件的请求：widget / remove / fetch / storage / notify / hardware / said，一条命令全包，省 exe 的胶水）；`addon_manage(what, arg)`（设置页用：inspect / install / uninstall / pick / revive）。小工具 id 是 `<id>` 和 `<id>_<sub>`（sub `^[a-z0-9]{1,16}$`，最多 8 个），照 `POST /widget` 校验，外加一个 32 KB 的 `view` 字段留给第 2 期；`plugins::owner_of`（和它的 addon 版）把它们认到插件头上，页面看到 `plugin: <id>`。`addon_fetch` 在别的线程上，只许 manifest 的 `net` 主机、80/443、不许本机和内网地址（连跳转也查），走 `proxy::web_ways`，1 MB、15 秒上限。
 - **硬件（widgets.rs `reading_now`）**：按需读 CPU（两次取样之间的忙占比）、内存、网速，不另起常驻线程；显卡那些要开 Windows 计数器（几 MB、三分之一秒），只有监控插件留着，所以这里是 null。
 - **看门狗**：addons.js 里 SDK 会答 ping（`ping`/`pong`），真正的看门狗是第 2 期，这里只留了缝。几个插件共用一个渲染进程（`--renderer-process-limit=1`，省内存那次留下的），所以一个插件死循环会卡住别的插件、但卡不住灵动岛页面（实测灵动岛的 eval 往返一直 5～9 ms）——和设计规格第 8 节「所有插件共用一个进程」一致。
-- **测试**：`cargo test addons`（manifest 校验、各种精心构造的 zip、主机规则、设置校验、owner、存储上限、卸载不留痕、示例读得出）、`test/addons.test.js`（页面路由、SDK 用 node 的 vm 跑）；示例在 `examples/plugins/hello`、`examples/plugins/rain-alert`。
+- **「插件」页（settings.js，1b）**：设置快照里的 `addons` 一个一行，和内置的排在一起，同一种行：图标（manifest 里她的图标名；自己的 .svg 用 CSS mask 画成单色，任务栏上随文字颜色、别处随小工具的颜色；都没有就是名字首字的小方块）、名字（点了进它自己的页）、从文件装的有琥珀色「未经审核」、它的小工具现在说什么；下面一行照内置的说法加「@作者 · v版本」，无响应被停用的是「无响应，已停用」和「重新启用」（`revive`；第 2 期的看门狗把几点起、为什么写进 `said`）；右边「设置」折叠（按 manifest 的 `settings` 画，和内置的一个样子，存进同一个 `plugins[id]`）和放在哪里 /「添加小工具…」（打开小工具库并亮出它那张卡片：`Picker.fromMenu({ focus })`）。没装上的文件夹（`addonsBroken`）在这一组最下面一行小字。「显示」组最后一行「从文件安装… ›」：`pick`（Windows 的打开对话框，开着时设置不因失焦收起）→ `inspect` → 面板里的确认层（`addonui.js` 的 `next` 一步步走，`layerOf` 说层上写什么）→ `install`；装好了说一句，那一行左边一道强调色，到设置收起为止。插件自己的页是「插件」页里的二级页（`sub`，左上返回，路径「插件 › 名字」；`SUBS` 按名字找页，市场的几页第 3 期加在这里）：图标、作者、版本、类别、介绍、它能做的、「卸载」（先在面板里问一句）。描述超过 60 个字的照收，显示时截断加「…」（`addons.rs` view）。
+- **小工具库（picker.js）**：别人写的按 manifest 的 `category` 进「系统 / 效率 / 信息」，说明那行以「@作者 · 」开头；放上去照样走 `switchOn` → `Placing.switchesPatch`（`plugins[id].on`，Rust 那边 `is_conf_ok` 认装了的 id）。这次打开设置以来装的、还没放过的排最前，标「新」（`AddonUI.news`，只在页面里记），放上一次就不再是新的。
+- **小工具本身**：没有专门的卡片，按通用模板画（`wcards.js`、`wdesk.js` 的 generic），大小照 manifest 的 `widget.sizes`（`addons.rs` 写进 `detail.sizes`，任务栏的中档、桌面的大档都按它）。manifest 的图标是 .svg 时，小工具带 `iconUrl`（`http://wakuplugin.localhost/<id>/<文件>`，`widgets.rs` 只在插件自己没给她的图标名时发），`index.html` 和 `desk.html` 的 CSP 的 `img-src` 都放行这个源。
+- **测试**：`cargo test addons`（manifest 校验、各种精心构造的 zip、主机规则、设置校验、owner、存储上限、卸载不留痕、示例读得出）、`test/addons.test.js`（页面路由、SDK 用 node 的 vm 跑）、`test/addonui.test.js`（行的说法、类别、「新」的排序、从文件安装每一步和确认层的字、图标的 mask）；示例在 `examples/plugins/hello`、`examples/plugins/rain-alert`。模拟器里控制台的「别人写的插件」装上三个示例，「从文件安装…」选哪个包也在那里挑；样例页 `settings-plugins-*`、`add-widgets-addon`、`widgets-addons-*` 几张。
+- **市场的工具（tools/market）**：给以后的公开市场仓库用：`package.js` 读一个文件夹或 .zip 并按 `docs/PLUGINS.md` 查（文件类型、按文件头查程序、大小、保留的 id、`net` 主机、SVG 图标里有没有脚本或外链），同一个文件夹打出的 zip 每次都一样；`check.js` 用中英文说哪里不对；`build-index.js` 出 `index.json`；`gitee-mirror.js` 放到 Gitee；`fake-market.js` 给她的测试当假市场。`template/` 是市场仓库本身的样子。测试在 `test/market.test.js`。
 
 **邮件**：她自己收
 

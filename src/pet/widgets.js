@@ -65,6 +65,25 @@
   // --mark-deep: deepen); with none, a grey tint and the secondary grey
   // (.wmark.none). One helper for every place (style.css, desk.css .wmark).
   const hasIcon = name => typeof name === 'string' && name !== 'dot' && name in ICONS
+
+  // A third-party plugin's own picture for its icon (addons.rs: an .svg in
+  // its folder, served by her scheme; widgets.rs iconUrl), drawn in one
+  // colour as her own icons are: the colour around it, through it as a
+  // mask. Only one from there (or, in the simulator, a data: picture), each
+  // part of its path escaped; anything else is none (its mark then).
+  const ADDON_ORIGIN = 'http://wakuplugin.localhost/'
+  function maskUrl(url) {
+    if (typeof url !== 'string') return ''
+    if (url.startsWith(ADDON_ORIGIN)) {
+      const parts = url.slice(ADDON_ORIGIN.length).split('/')
+      if (parts.length < 2 || !/^[a-z][a-z0-9-]{1,39}$/.test(parts[0]) || !/\.svg$/i.test(url) || parts.some(p => !p || p === '.' || p === '..')) return ''
+      return ADDON_ORIGIN + parts.map(encodeURIComponent).join('/')
+    }
+    return /^data:image\/svg\+xml[;,]/.test(url) ? url.replace(/["\\\n\r]/g, c => encodeURIComponent(c)) : ''
+  }
+  const hasPicture = w => !!maskUrl(w?.iconUrl)
+  const maskHTML = url => `<span class="wicon wmask" style="${esc(`--mask:url("${maskUrl(url)}")`)}" aria-hidden="true"></span>`
+
   function markHTML(name, color, cls = '') {
     const ch = Array.from(String(name ?? '').trim())[0] || '·'
     const own = typeof color === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color.trim()) ? color.trim() : ''
@@ -74,8 +93,8 @@
   // A widget's name for its mark: its label as it reads (an object of
   // words rendered when a language is given), else its id.
   const markName = (w, lang) => (typeof w?.label === 'string' ? w.label : lang && w?.label ? render(lang, w.label) : '') || w?.name || w?.id || ''
-  // Its icon, or that mark.
-  const iconHTML = (w, lang) => (hasIcon(w?.icon) ? icon(w.icon) : markHTML(markName(w, lang), w?.color))
+  // Its icon (a plugin's own picture, else one of hers), or that mark.
+  const iconHTML = (w, lang) => (hasPicture(w) ? maskHTML(w.iconUrl) : hasIcon(w?.icon) ? icon(w.icon) : markHTML(markName(w, lang), w?.color))
 
   // The monitor's readings, or null for a widget that has none.
   const partsOf = w => (Array.isArray(w?.value?.parts) ? w.value.parts : null)
@@ -452,10 +471,22 @@
     return ids
   }
 
+  // A plugin's name: one of hers by her words for it (w.ex.<id>); someone
+  // else's (addons.rs: its widgets' label is its name until it gives one) by
+  // its first widget's label, a private one's never; '' for one she does
+  // not know.
+  function pluginName(lang, id, all = []) {
+    const key = `w.ex.${id}`
+    const hers = render(lang, { key })
+    if (hers !== key) return hers
+    const w = all.find(x => x.plugin === id && !x.private && typeof x.label === 'string' && x.label)
+    return w ? w.label : ''
+  }
+
   // Its name: a plugin's, a built-in widget's, a spacer's; another widget's
   // label (as it was put there, when gone).
   function nameOf(lang, entry, all = [], detailed = true) {
-    if (entry.type === 'plugin') return render(lang, { key: `w.ex.${entry.of}` })
+    if (entry.type === 'plugin') return pluginName(lang, entry.of, all) || entry.name || render(lang, { key: 'taskbar.w.widget' })
     // A group: its kind and how many ("叠放 · 3 个").
     if (isGroup(entry)) return render(lang, { key: `taskbar.w.${entry.type}`, vars: { n: String(entry.items.length) } })
     if (entry.type !== 'widget') return render(lang, { key: `taskbar.w.${entry.type}` })
@@ -468,8 +499,12 @@
     ICONS,
     icon,
     hasIcon,
+    maskUrl,
+    hasPicture,
+    maskHTML,
     markHTML,
     iconHTML,
+    pluginName,
     detailOf,
     sizesOf,
     words,

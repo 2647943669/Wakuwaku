@@ -222,6 +222,13 @@
     // Every widget with something to say (widgets.rs), and the plugins she runs (plugins.rs).
     widgets: [],
     plugins: [],
+    // Other people's plugins installed (addons.rs view: Fixtures.ADDONS),
+    // the folders that did not install, and the .zip Windows' dialog picks
+    // next for 从文件安装… (a name of Fixtures.ADDON_FILES; null: closed;
+    // unset: each in turn).
+    addons: [],
+    addonsBroken: [],
+    addonPick: undefined,
     taskbarLayout: null,
     deskLayout: [],
     // The taskbar's programs, tray icons and keyboard (taskbar.rs).
@@ -283,8 +290,12 @@
     taskbarMaterial: world.material,
     ...(world.taskbarLayout ? { taskbarLayout: world.taskbarLayout } : {}),
     deskLayout: world.deskLayout,
-    // The plugins running as the settings say it (plugins.rs: plugins[id].on).
-    plugins: Object.fromEntries(world.plugins.filter(p => p.on).map(p => [p.id, { on: true }])),
+    // The plugins running as the settings say it (plugins.rs: plugins[id].on;
+    // other people's too, with their settings' values).
+    plugins: {
+      ...Object.fromEntries(world.plugins.filter(p => p.on).map(p => [p.id, { on: true }])),
+      ...Object.fromEntries((world.addons || []).map(a => [a.id, { ...Object.fromEntries((a.settings || []).filter(f => f.value != null).map(f => [f.key, f.value])), on: !!a.on }])),
+    },
     // The mail accounts as kept (mail.rs: changed only by its commands).
     mail: mailKept(),
     ...world.config,
@@ -295,21 +306,39 @@
   function pluginOn(id) {
     const c = config().plugins?.[id]
     if (typeof c?.on === 'boolean') return c.on
-    return !!world.plugins.find(p => p.id === id)?.on
+    return !!(world.plugins.find(p => p.id === id) || (world.addons || []).find(a => a.id === id))?.on
   }
   // The widgets as main sends them (widgets_view): each on as widgetsOff
   // says; a plugin's gone once it is off (plugins.rs stops it), and one
   // turned on that had none says what the fixtures have for it
-  // (Fixtures.SLEEPING: the picker's plugins, put somewhere).
+  // (Fixtures.SLEEPING: the picker's plugins, put somewhere); someone
+  // else's, while it runs, what Fixtures.ADDON_WIDGETS has for it.
   function widgetsNow() {
     const off = Array.isArray(config().widgetsOff) ? config().widgetsOff : []
-    const list = world.widgets.filter(w => !w.plugin || pluginOn(w.plugin)).map(w => ({ ...w, on: !off.includes(w.id) }))
+    const running = new Set(addonsNow().filter(a => a.state === 'running').map(a => a.id))
+    const isAddon = id => (world.addons || []).some(a => a.id === id)
+    const list = world.widgets.filter(w => !w.plugin || (isAddon(w.plugin) ? running.has(w.plugin) : pluginOn(w.plugin))).map(w => ({ ...w, on: !off.includes(w.id) }))
     const sleeping = window.Fixtures?.SLEEPING || {}
     for (const p of world.plugins) if (pluginOn(p.id) && !list.some(w => w.plugin === p.id) && sleeping[p.id]) list.push({ ...sleeping[p.id], on: !off.includes(sleeping[p.id].id) })
+    const theirs = window.Fixtures?.ADDON_WIDGETS || {}
+    for (const id of running) if (!list.some(w => w.plugin === id) && theirs[id]) list.push({ ...theirs[id], on: !off.includes(id) })
     return list
   }
   // The plugins as plugins.rs views them: on and running, or off.
   const pluginsNow = () => world.plugins.map(p => (pluginOn(p.id) ? { ...p, on: true, state: p.state === 'off' ? 'running' : p.state } : { ...p, on: false, state: 'off' }))
+  // Other people's as addons.rs views them: on as placed is (the settings'
+  // switch), each setting's value as kept, how it is (off; a required one
+  // empty: needs; stopped as the world has it; running).
+  function addonsNow() {
+    const conf = config().plugins || {}
+    return (world.addons || []).map(a => {
+      const on = pluginOn(a.id)
+      const settings = (a.settings || []).map(f => ({ ...f, value: conf[a.id]?.[f.key] ?? f.value ?? null }))
+      const missing = settings.find(f => f.required && String(f.value ?? f.default ?? '').trim() === '')?.key || null
+      const state = a.state === 'unsupported' ? 'unsupported' : !on ? 'off' : missing ? 'needs' : a.state === 'stopped' ? 'stopped' : 'running'
+      return { ...clone(a), on, state, missing, settings }
+    })
+  }
 
   const ISLAND_POS = ['left', 'center', 'right']
   const IDLE = { id: '', project: '', agent: 'claude', jump: false, mood: 'idle', detail: null, since: null, took: null, name: '', step: null, stepSince: null, todo: null, files: 0, reply: '', error: null }
@@ -395,9 +424,10 @@
       cpuSensors: { state: 'off' },
       lhmSetup: {},
       plugins: pluginsNow(),
-      // Third-party plugins installed (addons.rs view), none here yet.
-      addons: [],
-      addonsBroken: [],
+      // Other people's plugins installed (addons.rs view), and the folders
+      // there that did not install, each with why.
+      addons: addonsNow(),
+      addonsBroken: clone(world.addonsBroken || []),
       // The mail accounts with how each is going, the agents found, their
       // models, the talks about letters, Windows' proxy, the store's revision.
       mail: mailView(),
@@ -837,6 +867,61 @@
     })
   }
 
+  // --- Other people's plugins (addons.rs addon_manage) ---------------------------------
+  // Windows' dialog picks the world's .zip (addonPick), else each of the
+  // fixtures' in turn; a .zip looked at says what the fixtures have for it
+  // (Fixtures.ADDON_FILES: a plugin, or why not), the version it replaces
+  // as installed here; installed, it is in the world (from a file: not
+  // reviewed, not placed); taken away, out of the world, its widgets and
+  // its places; one stopped, running again.
+  let picks = 0
+  const DOWNLOADS = 'C:\\Users\\you\\Downloads\\'
+  const zipOf = path => String(path || '').split('\\').pop()
+  function zipSummary(path) {
+    const file = zipOf(path)
+    const got = window.Fixtures?.ADDON_FILES?.[file]
+    if (!got) return { ok: false, file, refused: { reason: 'zip', file: null, detail: 'not a zip' } }
+    if (got.refused) return { ok: false, file, refused: clone(got.refused) }
+    const before = (world.addons || []).find(a => a.id === got.id)
+    return { ok: true, file, id: got.id, name: got.name, version: got.version, author: got.author, kind: got.kind, perms: clone(got.perms), sensitive: !!got.sensitive, replaces: before ? before.version : null, api: got.api, supported: true, refused: null }
+  }
+  function addonManage(what, arg) {
+    if (what === 'pick') {
+      const files = Object.keys(window.Fixtures?.ADDON_FILES || {})
+      const name = world.addonPick === undefined ? files[picks++ % Math.max(1, files.length)] : world.addonPick
+      return { path: name ? DOWNLOADS + name : null }
+    }
+    if (what === 'inspect') return zipSummary(arg)
+    if (what === 'install') {
+      const s = zipSummary(arg)
+      if (!s.ok) return s
+      const got = clone(window.Fixtures.ADDON_FILES[s.file])
+      const before = (world.addons || []).find(a => a.id === got.id)
+      const next = before ? { ...got, on: before.on, settings: before.settings, source: 'file', reviewed: false } : { ...got, source: 'file', reviewed: false, on: false, state: 'off', installedAt: Date.now() }
+      world.addons = before ? world.addons.map(a => (a === before ? next : a)) : [...(world.addons || []), next]
+      tellMail()
+      return s
+    }
+    if (what === 'uninstall') {
+      const id = String(arg || '')
+      if (!(world.addons || []).some(a => a.id === id)) return { ok: false, error: `${id}: not installed` }
+      const mine = m => !!m && m.type === 'plugin' && m.of === id
+      world.addons = world.addons.filter(a => a.id !== id)
+      world.widgets = world.widgets.filter(w => w.plugin !== id)
+      world.deskLayout = world.deskLayout.filter(e => !mine(e)).map(e => (Array.isArray(e.items) ? { ...e, items: e.items.filter(m => !mine(m)) } : e))
+      if (world.taskbarLayout) world.taskbarLayout = Object.fromEntries(Object.entries(world.taskbarLayout).map(([k, run]) => [k, Array.isArray(run) ? run.filter(e => !mine(e)) : run]))
+      if (world.config.plugins) world.config = { ...world.config, plugins: Object.fromEntries(Object.entries(world.config.plugins).filter(([k]) => k !== id)) }
+      tellMail()
+      return { ok: true, snapshot: snapshot() }
+    }
+    if (what === 'revive') {
+      world.addons = (world.addons || []).map(a => (a.id === arg && a.state === 'stopped' ? { ...a, state: 'running', said: null } : a))
+      tellMail()
+      return snapshot()
+    }
+    return { ok: false, error: `${what}: inspect, install, uninstall, pick or revive` }
+  }
+
   // --- What the page asks ---------------------------------------------------------------
   const later = fn => setTimeout(fn, 0)
   const ANSWERS = {
@@ -862,8 +947,11 @@
       return new Promise(done => setTimeout(() => done({ ok: true, via, ms: 412 }), 300))
     },
     session_jump: () => true,
-    // Third-party plugins to run in the island's page (addons.js): none here.
+    // Other people's plugins to run in the island's page (addons.js): none
+    // here (no frame of theirs; what each says is the fixtures', widgetsNow).
     addons_running: () => [],
+    // The Plugins page's doings with them (addons.rs addon_manage).
+    addon_manage: ({ what, arg }) => addonManage(what, arg),
     pet_walk: () => false,
     pet_answer: ({ id }) => {
       const ok = answered(id)

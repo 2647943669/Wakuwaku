@@ -90,6 +90,10 @@ const HEADERS_NOT: [&str; 11] = ["host", "content-length", "connection", "transf
 
 // A plugin's storage, at most.
 const STORE_MAX: usize = 1 << 20;
+// A description's characters: shown in full up to so many, longer cut with
+// …; taken up to so many (docs/PLUGINS.md).
+const DESCRIPTION_SHOWN: usize = 60;
+const DESCRIPTION_MAX: usize = 500;
 // Widgets of one plugin, at most.
 const WIDGETS: usize = 8;
 
@@ -386,8 +390,10 @@ pub fn manifest_of(v: &Value) -> Result<Manifest, String> {
     let kind = m.get("kind").and_then(Value::as_str).and_then(Kind::of).ok_or("kind: plugin, pet or wallpaper")?;
     let name = Words::of(m.get("name"), 24).map_err(|e| format!("name: {e}"))?;
     let version = m.get("version").and_then(Value::as_str).filter(|v| is_version(v)).ok_or("version: x.y.z")?.to_string();
+    // A description longer than is shown is taken all the same, and cut
+    // where it is shown (view): only one past any sense is refused.
     let description = match m.get("description") {
-        Some(d) => Some(Words::of(Some(d), 60).map_err(|e| format!("description: {e}"))?),
+        Some(d) => Some(Words::of(Some(d), DESCRIPTION_MAX).map_err(|e| format!("description: {e}"))?),
         None => None,
     };
     let author = match m.get("author") {
@@ -1127,7 +1133,7 @@ pub fn view(sh: &Shared) -> Value {
                     Some(json!({
                         "id": id,
                         "name": m.name.get(lang),
-                        "description": m.description.as_ref().map_or("", |d| d.get(lang)),
+                        "description": m.description.as_ref().map_or(String::new(), |d| shown(d.get(lang), DESCRIPTION_SHOWN)),
                         "author": m.author,
                         "version": m.version,
                         "homepage": m.homepage,
@@ -1154,6 +1160,16 @@ pub fn view(sh: &Shared) -> Value {
                 .collect(),
         )
     })
+}
+
+// Words as they are shown: so many characters at most, longer cut with ….
+fn shown(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max - 1).collect();
+    out.push('…');
+    out
 }
 
 // The folders whose manifest will not do, each with why.
@@ -1863,18 +1879,19 @@ fn widget_id(id: &str, sub: Option<&str>) -> Result<String, String> {
 
 // A plugin's widget shown (waku.widget.set): as POST /widget takes one, its
 // label its name if none, its manifest's sizes, colour and icon where it
-// gives none; 8 at most.
+// gives none (its .svg by her scheme, for the pages to draw); 8 at most.
 fn widget(sh: &Shared, id: &str, sub: Option<&str>, data: &Value) -> Result<Value, String> {
     let wid = widget_id(id, sub)?;
     let mut data = data.as_object().cloned().ok_or("a widget: { label, value, detail, … }")?;
     let lang = sh.lang();
-    let (name, sizes, color, icon) = read(|r| {
+    let (name, sizes, color, icon, picture) = read(|r| {
         let m = r.manifest(id);
-        let icon = m.and_then(|m| match &m.icon {
-            Icon::Named(n) => Some(n.clone()),
-            _ => None,
-        });
-        (m.map(|m| m.name.get(lang).to_string()).unwrap_or_default(), m.map(|m| m.sizes.clone()).unwrap_or_default(), m.and_then(|m| m.color.clone()), icon)
+        let (icon, picture) = match m.map(|m| &m.icon) {
+            Some(Icon::Named(n)) => (Some(n.clone()), None),
+            Some(Icon::Svg(f)) => (None, Some(format!("{ORIGIN}/{id}/{f}"))),
+            _ => (None, None),
+        };
+        (m.map(|m| m.name.get(lang).to_string()).unwrap_or_default(), m.map(|m| m.sizes.clone()).unwrap_or_default(), m.and_then(|m| m.color.clone()), icon, picture)
     });
     for k in ["id", "ttl", "nudge", "remove"] {
         data.remove(k);
@@ -1899,7 +1916,7 @@ fn widget(sh: &Shared, id: &str, sub: Option<&str>, data: &Value) -> Result<Valu
         if widgets.view_of(&wid).is_none() && widgets.addons_of(|w| is_widget_of(id, w)) >= WIDGETS {
             return Err("8 widgets at most".into());
         }
-        widgets.put_addon(&wid, &Value::Object(data), &name, now_ms())?;
+        widgets.put_addon(&wid, &Value::Object(data), &name, picture, now_ms())?;
     }
     sh.redraw_widgets();
     Ok(json!({ "ok": true }))
@@ -2067,7 +2084,7 @@ mod tests {
             ("name", Box::new(|m| m["name"] = json!("一二三四五六七八九十一二三四五六七八九十一二三四五"))),
             ("name", Box::new(|m| m["name"] = json!({ "zh": "只有中文" }))),
             ("name", Box::new(|m| m["name"] = json!({ "en": "Rain", "fr": "Pluie" }))),
-            ("description", Box::new(|m| m["description"] = json!("x".repeat(61)))),
+            ("description", Box::new(|m| m["description"] = json!("x".repeat(DESCRIPTION_MAX + 1)))),
             ("version", Box::new(|m| m["version"] = json!("1.2"))),
             ("version", Box::new(|m| m["version"] = json!("1.2.x"))),
             ("author", Box::new(|m| m["author"] = json!("x".repeat(41)))),
@@ -2108,6 +2125,11 @@ mod tests {
             let got = with(f);
             assert!(got.as_ref().is_err_and(|e| e.starts_with(what)), "{what}: {got:?}");
         }
+        // A description longer than is shown: taken, and cut where shown.
+        let long = with(|m| m["description"] = json!("一".repeat(DESCRIPTION_SHOWN + 1))).unwrap();
+        let cut = shown(long.description.as_ref().unwrap().get("zh"), DESCRIPTION_SHOWN);
+        assert_eq!((cut.chars().count(), cut.ends_with('…')), (DESCRIPTION_SHOWN, true));
+        assert_eq!(shown("接下来几小时会不会下雨", DESCRIPTION_SHOWN), "接下来几小时会不会下雨");
         // A pack: no code, no settings.
         assert!(manifest_of(&json!({ "id": "cat", "kind": "pet", "name": "Cat", "version": "1.0.0", "api": 1 })).is_ok_and(|m| !m.runs()));
         assert!(manifest_of(&json!({ "id": "cat", "kind": "pet", "name": "Cat", "version": "1.0.0", "api": 1, "main": "main.js" })).is_err());

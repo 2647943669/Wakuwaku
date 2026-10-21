@@ -947,6 +947,15 @@
       ['seen', '看到为止'],
       ['custom', '自定义'],
     ],
+    // The .zip 从文件安装… picks (fake-tauri.js addonManage: world.addonPick;
+    // 轮流: each in turn).
+    addonPick: [
+      ['', '轮流'],
+      ['my-plugin.zip', '只联网'],
+      ['agent-board.zip', '要权限'],
+      ['cool-tool.zip', '带程序'],
+      ['hello-1.1.0.zip', '更新'],
+    ],
   }
   const QUICK_HOLDS = [8, 30, 120]
   const holdNow = () => Fake.config().hold
@@ -962,6 +971,7 @@
     islandPos: () => Fake.config().islandPos || 'center',
     endCue: () => world.config.endCue || 'ring',
     hold: holdChoice,
+    addonPick: () => world.addonPick || '',
   }
 
   // A setting changed here, as the settings page would: kept, the page
@@ -1029,6 +1039,7 @@
         pushAll()
       } else if (seg === 'edge') setEdge(v)
       else if (seg === 'endCue') setConfig({ endCue: v })
+      else if (seg === 'addonPick') world.addonPick = v || undefined
       else if (seg === 'islandPos') {
         world.config.islandPos = v
         moveHome()
@@ -1070,6 +1081,12 @@
     else if (act === 'fail') toIsland('pet:react', { react: 'failed', say: 'Bash 失败了' })
     else if (act === 'nudge') toIsland('pet:nudge', { id: 'weather', words: '一小时后有雨，记得带伞', label: 'Dresden · 阴', value: '11°', private: false, open: null })
     else if (act === 'version') toIsland('pet:nudge', { id: 'update', icon: 'star', words: '有新版本 0.3.3', label: '点一下看看', value: '', private: false, open: { tab: 'update' } })
+    else if (act === 'addons') {
+      // Other people's three (fixtures.js ADDONS), and a folder that did not install.
+      world.addons = clone(F.ADDONS)
+      world.addonsBroken = clone(F.ADDONS_BROKEN)
+      setConfig({})
+    }
     else if (act === 'reset') applyScene(current)
     const toggle = b.dataset.toggle
     if (toggle === 'quiet') {

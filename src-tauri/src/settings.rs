@@ -9,6 +9,8 @@ use tauri::{AppHandle, WebviewWindow};
 use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet, plugins, set_display, set_out, shared, Shared};
 
 const REPO: &str = "https://github.com/zhoupengjie/wakuwaku";
+// How to write a plugin (the Plugins page's 开发文档, under a .zip it cannot take).
+const PLUGIN_DOCS: &str = "https://github.com/zhoupengjie/wakuwaku/blob/main/docs/PLUGINS.md";
 
 // Each agent's own page, by its id (src/pet/agents.js), for the Agent page's
 // other supported tools: the only pages it may open.
@@ -1087,6 +1089,7 @@ pub async fn settings_open_site(app: AppHandle, place: String, account: Option<S
 fn site_url(place: &str, account: Option<&str>) -> String {
     let url = match place {
         "repo" => REPO,
+        "pluginDocs" => PLUGIN_DOCS,
         "agyCli" => "https://antigravity.google/docs/cli/install",
         "googleAppPasswords" => "https://myaccount.google.com/apppasswords",
         "google2sv" => "https://myaccount.google.com/signinoptions/two-step-verification",
@@ -1130,6 +1133,7 @@ mod tests {
         assert_eq!(site_url("googleAppPasswords", Some("a@b@gmail.com")), "https://myaccount.google.com/apppasswords");
         assert_eq!(site_url("googleAppPasswords", None), "https://myaccount.google.com/apppasswords");
         assert_eq!(site_url("yahooAppPasswords", Some("me@yahoo.com")), "https://login.yahoo.com/account/security");
+        assert_eq!(site_url("pluginDocs", None), super::PLUGIN_DOCS);
     }
 
     #[test]

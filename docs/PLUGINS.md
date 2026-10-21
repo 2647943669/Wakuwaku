@@ -35,7 +35,7 @@ rain-alert/
   "main": "main.js",
   "view": "view.html",
   "category": "info",
-  "widget": { "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "cloud" },
+  "widget": { "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "weather" },
   "settings": [
     { "key": "City", "type": "text", "required": true,
       "label": { "en": "City", "zh": "城市" }, "hint": { "en": "e.g. Dresden", "zh": "比如 Dresden" } },
@@ -49,9 +49,9 @@ rain-alert/
 
 | Field | Rule |
 |---|---|
-| `id` | `^[a-z][a-z0-9-]{1,39}$`, unique in the market. Built-in ids (`weather`, `stock`, `pomodoro`, `countdown`, `stretch`, `ci`, `devserver`, `monitor`, `today`, `tokens`, `mail…`, `waku`) are refused, and so are ids beginning as her own widgets' do (`stock-`, `ci-`, `prs-`, `inbox-`). |
+| `id` | `^[a-z][a-z0-9-]{1,39}$`, unique in the market. Built-in ids (`weather`, `stock`, `pomodoro`, `countdown`, `stretch`, `ci`, `devserver`, `monitor`, `today`, `tokens`, `waku`) are refused, and so is any id beginning with `mail` or as her own widgets' do (`stock-`, `ci-`, `prs-`, `inbox-`). |
 | `kind` | `plugin`. Packs use `pet` or `wallpaper` (see Packs). |
-| `name`, `description` | A string, or `{ "en": …, "zh": … }`. Name ≤ 24 characters, description ≤ 60. English is the fallback. |
+| `name`, `description` | A string, or `{ "en": …, "zh": … }`. English is the fallback. Name ≤ 24 characters. A description of ≤ 60 characters is shown in full; a longer one is cut with "…" where it is shown (the market's check warns about it), and one over 500 is refused. |
 | `version` | `x.y.z`. |
 | `author` | ≤ 40 characters. |
 | `api` | `1`. A plugin asking for a newer API waits for a newer Wakuwaku and says so on the Plugins page. |
@@ -60,7 +60,7 @@ rain-alert/
 | `category` | `system`, `productivity` or `info`: the widget library's 系统 / 效率 / 信息. |
 | `widget.sizes` | A subset of `s`, `m`, `l`. Default `["s", "m"]`. |
 | `widget.color` | `#rgb` or `#rrggbb`. Used only on the icon, progress and corner glow, as for built-in widgets. |
-| `widget.icon` | One of her built-in icon names (`examples/widgets/README.md`), or an `.svg` in the folder (single-colour, drawn in the text colour). Without one, the first letter of the name in a tinted square. |
+| `widget.icon` | One of her built-in icon names (`examples/widgets/README.md`), or an `.svg` in the folder: drawn in one colour as a mask (its shape alone; the text colour on the taskbar, the widget's colour where her widgets use theirs), as a picture, so nothing in it runs. The market's check refuses an SVG icon with scripts, `on…` attributes, `<foreignObject>`, entities (`<!ENTITY>`) or links to anything outside it. Without an icon, the first letter of the name in a tinted square. |
 | `settings` | Fields drawn on the Plugins page, values stored in her settings. `type` is `text`, `number`, `flag` or `choice` (with `options`, and optional `optionLabels: { option: {en, zh} }`). `key` matches `^[A-Za-z][A-Za-z0-9]{0,31}$` and is not `on` (her switch). A `required` field left empty keeps the plugin from running ("needs settings"). |
 | `permissions` | See below. Anything not asked for is not available. |
 
@@ -137,19 +137,19 @@ While nobody is about, while the desktop is covered, or while Windows has animat
 
 ## Packaging and installing
 
-- A plugin is a `.zip` of the folder: its files at the root, or in one top folder.
+- A plugin is a `.zip` of the folder: its files at the root, or in one top folder. A plain zip: entries stored or deflated; ZIP64 archives and encrypted entries are refused.
 - Allowed file types: `.js .mjs .json .html .htm .css .svg .png .jpg .jpeg .webp .gif .avif .woff .woff2 .ttf .otf .mp3 .ogg .wav .txt .md .wasm`. Anything else is refused, a file with no extension too (name it `LICENSE.txt`). What a Mac's or Windows' zipping adds (`__MACOSX/`, `.DS_Store`, `Thumbs.db`, `desktop.ini`) is left out.
 - Files are also checked by their first bytes, so a renamed program (`MZ`, ELF, Mach-O) is refused whatever its name.
-- Limits: plugins 5 MB zipped and 20 MB unpacked; packs 50 MB and 200 MB; 500 files at most.
-- From a file: Plugins page › 从文件安装… (Install from file…). The plugin is marked "not reviewed".
+- Limits: plugins 5 MB zipped and 20 MB unpacked; packs 50 MB and 200 MB; 500 files at most. A MB here is a MiB (1024 × 1024 bytes), as are the 1 MB of storage and of a fetch's body; the manifest's 64 KB is 64 × 1024 bytes.
+- From a file: Plugins page › 显示 › 从文件安装… (Install from file…), Windows' file dialog for the `.zip`. She asks before installing: the plugin is marked "not reviewed", and what it will do is listed. One with a program in it, or anything else she refuses, is not installed, and she says why. A plugin with the same `id` as one installed is its update: its settings and storage stay. Installed is not placed: it shows on the Plugins page as 没放 (not placed) and first in the widget library, marked 新 (new), until it is put somewhere.
 - From the market: Plugins page › 获取更多 (Get more). Market entries are reviewed.
 
 ## Packs
 
 A pack has no code. Its `manifest.json` has `kind` `pet` or `wallpaper`, with `id`, `name`, `description`, `version` and `author` as above, and no `main`, `view`, `settings` or `permissions`.
 
-- `pet`: the files of a pet as she reads them already (`pet.json`, `spritesheet.webp`). Installed into `wakuwaku-data\pets\<id>\` and chosen on the Look page.
-- `wallpaper`: images (`.jpg .jpeg .png .webp`). Installed into `wakuwaku-data\wallpapers\<id>\` and used from the Look page like a folder of wallpapers.
+- `pet`: the files of a pet as she reads them already: both `pet.json` and `spritesheet.webp` are required, at the pack's top level beside its `manifest.json`. Installed into `wakuwaku-data\pets\<id>\` and chosen on the Look page.
+- `wallpaper`: images (`.jpg .jpeg .png .webp`), at the pack's top level (pictures in sub-folders are not used). Installed into `wakuwaku-data\wallpapers\<id>\` and used from the Look page like a folder of wallpapers.
 
 ## The market
 

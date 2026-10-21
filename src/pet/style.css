@@ -914,6 +914,15 @@ body {
   font: normal 13px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
 }
 
+/* A third-party plugin's own picture (widgets.js maskHTML): in one colour,
+   the colour around it as her icons have, through the picture as a mask. */
+.wicon.wmask {
+  display: inline-block;
+  background: currentColor;
+  -webkit-mask: var(--mask) center / contain no-repeat;
+  mask: var(--mask) center / contain no-repeat;
+}
+
 /* A monitor reading (widgets.js cellHTML): Windows' own glyph and the
    number in one small cell, its ground filled from the left as far as the
    reading goes (--p), white or black as the taskbar's own icons are

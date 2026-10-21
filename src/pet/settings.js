@@ -11,7 +11,7 @@
 //             opened in place to its details; the others to get
 //   look      her home (island, taskbar), size, strolls, eyes; Windows' own
 //             mode and accent colour; her and the pets (downloaded, the gallery)
-//   widgets   plugins: the built-in ones, those she runs for you (how each is and where it is put, no switch: placed is on; their settings folded under), turns, nudges, waku, and how to write one
+//   widgets   plugins: the built-in ones, those she runs for you (how each is and where it is put, no switch: placed is on; their settings folded under), other people's (the same, and each its own page with what it may do and 卸载), turns, nudges, installing one from a file, waku, and how to write one
 //   mail      mail accounts, and setting one up as Thunderbird does: an address and a password, the server found or typed
 //
 // What they show comes from main as a snapshot, again whenever it changes;
@@ -32,6 +32,7 @@
   const Status = window.Status
   const Widgets = window.Widgets
   const Agents = window.Agents
+  const AddonUI = window.AddonUI
 
   // The island's colours (on black), the same as island.js.
   const COLOR = { idle: '#8e8e93', working: '#5e9bff', waiting: '#ffb340', done: '#34d27b', review: '#b18cff', error: '#ff5c6c' }
@@ -95,6 +96,18 @@
   // typed in them and not yet kept ("weather.City": "上海").
   let openPlugin = ''
   const drafts = {}
+  // Other people's plugins (addons.rs; addonui.js the logic): a part of the
+  // Plugins page opened in its place (sub: { page, id, back }: a plugin's
+  // own page now, the market's next), the confirm layer over the panel
+  // (installing from a file, by AddonUI.next's steps; taking one away:
+  // gone { id, busy }), Windows' dialog open for a .zip (its focus does not
+  // close them), and those installed while they are open (their rows
+  // edged in the accent until they close).
+  let sub = null
+  let flow = AddonUI.IDLE
+  let gone = null
+  let pickingZip = false
+  const freshRows = new Set()
   // Custom picked for how long endings stay, its box shown before anything
   // is typed in it (until the settings close or another choice is picked).
   let holdCustom = false
@@ -168,13 +181,19 @@
     <div class="s-tabs"><span class="ind"></span>${TABS.map(k => `<button data-tab="${k}"><span></span><i class="n" hidden></i></button>`).join('')}</div>
     <div class="s-ask"></div>
     <div class="s-body"></div>
-    <div class="s-foot"><span class="foot-text"></span><span class="grow"></span><span class="ver"></span></div>`
+    <div class="s-foot"><span class="foot-text"></span><span class="grow"></span><span class="ver"></span></div>
+    <div class="s-sheet" hidden></div>
+    <div class="s-toast" role="status" hidden></div>`
   const head = layer.querySelector('.s-head')
   const tabs = layer.querySelector('.s-tabs')
   tabs.style.setProperty('--tabs', TABS.length)
   const askSlot = layer.querySelector('.s-ask')
   const body = layer.querySelector('.s-body')
   const foot = layer.querySelector('.s-foot')
+  // A question over the whole panel (installing a plugin, taking one away),
+  // in place of a dialog of Windows'; a word for a few seconds at its foot.
+  const sheet = layer.querySelector('.s-sheet')
+  const toastEl = layer.querySelector('.s-toast')
 
   // The new markup, changed in place: only what differs is touched, so a
   // number that changed (a plugin's reading) does not redraw the page around
@@ -744,8 +763,9 @@
   }
 
   // The plugins page as rows, in the order the person put them in: the
-  // built-in ones, the plugins she runs (with what their widgets say), and
-  // the widgets of anyone else's scripts.
+  // built-in ones, the plugins she runs (with what their widgets say),
+  // other people's (addons.rs: plugins, not the packs of phase 4), and the
+  // widgets of anyone else's scripts.
   function widgetRows() {
     const rank = key => {
       const i = (snap.settings.widgetOrder || []).indexOf(key)
@@ -755,6 +775,7 @@
     const rows = [
       ...widgets.filter(w => w.builtIn).map(w => ({ key: w.id, widget: w })),
       ...(snap.plugins || []).map(p => ({ key: p.id, plugin: p, mine: widgets.filter(w => w.plugin === p.id) })),
+      ...addonsNow().map(a => ({ key: a.id, addon: a, mine: widgets.filter(w => w.plugin === a.id) })),
       ...widgets.filter(w => !w.builtIn && !w.plugin).map(w => ({ key: w.id, widget: w })),
     ]
     return rows.map((r, i) => ({ ...r, i })).sort((x, y) => rank(x.key) - rank(y.key) || x.i - y.i)
@@ -777,10 +798,11 @@
   }
 
   // Where one is put (island.js placeNow): its place in a quiet word, or,
-  // put nowhere, 添加小工具… (the picker, as her menu opens it).
+  // put nowhere, 添加小工具… (the picker, as her menu opens it, on its card:
+  // key, picker.js fromMenu focus).
   const placeOf = (item, on) => window.Island?.placeNow?.(item, on) || { at: on ? 'isle' : null }
-  function placeHTML(place) {
-    if (!place.at) return `<button class="pbtn sm" data-padd>${esc(T('pl.add'))}</button>`
+  function placeHTML(place, key = '') {
+    if (!place.at) return `<button class="pbtn sm" data-padd="${esc(key)}">${esc(T('pl.add'))}</button>`
     const where = esc(T(`pl.at.${place.at}`, { name: place.name || '' }))
     return `<span class="pl-at" title="${where}">${where}</span>`
   }
@@ -798,6 +820,194 @@
       return `<label class="fr"><span class="fl">${label}${f.required ? ' *' : ''}</span><input class="in" data-field="${esc(key)}" value="${esc(value)}" placeholder="${esc(T(`pl.${key}.hint`))}" spellcheck="false"${f.kind === 'number' ? ' inputmode="decimal"' : ''}></label>`
     })
     return `<div class="pf">${fields.join('')}</div>`
+  }
+
+  // --- Other people's plugins (addons.rs view; addonui.js) ---------------------------------
+  const addonsNow = () => (snap?.addons || []).filter(a => a.kind === 'plugin')
+  const addonById = id => addonsNow().find(a => a.id === id) || null
+  const addonField = (id, key) => (addonById(id)?.settings || []).find(f => f.key === key) || null
+  // Names in a row as her language says them (「a、b 和 c」).
+  const andList = names => nameList(lang, names, 'and')
+  // Its icon: its own picture (one colour, as hers are), one of hers, or
+  // the first letter of its name on its colour.
+  const addonIcon = a => (a.icon?.url ? Widgets.maskHTML(a.icon.url) : a.icon?.name && Widgets.hasIcon(a.icon.name) ? Widgets.icon(a.icon.name) : Widgets.markHTML(a.name, a.color))
+  const addonColor = (a, mine = []) => a.color || mine[0]?.color || (a.on ? '#5e9bff' : COLOR.idle)
+  // 未经审核, for one from a file (spec §3).
+  const unreviewedChip = a => (a.reviewed ? '' : ` <span class="chip warn">${esc(T('addons.unreviewed'))}</span>`)
+
+  // Its row, among hers (spec §3): its icon, its name (a press opens its
+  // page), 未经审核 for one from a file, what its widgets say now; under it
+  // how it is and who made it (addonui.js statusOf); at its end its
+  // settings' fold and where it is (or 添加小工具…), as hers have; one not
+  // responding, 重新启用 there instead. Installed while the panel is open:
+  // an accent edge at its left until it closes.
+  function addonRow(a, mine) {
+    const detailed = snap.settings.details !== false
+    const place = placeOf({ plugin: a.id }, a.on)
+    const says = mine
+      .map(w => Widgets.words(lang, w, detailed))
+      .map(({ label, value }) => [label !== a.name ? label : '', value].filter(Boolean).join(' '))
+      .filter(Boolean)
+      .join(' · ')
+    const note = AddonUI.statusOf(a, { placed: !!place.at, mine, T })
+    const open = openPlugin === a.id
+    const more = a.settings?.length ? `<button class="pbtn sm" data-pexp="${esc(a.id)}">${esc(T(open ? 'pl.fold' : 'pl.settings'))}</button>` : ''
+    const end = note.revive ? `<button class="pbtn sm" data-revive="${esc(a.id)}">${esc(T('addons.revive'))}</button>` : placeHTML(place, `plugin:${a.id}`)
+    const name = `<button class="nm" data-addon="${esc(a.id)}">${esc(a.name)}</button>`
+    return `<div class="r${freshRows.has(a.id) ? ' fresh' : ''}" data-part="widgets:${esc(a.id)}"><span class="wi" style="color:${esc(addonColor(a, mine))}">${addonIcon(a)}</span><div class="grow"><div class="ellip">${name}${unreviewedChip(a)}${says ? `<span class="d"> ${esc(says)}</span>` : ''}</div><div class="d ellip${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${end}</div>${open ? addonFields(a) : ''}`
+  }
+
+  // Its settings, drawn from its manifest's fields (addons.rs view: text,
+  // number, flag, choice with its options' own words), as hers are
+  // (pluginFields): each as set, else its default; what is being typed
+  // stays. A choice of more than a few: a list under a button, as the Mail
+  // page has (openChoices). Kept through the same patch (setPlugin).
+  function addonFields(a) {
+    const fields = (a.settings || []).map(f => {
+      const key = `${a.id}.${f.key}`
+      const label = esc(f.label || f.key)
+      const now = f.value ?? f.default
+      if (f.type === 'flag') return `<div class="fr"><span class="fl wide">${label}</span>${sw('af:' + key, now === true)}</div>`
+      if (f.type === 'choice') {
+        const options = (f.options || []).map((o, i) => [o, f.optionLabels?.[i] || o])
+        const current = options.some(([o]) => o === now) ? now : options[0]?.[0]
+        if (options.length <= 4) return `<div class="fr"><span class="fl">${label}</span><span class="grow"></span>${seg('ac:' + key, options, current)}</div>`
+        const shown = options.find(([o]) => o === current)?.[1] || ''
+        return `<div class="fr"><span class="fl">${label}</span><span class="grow"></span><button class="pick" data-achoice="${esc(key)}">${esc(shown)} ▾</button></div>`
+      }
+      const value = key in drafts ? drafts[key] : now == null ? '' : String(now)
+      return `<label class="fr"><span class="fl">${label}${f.required ? ' *' : ''}</span><input class="in" data-field="${esc(key)}" value="${esc(value)}" placeholder="${esc(f.hint || '')}" maxlength="300" spellcheck="false"${f.type === 'number' ? ' inputmode="decimal"' : ''}></label>`
+    })
+    return `<div class="pf">${fields.join('')}</div>`
+  }
+
+  // A part of the Plugins page in its place (sub): a crumb (插件 › 名字,
+  // its arrow back to where it came from), then the part. Each page by its
+  // name (the market's, phase 3, go here too); null: it is gone (a plugin
+  // taken away meanwhile), the page itself then.
+  const SUBS = { addon: s => addonById(s.id) && addonPage(addonById(s.id)) }
+  function crumbHTML(path) {
+    const last = path.length - 1
+    const parts = path.map((p, i) => (i === last ? `<b>${esc(p)}</b>` : esc(p))).join(' › ')
+    return `<div class="crumb"><button class="crumb-b" data-sub-back title="${esc(T('addons.back'))}" aria-label="${esc(T('addons.back'))}">&#xE76B;</button><span class="path ellip">${parts}</span></div>`
+  }
+  function openSub(next) {
+    sub = { ...next, back: sub }
+    draw(true)
+    relayout()
+  }
+  function backSub() {
+    sub = sub?.back || null
+    draw(true)
+    relayout()
+  }
+
+  // A plugin's own page (spec §3; the mockup's detail): its icon, name and
+  // 未经审核, who made it, its version and kind, and where it is (or
+  // 添加小工具…); what it says it is; what it may do, a line each, then what
+  // no plugin can; 卸载 (asked first, over the panel).
+  const PERM_GLYPH = { net: 'E774', agents: 'E756', hardware: 'E950', notify: 'EA8F', none: 'EA18' }
+  function addonPage(a) {
+    const mine = (snap.widgets || []).filter(w => w.plugin === a.id)
+    const place = placeOf({ plugin: a.id }, a.on)
+    const about = [AddonUI.byline(a), T(`picker.cat.${AddonUI.catOf(a)}`)].filter(Boolean).join(' · ')
+    const top = `<div class="ad-head"><span class="ad-tile" style="--c:${esc(addonColor(a, mine))}">${addonIcon(a)}</span><div class="grow"><div class="ad-name ellip">${esc(a.name)}${unreviewedChip(a)}</div><div class="d ellip">${esc(about)}</div></div>${placeHTML(place, `plugin:${a.id}`)}</div>`
+    const said = a.description ? `${sec(T('addons.about'))}<div class="grp"><div class="ad-text">${esc(a.description)}</div></div>` : ''
+    const perms = AddonUI.permLines(a.perms, T, andList)
+    const lines = (perms.length ? perms : [{ icon: 'none', text: T('addons.perm.none') }]).map(p => `<div class="r ad-perm"><span class="g">&#x${PERM_GLYPH[p.icon]};</span><div class="grow">${esc(p.text)}</div></div>`)
+    const cannot = `<div class="r ad-perm no"><span class="g">&#xE72E;</span><div class="grow">${esc(T('addons.cannotDo'))}</div></div>`
+    return `${crumbHTML([T('s.tabWidgets'), a.name])}${top}${said}${sec(T('addons.canDo'))}<div class="grp">${lines.join('')}${cannot}</div><div class="ad-foot"><button class="pbtn no" data-uninstall="${esc(a.id)}">${esc(T('addons.uninstall'))}</button></div>`
+  }
+
+  // The question over the panel (addonui.js layerOf, uninstallLayerOf): its
+  // title, the amber note, what it will do, its notes, a line to the
+  // developer docs, its buttons; nothing while none is asked.
+  function sheetHTML() {
+    const l = gone ? AddonUI.uninstallLayerOf(addonById(gone.id) || { id: gone.id }, T, gone.busy) : AddonUI.layerOf(flow, T, andList)
+    if (!l) return ''
+    const warn = l.warn ? `<div class="sh-warn">${l.warn.head ? `<b>${esc(l.warn.head)}</b>` : ''}${esc(l.warn.text)}</div>` : ''
+    const will = l.will.length ? `<div class="sh-will"><div class="d">${esc(l.willHead)}</div><ul>${l.will.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''
+    const notes = l.notes.map(n => `<div class="d">${esc(n)}</div>`).join('')
+    const line = l.line ? `<div class="d">${esc(l.line.text)} <span class="link" data-site="pluginDocs">${esc(l.line.docs)}</span></div>` : ''
+    const buttons = l.buttons.map(([what, label, kind]) => `<button class="pbtn${kind ? ` ${kind}` : ''}" data-sheet="${what}"${l.busy ? ' disabled' : ''}>${esc(label)}</button>`).join('')
+    return `<div class="sh sh-${l.kind}" role="alertdialog" aria-label="${esc(l.title)}"><div class="sh-q">${esc(l.title)}</div>${warn}${will}${notes}${line}<div class="sh-btns">${buttons}</div></div>`
+  }
+  function drawSheet() {
+    const html = isOpen ? sheetHTML() : ''
+    setHTML(sheet, html)
+    const was = sheet.hidden
+    sheet.hidden = !html
+    // Asked: the keyboard on 取消 (知道了 where that is its one button), so
+    // Enter does nothing rash, as the desktop's board asks.
+    if (was && html) requestAnimationFrame(() => sheet.querySelector('[data-sheet="cancel"]')?.focus({ preventScroll: true }))
+  }
+
+  // Installing from a file (spec §3), its steps (addonui.js next): Windows'
+  // dialog for a .zip, the .zip looked at, asked about (or why it cannot
+  // go in), installed; then a word, its row edged until the panel closes,
+  // 新 in the picker until it is put somewhere, the page at its row.
+  function flowStep(e) {
+    flow = AddonUI.next(flow, e)
+    drawSheet()
+  }
+  async function installFromFile() {
+    if (flow.step !== 'idle' || gone) return
+    flowStep({ type: 'pick' })
+    pickingZip = true
+    let path = null
+    try {
+      path = await window.pet.addons.pickZip()
+    } finally {
+      pickingZip = false
+    }
+    flowStep({ type: 'picked', path })
+    if (flow.step !== 'looking') return
+    const summary = await window.pet.addons.inspect(path).catch(() => null)
+    flowStep({ type: 'looked', path, summary })
+  }
+  async function installGo() {
+    if (flow.step !== 'ask') return
+    flowStep({ type: 'go' })
+    const result = await window.pet.addons.install(flow.path).catch(e => ({ ok: false, refused: { reason: 'write', file: null, detail: String(e?.message || e || '') } }))
+    flowStep({ type: 'installed', result })
+    const done = flow.done
+    if (!done) return
+    flow = AddonUI.IDLE
+    freshRows.add(done.id)
+    AddonUI.news.add(done.id)
+    sub = null
+    toast(T('addons.installed', { name: done.name }))
+    snap = await window.pet.settings.get()
+    draw()
+    relayout()
+    partToShow = `widgets:${done.id}`
+    showPart()
+  }
+  // Taken away, once asked (卸载 on its page): its page goes back to the list.
+  async function uninstallGo() {
+    if (!gone || gone.busy) return
+    const id = gone.id
+    gone = { id, busy: true }
+    drawSheet()
+    const got = await window.pet.addons.uninstall(id).catch(e => ({ ok: false, error: String(e?.message || e || '') }))
+    gone = null
+    if (got?.ok) {
+      if (got.snapshot) snap = got.snapshot
+      freshRows.delete(id)
+      AddonUI.news.placed(id)
+      if (sub?.page === 'addon' && sub.id === id) sub = null
+    } else if (got?.error) toast(got.error)
+    draw(true)
+    relayout()
+  }
+
+  // A word for a few seconds, at the panel's foot.
+  let toastTimer
+  function toast(text) {
+    clearTimeout(toastTimer)
+    toastEl.textContent = text
+    toastEl.hidden = false
+    toastTimer = setTimeout(() => (toastEl.hidden = true), 3600)
   }
 
   // The monitor's settings, folded out under it: pinned or not, how often it
@@ -1004,12 +1214,19 @@
   // from her capsule, its desktop copy stopped with it; placed is on now,
   // picker.js). Each says how it is and where it is put, or, put nowhere,
   // offers 添加小工具…; its settings folded under it. Then how they take
-  // turns, whether they may open the island, and how to write one.
+  // turns, whether they may open the island, installing one from a file,
+  // and how to write one. Other people's among hers (addonRow), a folder
+  // that did not install a quiet line under them; one's own page in place
+  // of all this while it is open (sub).
   function pageWidgets() {
+    const own = sub && SUBS[sub.page]?.(sub)
+    if (own) return own
+    sub = null
     const s = snap.settings
     const left = ms => (ms >= 60000 ? T('settings.minutes', { n: Math.round(ms / 60000) }) : T('settings.seconds', { n: Math.max(1, Math.round(ms / 1000)) }))
     const rows = widgetRows()
       .map(r => {
+        if (r.addon) return addonRow(r.addon, r.mine)
         if (r.plugin) {
           const p = r.plugin
           const place = placeOf({ plugin: p.id }, p.on)
@@ -1018,7 +1235,7 @@
           const color = (r.mine[0] && r.mine[0].color) || (p.on ? '#5e9bff' : COLOR.idle)
           const isOpen = openPlugin === p.id
           const more = p.params.length ? `<button class="pbtn sm" data-pexp="${esc(p.id)}">${esc(T(isOpen ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-          return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(color)}">${Widgets.icon(p.icon)}</span><div class="grow"><div class="ellip">${esc(T(`w.ex.${p.id}`))}<span class="d"> ${esc(says)}</span></div><div class="d${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${placeHTML(place)}</div>${isOpen ? pluginFields(p) : ''}`
+          return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(color)}">${Widgets.icon(p.icon)}</span><div class="grow"><div class="ellip">${esc(T(`w.ex.${p.id}`))}<span class="d"> ${esc(says)}</span></div><div class="d${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${placeHTML(place, `plugin:${p.id}`)}</div>${isOpen ? pluginFields(p) : ''}`
         }
         const w = r.widget
         const place = placeOf({ id: w.id }, w.on)
@@ -1031,15 +1248,18 @@
         const says = Widgets.partsOf(w) ? ` ${Widgets.partsHTML(w)}` : `<span class="d"> ${esc(value)}</span>`
         const isMonitor = w.id === 'monitor'
         const more = isMonitor ? `<button class="pbtn sm" data-pexp="monitor">${esc(T(openPlugin === 'monitor' ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-        return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(w.color || COLOR.idle)}">${Widgets.iconHTML(w, lang)}</span><div class="grow"><div class="ellip">${esc(label)}${says}</div><div class="d">${esc(state)}</div></div>${more}${placeHTML(place)}</div>${isMonitor && openPlugin === 'monitor' ? monitorFields() : ''}`
+        return `<div class="r" data-part="widgets:${esc(r.key)}"><span class="wi" style="color:${esc(w.color || COLOR.idle)}">${Widgets.iconHTML(w, lang)}</span><div class="grow"><div class="ellip">${esc(label)}${says}</div><div class="d">${esc(state)}</div></div>${more}${placeHTML(place, `widget:${w.id}`)}</div>${isMonitor && openPlugin === 'monitor' ? monitorFields() : ''}`
       })
       .join('')
     const spins = SPINS.map(n => [n, n ? T('settings.seconds', { n }) : T('w.spinOff')])
     const example = `Invoke-RestMethod -Method Post http://127.0.0.1:${snap.port}/widget -ContentType application/json -Body '{"id":"hello","label":"Hello","value":"42","icon":"star"}'`
-    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}</div>
+    const broken = (snap.addonsBroken || []).map(b => `<div class="note ad-broken ellip" title="${esc(b.reason || '')}">${esc(AddonUI.brokenLine(b, T))}</div>`).join('')
+    const fromFile = `<div class="r jumps" data-addon-file role="button" tabindex="0"><div class="grow"><div>${esc(T('addons.fromFile'))}</div><div class="d">${esc(T('addons.fromFileNote'))}</div></div><span class="chev">&#xE76C;</span></div>`
+    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}${broken}</div>
       ${sec(T('w.show'))}<div class="grp">
         ${row(esc(T('w.spin')), '', seg('widgetSpin', spins, s.widgetSpin ?? 8))}
         ${row(esc(T('w.nudge')), esc(T('w.nudgeNote')), sw('widgetNudge', s.widgetNudge !== false))}
+        ${fromFile}
       </div>
       ${sec(T('w.write'))}<div class="grp"><div class="note">${esc(T('w.writeNote'))}</div>
         <div class="r"><span class="cmd mono">${esc(example)}</span><button class="pbtn" data-copy="${esc(example)}">${esc(T('home.copy'))}</button></div>
@@ -2798,6 +3018,7 @@
     drawHead()
     drawTabs()
     drawBody(reset)
+    drawSheet()
     // Locked (the button by ✕), a click outside closes them no more.
     foot.querySelector('.foot-text').textContent = T(snap.settings.settingsPin ? 's.footLocked' : 's.foot')
     foot.querySelector('.ver').textContent = `v${snap.version}`
@@ -2893,9 +3114,16 @@
     // The welcome opened again only for this time: "not now" said since
     // (the island's 不用提醒), the next open shows it folded (the test session).
     welcomeOpen = false
-    // The Agent page opens again with its rows closed.
+    // The Agent page opens again with its rows closed; the Plugins page as
+    // itself, nothing asked over it, no row edged as new.
     agentOpen = ''
     othersOpen = false
+    sub = null
+    gone = null
+    if (flow.step === 'ask' || flow.step === 'refused') flow = AddonUI.IDLE
+    freshRows.clear()
+    drawSheet()
+    toastEl.hidden = true
     clearInterval(clockTimer)
     for (const timer of thumbTimers) clearTimeout(timer)
     thumbTimers = []
@@ -2910,6 +3138,7 @@
   function setTab(next) {
     if (next === tab || !TABS.includes(next)) return
     tab = next
+    sub = null
     draw(true)
     if (tab === 'look') loadGallery(false)
     relayout()
@@ -3011,6 +3240,22 @@
     const at = selector => e.target.closest(selector)
     // A click anywhere but on it closes the letter menu.
     if (!menuEl.hidden && !at('.mmenu')) closeMenu()
+    // The question over the panel (installing a plugin, taking one away):
+    // its buttons, its link to the developer docs; a press beside it is 取消.
+    if (!sheet.hidden && sheet.contains(e.target)) {
+      const site = at('[data-site]')
+      if (site) return window.pet.settings.openSite(site.dataset.site)
+      const b = at('[data-sheet]')
+      if (b?.disabled) return
+      const what = b ? b.dataset.sheet : at('.sh') ? '' : 'cancel'
+      if (what === 'go') return installGo()
+      if (what === 'uninstall') return uninstallGo()
+      if (what === 'cancel' && !(gone?.busy || flow.step === 'installing')) {
+        gone = null
+        flowStep({ type: 'cancel' })
+      }
+      return
+    }
     if (at('[data-lock]')) return patch(snap.settings.settingsPin ? { settingsPin: false, settingsTop: false } : { settingsPin: true })
     if (at('[data-top]')) return patch(snap.settings.settingsPin && snap.settings.settingsTop ? { settingsTop: false } : { settingsPin: true, settingsTop: true })
     if (at('[data-close]')) {
@@ -3057,11 +3302,17 @@
         const picked = Array.isArray(s.monitor?.[name]) ? s.monitor[name] : (view?.sensors || []).filter(x => x.on && !x.toggle).map(x => x.id)
         return patch({ monitor: { ...(s.monitor || {}), [name]: picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id].slice(-32) } })
       }
-      // A plugin's yes-or-no setting.
+      // A plugin's yes-or-no setting; someone else's (its manifest's flag:
+      // as set, else its default).
       if (key.startsWith('pf:')) {
         const [id, name] = key.slice(3).split('.')
         const p = (snap.plugins || []).find(x => x.id === id)
         return p && setPlugin(id, { [name]: !(p.params.find(f => f.name === name) || {}).value })
+      }
+      if (key.startsWith('af:')) {
+        const [id, name] = key.slice(3).split('.')
+        const f = addonField(id, name)
+        return f && setPlugin(id, { [name]: (f.value ?? f.default) !== true })
       }
       return patch({ [key]: !s[key] })
     }
@@ -3089,19 +3340,48 @@
     }
     // One put nowhere: 添加小工具…, the picker as her menu's opens it
     // (picker.js fromMenu: on the taskbar, editing it with the picker open;
-    // at the top, the picker alone); the settings make way.
-    if (at('[data-padd]')) {
+    // at the top, the picker alone), at its card; the settings make way.
+    const add = at('[data-padd]')
+    if (add) {
       close('picker')
-      return window.Picker?.fromMenu?.({ open: 'picker' })
+      return window.Picker?.fromMenu?.({ open: 'picker', focus: add.dataset.padd || '' })
+    }
+    // Someone else's plugin: its own page (its name), back from it; turned
+    // on again after it stopped responding; 卸载, asked first; one installed
+    // from a .zip (Windows' dialog, then asked); a choice of many, its list.
+    const addon = at('[data-addon]')
+    if (addon) return openSub({ page: 'addon', id: addon.dataset.addon })
+    if (at('[data-sub-back]')) return backSub()
+    const revive = at('[data-revive]')
+    if (revive && !revive.disabled) {
+      revive.disabled = true
+      return window.pet.addons.revive(revive.dataset.revive).then(got => {
+        if (got && typeof got === 'object' && got.settings) snap = got
+        draw()
+      })
+    }
+    const out = at('[data-uninstall]')
+    if (out) {
+      gone = { id: out.dataset.uninstall, busy: false }
+      return drawSheet()
+    }
+    if (at('[data-addon-file]')) return installFromFile()
+    const many = at('[data-achoice]')
+    if (many) {
+      const [id, name] = many.dataset.achoice.split('.')
+      const f = addonField(id, name)
+      if (!f) return
+      const choices = (f.options || []).map((o, i) => [o, f.optionLabels?.[i] || o])
+      return openChoices(many, choices, f.value ?? f.default ?? f.options?.[0], v => setPlugin(id, { [name]: v }), true)
     }
     const option = at('[data-seg] > span')
     if (option) {
       if (option.classList.contains('off')) return
       const key = option.parentElement.dataset.seg
       const raw = option.dataset.value
-      // A plugin's choice (pc:<plugin>.<param>), kept: the plugin started
-      // again with it (plugins.rs sync).
-      if (key.startsWith('pc:')) {
+      // A plugin's choice (pc:<plugin>.<param>; someone else's ac:), kept:
+      // the plugin started again with it (plugins.rs sync), or told it.
+      if (key.startsWith('pc:') || key.startsWith('ac:')) {
         const [id, name] = key.slice(3).split('.')
         return setPlugin(id, { [name]: raw })
       }
@@ -3771,6 +4051,14 @@
     const value = drafts[key].trim()
     delete drafts[key]
     const [id, name] = key.split('.')
+    // Someone else's (its manifest's field): a number kept as one, none as
+    // empty; one that is no number goes back to what it was.
+    const own = addonField(id, name)
+    if (own) {
+      const n = Number(value)
+      if (own.type === 'number' && value && !Number.isFinite(n)) return draw()
+      return setPlugin(id, { [name]: own.type === 'number' && value ? n : value })
+    }
     const field = ((snap.plugins || []).find(p => p.id === id)?.params || []).find(f => f.name === name)
     if (!field || (field.kind === 'number' && value && !(Number(value) > 0))) return draw()
     setPlugin(id, { [name]: value })
@@ -3826,8 +4114,23 @@
     if (e.key === 'Escape') {
       e.preventDefault()
       if (!menuEl.hidden) return closeMenu()
+      // The question over the panel first: 取消 (not while it works).
+      if (!sheet.hidden) {
+        if (!(gone?.busy || flow.step === 'installing')) {
+          gone = null
+          flowStep({ type: 'cancel' })
+        }
+        return
+      }
       return close('Esc')
     }
+    // A row that is a button (从文件安装…), by the keyboard as a press.
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-addon-file]')) {
+      e.preventDefault()
+      return e.target.click()
+    }
+    // Asked over the panel: its buttons alone (the pages under it stay).
+    if (!sheet.hidden) return
     if (e.target.matches?.('input, textarea')) {
       // Ctrl+Enter sends the letter being written.
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.dataset.w) {
@@ -3868,7 +4171,7 @@
   // picker (a letter's files, the desktop's picture: its own window takes
   // the focus).
   // Locked (the button by ✕), they stay.
-  window.pet.onBlur(() => !snap?.settings?.settingsPin && !picking && !pickingPaper && !lhmAsks() && (!window.pet.mac || Date.now() - openedAt > BLUR_GRACE_MS) && close('blur'))
+  window.pet.onBlur(() => !snap?.settings?.settingsPin && !picking && !pickingPaper && !pickingZip && !lhmAsks() && (!window.pet.mac || Date.now() - openedAt > BLUR_GRACE_MS) && close('blur'))
   layer.addEventListener('cancel', e => e.target.matches?.('[data-w-file]') && (picking = false), true)
   window.addEventListener('focus', () => setTimeout(() => (picking = false), 1000))
 

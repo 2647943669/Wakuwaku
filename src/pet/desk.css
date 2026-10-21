@@ -487,6 +487,16 @@ body {
   flex: none;
 }
 
+/* Its own drawn icon (or a plugin's own picture) there, as in its head. */
+.twoline .wsvg {
+  display: flex;
+}
+
+.twoline .wsvg .wicon {
+  width: 13px;
+  height: 13px;
+}
+
 .slines {
   margin-top: 10px;
   gap: 8px;
@@ -1480,6 +1490,25 @@ body.lw .sdots button.on {
     outline: 2px solid var(--w-amber);
     outline-offset: 2px;
   }
+}
+
+/* One of her drawn icons (widgets.js ICONS): its strokes in the colour
+   around it, as on the taskbar (style.css .wicon); a third-party plugin's
+   own picture (widgets.js maskHTML) in one colour the same way, through
+   the picture as a mask. */
+svg.wicon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wicon.wmask {
+  display: inline-block;
+  background: currentColor;
+  -webkit-mask: var(--mask) center / contain no-repeat;
+  mask: var(--mask) center / contain no-repeat;
 }
 
 /* One without an icon of its own (widgets.js markHTML): the first character

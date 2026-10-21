@@ -388,6 +388,32 @@
     ],
   }
   const NO_MONITOR_PART = { left: ['her'], center: ['start', 'apps'], right: ['tray', 'keys', 'quick', 'clock'] }
+
+  // Other people's three (fixtures.js ADDONS) among hers, as the Plugins
+  // page and the picker show them: 下雨提醒 at work on the desktop (medium,
+  // right of the everyday board), 数数 from a file and not placed, 天气雷达
+  // not responding (on: in her capsule); a folder that did not install.
+  const withAddons = F => ({
+    ...busy(F),
+    widgets: F.widgets('monitor', 'today', 'tokens', 'weather', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'inbox-a1', 'deploy'),
+    deskLayout: [...F.DESK.everyday, { id: 'wra', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [10, 0] } }],
+    addons: F.ADDONS,
+    addonsBroken: F.ADDONS_BROKEN,
+  })
+  // All three at work (天气雷达 too: its letter for an icon), for where their widgets go.
+  const addonsRunning = F => F.ADDONS.map(a => ({ ...a, on: true, state: 'running', said: null }))
+  const openPluginsPage = async (p, tab = 'widgets') => {
+    p.emit('island:settings', { tab })
+    // A row asked for: past the settings' last scroll to it (1.6 s), as it stays.
+    await p.wait(tab === 'widgets' ? 600 : 1800)
+  }
+  // 从文件安装…, Windows' dialog picking the world's .zip (fake-tauri.js addonManage).
+  const installFromFile = async p => {
+    await openPluginsPage(p)
+    p.click('#island-settings [data-addon-file]')
+    await p.wait(400)
+  }
+  const addonShot = (id, title, steps, more = {}, shot = {}) => ({ id, section: 'settings', title: `设置 · 插件 · ${title}`, page: 'island', home: 'taskbar', view: [0, above(660), 560, 660], world: F => ({ ...withAddons(F), ...more }), steps, ...shot })
   const WHOLE = [0, 0, SCREEN[0], SCREEN[1]]
   const STRIP_VIEW = [0, above(88), SCREEN[0], 88]
   const CLOSED = [0, above(80), 440, 80]
@@ -720,6 +746,44 @@
         await p.wait(1800)
       },
     },
+    // Other people's plugins on the Plugins page (docs/design/specs/plugins.md
+    // §3): their rows among hers, 从文件安装… under 显示; a plugin's own page
+    // (from the market; from a file, not reviewed); installing from a file
+    // (asked, with what it will do; an update; a program inside; done: the
+    // word, its row edged); 卸载 asked first.
+    addonShot('settings-plugins-addons', '别人写的：运行中、未经审核没放、无响应已停用，没装上的文件夹', p => openPluginsPage(p, 'widgets:rain-alert')),
+    addonShot('settings-plugins-addon-detail', '下雨提醒的详情（市场的）：它能做的、卸载', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-addon="rain-alert"]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-addon-detail-file', '数数的详情（从文件装的，未经审核）', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-addon="hello"]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-uninstall-confirm', '卸载先问一句', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-addon="hello"]')
+      await p.wait(300)
+      p.click('#island-settings [data-uninstall]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-install-confirm', '从文件安装：要权限的，先问', installFromFile, { addonPick: 'agent-board.zip' }),
+    addonShot('settings-plugins-install-update', '从文件安装：同一个插件的新版，替换旧版', installFromFile, { addonPick: 'hello-1.1.0.zip' }),
+    addonShot('settings-plugins-install-refused', '从文件安装：包里有程序，装不了', installFromFile, { addonPick: 'cool-tool.zip' }),
+    addonShot(
+      'settings-plugins-installed',
+      '从文件安装：装好了，提示和标出来的那一行',
+      async p => {
+        await installFromFile(p)
+        p.click('#island-settings [data-sheet="go"]')
+        // Past the scroll to its row (1.6 s).
+        await p.wait(1900)
+      },
+      { addonPick: 'my-plugin.zip' },
+      { budget: 5000 },
+    ),
 
     // General's 提醒: 她有事告诉你时, and just under it 停留多久, its note for
     // the cue chosen (zhoupengjie/Wakuwaku#59, #65): a ring, Custom's 45 s
@@ -898,6 +962,82 @@
         p.click('.tw-stack')
         await p.wait(500)
       },
+    },
+    // Other people's plugins where widgets go, drawn by her cards from what
+    // they say (spec §4): in the picker (数数 just installed: first, 新), on
+    // the taskbar (medium and small, by her icon, their own picture and a
+    // letter), in the open island, on the desktop.
+    {
+      id: 'add-widgets-addon',
+      section: 'widgets',
+      title: '小工具库：别人写的插件在各自的类别里，刚装的「数数」排最前、标「新」',
+      page: 'screen',
+      view: WHOLE,
+      budget: 4000,
+      settle: 700,
+      world: F => ({ ...withAddons(F), sessions: [F.session('working')], taskbarLayout: { left: ['her'], center: ['start', 'apps'], right: [{ id: 'wtw', type: 'plugin', of: 'weather', size: 'M', icon: 'weather' }, 'monitor', 'tray', 'keys', 'quick', 'clock'] } }),
+      steps: async p => {
+        window.AddonUI?.news.add('hello')
+        await p.wait(200)
+        p.emit('taskbar:edit', { picker: true })
+        await p.wait(600)
+      },
+    },
+    {
+      id: 'widgets-addons-taskbar',
+      section: 'widgets',
+      title: '任务栏上别人写的插件：下雨提醒（中，她的图标）、数数（小，它自己的图）、天气雷达（中，首字）',
+      page: 'island',
+      home: 'taskbar',
+      view: [760, above(88), 840, 88],
+      world: F => ({
+        ...home(F),
+        addons: addonsRunning(F),
+        sessions: [F.session('working')],
+        taskbarLayout: {
+          left: ['her'],
+          center: ['start', 'apps'],
+          right: [
+            { id: 'wra', type: 'plugin', of: 'rain-alert', size: 'M', name: '下雨提醒', icon: 'weather' },
+            { id: 'wrh', type: 'plugin', of: 'hello', size: 'S', name: '数数' },
+            { id: 'wrr', type: 'plugin', of: 'weather-radar', size: 'M', name: '天气雷达' },
+            'tray',
+            'keys',
+            'quick',
+            'clock',
+          ],
+        },
+      }),
+    },
+    {
+      id: 'widgets-addons-capsule',
+      section: 'widgets',
+      title: '展开的胶囊里别人写的插件，一行一个',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(420), 520, 420],
+      world: F => ({ ...home(F), widgets: F.widgets('weather'), addons: addonsRunning(F), sessions: [F.session('working')] }),
+      steps: openIsland,
+    },
+    {
+      id: 'widgets-addons-desk',
+      section: 'widgets',
+      title: '桌面上别人写的插件：中和小，她的图标、它自己的图、首字',
+      page: 'desk',
+      view: [0, 0, 1100, 420],
+      budget: 4000,
+      world: F => ({
+        widgets: [],
+        addons: addonsRunning(F),
+        deskLayout: [
+          { id: 'wa1', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 0] } },
+          { id: 'wa2', type: 'plugin', of: 'hello', size: 'm', name: '数数', d: 'd1', at: { d1: [4, 0] } },
+          { id: 'wa3', type: 'plugin', of: 'weather-radar', size: 'm', name: '天气雷达', d: 'd1', at: { d1: [8, 0] } },
+          { id: 'wa4', type: 'plugin', of: 'rain-alert', size: 's', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 2] } },
+          { id: 'wa5', type: 'plugin', of: 'hello', size: 's', name: '数数', d: 'd1', at: { d1: [2, 2] } },
+          { id: 'wa6', type: 'plugin', of: 'weather-radar', size: 's', name: '天气雷达', d: 'd1', at: { d1: [4, 2] } },
+        ],
+      }),
     },
 
     // --- The desktop -------------------------------------------------------------------------
