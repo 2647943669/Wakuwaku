@@ -25,6 +25,7 @@
 - 大小：插件打包后 ≤ 5 MB、解开 ≤ 20 MB；资源包 ≤ 50 MB、解开 ≤ 200 MB；最多 500 个文件。
 - 联网只能访问 `permissions.net` 里写的网站：完整域名或 `*.域名`，不写端口，不能是 IP、`localhost` 或局域网。
 - `id` 不能和 Wakuwaku 内置的重名。
+- 小工具可以在 `widget.sample` 里写一份示例数据（`POST /widget` 的格式），市场的详情页用它画出卡片；资源包可以在最外层带一张 64 KB 以内的 `preview.webp`（或 `.png`、`.jpg`），详情页显示它。都不是必须的。
 
 ## 审核
 
@@ -59,6 +60,7 @@ The whole format and its rules are in the Wakuwaku repository's [docs/PLUGINS.md
 - Size: a plugin 5 MB zipped and 20 MB unpacked; a pack 50 MB and 200 MB; 500 files at most.
 - The web only to the hosts in `permissions.net`: full names or `*.domain`, no port, no IP address, no `localhost` or local network.
 - An `id` none of Wakuwaku's own.
+- A widget may give example data in `widget.sample` (the `POST /widget` format): the market's page draws its cards from it. A pack may carry a `preview.webp` (or `.png`, `.jpg`) of 64 KB or less at its top: the market's page shows it. Neither is needed.
 
 ## Review
 

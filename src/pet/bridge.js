@@ -256,6 +256,18 @@
       pickZip: () => invoke('addon_manage', { what: 'pick', arg: null }).then(r => r?.path ?? null, () => null),
       revive: id => invoke('addon_manage', { what: 'revive', arg: String(id) }),
     },
+    // The plugin market (market.rs): its index ({ items, at, from, error },
+    // read again when asked or an hour old), one got from it (answered once
+    // it is in, or why not: { ok, error }), every update there is, a
+    // download called off; how a download goes as it goes ({ id, got,
+    // total, stage }).
+    onMarket: on('market:progress'),
+    market: {
+      index: force => invoke('market', { what: 'index', arg: force ? 'force' : null }),
+      install: id => invoke('market', { what: 'install', arg: String(id) }),
+      updateAll: () => invoke('market', { what: 'updateAll', arg: null }),
+      cancel: id => invoke('market', { what: 'cancel', arg: String(id) }),
+    },
     settings: {
       get: () => invoke('settings_get'),
       set: patch => invoke('settings_set', { patch }),

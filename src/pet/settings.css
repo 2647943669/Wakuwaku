@@ -3001,6 +3001,137 @@
   display: none;
 }
 
+/* --- The plugin market (settings.js marketPage, marketItemPage) ---------------------------- */
+
+/* 获取更多 ›, at the Plugins page's top: a row of its own, a shop's glyph on the accent's tint. */
+#island-settings .r.mk-entry {
+  padding: 12px 14px;
+}
+
+#island-settings .mk-big {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(94, 155, 255, 0.14);
+  color: #5e9bff;
+  font: normal 16px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+}
+
+.tb-light #island-settings .mk-big {
+  background: rgba(0, 95, 184, 0.1);
+  color: #005fb8;
+}
+
+#island-settings .mk-entry .t {
+  font-weight: 600;
+}
+
+/* Updates waiting for the person, under it: 「N 个插件有更新 · 全部更新」. */
+#island-settings .mk-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 14px;
+  background: rgba(94, 155, 255, 0.14);
+}
+
+.tb-light #island-settings .mk-banner {
+  background: rgba(0, 95, 184, 0.08);
+}
+
+/* The search and the categories over its list. */
+#island-settings .mk-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+/* A download under way where its button was: a pill filling as it comes. */
+#island-settings .mk-prog {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 56px;
+  height: 24px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(94, 155, 255, 0.45) var(--p, 0%), var(--g2) var(--p, 0%));
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-light #island-settings .mk-prog {
+  background: linear-gradient(90deg, rgba(0, 95, 184, 0.25) var(--p, 0%), var(--g2) var(--p, 0%));
+}
+
+/* 已审核: green, as what is fine is. */
+#island-settings .chip.mk-ok {
+  margin-left: 6px;
+  background: rgba(52, 210, 123, 0.14);
+  color: #34d27b;
+  vertical-align: 1px;
+}
+
+.tb-light #island-settings .chip.mk-ok {
+  background: rgba(15, 123, 63, 0.1);
+  color: #0f7b3f;
+}
+
+/* Not open yet: said plainly, not as an error. */
+#island-settings .mk-closed {
+  padding: 18px 16px;
+  text-align: center;
+}
+
+#island-settings .mk-closed-t {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#island-settings .mk-bad {
+  overflow-wrap: anywhere;
+}
+
+#island-settings .note.mk-foot {
+  padding: 10px 8px 2px;
+}
+
+#island-settings .note.mk-cap {
+  padding: 0 8px 4px;
+}
+
+/* Its cards as the desktop draws them (wdesk.js, desk.css in their own shadow), side by side as
+   room allows, a little smaller than on the desktop; and a pack's picture. */
+#island-settings .mk-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 8px 12px;
+  zoom: 0.85;
+}
+
+#island-settings .mk-preview {
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--g1);
+  line-height: 0;
+}
+
+#island-settings .mk-preview img {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #island-settings .sh {
     animation: s-fade 0.14s ease-out;

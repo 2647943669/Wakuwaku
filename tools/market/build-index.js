@@ -19,15 +19,19 @@
 //   { "format": 1, "generated": "<ISO time>", "items": [ { "id", "kind",
 //     "name", "description", "author", "homepage", "version", "api",
 //     "category", "sizes", "color", "view", "permissions", "file", "size",
-//     "sha256", "icon", "updated" } ] }
+//     "sha256", "icon", "glyph", "sample", "preview", "updated" } ] }
 // items by kind (plugin, pet, wallpaper), then id. `name` and `description`
 // as the manifest has them (a string, or { en, zh }); `homepage`, `api`,
 // `category`, `sizes` and `color` null where the package has none (a pack
 // has none of the last four); `view` true for a plugin with a view.html;
 // `permissions` only what it asks for ({ net: [...], agents: true, ... },
 // {} for none); `file` relative to index.json; `icon` the widget's .svg icon
-// (widget.icon) of 8 KB or less as a data: URI, else null; `updated` the day (UTC) that version was
-// first built.
+// (widget.icon) of 8 KB or less as a data: URI, else null; `glyph` the name
+// of her own icon when widget.icon is one, else null; `sample` the
+// manifest's widget.sample (what its widget would say, for the market to
+// draw its cards), else null; `preview` a pack's preview.webp|png|jpg of
+// 64 KB or less as a data: URI, else null; `updated` the day (UTC) that
+// version was first built.
 const fs = require('node:fs')
 const path = require('node:path')
 const pkg = require('./package')
@@ -57,6 +61,9 @@ function itemOf(r, file, zip, updated) {
     size: zip.length,
     sha256: pkg.sha256(zip),
     icon: plugin ? pkg.iconOf(r) : null,
+    glyph: pkg.glyphOf(r),
+    sample: pkg.sampleOf(r),
+    preview: pkg.previewOf(r),
     updated,
   }
 }

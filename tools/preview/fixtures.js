@@ -403,6 +403,103 @@
     'hello-1.1.0.zip': { ...ADDONS[1], version: '1.1.0', installedAt: T0 },
   }
 
+  // --- The plugin market (market.rs index, as the page gets it) -------------------------
+  // The mockup's examples: four widgets (下雨提醒 and Agent 排行 from
+  // examples/plugins, 汇率, GitHub 通知 with an .svg of its own), two pets
+  // and a wallpaper pack, each with what its widget would say (sample) or a
+  // picture (preview, drawn here; a placeholder for node).
+  function preview(kind, colors) {
+    if (!canDraw) return NO_ICON
+    const c = document.createElement('canvas')
+    c.width = 480
+    c.height = 200
+    const g = c.getContext('2d')
+    const sky = g.createLinearGradient(0, 0, 480, 200)
+    colors.forEach((color, i) => sky.addColorStop(i / (colors.length - 1), color))
+    g.fillStyle = sky
+    g.fillRect(0, 0, 480, 200)
+    if (kind === 'aurora') {
+      // Bands of light over a dark sky, and the hills under them.
+      for (let i = 0; i < 3; i++) {
+        g.strokeStyle = `rgba(${[120, 255, 200][i]}, 255, ${[200, 160, 255][i]}, 0.35)`
+        g.lineWidth = 26 - i * 6
+        g.beginPath()
+        for (let x = 0; x <= 480; x += 20) g.lineTo(x, 70 + i * 22 + 18 * Math.sin(x / 60 + i))
+        g.stroke()
+      }
+      g.fillStyle = '#0b1420'
+      g.beginPath()
+      g.moveTo(0, 200)
+      for (let x = 0; x <= 480; x += 40) g.lineTo(x, 165 + 14 * Math.sin(x / 70))
+      g.lineTo(480, 200)
+      g.fill()
+      return c.toDataURL('image/jpeg', 0.8)
+    }
+    // A pet: three of its frames side by side, a round face with ears.
+    for (let i = 0; i < 3; i++) {
+      const x = 100 + i * 140
+      g.fillStyle = kind === 'pixel' ? '#f4f1ea' : '#f2b46f'
+      if (kind === 'pixel') {
+        for (let px = -4; px < 4; px++) for (let py = -4; py < 4; py++) if (px * px + py * py < 15) g.fillRect(x + px * 10, 100 + py * 10, 10, 10)
+        g.fillRect(x - 40, 50, 10, 20)
+        g.fillRect(x + 30, 50, 10, 20)
+      } else {
+        g.beginPath()
+        g.arc(x, 105 - (i === 1 ? 8 : 0), 42, 0, Math.PI * 2)
+        g.fill()
+        g.beginPath()
+        g.moveTo(x - 38, 80)
+        g.lineTo(x - 26, 40)
+        g.lineTo(x - 10, 70)
+        g.moveTo(x + 38, 80)
+        g.lineTo(x + 26, 40)
+        g.lineTo(x + 10, 70)
+        g.fill()
+      }
+      g.fillStyle = '#2b2018'
+      g.fillRect(x - 16, 95, 6, 6)
+      g.fillRect(x + 10, 95, 6, 6)
+    }
+    return c.toDataURL('image/png')
+  }
+  const INBOX = `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M4 13l2.5-7h11L20 13v5H4z'/><path d='M4 13h4.5l1 2h5l1-2H20'/></svg>") : ''}`
+  const item = (id, kind, more) => ({
+    id, kind, description: null, author: '', homepage: null, version: '1.0.0', api: 1, supported: true, category: 'info', sizes: ['s', 'm'], color: null, view: false,
+    perms: { net: [], agents: false, hardware: false, notify: false }, sensitive: false, size: 48 * 1024, icon: null, glyph: null, sample: null, preview: null, updated: '2026-10-21', ...more,
+  })
+  const MARKET = [
+    item('agent-board', 'plugin', {
+      name: { en: 'Agent board', zh: 'Agent 排行' }, description: { en: 'Which project kept your agents busiest today', zh: '今天哪个项目让 agent 干得最多' }, author: 'mika', version: '0.9.1', category: 'productivity', sizes: ['s', 'm', 'l'], color: '#f08a62', view: true, glyph: 'chart', size: 210 * 1024,
+      perms: { net: [], agents: true, hardware: false, notify: false }, sensitive: true,
+      sample: { label: 'pet', value: '96 分钟', detail: { extra: '4 个项目 · 共 211 分钟', series: { points: [96, 58, 41, 16], unit: 'min' }, rows: [{ name: 'pet', value: '96 分钟' }, { name: 'agent-hub', value: '58 分钟' }, { name: 'md-editor', value: '41 分钟' }, { name: 'dotfiles', value: '16 分钟' }] } },
+    }),
+    item('fx', 'plugin', {
+      name: { en: 'Exchange rates', zh: '汇率' }, description: { en: 'A few currencies and their week', zh: '几种货币的汇率和一周曲线' }, author: 'wen', version: '1.4.0', color: '#ffd36b', glyph: 'coin', size: 36 * 1024,
+      perms: { net: ['api.frankfurter.app'], agents: false, hardware: false, notify: false },
+      sample: { label: 'EUR/CNY', value: '7.81', detail: { extra: '+0.4% · 一周', series: { points: [7.72, 7.74, 7.73, 7.77, 7.79, 7.78, 7.81] } } },
+    }),
+    item('gh-notify', 'plugin', {
+      name: { en: 'GitHub notifications', zh: 'GitHub 通知' }, description: { en: 'Unread notifications; review requests nudge you', zh: '未读通知数，新的 review 请求提醒你' }, author: 'tomoko', version: '2.0.3', category: 'productivity', color: '#b99bff', icon: INBOX, size: 64 * 1024,
+      perms: { net: ['api.github.com'], agents: false, hardware: false, notify: true }, sensitive: true,
+      sample: { label: 'GitHub', value: '12', detail: { extra: '2 个 review 请求', rows: [{ name: 'wakuwaku', subject: '请你 review：#73 市场', value: '' }, { name: 'agent-hub', subject: 'CI 通过：v0.1.1' }] } },
+    }),
+    item('rain-alert', 'plugin', {
+      name: { en: 'Rain alert', zh: '下雨提醒' }, description: { en: 'Will it rain in the next hours, and when', zh: '接下来几小时会不会下雨，几点开始' }, author: 'lin', version: '1.2.0', homepage: 'https://github.com/lin/rain-alert', color: '#8cc8ff', glyph: 'weather', size: 48 * 1024,
+      perms: { net: ['api.open-meteo.com', 'geocoding-api.open-meteo.com'], agents: false, hardware: false, notify: true }, sensitive: true,
+      sample: { label: 'Dresden', value: '70%', detail: { extra: '17:00 起有雨', series: { points: [10, 15, 30, 55, 70, 62], unit: '%', hi: 100, lo: 0 } } },
+    }),
+    item('pet-pixelcat', 'pet', { name: { en: 'Pixel cat', zh: '像素猫' }, description: { en: 'A 16-bit kitten', zh: '16 位像素风的小猫' }, author: 'neko', version: '1.1.0', size: 2.1 * 1048576, preview: preview('pixel', ['#7fb3a4', '#2f7563']) }),
+    item('pet-shiba', 'pet', { name: { en: 'Shiba Hachi', zh: '柴犬小八' }, description: { en: 'A shiba that wags, nine moves', zh: '一只会摇尾巴的柴犬，9 种动作' }, author: 'kai', version: '1.0.0', size: 3.2 * 1048576, preview: preview('shiba', ['#ffd9a8', '#e8a25c']) }),
+    item('wall-aurora', 'wallpaper', { name: { en: 'Aurora', zh: '极光' }, description: { en: 'Six aurora wallpapers, 4K', zh: '6 张极光壁纸，4K' }, author: 'sora', version: '1.0.0', size: 18 * 1048576, preview: preview('aurora', ['#081a2e', '#12324a', '#1f8a6c']) }),
+  ]
+  // Updates waiting for the person (the snapshot's marketUpdates): 下雨提醒
+  // asking for one more host, 天气雷达 asking for nothing new (shown as
+  // waiting with auto-update off).
+  const MARKET_UPDATES = [
+    { id: 'rain-alert', name: '下雨提醒', from: '1.2.0', to: '1.3.0', newPerms: ['net:api.rainviewer.com'] },
+    { id: 'weather-radar', name: '天气雷达', from: '0.3.0', to: '0.3.1', newPerms: [] },
+  ]
+
   // --- The taskbar ------------------------------------------------------------------------
   let apps = 0
   const app = (name, color, letter, titles, opts = {}) => {
@@ -546,7 +643,7 @@
     },
   }
 
-  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDON_VIEWS, ADDON_BOARD, ADDONS_BROKEN, ADDON_FILES, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
+  const api = { T0, appIcon, trayIcon, session, others, reading, ASK, dsh, DSH_ASK, DSH_QUESTION, MAIL, inboxWidget, WIDGETS, widget, widgets, PLUGINS, SLEEPING, ADDONS, ADDON_WIDGETS, ADDON_VIEWS, ADDON_BOARD, ADDONS_BROKEN, ADDON_FILES, MARKET, MARKET_UPDATES, WINDOWS, TRAY, KEYS, DESK, TASKBAR, BOARD_SETS }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else root.Fixtures = api
 })(typeof window !== 'undefined' ? window : globalThis)

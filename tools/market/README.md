@@ -5,7 +5,7 @@ The market is a public repository of packages (plugins, pet packs, wallpaper pac
 | File | What it does |
 |---|---|
 | `package.js` | Reads a package from its folder or its `.zip` and checks it by `docs/PLUGINS.md`'s rules: the manifest, file types by kind, programs by their first bytes (MZ/PE, ELF, Mach-O 32/64/fat, whatever the name), names that would land outside (`..`, absolute, drives, devices), one top folder taken away, sizes and file counts by kind, reserved ids, `net` hosts. Also writes the zip the market publishes, the same bytes for the same files. |
-| `check.js` | `node tools/market/check.js <folder\|zip>... [--market] [--against <folder>] [--json]`: a report per package in Chinese and English. Exit code 1 on any error; warnings (no icon, a description over 60 characters, a `view` without `m` or `l` in `widget.sizes`, bytes that do not look like their type…) do not fail it. `--market`: the folder is named after its id. `--against`: the market's packages as on `main`; a package that changed must raise its version. |
+| `check.js` | `node tools/market/check.js <folder\|zip>... [--market] [--against <folder>] [--json]`: a report per package in Chinese and English. Exit code 1 on any error; warnings (no icon, a description over 60 characters, a `view` without `m` or `l` in `widget.sizes`, what `widget.sample` has that she would drop or cut, a pack's preview over 64 KB, bytes that do not look like their type…) do not fail it, and it says when the market's page will draw no cards (no `widget.sample`) or no picture (no `preview.*`). `--market`: the folder is named after its id. `--against`: the market's packages as on `main`; a package that changed must raise its version. |
 | `build-index.js` | `node tools/market/build-index.js --packages <dir> --out <dir> [--previous <index.json>] [--changed <file>]`: checks every `<dir>/<id>/`, and only when all pass writes `<out>/<id>-<version>.zip` and `<out>/index.json`. A version already in the previous index (default: `<out>/index.json`) keeps its `updated`; `--changed` lists the zips that are new or changed, to upload only those. |
 | `fake-market.js` | `node tools/market/fake-market.js <dir> [port]`: a market on 127.0.0.1 (port 47392) for the app's tests, with a 404, a 500, a slow or no answer, a wrong SHA-256 and a redirect switched on at will. See below. |
 | `gitee-mirror.js` | Puts the built market on a Gitee release (the market repository's `publish.yml` runs it). |
@@ -30,7 +30,9 @@ Or with a clone of the market, as its check runs: `node <Wakuwaku>/tools/market/
     "category": "info", "sizes": ["s", "m"], "color": "#8cc8ff", "view": true,
     "permissions": { "net": ["api.open-meteo.com"], "notify": true },
     "file": "rain-alert-1.2.0.zip", "size": 1085, "sha256": "7812d1ac…",
-    "icon": "data:image/svg+xml;base64,…", "updated": "2026-10-21" } ] }
+    "icon": "data:image/svg+xml;base64,…", "glyph": null,
+    "sample": { "label": "Dresden", "value": "70%", "detail": { "extra": "17:00" } },
+    "preview": null, "updated": "2026-10-21" } ] }
 ```
 
 - Items by kind (`plugin`, `pet`, `wallpaper`), then id.
@@ -39,15 +41,19 @@ Or with a clone of the market, as its check runs: `node <Wakuwaku>/tools/market/
 - `view` is true for a plugin with a `view.html`.
 - `permissions` holds only what is asked for, `{}` for none.
 - `file` is relative to `index.json`.
-- `icon` is the plugin's `.svg` icon (`widget.icon`) of 8 KB or less as a `data:` URI, else `null` (one of her own icons by name, too). Her page draws it as an `<img>`; the check refuses an icon with scripts, event attributes or outside references.
+- `icon` is the plugin's `.svg` icon (`widget.icon`) of 8 KB or less as a `data:` URI, else `null` (one of her own icons by name, too). Her page draws it as a picture (a CSS mask in one colour, as she draws a plugin's own icon everywhere), never as markup; the check refuses an icon with scripts, event attributes or outside references.
+- `glyph` is the name of her own icon when `widget.icon` is one, else `null`.
+- `sample` is the manifest's `widget.sample` (what its widget would show, in the `POST /widget` format, 4 KB at most, checked as she takes a widget), else `null`: the market's page draws the plugin's cards from it. The app takes it as a widget again (what is not a widget's dropped, words cut).
+- `preview` is a pack's `preview.webp`, `.png` or `.jpg` (at its top level, 64 KB or less) as a `data:` URI, else `null`. A plugin has none.
 - `updated` is the day (UTC) that version was first built.
 
 ## How the app reads it
 
 - The base is `https://github.com/<owner>/wakuwaku-plugins/releases/download/market/`, and the same path on `https://gitee.com/`. The app fetches `<base>index.json`, then `<base><file>` for an install.
 - GitHub first, Gitee first in China (as the updater decides it: `updateFrom`, or `in_china()`). The other is tried when the first fails.
-- A downloaded zip is installed only when its SHA-256 is the index's `sha256` (and its size the index's `size`). Then it is checked by the same rules as a zip the user chose.
-- `WAKUWAKU_MARKET_URL` replaces the base (one base, no second place), for tests with the fake market.
+- A downloaded zip is installed only when its SHA-256 is the index's `sha256` (and its size the index's `size`), and its manifest's `id` and `version` are the item's. Then it is checked by the same rules as a zip the user chose.
+- A `404` for `index.json` (the repository not made yet) is the market not open yet, not an error.
+- `WAKUWAKU_MARKET_URL` replaces the base (one base, no second place), for tests with the fake market; redirects to `http://` are followed then. `WAKUWAKU_MARKET_LOOK=<first>[,<every>]` sets the update looks in seconds (3 minutes after start, then daily, by default).
 
 ## The fake market
 

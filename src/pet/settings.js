@@ -11,7 +11,7 @@
 //             opened in place to its details; the others to get
 //   look      her home (island, taskbar), size, strolls, eyes; Windows' own
 //             mode and accent colour; her and the pets (downloaded, the gallery)
-//   widgets   plugins: the built-in ones, those she runs for you (how each is and where it is put, no switch: placed is on; their settings folded under), other people's (the same, and each its own page with what it may do and 卸载), turns, nudges, installing one from a file, waku, and how to write one
+//   widgets   plugins: the market (获取更多 ›: a list, each one's page, installed from there, updates), the built-in ones, those she runs for you (how each is and where it is put, no switch: placed is on; their settings folded under), other people's (the same, and each its own page with what it may do and 卸载), turns, nudges, updates by themselves, installing one from a file, waku, and how to write one
 //   mail      mail accounts, and setting one up as Thunderbird does: an address and a password, the server found or typed
 //
 // What they show comes from main as a snapshot, again whenever it changes;
@@ -98,7 +98,7 @@
   const drafts = {}
   // Other people's plugins (addons.rs; addonui.js the logic): a part of the
   // Plugins page opened in its place (sub: { page, id, back }: a plugin's
-  // own page now, the market's next), the confirm layer over the panel
+  // own page, the market, one of the market's), the confirm layer over the panel
   // (installing from a file, by AddonUI.next's steps; taking one away:
   // gone { id, busy }), Windows' dialog open for a .zip (its focus does not
   // close them), and those installed while they are open (their rows
@@ -108,6 +108,15 @@
   let gone = null
   let pickingZip = false
   const freshRows = new Set()
+  // The plugin market (market.rs; addonui.js its words and steps), a part
+  // of the Plugins page (sub market, an item's page mkItem): its index as
+  // last read (items null until one was), when, what went wrong reading it,
+  // being read; the category and the words looked for; each download's last
+  // word (market:progress) by id; 全部更新 under way. Asked over the panel
+  // (mkAsk): installing one that asks for more than the web ({ kind:
+  // 'install', id }), or 全部更新 when one asks for more ({ kind: 'updates' }).
+  const market = { items: null, at: 0, error: null, loading: false, cat: 'all', query: '', jobs: {}, updating: false }
+  let mkAsk = null
   // Custom picked for how long endings stay, its box shown before anything
   // is typed in it (until the settings close or another choice is picked).
   let holdCustom = false
@@ -883,9 +892,14 @@
 
   // A part of the Plugins page in its place (sub): a crumb (插件 › 名字,
   // its arrow back to where it came from), then the part. Each page by its
-  // name (the market's, phase 3, go here too); null: it is gone (a plugin
-  // taken away meanwhile), the page itself then.
-  const SUBS = { addon: s => addonById(s.id) && addonPage(addonById(s.id)) }
+  // name: a plugin's own, the market, one of the market's; null: it is gone
+  // (a plugin taken away meanwhile, an item no longer listed), the page
+  // itself then.
+  const SUBS = {
+    addon: s => addonById(s.id) && addonPage(addonById(s.id)),
+    market: () => marketPage(),
+    mkItem: s => marketItem(s.id) && marketItemPage(marketItem(s.id)),
+  }
   function crumbHTML(path) {
     const last = path.length - 1
     const parts = path.map((p, i) => (i === last ? `<b>${esc(p)}</b>` : esc(p))).join(' › ')
@@ -914,17 +928,209 @@
     const about = AddonUI.aboutOf(a, T)
     const top = `<div class="ad-head"><span class="ad-tile" style="--c:${esc(addonColor(a, mine))}">${addonIcon(a)}</span><div class="grow"><div class="ad-name ellip">${esc(a.name)}${unreviewedChip(a)}</div><div class="d ellip">${esc(about)}</div></div>${placeHTML(place, `plugin:${a.id}`)}</div>`
     const said = a.description ? `${sec(T('addons.about'))}<div class="grp"><div class="ad-text">${esc(a.description)}</div></div>` : ''
-    const perms = AddonUI.permLines(a.perms, T, andList)
-    const lines = (perms.length ? perms : [{ icon: 'none', text: T('addons.perm.none') }]).map(p => `<div class="r ad-perm"><span class="g">&#x${PERM_GLYPH[p.icon]};</span><div class="grow">${esc(p.text)}</div></div>`)
-    const cannot = `<div class="r ad-perm no"><span class="g">&#xE72E;</span><div class="grow">${esc(T('addons.cannotDo'))}</div></div>`
-    return `${crumbHTML([T('s.tabWidgets'), a.name])}${top}${said}${sec(T('addons.canDo'))}<div class="grp">${lines.join('')}${cannot}</div><div class="ad-foot"><button class="pbtn no" data-uninstall="${esc(a.id)}">${esc(T('addons.uninstall'))}</button></div>`
+    return `${crumbHTML([T('s.tabWidgets'), a.name])}${top}${said}${sec(T('addons.canDo'))}<div class="grp">${canDoHTML(a.perms)}</div><div class="ad-foot"><button class="pbtn no" data-uninstall="${esc(a.id)}">${esc(T('addons.uninstall'))}</button></div>`
   }
+  // 它能做的 (spec §2, §3): what it may do, a line each, then what no plugin
+  // can; a pack: pictures only, no code.
+  function canDoHTML(perms, kind = 'plugin') {
+    const line = (glyph, text, no = false) => `<div class="r ad-perm${no ? ' no' : ''}"><span class="g">&#x${glyph};</span><div class="grow">${esc(text)}</div></div>`
+    if (kind !== 'plugin') return line('E72E', T('mk.packOnly'), true)
+    const list = AddonUI.permLines(perms, T, andList)
+    return (list.length ? list : [{ icon: 'none', text: T('addons.perm.none') }]).map(p => line(PERM_GLYPH[p.icon], p.text)).join('') + line('E72E', T('addons.cannotDo'), true)
+  }
+
+  // --- The market (market.rs; addonui.js) ------------------------------------------------
+  // One of the index's, by its id; the version of it here (null: none).
+  const marketItem = id => (market.items || []).find(i => i.id === id) || null
+  const installedOf = id => (snap?.addons || []).find(a => a.id === id)?.version || null
+  // Its icon in the list and on its page: its own .svg as a picture in one
+  // colour (as her pages draw a plugin's: a mask, never its markup), one of
+  // hers by name, else its name's first letter on its colour.
+  const marketTile = item => (item.icon ? Widgets.maskHTML(item.icon) : item.glyph && Widgets.hasIcon(item.glyph) ? Widgets.icon(item.glyph) : Widgets.markHTML(AddonUI.wordsIn(item.name, lang), item.color))
+  const marketColor = item => item.color || COLOR.idle
+
+  // The index read (market.rs index: again when asked, or an hour old);
+  // what it says kept, the page drawn again.
+  async function loadMarket(force) {
+    if (market.loading) return
+    market.loading = true
+    draw()
+    const got = await window.pet.market.index(force).catch(e => ({ items: market.items, at: market.at, error: { code: 'failed', detail: String(e?.message || e || '') } }))
+    market.loading = false
+    // As main has it: the last list read (none: not open, or never read).
+    market.items = Array.isArray(got?.items) ? got.items : null
+    market.at = got?.at || 0
+    market.error = got?.error || null
+    draw()
+    relayout()
+  }
+
+  // The market (spec §2): 插件 › 获取更多 and back; a search, the
+  // categories; each one's row (its icon, its name and author, its kind,
+  // 自绘界面, what it is; 安装, 已安装, 更新, or how far its download is);
+  // the line at its foot. Before its index is read: opening; not read:
+  // why (not open yet: no error at all; not reached: the way it went and
+  // to the Network proxy, 再试一次).
+  function marketPage() {
+    const crumb = crumbHTML([T('s.tabWidgets'), T('mk.title')])
+    const trouble = AddonUI.marketTroubleOf(market.error, T)
+    if (!market.items) return `${crumb}${trouble && !market.loading ? marketTrouble(trouble) : `<div class="grp"><div class="note">${esc(T('mk.loading'))}</div></div>`}`
+    const search = `<input class="in mk-q" id="mk-q" value="${esc(market.query)}" placeholder="${esc(T('mk.search'))}" spellcheck="false" autocomplete="off">`
+    const cats = seg('mk-cat', AddonUI.MARKET_CATS.map(c => [c, T(`mk.cat.${c}`)]), market.cat)
+    const head = `${crumb}<div class="mk-top">${search}${cats}</div>`
+    const shown = AddonUI.marketList(market.items, market)
+    const q = market.query.trim()
+    const rows = shown.map(marketRow).join('') || `<div class="note">${esc(q ? T('mk.none', { q }) : T('mk.empty'))}</div>`
+    return `${head}${trouble ? marketTrouble(trouble) : ''}<div class="grp mk-list">${rows}</div><div class="note mk-foot">${esc(T('mk.foot'))}</div>`
+  }
+  function marketTrouble(t) {
+    if (t.closed) return `<div class="grp mk-closed"><div class="mk-closed-t">${esc(t.text)}</div><div class="d">${esc(t.note)}</div></div>`
+    const way = t.proxy ? `<div class="r"><div class="grow d">${esc(T('s.net.now', { what: netNow() }))}</div><span class="link" data-mk-net>${esc(T('s.netProxy'))} ›</span></div>` : ''
+    return `<div class="grp"><div class="r"><div class="grow"><div class="d bad mk-bad">${esc(t.text)}</div>${t.note ? `<div class="d">${esc(t.note)}</div>` : ''}</div><button class="pbtn sm" data-mk-retry${market.loading ? ' disabled' : ''}>${esc(T('mk.retry'))}</button></div>${way}</div>`
+  }
+  function marketRow(item) {
+    const b = AddonUI.marketButton(item, { installed: installedOf(item.id), job: market.jobs[item.id], T })
+    return `<div class="r jumps mk-row" data-mk-item="${esc(item.id)}" role="button" tabindex="0"><span class="wi" style="color:${esc(marketColor(item))}">${marketTile(item)}</span><div class="grow"><div class="ellip">${esc(AddonUI.wordsIn(item.name, lang))}${item.author ? `<span class="d"> @${esc(item.author)}</span>` : ''}</div><div class="d ellip">${esc(AddonUI.marketAbout(item, T, lang))}</div></div>${marketButtonHTML(item, b)}</div>`
+  }
+  // Its button (addonui.js marketButton); a download under way, how far, filling.
+  function marketButtonHTML(item, b) {
+    if (b.what === 'busy') return `<span class="mk-prog" style="--p:${b.pct}%"><span>${esc(b.label)}</span></span>`
+    return `<button class="pbtn sm${b.primary ? ' al' : ''}" data-mk-do="${b.what}" data-id="${esc(item.id)}"${b.disabled ? ' disabled' : ''}>${esc(b.label)}</button>`
+  }
+
+  // One of the market's own page (spec §2): 获取更多 › 名字; its icon, name,
+  // the green 已审核, who made it, its version, size and kind, its button;
+  // its cards as she would draw them from what it says it shows (its
+  // index's sample, her own templates: wdesk.js), a pack's picture, or
+  // neither; what it is; what it can do.
+  function marketItemPage(item) {
+    const name = AddonUI.wordsIn(item.name, lang)
+    const b = AddonUI.marketButton(item, { installed: installedOf(item.id), job: market.jobs[item.id], detail: true, T })
+    const top = `<div class="ad-head"><span class="ad-tile" style="--c:${esc(marketColor(item))}">${marketTile(item)}</span><div class="grow"><div class="ad-name ellip">${esc(name)} <span class="chip mk-ok">${esc(T('mk.reviewed'))}</span></div><div class="d ellip">${esc(AddonUI.marketByline(item, T))}</div></div>${marketButtonHTML(item, b)}</div>`
+    const about = AddonUI.wordsIn(item.description, lang)
+    const said = about ? `${sec(T('addons.about'))}<div class="grp"><div class="ad-text">${esc(about)}</div></div>` : ''
+    return `${crumbHTML([T('mk.title'), name])}${top}${marketLooks(item)}${said}${sec(T('addons.canDo'))}<div class="grp">${canDoHTML(item.perms, item.kind)}</div>`
+  }
+  function marketLooks(item) {
+    if (item.preview) return `${sec(T('mk.picture'))}<div class="mk-preview"><img src="${esc(item.preview)}" alt=""></div>`
+    if (!AddonUI.sampleWidget(item, lang)) return ''
+    const note = item.view ? `<div class="note mk-cap">${esc(T('mk.viewNote'))}</div>` : ''
+    const light = document.body.classList.contains('tb-light')
+    return `${sec(T('mk.looks'))}<div class="mk-cards${light ? ' lw' : ''}" data-mk-cards="${esc(item.id)}"></div>${note}`
+  }
+
+  // Its cards drawn into their place, once the page is: the desktop's own
+  // (wdesk.js, loaded the first time one is shown), each in its glass at
+  // its size, with the desktop's stylesheet in a shadow of their own so
+  // neither page's styles reach the other's (desk.css takes its colours
+  // from :host there, light as Windows is: tb-light).
+  const PAGE_BASE = document.currentScript?.src || location.href
+  let deskCards = null
+  function loadDeskCards() {
+    if (window.WDesk) return Promise.resolve()
+    deskCards ||= new Promise((done, fail) => {
+      const s = document.createElement('script')
+      s.src = new URL('wdesk.js', PAGE_BASE).href
+      s.onload = done
+      s.onerror = fail
+      document.head.append(s)
+    }).catch(() => (deskCards = null))
+    return deskCards
+  }
+  function fillCards() {
+    const hosts = [...body.querySelectorAll('[data-mk-cards]')]
+    if (!hosts.length) return
+    if (!window.WDesk) return void loadDeskCards().then(() => isOpen && fillCards())
+    const light = document.body.classList.contains('tb-light')
+    for (const host of hosts) {
+      const item = marketItem(host.dataset.mkCards)
+      const w = item && AddonUI.sampleWidget(item, lang)
+      if (!w) continue
+      const key = `${item.id}|${item.version}|${lang}|${light}`
+      if (host.shadowRoot && host._drawn === key) continue
+      const root = host.shadowRoot || host.attachShadow({ mode: 'open' })
+      host._drawn = key
+      const ctx = { lang, light, detailed: true, now: Date.now(), hour: new Date().getHours(), all: [w] }
+      const color = window.WCards.colorOf(w, ctx)
+      const cards = AddonUI.sampleSizes(item).map(size => `<div class="wd ${size}" style="--c:${esc(color)}"><div class="wtint"></div><div class="wbody">${window.WDesk.faceHTML(w, size, ctx)}</div></div>`)
+      root.innerHTML = `<link rel="stylesheet" href="${esc(new URL('desk.css', PAGE_BASE).href)}"><style>:host { color: var(--w-fg); font: 12px/1.35 var(--font-ui); user-select: none; }</style>${cards.join('')}`
+    }
+  }
+
+  // What is asked before one goes in (addonui.js marketAskOf): installing,
+  // what it may do beyond the web; updating one here, what more it asks for.
+  const marketAsk = id => AddonUI.marketAskOf(marketItem(id), T, andList, lang, (snap?.addons || []).find(a => a.id === id)?.perms || null)
+
+  // 安装 (spec §2): one asking for more than the web asked first over the
+  // panel; else, or once asked, downloaded and put in (market.rs install,
+  // its steps told meanwhile: market:progress); then the word at the foot,
+  // its row on the Plugins page edged, 新 in the picker until it is put
+  // somewhere; or why it did not go in.
+  function marketInstall(id, asked = false) {
+    const item = marketItem(id)
+    if (!item || (market.jobs[id] && !['done', 'failed'].includes(market.jobs[id].stage))) return
+    if (!asked && marketAsk(id)) {
+      mkAsk = { kind: 'install', id }
+      return drawSheet()
+    }
+    market.jobs[id] = { id, got: 0, total: item.size, stage: 'download' }
+    draw()
+    window.pet.market
+      .install(id)
+      .catch(e => ({ ok: false, error: { code: 'other', detail: String(e?.message || e || '') } }))
+      .then(got => {
+        market.jobs[id] = { ...(market.jobs[id] || {}), stage: got?.ok ? 'done' : 'failed' }
+        if (got?.snapshot) snap = got.snapshot
+        if (got?.ok) {
+          freshRows.add(id)
+          AddonUI.news.add(id)
+          toast(AddonUI.marketDoneOf(item, T, lang))
+        } else {
+          const why = AddonUI.marketFailOf(got?.error, T)
+          if (why) toast(why)
+        }
+        draw()
+      })
+  }
+
+  // 全部更新 (spec §3, §5): asked first when one asks for more; then each,
+  // one after another (market.rs updateAll); the word at the foot.
+  function updateAll(asked = false) {
+    const ups = snap?.marketUpdates || []
+    if (!ups.length || market.updating) return
+    if (!asked && AddonUI.updatesAskOf(ups, T, andList)) {
+      mkAsk = { kind: 'updates' }
+      return drawSheet()
+    }
+    market.updating = true
+    draw()
+    window.pet.market
+      .updateAll()
+      .catch(e => ({ ok: false, done: [], failed: [{ name: '', error: { code: 'other', detail: String(e?.message || e || '') } }] }))
+      .then(got => {
+        market.updating = false
+        if (got?.snapshot) snap = got.snapshot
+        const names = (got?.done || []).map(id => ups.find(u => u.id === id)?.name || id)
+        const failed = (got?.failed || []).map(f => T('mk.updateFailed', { name: f.name || f.id || '', why: AddonUI.marketFailOf(f.error, T) }))
+        toast([names.length ? T('mk.updated', { names: andList(names) }) : '', ...failed].filter(Boolean).join(' · '))
+        draw()
+      })
+  }
+
+  // How a download goes (market.rs, market:progress): its row and its
+  // page say it, whoever began it (the daily look's updates too).
+  window.pet.onMarket(p => {
+    if (!p?.id) return
+    market.jobs[p.id] = p
+    if (isOpen && tab === 'widgets' && sub) draw()
+  })
 
   // The question over the panel (addonui.js layerOf, uninstallLayerOf): its
   // title, the amber note, what it will do, its notes, a line to the
   // developer docs, its buttons; nothing while none is asked.
   function sheetHTML() {
-    const l = gone ? AddonUI.uninstallLayerOf(addonById(gone.id) || { id: gone.id }, T, gone.busy) : AddonUI.layerOf(flow, T, andList)
+    const mk = mkAsk?.kind === 'install' ? marketAsk(mkAsk.id) : mkAsk?.kind === 'updates' ? AddonUI.updatesAskOf(snap?.marketUpdates, T, andList) : null
+    const l = gone ? AddonUI.uninstallLayerOf(addonById(gone.id) || { id: gone.id }, T, gone.busy) : mk || AddonUI.layerOf(flow, T, andList)
     if (!l) return ''
     const warn = l.warn ? `<div class="sh-warn">${l.warn.head ? `<b>${esc(l.warn.head)}</b>` : ''}${esc(l.warn.text)}</div>` : ''
     const will = l.will.length ? `<div class="sh-will"><div class="d">${esc(l.willHead)}</div><ul>${l.will.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''
@@ -1215,9 +1421,11 @@
   // from her capsule, its desktop copy stopped with it; placed is on now,
   // picker.js). Each says how it is and where it is put, or, put nowhere,
   // offers 添加小工具…; its settings folded under it. Then how they take
-  // turns, whether they may open the island, installing one from a file,
-  // and how to write one. Other people's among hers (addonRow), a folder
-  // that did not install a quiet line under them; one's own page in place
+  // turns, whether they may open the island, whether the market's update
+  // by themselves, installing one from a file, and how to write one. At the
+  // top, 获取更多 › (the market), and updates waiting under it. Other
+  // people's among hers (addonRow), a folder that did not install a quiet
+  // line under them; one's own page, the market or one of its own in place
   // of all this while it is open (sub).
   function pageWidgets() {
     const own = sub && SUBS[sub.page]?.(sub)
@@ -1256,10 +1464,16 @@
     const example = `Invoke-RestMethod -Method Post http://127.0.0.1:${snap.port}/widget -ContentType application/json -Body '{"id":"hello","label":"Hello","value":"42","icon":"star"}'`
     const broken = (snap.addonsBroken || []).map(b => `<div class="note ad-broken ellip" title="${esc(b.reason || '')}">${esc(AddonUI.brokenLine(b, T))}</div>`).join('')
     const fromFile = `<div class="r jumps" data-addon-file role="button" tabindex="0"><div class="grow"><div>${esc(T('addons.fromFile'))}</div><div class="d">${esc(T('addons.fromFileNote'))}</div></div><span class="chev">&#xE76C;</span></div>`
-    return `${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}${broken}</div>
+    // At its top (spec §1, §3): 获取更多 ›, to the market; under it, when
+    // updates wait for the person, 「N 个插件有更新 · 全部更新」.
+    const more = `<div class="grp"><div class="r jumps mk-entry" data-mk-open role="button" tabindex="0"><span class="mk-big">&#xE719;</span><div class="grow"><div class="t">${esc(T('mk.title'))}</div><div class="d">${esc(T('mk.entryNote'))}</div></div><span class="chev">&#xE76C;</span></div></div>`
+    const ups = AddonUI.updatesBanner(snap.marketUpdates, T)
+    const banner = ups ? `<div class="mk-banner"><span class="grow">${esc(ups.text)}</span><button class="pbtn sm al" data-mk-all${market.updating ? ' disabled' : ''}>${esc(market.updating ? T('mk.updatingAll') : ups.button)}</button></div>` : ''
+    return `${more}${banner}${sec(T('w.section'))}<div class="grp"><div class="note">${esc(T('w.note'))}</div>${rows}${broken}</div>
       ${sec(T('w.show'))}<div class="grp">
         ${row(esc(T('w.spin')), '', seg('widgetSpin', spins, s.widgetSpin ?? 8))}
         ${row(esc(T('w.nudge')), esc(T('w.nudgeNote')), sw('widgetNudge', s.widgetNudge !== false))}
+        ${row(esc(T('mk.auto')), esc(T('mk.autoNote')), sw('pluginAutoUpdate', s.pluginAutoUpdate !== false))}
         ${fromFile}
       </div>
       ${sec(T('w.write'))}<div class="grp"><div class="note">${esc(T('w.writeNote'))}</div>
@@ -3007,6 +3221,7 @@
       back.setSelectionRange(caret, caret)
     }
     startThumbs()
+    fillCards()
   }
 
   function draw(reset = false) {
@@ -3066,7 +3281,15 @@
   function open(next) {
     // Asked for connecting: the welcome open, folded or not.
     if (next === 'connect') welcomeOpen = true
-    if (PART_OF[next]) {
+    // The market, by category (widgets:market[:widget|pet|wallpaper]: the
+    // picker's 获取更多…, the Look page's): on the Plugins page, in its place.
+    const toMarket = AddonUI.marketLink(next)
+    if (toMarket) {
+      tab = 'widgets'
+      sub = { page: 'market', back: null }
+      market.cat = toMarket.cat
+      market.query = ''
+    } else if (PART_OF[next]) {
       tab = PART_OF[next]
       partToShow = next
     } else if (String(next).startsWith('widgets:')) {
@@ -3098,6 +3321,7 @@
       draw(true)
       showPart()
       if (tab === 'look') loadGallery(false)
+      if (tab === 'widgets' && sub?.page === 'market') loadMarket(false)
       if (tab === 'mail' && letterToOpen) {
         const { account, uid, folder } = letterToOpen
         letterToOpen = null
@@ -3121,6 +3345,7 @@
     othersOpen = false
     sub = null
     gone = null
+    mkAsk = null
     if (flow.step === 'ask' || flow.step === 'refused') flow = AddonUI.IDLE
     freshRows.clear()
     drawSheet()
@@ -3251,8 +3476,16 @@
       const what = b ? b.dataset.sheet : at('.sh') ? '' : 'cancel'
       if (what === 'go') return installGo()
       if (what === 'uninstall') return uninstallGo()
+      // The market's: installing one that asks for more, 全部更新 asked first.
+      if (what === 'mkgo' || what === 'mkall') {
+        const asked = mkAsk
+        mkAsk = null
+        drawSheet()
+        return what === 'mkgo' ? marketInstall(asked?.id, true) : updateAll(true)
+      }
       if (what === 'cancel' && !(gone?.busy || flow.step === 'installing')) {
         gone = null
+        mkAsk = null
         flowStep({ type: 'cancel' })
       }
       return
@@ -3289,6 +3522,8 @@
       if (key === 'ilookBare') return ilookSave(ilookFor(), { ...ilookOf(ilookFor()), bare: !ilookOf(ilookFor()).bare })
       if (key.startsWith('notify.')) return patch({ notify: { ...s.notify, [key.slice(7)]: !s.notify?.[key.slice(7)] } })
       if (key === 'widgetNudge') return patch({ widgetNudge: s.widgetNudge === false })
+      // On unless turned off (market.rs).
+      if (key === 'pluginAutoUpdate') return patch({ pluginAutoUpdate: s.pluginAutoUpdate === false })
       // One of the monitor's parts on or off.
       if (key.startsWith('mon:')) return patch({ monitor: { ...(s.monitor || {}), [key.slice(4)]: (s.monitor || {})[key.slice(4)] === false } })
       // One of the hardware's sensors picked or not, LibreHardwareMonitor's
@@ -3353,6 +3588,38 @@
     const addon = at('[data-addon]')
     if (addon) return openSub({ page: 'addon', id: addon.dataset.addon })
     if (at('[data-sub-back]')) return backSub()
+    // The market: opened (获取更多 ›); a row's button (安装, 更新; on its
+    // page 添加小工具… or the Look page), then a row, to its page; read
+    // again; to the Network proxy; 全部更新.
+    if (at('[data-mk-open]')) {
+      openSub({ page: 'market' })
+      return loadMarket(false)
+    }
+    const mkDo = at('[data-mk-do]')
+    if (mkDo) {
+      if (mkDo.disabled) return
+      const id = mkDo.dataset.id
+      if (mkDo.dataset.mkDo === 'install' || mkDo.dataset.mkDo === 'update') return marketInstall(id)
+      if (mkDo.dataset.mkDo === 'look') return setTab('look')
+      if (mkDo.dataset.mkDo === 'add') {
+        close('picker')
+        return window.Picker?.fromMenu?.({ open: 'picker', focus: `plugin:${id}` })
+      }
+      return
+    }
+    const mkItem = at('[data-mk-item]')
+    if (mkItem) return openSub({ page: 'mkItem', id: mkItem.dataset.mkItem })
+    if (at('[data-mk-retry]')) return loadMarket(true)
+    if (at('[data-mk-net]')) {
+      tab = 'now'
+      sub = null
+      draw(true)
+      relayout()
+      partToShow = 'net'
+      return showPart()
+    }
+    const mkAll = at('[data-mk-all]')
+    if (mkAll && !mkAll.disabled) return updateAll()
     const revive = at('[data-revive]')
     if (revive && !revive.disabled) {
       revive.disabled = true
@@ -3385,6 +3652,11 @@
       if (key.startsWith('pc:') || key.startsWith('ac:')) {
         const [id, name] = key.slice(3).split('.')
         return setPlugin(id, { [name]: raw })
+      }
+      // The market's category.
+      if (key === 'mk-cat') {
+        market.cat = raw
+        return draw()
       }
       if (key === 'taskbarLayout') {
         // Its parts as the preset has them; the widgets put there kept.
@@ -4027,6 +4299,11 @@
       // Not mid-word in an input method: once the word is chosen.
       if (!e.isComposing) searchSoon()
     }
+    // The market's words looked for: its list at once.
+    if (e.target.id === 'mk-q') {
+      market.query = e.target.value
+      draw()
+    }
     if (e.target.dataset.field) drafts[e.target.dataset.field] = e.target.value
     if (e.target.dataset.mon) drafts[`mon:${e.target.dataset.mon}`] = e.target.value
     if (e.target.dataset.hold) drafts['hold:secs'] = e.target.value
@@ -4119,14 +4396,15 @@
       if (!sheet.hidden) {
         if (!(gone?.busy || flow.step === 'installing')) {
           gone = null
+          mkAsk = null
           flowStep({ type: 'cancel' })
         }
         return
       }
       return close('Esc')
     }
-    // A row that is a button (从文件安装…), by the keyboard as a press.
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-addon-file]')) {
+    // A row that is a button (从文件安装…, 获取更多, one of the market's), by the keyboard as a press.
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-addon-file], [data-mk-open], [data-mk-item]')) {
       e.preventDefault()
       return e.target.click()
     }

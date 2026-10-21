@@ -343,7 +343,7 @@ test('build-index: the zips and index.json, items by kind then id, as the app re
   assert.equal(index.generated, '2026-10-21T08:00:00.000Z')
   assert.deepEqual(index.items.map(i => i.id), ['a-clock', 'rain-alert', 'beach'])
   const rain = index.items[1]
-  assert.deepEqual(Object.keys(rain), ['id', 'kind', 'name', 'description', 'author', 'homepage', 'version', 'api', 'category', 'sizes', 'color', 'view', 'permissions', 'file', 'size', 'sha256', 'icon', 'updated'])
+  assert.deepEqual(Object.keys(rain), ['id', 'kind', 'name', 'description', 'author', 'homepage', 'version', 'api', 'category', 'sizes', 'color', 'view', 'permissions', 'file', 'size', 'sha256', 'icon', 'glyph', 'sample', 'preview', 'updated'])
   assert.deepEqual(rain.name, MANIFEST.name)
   assert.equal(rain.file, 'rain-alert-1.2.0.zip')
   assert.equal(rain.view, true)
@@ -357,14 +357,72 @@ test('build-index: the zips and index.json, items by kind then id, as the app re
   assert.equal(rain.size, zip.length)
   assert.equal(rain.sha256, sha(zip))
   assert.deepEqual(codes(pkg.read(path.join(m.out, rain.file)).errors), [])
+  // Its own .svg: no glyph of hers; no sample given, none.
+  assert.deepEqual([rain.glyph, rain.sample, rain.preview], [null, null, null])
   const clock = index.items[0]
   assert.equal(clock.view, false)
   assert.equal(clock.icon, null)
+  assert.equal(clock.glyph, 'bell')
   assert.equal(clock.homepage, 'https://github.com/lin/rain-alert')
   assert.deepEqual(clock.permissions, {})
   const beach = index.items[2]
-  assert.deepEqual([beach.kind, beach.api, beach.category, beach.sizes, beach.color, beach.view, beach.icon, beach.homepage], ['wallpaper', null, null, null, null, false, null, null])
+  assert.deepEqual([beach.kind, beach.api, beach.category, beach.sizes, beach.color, beach.view, beach.icon, beach.glyph, beach.sample, beach.preview, beach.homepage], ['wallpaper', null, null, null, null, false, null, null, null, null, null])
   assert.deepEqual(fs.readFileSync(path.join(m.root, 'changed.txt'), 'utf8').split('\n').filter(Boolean).sort(), ['a-clock-1.2.0.zip', 'beach-1.0.0.zip', 'rain-alert-1.2.0.zip'])
+})
+
+const SAMPLE = { label: 'Dresden', value: '70%', detail: { series: { points: [10, 30, 70], unit: '%', hi: 100, lo: 0 }, rows: [{ kind: 'hour', when: '17:00', icon: 'rain', value: '70%' }], extra: '17:00 ☂' } }
+
+test('widget.sample: checked as she takes a widget; what she would cut or drop said; 4 KB at most', () => {
+  const sample = s => readZip(files({}, { widget: { ...MANIFEST.widget, sample: s } }))
+  const good = sample(SAMPLE)
+  assert.deepEqual(good.errors, [])
+  assert.deepEqual(good.warnings, [])
+  // The wrong kind of thing: errors.
+  assert.deepEqual(codes(sample('70%').errors), ['sample'])
+  assert.deepEqual(codes(sample({ value: 70 }).errors), ['sample'])
+  assert.deepEqual(codes(sample({ color: 'blue' }).errors), ['sample'])
+  assert.deepEqual(codes(sample({ private: 'yes' }).errors), ['sample'])
+  assert.deepEqual(codes(sample({ detail: { series: { points: ['a'] } } }).errors), ['sample'])
+  assert.deepEqual(codes(sample({ detail: { rows: {} } }).errors), ['sample'])
+  assert.deepEqual(codes(sample({ detail: { rows: [{ at: -1 }] } }).errors), ['sample'])
+  const big = sample({ value: '1', detail: { rows: Array.from({ length: 24 }, () => ({ subject: '雨'.repeat(60), name: 'y'.repeat(16) })), extra: 'z' } })
+  assert.ok(codes(big.errors).includes('sample'), 'over 4 KB')
+  assert.match(big.errors.find(e => e.code === 'sample').en, /at most 4 KB/)
+  // What she would cut or drop: warnings, each said.
+  const w = s => sample(s).warnings.map(p => p.en)
+  assert.match(w({ value: 'a value far longer than twenty-four' }).join(), /value is over 24 characters/)
+  assert.match(w({ value: '1', ttl: 60 }).join(), /"ttl" is not used/)
+  assert.match(w({ value: '1', icon: 'cloud' }).join(), /not one of her icons/)
+  assert.match(w({ value: '1', detail: { rows: Array.from({ length: 13 }, (_, i) => ({ name: String(i) })) } }).join(), /first 12 are kept/)
+  assert.match(w({ value: '1', detail: { rows: [{ name: 'a', colour: 'red' }] } }).join(), /"colour" is not used/)
+  // As the index carries it, with her glyph for an icon of hers.
+  const m = market({ 'a-clock': plain('a-clock', { widget: { icon: 'bell', sample: SAMPLE } }) })
+  assert.equal(build({ packages: m.packages, out: m.out }).ok, true)
+  const item = JSON.parse(fs.readFileSync(path.join(m.out, 'index.json'), 'utf8')).items[0]
+  assert.deepEqual([item.glyph, item.sample], ['bell', SAMPLE])
+  // check.js says when there is none: the market draws no cards for it.
+  const run = dir => spawnSync(process.execPath, [path.join(MARKET, 'check.js'), dir], { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '' } }).stdout
+  assert.match(run(folderOf(files())), /no widget\.sample/)
+  assert.doesNotMatch(run(path.join(m.packages, 'a-clock')), /no widget\.sample/)
+})
+
+test("a pack's preview: preview.webp|png|jpg, 64 KB or less, inlined; neither a wallpaper nor counted as one", () => {
+  const wall = (list, id = 'beach') => [{ path: 'manifest.json', data: Buffer.from(JSON.stringify({ id, kind: 'wallpaper', ...PACK })) }, ...list]
+  const m = market({ beach: wall([{ path: 'sea.png', data: PNG }, { path: 'preview.webp', data: WEBP }]) })
+  assert.equal(build({ packages: m.packages, out: m.out }).ok, true)
+  const item = JSON.parse(fs.readFileSync(path.join(m.out, 'index.json'), 'utf8')).items[0]
+  assert.equal(item.preview, `data:image/webp;base64,${WEBP.toString('base64')}`)
+  assert.equal(item.sample, null)
+  // Too big: not shown, said.
+  const huge = Buffer.concat([PNG, crypto.randomBytes(70 * 1024)])
+  const r = readZip(wall([{ path: 'sea.png', data: PNG }, { path: 'preview.png', data: huge }]))
+  assert.deepEqual(codes(r.errors), [])
+  assert.deepEqual(codes(r.warnings), ['preview-large'])
+  assert.equal(pkg.previewOf(r), null)
+  // A wallpaper pack with its preview alone has no wallpaper.
+  assert.deepEqual(codes(readZip(wall([{ path: 'preview.jpg', data: Buffer.from('ffd8ffe0', 'hex') }])).errors), ['wallpaper-empty'])
+  // A plugin's preview.png is only a picture of its own.
+  assert.equal(pkg.previewOf(readZip(files({ 'preview.png': PNG }))), null)
 })
 
 test("build-index: a version keeps the day it was first built; a new one gets today's", () => {

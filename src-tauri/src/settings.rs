@@ -192,6 +192,10 @@ pub fn snapshot(sh: &Shared) -> Value {
         // there whose manifest will not do, each with why.
         "addons": crate::addons::view(sh),
         "addonsBroken": crate::addons::broken_view(),
+        // The market's plugins here with a newer version waiting for the
+        // person (market.rs: asking for more, or all with auto-update off),
+        // each with what it newly asks for.
+        "marketUpdates": crate::market::updates_view(sh),
         // The mail accounts, each with how its watch is going.
         "mail": mail::view(sh),
         // Who a letter can go to (claude, codex, agy: found or not; looked
@@ -593,6 +597,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // Where the monitor's sensors come from (hw.rs Source).
         "monitorSource" => crate::hw::is_source(v),
         "widgetNudge" => is_bool,
+        // The market's plugins updated by themselves when they ask for no more (market.rs).
+        "pluginAutoUpdate" => is_bool,
         // Not to be reminded that nothing is connected (island.js isHinting).
         "connectHintOff" => is_bool,
         // Her island's look on the taskbar, by Windows' mode (island.js

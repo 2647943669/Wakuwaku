@@ -340,6 +340,95 @@ pub fn web_ways_by(url: &str, via: &Via) -> Vec<Way> {
     ways(&host_of(url).unwrap_or_default(), via, system, ureq::Proxy::try_from_env().is_some())
 }
 
+// --- A GET by hand (her updates, the plugin market) -----------------------
+// Moved here from updates.rs as it was, for the market (market.rs) to go the
+// same way: each way in turn, redirects followed by hand so a failure says
+// at which host, a 404 apart from the rest. `plain`: a redirect may go to
+// http:// too (a test's server); else https only.
+
+// At most so many redirects (GitHub's exe: one, to release-assets.githubusercontent.com).
+const HOPS: usize = 5;
+
+// A GET answered: the answer, the way it came (Way's name) and the
+// hosts it went by ("github.com → release-assets.githubusercontent.com").
+pub struct Answer {
+    pub res: ureq::http::Response<ureq::Body>,
+    pub way: String,
+    pub path: String,
+}
+
+// A GET not answered: not there (404, as the server says it), or what went
+// wrong each way it was tried: "<way>, <hosts>: <error>", "; " between.
+pub enum Miss {
+    NotThere,
+    Failed(String),
+}
+
+// A GET, each way in turn (web_ways: Windows' proxy first, where one is
+// set; then as is) till one is answered.
+pub fn get(url: &str, seconds: u64, accept: Option<&str>, plain: bool) -> Result<Answer, Miss> {
+    let mut failed = Vec::new();
+    for way in web_ways(url) {
+        match get_way(&way, url, seconds, accept, plain) {
+            Ok(answer) => return Ok(answer),
+            Err(None) => return Err(Miss::NotThere),
+            Err(Some(e)) => failed.push(format!("{}, {e}", way.name())),
+        }
+    }
+    Err(Miss::Failed(failed.join("; ")))
+}
+
+// One way: its redirects followed by hand (to https only, unless `plain`),
+// so what goes wrong says at which host. Err(None): not there (404).
+pub fn get_way(way: &Way, url: &str, seconds: u64, accept: Option<&str>, plain: bool) -> Result<Answer, Option<String>> {
+    let agent = way.agent_with(Duration::from_secs(seconds), |c| c.max_redirects(0)).ok_or_else(|| Some(format!("{}: not a proxy to go through", way.name())))?;
+    let mut at = url.to_string();
+    let mut hosts = vec![host_of(url).unwrap_or_default()];
+    for _ in 0..=HOPS {
+        let path = hosts.join(" → ");
+        let mut req = agent.get(&at).header("user-agent", &format!("wakuwaku/{}", crate::updates::current()));
+        if let Some(accept) = accept {
+            req = req.header("accept", accept);
+        }
+        let res = match req.call() {
+            Err(ureq::Error::StatusCode(404)) => return Err(None),
+            Err(e) => return Err(Some(format!("{path}: {e}"))),
+            Ok(res) => res,
+        };
+        if !res.status().is_redirection() {
+            return Ok(Answer { res, way: way.name(), path });
+        }
+        let to = res.headers().get("location").and_then(|l| l.to_str().ok()).and_then(|l| redirected(&at, l, plain));
+        at = to.ok_or_else(|| Some(format!("{path}: a {} to nowhere it may go", res.status().as_u16())))?;
+        hosts.push(host_of(&at).unwrap_or_default());
+    }
+    Err(Some(format!("{}: more than {HOPS} redirects", hosts.join(" → "))))
+}
+
+// Where a redirect goes from `from`: its Location made whole (one that
+// starts with / or // is on the same host or scheme); https only, unless
+// `plain`.
+pub fn redirected(from: &str, to: &str, plain: bool) -> Option<String> {
+    let to = to.trim();
+    let (scheme, rest) = from.split_once("://")?;
+    let url = if to.contains("://") {
+        to.to_string()
+    } else if let Some(net) = to.strip_prefix("//") {
+        format!("{scheme}://{net}")
+    } else if to.starts_with('/') {
+        format!("{scheme}://{}{to}", rest.split('/').next().unwrap_or(""))
+    } else {
+        return None;
+    };
+    (url.starts_with("https://") || (plain && url.starts_with("http://"))).then_some(url)
+}
+
+// Whether an address is under one of these, as they are written (the
+// scheme and host in either case): her releases' pages, the market's files.
+pub fn is_under(url: &str, places: &[&str]) -> bool {
+    places.iter().any(|p| url.get(..p.len()).is_some_and(|head| head.eq_ignore_ascii_case(p)))
+}
+
 // The page's Test: GitHub asked the way given (each of its ways in turn, as
 // an update goes), any answer counting. { ok, via: the proxy it went
 // through or null, ms } or { ok: false, via, error }; and, should it fail,

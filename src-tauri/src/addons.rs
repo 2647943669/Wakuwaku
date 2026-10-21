@@ -106,6 +106,8 @@ const DESCRIPTION_SHOWN: usize = 60;
 const DESCRIPTION_MAX: usize = 500;
 // Widgets of one plugin, at most.
 const WIDGETS: usize = 8;
+// A manifest's widget.sample (the market's page draws its cards by it), as JSON, at most.
+pub const SAMPLE_MAX: usize = 4 * 1024;
 
 // --- What a plugin is: its manifest ----------------------------------------------------
 
@@ -118,7 +120,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn of(s: &str) -> Option<Kind> {
+    pub(crate) fn of(s: &str) -> Option<Kind> {
         match s {
             "plugin" => Some(Kind::Plugin),
             "pet" => Some(Kind::Pet),
@@ -136,7 +138,7 @@ impl Kind {
     }
 
     // How large its package may be: zipped, unpacked.
-    fn limits(self) -> (u64, u64) {
+    pub(crate) fn limits(self) -> (u64, u64) {
         match self {
             Kind::Plugin => (PLUGIN_ZIP, PLUGIN_ALL),
             Kind::Pet | Kind::Wallpaper => (PACK_ZIP, PACK_ALL),
@@ -153,7 +155,7 @@ pub struct Words {
 
 impl Words {
     // A string, or { en, zh }; each some words up to `max` characters.
-    fn of(v: Option<&Value>, max: usize) -> Result<Words, String> {
+    pub(crate) fn of(v: Option<&Value>, max: usize) -> Result<Words, String> {
         let one = |v: &Value| -> Result<String, String> {
             let s = v.as_str().ok_or("not text")?.trim();
             if s.is_empty() {
@@ -358,7 +360,7 @@ pub fn is_reserved(id: &str) -> bool {
     RESERVED.contains(&id) || RESERVED_STARTS.iter().any(|p| id.starts_with(p))
 }
 
-fn is_version(v: &str) -> bool {
+pub(crate) fn is_version(v: &str) -> bool {
     let parts: Vec<&str> = v.split('.').collect();
     parts.len() == 3 && parts.iter().all(|p| (1..=9).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit()))
 }
@@ -460,8 +462,16 @@ pub fn manifest_of(v: &Value) -> Result<Manifest, String> {
     };
     if let Some(w) = m.get("widget") {
         let w = w.as_object().ok_or("widget: { sizes, color, icon }")?;
-        if let Some(k) = w.keys().find(|k| !matches!(k.as_str(), "sizes" | "color" | "icon")) {
+        if let Some(k) = w.keys().find(|k| !matches!(k.as_str(), "sizes" | "color" | "icon" | "sample")) {
             return Err(format!("widget.{k}: not a field of a widget"));
+        }
+        // What its widget would say, for the market's page (market.rs draws
+        // it from the index, checked there as a widget is): nothing of hers
+        // once it is installed, so only its shape and size are seen to.
+        if let Some(s) = w.get("sample") {
+            if !s.is_object() || s.to_string().len() > SAMPLE_MAX {
+                return Err("widget.sample: a widget as POST /widget takes one, 4 KB at most".into());
+            }
         }
         if let Some(s) = w.get("sizes") {
             let list = s.as_array().filter(|l| !l.is_empty() && l.len() <= 3 && l.iter().all(|z| matches!(z.as_str(), Some("s" | "m" | "l")))).ok_or("widget.sizes: some of s, m, l")?;
@@ -551,7 +561,7 @@ fn field_of(v: &Value) -> Result<Field, String> {
     Ok(field)
 }
 
-fn perms_of(v: &Value) -> Result<Perms, String> {
+pub(crate) fn perms_of(v: &Value) -> Result<Perms, String> {
     let p = v.as_object().ok_or("permissions: { net, agents, hardware, notify }")?;
     let mut out = Perms::default();
     for (k, v) in p {
@@ -999,7 +1009,7 @@ fn records_write(dir: &Path, f: impl FnOnce(&mut Map<String, Value>)) {
 }
 
 // A file written whole: beside it first, then put in its place.
-fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_whole(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path).inspect_err(|_| {
@@ -1432,18 +1442,29 @@ fn rename_soon(from: &Path, to: &Path) -> std::io::Result<()> {
     Err(last.unwrap_or_else(|| std::io::Error::other("not renamed")))
 }
 
-// A package installed from a file: checked again, unpacked and swapped in,
-// its record kept (from a file: not reviewed). Its settings and storage, if
-// it was here before, stay: an update.
+// A package installed from a file: checked again, then put in (from a
+// file: not reviewed).
 pub fn install(sh: &Shared, path: &Path) -> Result<Value, Refused> {
     let pkg = read_package(path)?;
+    let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    put_in(sh, pkg, "file", &path.display().to_string(), &file)
+}
+
+// A package checked, unpacked and swapped in, its record kept: where it
+// came from (a file, not reviewed; the market, reviewed: market.rs, its
+// zip's SHA-256 and size as the index said), the permissions granted as
+// it went in (its manifest's). Its settings and storage, if it was here
+// before, stay: an update; its frame loads it anew (its record's time in
+// its rev). Plugins alone for now; packs (pets, wallpapers) come later.
+// `from`: what the log says it came from; `file`: its zip's name.
+pub fn put_in(sh: &Shared, pkg: Package, source: &'static str, from: &str, file: &str) -> Result<Value, Refused> {
     if pkg.manifest.kind != Kind::Plugin {
         return Err(refused("kind", None, "packs (pets, wallpapers) come in a later version"));
     }
     let m = &pkg.manifest;
     let replaces = read(|r| r.manifest(&m.id).map(|old| old.version.clone()));
     unpack(&pkg, &plugins_dir(&sh.dir)).map_err(|e| refused("write", None, e))?;
-    let rec = json!({ "source": "file", "reviewed": false, "sha256": pkg.sha256, "version": m.version, "grantedPerms": m.perms.json(), "installedAt": now_ms() });
+    let rec = json!({ "source": source, "reviewed": source == "market", "sha256": pkg.sha256, "version": m.version, "grantedPerms": m.perms.json(), "installedAt": now_ms() });
     records_write(&sh.dir, |r| {
         r.insert(m.id.clone(), rec);
     });
@@ -1453,14 +1474,37 @@ pub fn install(sh: &Shared, path: &Path) -> Result<Value, Refused> {
         r.said.remove(&m.id);
         r.stopped.remove(&m.id);
     }
-    sh.log(&format!("addons: {} {} installed from {}{}", m.id, m.version, path.display(), replaces.as_ref().map(|v| format!(", in place of {v}")).unwrap_or_default()));
+    sh.log(&format!("addons: {} {} installed from {from}{}", m.id, m.version, replaces.as_ref().map(|v| format!(", in place of {v}")).unwrap_or_default()));
     if crate::plugins::sync(sh) {
         sh.redraw_widgets();
     }
-    let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    let mut out = summary(&Ok(pkg), sh.lang(), &file);
+    let mut out = summary(&Ok(pkg), sh.lang(), file);
     out["replaces"] = json!(replaces);
     Ok(out)
+}
+
+// Those installed from the market, for its updates (market.rs): each id,
+// its name in her language, the version here and the permissions granted
+// as it went in (none recorded: those it asks for now).
+pub struct FromMarket {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub granted: Perms,
+}
+
+pub fn from_market(lang: &str) -> Vec<FromMarket> {
+    read(|r| {
+        r.found
+            .iter()
+            .filter(|(id, _)| r.record(id)["source"] == "market")
+            .filter_map(|(id, f)| {
+                let m = f.manifest.as_ref().ok()?;
+                let granted = perms_of(&r.record(id)["grantedPerms"]).unwrap_or_else(|_| m.perms.clone());
+                Some(FromMarket { id: id.clone(), name: m.name.get(lang).to_string(), version: m.version.clone(), granted })
+            })
+            .collect()
+    })
 }
 
 // One of a plugin's widgets: its own id, or `<id>_<sub>`.

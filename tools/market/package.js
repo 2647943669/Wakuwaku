@@ -27,6 +27,12 @@ const MAX_FILES = 500
 // A zip with more entries than this is not looked into at all.
 const MAX_ENTRIES = 10000
 const ICON_MAX = 8 * 1024
+// widget.sample, as JSON; a pack's preview picture.
+const SAMPLE_MAX = 4 * 1024
+const PREVIEW_MAX = 64 * 1024
+// A pack's picture for the market (its top level), by the first there is.
+const PREVIEWS = ['preview.webp', 'preview.png', 'preview.jpg']
+const PREVIEW_TYPES = { '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg' }
 
 // File types by kind. A plugin is web files; a pack has no code: images, its
 // json and a readme or licence.
@@ -467,8 +473,9 @@ function checkManifest(m, files, kind, errors, warnings) {
   if (!w || typeof w !== 'object' || Array.isArray(w)) errors.push(problem('widget', F, 'widget 要是一个对象', 'widget must be an object'))
   else {
     for (const k of Object.keys(w)) {
-      if (!['sizes', 'color', 'icon'].includes(k)) warnings.push(problem('field-unknown', F, `widget 里不认识的 "${k}"，会被忽略`, `unknown widget field "${k}", ignored`))
+      if (!['sizes', 'color', 'icon', 'sample'].includes(k)) warnings.push(problem('field-unknown', F, `widget 里不认识的 "${k}"，会被忽略`, `unknown widget field "${k}", ignored`))
     }
+    if (w.sample !== undefined) checkSample(w.sample, errors, warnings)
     let sizes = ['s', 'm']
     if (w.sizes !== undefined) {
       if (!Array.isArray(w.sizes) || !w.sizes.length || !w.sizes.every(s => SIZES.includes(s)) || new Set(w.sizes).size !== w.sizes.length) {
@@ -575,6 +582,75 @@ function checkPermissions(p, errors, warnings) {
   }
 }
 
+// widget.sample: what its widget would say, in the POST /widget format
+// (label, value, color, icon, private, detail), for the market's page to
+// draw its cards with her own templates before it is installed. Checked as
+// she takes a widget (src-tauri/src/widgets.rs made, detail_of): a field of
+// the wrong kind is an error; what she would drop or cut is said; 4 KB of
+// JSON at most.
+const SAMPLE_FIELDS = ['label', 'value', 'color', 'icon', 'private', 'detail']
+const DETAIL_FIELDS = ['sizes', 'series', 'rows', 'extra']
+const ROW_NAMES = ['from', 'code', 'name', 'when', 'price', 'change', 'value', 'unit', 'kind', 'icon']
+const ROW_SUBJECTS = ['subject', 'text']
+function checkSample(s, errors, warnings) {
+  const F = 'manifest.json'
+  const err = (zh, en) => errors.push(problem('sample', F, `widget.sample${zh}`, `widget.sample${en}`))
+  const cut = (zh, en) => warnings.push(problem('sample-cut', F, `widget.sample${zh}`, `widget.sample${en}`))
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return err(' 要是一个对象，和 POST /widget 的格式一样', ' must be an object, in the POST /widget format')
+  const size = Buffer.byteLength(JSON.stringify(s))
+  if (size > SAMPLE_MAX) err(` 有 ${kb(size)}，最多 4 KB`, ` is ${kb(size)}; at most 4 KB`)
+  for (const k of Object.keys(s)) {
+    if (!SAMPLE_FIELDS.includes(k)) cut(` 里的 "${k}" 用不上，会被去掉`, `: "${k}" is not used, and is dropped`)
+  }
+  const words = (v, at, max) => {
+    if (v === undefined) return
+    if (typeof v !== 'string') return err(`.${at} 要是文字`, `.${at} must be a string`)
+    if (chars(v.trim()) > max) cut(`.${at} 超过 ${max} 个字，会被截断`, `.${at} is over ${max} characters, and is cut`)
+  }
+  words(s.label, 'label', 40)
+  words(s.value, 'value', 24)
+  if (s.color !== undefined && (typeof s.color !== 'string' || !COLOR.test(s.color))) err('.color 要写成 #rgb 或 #rrggbb', '.color must be #rgb or #rrggbb')
+  if (s.icon !== undefined && !ICONS.includes(s.icon)) cut(`.icon "${s.icon}" 不是她的图标，会用 widget.icon`, `.icon "${s.icon}" is not one of her icons; widget.icon is used`)
+  if (s.private !== undefined && typeof s.private !== 'boolean') err('.private 要是 true 或 false', '.private must be true or false')
+  const d = s.detail
+  if (d === undefined) return
+  if (typeof d === 'string') return words(d, 'detail', 24)
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return err('.detail 要是文字，或 { series, rows, extra }', '.detail must be a string, or { series, rows, extra }')
+  for (const k of Object.keys(d)) {
+    if (!DETAIL_FIELDS.includes(k)) cut(`.detail 里的 "${k}" 用不上，会被去掉`, `.detail: "${k}" is not used, and is dropped`)
+  }
+  const points = (v, at) => {
+    if (!Array.isArray(v) || !v.length || !v.every(n => typeof n === 'number' && Number.isFinite(n))) return err(`.${at} 要是数字的列表`, `.${at} must be a list of numbers`)
+    if (v.length > 120) cut(`.${at} 有 ${v.length} 个，只留最后 120 个`, `.${at} has ${v.length}; the last 120 are kept`)
+  }
+  if (d.series !== undefined) {
+    if (!d.series || typeof d.series !== 'object' || Array.isArray(d.series)) err('.detail.series 要是 { points, unit, hi, lo }', '.detail.series must be { points, unit, hi, lo }')
+    else {
+      points(d.series.points, 'detail.series.points')
+      words(d.series.unit, 'detail.series.unit', 16)
+      for (const k of ['hi', 'lo']) if (d.series[k] !== undefined && !Number.isFinite(d.series[k])) err(`.detail.series.${k} 要是数字`, `.detail.series.${k} must be a number`)
+    }
+  }
+  if (d.rows !== undefined) {
+    if (!Array.isArray(d.rows)) err('.detail.rows 要是一个列表', '.detail.rows must be a list')
+    else {
+      if (d.rows.length > 12) cut(`.detail.rows 有 ${d.rows.length} 行，只留前 12 行`, `.detail.rows has ${d.rows.length}; the first 12 are kept`)
+      d.rows.forEach((r, i) => {
+        const at = `detail.rows[${i}]`
+        if (!r || typeof r !== 'object' || Array.isArray(r)) return err(`.${at} 要是一个对象`, `.${at} must be an object`)
+        for (const [k, v] of Object.entries(r)) {
+          if (ROW_NAMES.includes(k)) typeof v === 'number' || words(v, `${at}.${k}`, 16)
+          else if (ROW_SUBJECTS.includes(k)) words(v, `${at}.${k}`, 60)
+          else if (k === 'at') !(Number.isFinite(v) && v >= 0) && err(`.${at}.at 要是时间（毫秒）`, `.${at}.at must be a time (ms)`)
+          else if (k === 'points') points(v, `${at}.points`)
+          else cut(`.${at} 里的 "${k}" 用不上，会被去掉`, `.${at}: "${k}" is not used, and is dropped`)
+        }
+      })
+    }
+  }
+  words(d.extra, 'detail.extra', 24)
+}
+
 // The permissions a plugin asked for, as the market lists them: what is
 // not asked for left out.
 function permissionsOf(m) {
@@ -596,6 +672,27 @@ function iconOf(r) {
   if (!p) return null
   const b = r.contents.get(p)
   return b.length <= ICON_MAX ? `data:image/svg+xml;base64,${b.toString('base64')}` : null
+}
+// One of her own icons by name, when widget.icon is one.
+function glyphOf(r) {
+  const icon = r.kind === 'plugin' && r.manifest && r.manifest.widget && r.manifest.widget.icon
+  return typeof icon === 'string' && ICONS.includes(icon) ? icon : null
+}
+// widget.sample as the manifest has it (checked: checkSample).
+function sampleOf(r) {
+  const s = r.kind === 'plugin' && r.manifest && r.manifest.widget && r.manifest.widget.sample
+  return s && typeof s === 'object' && !Array.isArray(s) ? s : null
+}
+// A pack's picture for the market: preview.webp, .png or .jpg at its top,
+// 64 KB or less, as a data: URI. Neither a wallpaper nor a pet's.
+function previewPath(r) {
+  return r.kind === 'pet' || r.kind === 'wallpaper' ? PREVIEWS.find(p => r.contents.has(p)) || null : null
+}
+function previewOf(r) {
+  const p = previewPath(r)
+  if (!p) return null
+  const b = r.contents.get(p)
+  return b.length <= PREVIEW_MAX ? `data:${PREVIEW_TYPES[extOf(p)]};base64,${b.toString('base64')}` : null
 }
 
 // --- The whole package ---------------------------------------------------------
@@ -769,8 +866,14 @@ function checkKind(r, byPath, contents, errors, warnings) {
       }
     }
     if (!byPath.has('spritesheet.webp')) errors.push(problem('pet-sheet', '', '宠物包要有 spritesheet.webp', 'a pet pack needs spritesheet.webp'))
-  } else if (r.kind === 'wallpaper') {
-    const images = r.files.filter(f => WALLPAPER_IMAGES.includes(extOf(f.path)))
+  }
+  // A pack's picture for the market: too big, not shown.
+  const preview = previewPath(r)
+  if (preview && contents.get(preview).length > PREVIEW_MAX) {
+    warnings.push(problem('preview-large', preview, `预览图有 ${kb(contents.get(preview).length)}，超过 64 KB，市场里不显示`, `the preview is ${kb(contents.get(preview).length)}, over 64 KB: the market will not show it`))
+  }
+  if (r.kind === 'wallpaper') {
+    const images = r.files.filter(f => WALLPAPER_IMAGES.includes(extOf(f.path)) && !PREVIEWS.includes(f.path))
     if (!images.length) errors.push(problem('wallpaper-empty', '', '壁纸包里没有图片（.jpg .jpeg .png .webp）', 'a wallpaper pack with no pictures (.jpg .jpeg .png .webp)'))
     const deep = images.filter(f => f.path.includes('/'))
     if (deep.length) warnings.push(problem('wallpaper-folder', deep[0].path, `${deep.length} 张图片在子文件夹里：她只用最外层的图片`, `${deep.length} pictures in sub-folders: she uses the top folder's only`))
@@ -792,6 +895,6 @@ function sameContent(a, b) {
 }
 
 module.exports = {
-  read, unzip, writeZip, zipOf, iconOf, permissionsOf, hostProblem, programOf, partsOf, compareVersions, sameContent, sha256, crc32,
+  read, unzip, writeZip, zipOf, iconOf, glyphOf, sampleOf, previewOf, permissionsOf, hostProblem, programOf, partsOf, compareVersions, sameContent, sha256, crc32,
   API, LIMITS, MAX_FILES, TYPES, RESERVED, ICONS, isReserved, kb,
 }

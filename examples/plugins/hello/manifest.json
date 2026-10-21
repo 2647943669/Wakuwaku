@@ -8,7 +8,12 @@
   "api": 1,
   "main": "main.js",
   "category": "productivity",
-  "widget": { "sizes": ["s", "m"], "color": "#7fd8a6", "icon": "star" },
+  "widget": {
+    "sizes": ["s", "m"],
+    "color": "#7fd8a6",
+    "icon": "star",
+    "sample": { "value": "42", "detail": { "series": { "points": [30, 32, 34, 36, 38, 40, 42] }, "extra": "+1 · 5 s" } }
+  },
   "settings": [
     { "key": "Step", "type": "number", "default": 1, "label": { "en": "Count by", "zh": "每次加" } },
     {

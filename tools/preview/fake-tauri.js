@@ -232,6 +232,14 @@
     addons: [],
     addonsBroken: [],
     addonPick: undefined,
+    // The plugin market (market.rs, the fake's market command): its index
+    // (unset: Fixtures.MARKET), how reading it goes (ok, closed: not open
+    // yet, error: not reached), the share a download holds at (unset: it
+    // goes on to the end), the updates waiting for the person.
+    market: undefined,
+    marketMode: 'ok',
+    marketHold: undefined,
+    marketUpdates: [],
     taskbarLayout: null,
     deskLayout: [],
     // The taskbar's programs, tray icons and keyboard (taskbar.rs).
@@ -431,6 +439,8 @@
       // there that did not install, each with why.
       addons: addonsNow(),
       addonsBroken: clone(world.addonsBroken || []),
+      // The market's waiting for the person (market.rs updates_view).
+      marketUpdates: clone(world.marketUpdates || []),
       // The mail accounts with how each is going, the agents found, their
       // models, the talks about letters, Windows' proxy, the store's revision.
       mail: mailView(),
@@ -927,6 +937,69 @@
     return { ok: false, error: `${what}: inspect, install, uninstall, pick or revive` }
   }
 
+  // --- The plugin market (market.rs market) ---------------------------------------------
+  // Its index as the world has it, read in a moment (or not: closed, not
+  // open yet; error, not reached, as her updates say it); one got from it,
+  // its download told as it goes (market:progress), held at the world's
+  // share if it says one, then in the world as the market's (reviewed,
+  // not placed); a pack refused, as phase 3 refuses them; every update
+  // waiting, put in.
+  const marketItems = () => clone(world.market ?? window.Fixtures?.MARKET ?? [])
+  const wait = (ms, value) => new Promise(done => setTimeout(() => done(value), ms))
+  function marketIndex() {
+    if (world.marketMode === 'closed') return wait(250, { items: null, at: null, from: null, error: { code: 'closed', detail: 'GitHub' } })
+    if (world.marketMode === 'error') return wait(250, { items: null, at: null, from: null, error: { code: 'failed', detail: 'GitHub: straight, github.com: timeout: connect; Gitee: straight, gitee.com: timeout: connect' } })
+    return wait(250, { items: marketItems(), at: Date.now(), from: 'GitHub', error: null })
+  }
+  const marketWords = v => (v && typeof v === 'object' ? v[world.lang] || v.en : v || '')
+  async function marketInstall(id) {
+    const item = marketItems().find(i => i.id === id)
+    if (!item) return { ok: false, error: { code: 'notFound', detail: id } }
+    if (item.kind !== 'plugin') return { ok: false, error: { code: 'pack', detail: item.kind } }
+    const tell = (got, stage) => emit('market:progress', { id, got, total: item.size, stage })
+    for (const pct of [0, 15, 45, 80, 100]) {
+      if (world.marketHold != null && pct > world.marketHold) {
+        tell(Math.round((item.size * world.marketHold) / 100), 'download')
+        return new Promise(() => {})
+      }
+      tell(Math.round((item.size * pct) / 100), 'download')
+      await wait(180)
+    }
+    tell(item.size, 'verify')
+    await wait(150)
+    tell(item.size, 'install')
+    await wait(150)
+    const before = (world.addons || []).find(a => a.id === id)
+    const next = {
+      id, kind: 'plugin', name: marketWords(item.name), description: marketWords(item.description), author: item.author, version: item.version, homepage: item.homepage, api: item.api, category: item.category, sizes: item.sizes, color: item.color,
+      icon: item.icon ? { url: item.icon } : item.glyph ? { name: item.glyph } : null, view: item.view, perms: clone(item.perms), sensitive: item.sensitive, source: 'market', reviewed: true, installedAt: Date.now(),
+      on: before ? before.on : false, state: before ? before.state : 'off', missing: null, said: null, settings: before ? before.settings : [],
+    }
+    world.addons = before ? world.addons.map(a => (a === before ? next : a)) : [...(world.addons || []), next]
+    world.marketUpdates = (world.marketUpdates || []).filter(u => u.id !== id)
+    tell(item.size, 'done')
+    tellMail()
+    return { ok: true, id, name: next.name, version: item.version, kind: 'plugin', perms: clone(item.perms), replaces: before ? before.version : null, snapshot: snapshot() }
+  }
+  async function marketUpdateAll() {
+    const ups = clone(world.marketUpdates || [])
+    await wait(400)
+    world.addons = (world.addons || []).map(a => {
+      const u = ups.find(x => x.id === a.id)
+      return u ? { ...a, version: u.to } : a
+    })
+    world.marketUpdates = []
+    tellMail()
+    return { ok: true, done: ups.map(u => u.id), failed: [], snapshot: snapshot() }
+  }
+  function marketCommand(what, arg) {
+    if (what === 'index') return marketIndex()
+    if (what === 'install') return marketInstall(String(arg || ''))
+    if (what === 'updateAll') return marketUpdateAll()
+    if (what === 'cancel') return { ok: true }
+    return { ok: false, error: { code: 'what', detail: `${what}: index, install, updateAll or cancel` } }
+  }
+
   // --- A plugin's own view (addons.rs addon_view, serve) ----------------------------------
   // Its view.html as her scheme serves it, here from the example's folder
   // (examples/plugins/<id>/, published as plugins/<id>/): her SDK the first
@@ -1017,6 +1090,8 @@
     addon_manage: ({ what, arg }) => addonManage(what, arg),
     // A card's plugin view: its page and data; what it sends (kept in calls).
     addon_view: ({ what, widget }) => addonView(what, widget),
+    // The plugin market (market.rs market).
+    market: ({ what, arg }) => marketCommand(what, arg),
     pet_walk: () => false,
     pet_answer: ({ id }) => {
       const ok = answered(id)

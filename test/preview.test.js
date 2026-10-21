@@ -168,6 +168,32 @@ test('the gallery shoots every scene, and each shot is a scene or a world of its
   for (const scene of Scenes.SCENES) assert.ok(Scenes.LIST.some(s => s.scene === scene.id), `${scene.id} is shot`)
 })
 
+test("the market's shots: its list, a category, an item's page, installing, not reached, not open yet, updates waiting", () => {
+  const ids = ['settings-market', 'settings-market-pets', 'settings-market-detail', 'settings-market-detail-view', 'settings-market-detail-pack', 'settings-market-confirm', 'settings-market-installing', 'settings-market-error', 'settings-market-closed', 'settings-plugins-updates', 'settings-plugins-updates-confirm']
+  for (const id of ids) assert.ok(Scenes.byId(id), id)
+  const w = id => Scenes.worldFor(Scenes.byId(id), F)
+  assert.equal(w('settings-market').marketMode, undefined, 'the fake reads its index as it is')
+  assert.equal(w('settings-market-error').marketMode, 'error')
+  assert.equal(w('settings-market-closed').marketMode, 'closed')
+  assert.equal(w('settings-market-installing').marketHold, 45)
+  assert.deepEqual(w('settings-plugins-updates').marketUpdates.map(u => u.id), ['rain-alert', 'weather-radar'])
+  assert.equal(w('settings-plugins-updates-confirm').config.pluginAutoUpdate, false)
+  // The fixtures' market: the mockup's seven, each by the index's rules
+  // (market.rs item_json): a sample for the widgets, a picture for the
+  // packs; one asking for the web alone, one with a view, one with an .svg.
+  assert.deepEqual(F.MARKET.map(i => i.name.zh).sort(), ['Agent 排行', 'GitHub 通知', '下雨提醒', '像素猫', '柴犬小八', '极光', '汇率'].sort())
+  for (const i of F.MARKET) {
+    assert.match(i.id, /^[a-z][a-z0-9-]{1,39}$/, i.id)
+    if (i.kind === 'plugin') assert.ok(i.sample && typeof i.sample.value === 'string', `${i.id}: a sample`)
+    else assert.ok('preview' in i && !i.sample, `${i.id}: a pack's picture, no sample`)
+  }
+  const A = require('../src/pet/addonui')
+  assert.ok(F.MARKET.some(i => i.kind === 'plugin' && !A.isSensitive(i.perms) && i.perms.net.length), 'one asking for the web alone')
+  assert.ok(F.MARKET.some(i => i.view) && F.MARKET.some(i => i.icon), 'a view of its own, an .svg of its own')
+  // The ones the shots press are there.
+  for (const id of ['fx', 'agent-board', 'gh-notify']) assert.ok(F.MARKET.some(i => i.id === id), id)
+})
+
 test("a shot's world is its scene's, its own home over it; the play its scene's unless left out", () => {
   const shot = { id: 'x', scene: 'everyday', home: 'island', page: 'island' }
   const w = Scenes.worldFor(shot, F)

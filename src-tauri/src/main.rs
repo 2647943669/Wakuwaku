@@ -79,6 +79,7 @@ mod lhm;
 mod lhm_setup;
 mod logon;
 mod mail;
+mod market;
 mod notch;
 mod notify;
 mod paper;
@@ -1713,6 +1714,7 @@ fn main() {
             addons::addon_call,
             addons::addon_manage,
             addons::addon_view,
+            market::market,
         ])
         // Third-party plugins' files, for their sandboxed frames in the
         // island's page and their views in the cards (addons.rs serve):
@@ -1831,6 +1833,9 @@ fn main() {
             desk::sync(&sh);
             // Her updates looked for (a downloaded exe only).
             updates::start(&sh);
+            // The plugin market's: what was read of it before, and its looks
+            // for updates (none with none of its plugins installed).
+            market::start(&sh);
             // Crashes since: their reports made, sent or asked about.
             crash::start(&sh);
 

@@ -9,6 +9,24 @@
   "main": "main.js",
   "view": "view.html",
   "category": "productivity",
-  "widget": { "sizes": ["s", "m", "l"], "color": "#f5a35c", "icon": "chart" },
+  "widget": {
+    "sizes": ["s", "m", "l"],
+    "color": "#f5a35c",
+    "icon": "chart",
+    "sample": {
+      "label": "pet",
+      "value": "96 min",
+      "detail": {
+        "series": { "points": [96, 58, 41, 16], "unit": "min" },
+        "rows": [
+          { "name": "pet", "value": "96 min" },
+          { "name": "agent-hub", "value": "58 min" },
+          { "name": "md-editor", "value": "41 min" },
+          { "name": "dotfiles", "value": "16 min" }
+        ],
+        "extra": "4 · 211 min"
+      }
+    }
+  },
   "permissions": { "agents": true }
 }

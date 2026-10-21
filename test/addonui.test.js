@@ -238,3 +238,137 @@ test('a plugin’s name where it is put: hers by her words, someone else’s as 
   assert.equal(Widgets.nameOf('zh', { type: 'plugin', of: 'gone', name: '数数' }, []), '数数')
   assert.equal(Widgets.nameOf('en', { type: 'plugin', of: 'gone' }, []), 'Widget')
 })
+
+// --- The plugin market (market.rs; addonui.js the words and steps; settings.js draws them) ---
+const F = require('../tools/preview/fixtures')
+const item = id => F.MARKET.find(i => i.id === id)
+
+test('the market opens by a link, on a category: the picker’s 获取更多… on its widgets', () => {
+  assert.deepEqual(A.marketLink('widgets:market'), { cat: 'all' })
+  assert.deepEqual(A.marketLink('widgets:market:widget'), { cat: 'widget' })
+  assert.deepEqual(A.marketLink('widgets:market:pet'), { cat: 'pet' })
+  assert.deepEqual(A.marketLink('widgets:market:wallpaper'), { cat: 'wallpaper' })
+  for (const other of ['widgets', 'widgets:rain-alert', 'widgets:market:games', 'market', '', null, undefined]) assert.equal(A.marketLink(other), null, String(other))
+})
+
+test('its list: a category, and words in either language, the author or the id', () => {
+  const ids = o => A.marketList(F.MARKET, o).map(i => i.id)
+  assert.equal(ids({}).length, 7)
+  assert.deepEqual(ids({ cat: 'widget' }), ['agent-board', 'fx', 'gh-notify', 'rain-alert'])
+  assert.deepEqual(ids({ cat: 'pet' }), ['pet-pixelcat', 'pet-shiba'])
+  assert.deepEqual(ids({ cat: 'wallpaper' }), ['wall-aurora'])
+  assert.deepEqual(ids({ query: '下雨' }), ['rain-alert'])
+  assert.deepEqual(ids({ query: 'RAIN' }), ['rain-alert'])
+  assert.deepEqual(ids({ query: 'mika' }), ['agent-board'])
+  assert.deepEqual(ids({ query: '猫', cat: 'widget' }), [])
+  assert.deepEqual(A.marketList(null, {}), [])
+})
+
+test('each row says its kind, 自绘界面 and what it is; its page who made it, its size and kind', () => {
+  assert.equal(A.marketAbout(item('agent-board'), zh, 'zh'), '小工具 · 自绘界面 · 今天哪个项目让 agent 干得最多')
+  assert.equal(A.marketAbout(item('pet-shiba'), en, 'en'), 'Pet · A shiba that wags, nine moves')
+  assert.equal(A.marketByline(item('fx'), zh), '@wen · v1.4.0 · 36 KB · 小工具')
+  assert.equal(A.marketByline(item('wall-aurora'), zh), '@sora · v1.0.0 · 18.0 MB · 壁纸')
+  assert.equal(A.wordsIn({ en: 'Rain', zh: '雨' }, 'zh'), '雨')
+  assert.equal(A.wordsIn({ en: 'Rain' }, 'zh'), 'Rain')
+  assert.equal(A.wordsIn('Rain', 'zh'), 'Rain')
+  assert.equal(A.wordsIn(null, 'zh'), '')
+})
+
+test('the button: 安装, 已安装 (its page: 添加小工具… or the Look page), 更新 for one older here, a download’s share', () => {
+  const b = (id, o = {}) => A.marketButton(item(id), { T: zh, ...o })
+  assert.deepEqual([b('fx').what, b('fx').label, b('fx').primary], ['install', '安装', true])
+  const here = b('rain-alert', { installed: '1.2.0' })
+  assert.deepEqual([here.what, here.label, here.disabled], ['installed', '已安装', true])
+  const page = b('rain-alert', { installed: '1.2.0', detail: true })
+  assert.deepEqual([page.what, page.label], ['add', '添加小工具…'])
+  const pack = b('pet-shiba', { installed: '1.0.0', detail: true })
+  assert.deepEqual([pack.what, pack.label], ['look', '去「外观」里选'])
+  // Older here: 更新, by number (1.10.0 after 1.9.0), in the list and on its page.
+  assert.deepEqual([b('rain-alert', { installed: '1.1.9' }).what, b('rain-alert', { installed: '1.1.9', detail: true }).label], ['update', '更新'])
+  assert.equal(A.isNewer('1.10.0', '1.9.0'), true)
+  assert.equal(A.isNewer('1.2.0', '1.2.0'), false)
+  assert.equal(A.isNewer('1.2.0', '1.10.0'), false)
+  // Under way: its share as it downloads, then a word; done or failed, the button again.
+  const busy = job => b('fx', { job })
+  assert.deepEqual(busy({ stage: 'download', got: 16588, total: 36864 }), { what: 'busy', label: '44%', pct: 44, primary: false, disabled: true })
+  assert.equal(busy({ stage: 'verify', got: 1, total: 1 }).label, '校验中…')
+  assert.equal(busy({ stage: 'install', got: 1, total: 1 }).label, '安装中…')
+  assert.equal(busy({ stage: 'failed' }).what, 'install')
+  assert.equal(b('fx', { job: { stage: 'done' }, installed: '1.4.0' }).what, 'installed')
+})
+
+test('installing one that asks for more than the web is asked first, in the spec’s words; the web alone goes straight in', () => {
+  const ask = A.marketAskOf(item('gh-notify'), zh, andZh, 'zh')
+  assert.equal(ask.title, '安装「GitHub 通知」？')
+  assert.equal(ask.willHead, '它会：')
+  assert.deepEqual(ask.will, ['联网，只访问 api.github.com', '提醒你，走岛上的提醒规则'])
+  assert.deepEqual(ask.buttons.map(b => b.slice(0, 2)), [['cancel', '取消'], ['mkgo', '安装']])
+  assert.equal(A.marketAskOf(item('fx'), zh, andZh, 'zh'), null)
+  assert.equal(A.marketAskOf(item('agent-board'), en, undefined, 'en').title, 'Install “Agent board”?')
+  // 更新 for one here: asked only when the new one asks for more, that alone.
+  const had = { net: ['api.open-meteo.com', 'geocoding-api.open-meteo.com'], agents: false, hardware: false, notify: true }
+  assert.equal(A.marketAskOf(item('rain-alert'), zh, andZh, 'zh', had), null)
+  const more = A.marketAskOf({ ...item('rain-alert'), perms: { ...had, net: [...had.net, 'api.rainviewer.com'], agents: true } }, zh, andZh, 'zh', had)
+  assert.equal(more.title, '更新「下雨提醒」？')
+  assert.equal(more.willHead, '新版还要：')
+  assert.deepEqual(more.will, ['联网，只访问 api.rainviewer.com', '读你的 agent 会话：在干活、等你批准、做完了，项目名'])
+  assert.deepEqual(more.buttons.map(b => b.slice(0, 2)), [['cancel', '取消'], ['mkgo', '更新']])
+  assert.deepEqual(A.permsBeyond({ net: ['*.github.io'] }, { net: ['lin.github.io', 'github.io', '*.a.github.io'], notify: true }), { net: ['github.io'], agents: false, hardware: false, notify: true })
+  // Installed: where to put it; a pack, the Look page.
+  assert.equal(A.marketDoneOf(item('fx'), zh, 'zh'), '装好了「汇率」· 用「添加小工具…」放到哪里')
+  assert.equal(A.marketDoneOf(item('pet-shiba'), zh, 'zh'), '装好了「柴犬小八」· 在「外观」里选')
+})
+
+test('updates waiting: 「N 个插件有更新 · 全部更新」, asked first with what each newly asks for', () => {
+  assert.deepEqual(A.updatesBanner(F.MARKET_UPDATES, zh), { text: '2 个插件有更新', button: '全部更新' })
+  assert.equal(A.updatesBanner([], zh), null)
+  assert.equal(A.updatesBanner(undefined, zh), null)
+  assert.equal(A.updatesBanner(F.MARKET_UPDATES, en).text, 'Plugin updates: 2')
+  const ask = A.updatesAskOf(F.MARKET_UPDATES, zh, andZh)
+  assert.equal(ask.title, '全部更新？')
+  assert.equal(ask.willHead, '这些新版要更多权限：')
+  assert.deepEqual(ask.will, ['「下雨提醒」1.2.0 → 1.3.0：联网，只访问 api.rainviewer.com'])
+  assert.deepEqual(ask.notes, ['另外 1 个只是更新，权限不变。'])
+  assert.deepEqual(ask.buttons.map(b => b.slice(0, 2)), [['cancel', '取消'], ['mkall', '全部更新']])
+  // Several new at once, in a line; none asking for more: not asked.
+  const more = A.updatesAskOf([{ id: 'x', name: 'X', from: '1.0.0', to: '2.0.0', newPerms: ['agents', 'net:a.example.com', 'notify'] }], zh, andZh)
+  assert.equal(more.will[0], '「X」1.0.0 → 2.0.0：联网，只访问 a.example.com；读你的 agent 会话：在干活、等你批准、做完了，项目名；提醒你，走岛上的提醒规则')
+  assert.deepEqual(more.notes, [])
+  assert.equal(A.updatesAskOf([{ id: 'y', name: 'Y', from: '1.0.0', to: '1.0.1', newPerms: [] }], zh), null)
+  assert.deepEqual(A.permsOfNew(['net:a.example.com', 'hardware']), { net: ['a.example.com'], agents: false, hardware: true, notify: false })
+})
+
+test('why the market does not show: not open yet is no error; not reached says the way and the proxy; and why one did not go in', () => {
+  assert.deepEqual(A.marketTroubleOf({ code: 'closed', detail: 'GitHub' }, zh), { closed: true, text: '市场还没开张', note: '放插件的仓库还在建，过些日子再来看看。', proxy: false })
+  const far = A.marketTroubleOf({ code: 'failed', detail: 'GitHub: straight, github.com: timeout: connect' }, zh)
+  assert.equal(far.text, '市场连不上：GitHub: straight, github.com: timeout: connect')
+  assert.equal(far.proxy, true)
+  assert.match(far.note, /网络代理/)
+  assert.match(A.marketTroubleOf({ code: 'bad', detail: 'no items' }, en).text, /index doesn't read: no items/)
+  assert.equal(A.marketTroubleOf(null, zh), null)
+  const fail = e => A.marketFailOf(e, zh)
+  assert.equal(fail({ code: 'pack', detail: 'pet' }), '宠物和壁纸要等下一版才能从这里装')
+  assert.equal(fail({ code: 'digest', detail: 'x' }), '下载的文件和目录给的校验值不一致，已放弃，没装')
+  assert.equal(fail({ code: 'size', detail: 'x' }), '下载的文件和目录里写的大小不一样，已放弃，没装')
+  assert.equal(fail({ code: 'download', detail: 'GitHub: straight, github.com: timeout' }), '下载失败：GitHub: straight, github.com: timeout')
+  assert.equal(fail({ code: 'refused', refused: { reason: 'program', file: 'helper.exe' } }), '装不了：包里有可执行程序：helper.exe。Wakuwaku 的插件不能带程序。')
+  assert.equal(fail({ code: 'mismatch', detail: 'x 1.0.0 in place of y 1.0.0' }), '下载的包和目录里写的不是同一个（x 1.0.0 in place of y 1.0.0），没装')
+  assert.equal(fail({ code: 'cancelled' }), '')
+  assert.equal(fail({ code: 'what', detail: 'oops' }), '没装上：oops')
+})
+
+test('its cards drawn from what its widget would say, as her pages take a plugin’s widget', () => {
+  const w = A.sampleWidget(item('fx'), 'zh')
+  assert.deepEqual(w, { id: 'fx', plugin: 'fx', from: 'addon', on: true, label: 'EUR/CNY', value: '7.81', icon: 'coin', color: '#ffd36b', private: false, detail: { extra: '+0.4% · 一周', series: { points: [7.72, 7.74, 7.73, 7.77, 7.79, 7.78, 7.81] }, sizes: ['s', 'm'] } })
+  // Its own .svg as its picture; no label: its name; its sizes the manifest's.
+  const gh = A.sampleWidget({ ...item('gh-notify'), sample: { value: '12' } }, 'en')
+  assert.deepEqual([gh.label, gh.icon, gh.iconUrl.startsWith('data:image/svg+xml')], ['GitHub notifications', 'dot', true])
+  assert.deepEqual(A.sampleSizes(item('agent-board')), ['s', 'm', 'l'])
+  assert.deepEqual(A.sampleSizes({ sizes: ['l', 's'] }), ['s', 'l'])
+  assert.deepEqual(A.sampleSizes({}), ['s', 'm'])
+  assert.equal(A.sampleWidget(item('pet-shiba'), 'zh'), null)
+  // As generic cards, drawn by the desktop's templates.
+  const WDesk = require('../src/pet/wdesk')
+  for (const size of ['s', 'm']) assert.match(WDesk.faceHTML(w, size, { lang: 'zh', detailed: true, all: [w] }), /7\.81/)
+})

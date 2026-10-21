@@ -45,6 +45,10 @@ function lines(r, label) {
   const where = p => (p.file ? `${p.file}: ` : '')
   for (const e of r.errors) out.push(`  错误  ${where(e)}${e.zh}`, `  error ${where(e)}${e.en}`)
   for (const w of r.warnings) out.push(`  提醒  ${where(w)}${w.zh}`, `  note  ${where(w)}${w.en}`)
+  // What the market's page will show of it before it is installed: its
+  // cards (widget.sample), a pack's picture (preview.*). Neither is needed.
+  if (!r.errors.length && r.kind === 'plugin' && !pkg.sampleOf(r)) out.push('  说明  没有 widget.sample：市场的详情页不画它的卡片', '  info  no widget.sample: the market\'s page draws none of its cards')
+  if (!r.errors.length && (r.kind === 'pet' || r.kind === 'wallpaper') && !pkg.previewOf(r)) out.push('  说明  没有 64 KB 以内的 preview.webp/png/jpg：市场的详情页没有图', '  info  no preview.webp/png/jpg of 64 KB or less: the market\'s page shows no picture')
   const n = r.files.length
   if (r.errors.length) out.push(`  ✗ 不通过：${r.errors.length} 个错误，${r.warnings.length} 个提醒 / failed: ${r.errors.length} error(s), ${r.warnings.length} warning(s)`)
   else out.push(`  ✓ 通过：${n} 个文件，打包 ${pkg.kb(r.packed)}，解开 ${pkg.kb(r.unpacked)}${r.warnings.length ? `，${r.warnings.length} 个提醒` : ''} / passed: ${n} files, ${pkg.kb(r.packed)} zipped, ${pkg.kb(r.unpacked)} unpacked${r.warnings.length ? `, ${r.warnings.length} warning(s)` : ''}`)

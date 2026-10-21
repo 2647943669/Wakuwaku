@@ -413,6 +413,18 @@
     p.click('#island-settings [data-addon-file]')
     await p.wait(400)
   }
+  // The market, as a link opens it (widgets:market[:kind]), its index read
+  // (fake-tauri.js market: a quarter of a second); one of its items' page.
+  const openMarket = async (p, link = 'widgets:market') => {
+    p.emit('island:settings', { tab: link })
+    await p.wait(700)
+  }
+  const openMarketItem = async (p, id) => {
+    await openMarket(p)
+    p.click(`#island-settings [data-mk-item="${id}"]`)
+    // Her desktop's card templates loaded the first time (wdesk.js), and desk.css in their shadow.
+    await p.wait(900)
+  }
   const addonShot = (id, title, steps, more = {}, shot = {}) => ({ id, section: 'settings', title: `设置 · 插件 · ${title}`, page: 'island', home: 'taskbar', view: [0, above(660), 560, 660], world: F => ({ ...withAddons(F), ...more }), steps, ...shot })
   const WHOLE = [0, 0, SCREEN[0], SCREEN[1]]
   const STRIP_VIEW = [0, above(88), SCREEN[0], 88]
@@ -798,6 +810,46 @@
       { addonPick: 'my-plugin.zip' },
       { budget: 5000 },
     ),
+    // The plugin market (docs/design/specs/plugins.md §1, §2, §3, §5;
+    // fixtures.js MARKET, fake-tauri.js market): its list, by category; one
+    // one's page drawing its cards from what it says it shows (a tier-2
+    // one's note); installing (one asking for more first asked; one asking
+    // for the web alone at once, its download under way); not reached, not
+    // open yet; updates waiting under 获取更多, and 全部更新 asked first.
+    addonShot('settings-market', '获取更多：市场的列表（已装的写已安装）', p => openMarket(p)),
+    addonShot('settings-market-pets', '获取更多：只看宠物（外观页的直达入口）', p => openMarket(p, 'widgets:market:pet')),
+    addonShot('settings-market-detail', '市场里一个小工具的详情：用她的卡片画出小档和中档', p => openMarketItem(p, 'fx')),
+    addonShot('settings-market-detail-view', '自绘界面的 Agent 排行：小、中、大档，和一句说明', p => openMarketItem(p, 'agent-board'), {}, { budget: 4000 }),
+    addonShot('settings-market-detail-pack', '宠物包的详情：它的预览图，只有图片没有代码', p => openMarketItem(p, 'pet-shiba')),
+    addonShot('settings-market-confirm', '市场里安装要权限的：先问一句', async p => {
+      await openMarket(p)
+      p.click('#island-settings [data-mk-do="install"][data-id="gh-notify"]')
+      await p.wait(300)
+    }),
+    addonShot(
+      'settings-market-installing',
+      '市场里安装只联网的：直接下载，按钮成了进度',
+      async p => {
+        await openMarket(p)
+        p.click('#island-settings [data-mk-do="install"][data-id="fx"]')
+        await p.wait(400)
+      },
+      { marketHold: 45 },
+    ),
+    addonShot('settings-market-error', '市场连不上：哪条路、为什么，去网络代理', p => openMarket(p), { marketMode: 'error' }),
+    addonShot('settings-market-closed', '市场还没开张（仓库没建，404）', p => openMarket(p), { marketMode: 'closed' }),
+    {
+      ...addonShot('settings-plugins-updates', '插件页最上面：获取更多，和「2 个插件有更新 · 全部更新」（关了自动更新）', p => openPluginsPage(p)),
+      world: F => ({ ...withAddons(F), marketUpdates: F.MARKET_UPDATES, config: { pluginAutoUpdate: false } }),
+    },
+    {
+      ...addonShot('settings-plugins-updates-confirm', '全部更新：新版要更多权限的，先列出来问', async p => {
+        await openPluginsPage(p)
+        p.click('#island-settings [data-mk-all]')
+        await p.wait(400)
+      }),
+      world: F => ({ ...withAddons(F), marketUpdates: F.MARKET_UPDATES, config: { pluginAutoUpdate: false } }),
+    },
 
     // General's 提醒: 她有事告诉你时, and just under it 停留多久, its note for
     // the cue chosen (zhoupengjie/Wakuwaku#59, #65): a ring, Custom's 45 s

@@ -35,7 +35,10 @@ rain-alert/
   "main": "main.js",
   "view": "view.html",
   "category": "info",
-  "widget": { "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "weather" },
+  "widget": {
+    "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "weather",
+    "sample": { "label": "Dresden", "value": "70%", "detail": { "extra": "17:00", "series": { "points": [10, 30, 55, 70, 62], "unit": "%" } } }
+  },
   "settings": [
     { "key": "City", "type": "text", "required": true,
       "label": { "en": "City", "zh": "城市" }, "hint": { "en": "e.g. Dresden", "zh": "比如 Dresden" } },
@@ -61,6 +64,7 @@ rain-alert/
 | `widget.sizes` | A subset of `s`, `m`, `l`. Default `["s", "m"]`. |
 | `widget.color` | `#rgb` or `#rrggbb`. Used only on the icon, progress and corner glow, as for built-in widgets. |
 | `widget.icon` | One of her built-in icon names (`examples/widgets/README.md`), or an `.svg` in the folder: drawn in one colour as a mask (its shape alone; the text colour on the taskbar, the widget's colour where her widgets use theirs), as a picture, so nothing in it runs. The market's check refuses an SVG icon with scripts, `on…` attributes, `<foreignObject>`, entities (`<!ENTITY>`) or links to anything outside it. Without an icon, the first letter of the name in a tinted square. |
+| `widget.sample` | Optional. What your widget would show, in the `POST /widget` format (`label`, `value`, `color`, `icon`, `private`, `detail`), at most 4 KB of JSON. The market's page draws your cards from it with her own templates (S, M, and L if `sizes` has it) before anyone installs your plugin; without it, that page shows no cards. The market's check takes it as she takes a widget: a field of the wrong kind is an error, and what she would drop or cut (an unknown field, words too long, more than 12 rows) is a warning. Use example data that reads in either language; nothing in it is shown once the plugin is installed. |
 | `settings` | Fields drawn on the Plugins page, values stored in her settings. `type` is `text`, `number`, `flag` or `choice` (with `options`, and optional `optionLabels: { option: {en, zh} }`). `key` matches `^[A-Za-z][A-Za-z0-9]{0,31}$` and is not `on` (her switch). A `required` field left empty keeps the plugin from running ("needs settings"). |
 | `permissions` | See below. Anything not asked for is not available. |
 
@@ -153,7 +157,15 @@ A pack has no code. Its `manifest.json` has `kind` `pet` or `wallpaper`, with `i
 
 - `pet`: the files of a pet as she reads them already: both `pet.json` and `spritesheet.webp` are required, at the pack's top level beside its `manifest.json`. Installed into `wakuwaku-data\pets\<id>\` and chosen on the Look page.
 - `wallpaper`: images (`.jpg .jpeg .png .webp`), at the pack's top level (pictures in sub-folders are not used). Installed into `wakuwaku-data\wallpapers\<id>\` and used from the Look page like a folder of wallpapers.
+- Either may have a `preview.webp`, `preview.png` or `preview.jpg` at its top level, 64 KB or less: the market's page shows it. It is neither a wallpaper nor part of the pet.
 
 ## The market
 
 The market is a public repository of packages and an `index.json` built from them, served from GitHub and from Gitee for China. Authors open a pull request. A check runs first (`tools/market/check.js`: format, file types, programs, size), then the maintainer reviews and merges. `tools/market/README.md` says how to run the checks yourself before you submit.
+
+In Wakuwaku it is Plugins › 获取更多 (Get more), and the widget library's 获取更多… (Get more…), which opens it on its widgets:
+
+- Its index is read when the page opens and is an hour old, through the Network proxy setting, from GitHub, or Gitee first in China (as her own updates go), the other when one fails. While the repository does not exist, the page says the market is not open yet.
+- Each entry's page shows your cards drawn from `widget.sample`, or a pack's preview, then the description and what it can do, as a plugin's page does once installed.
+- Installing: one that asks for `agents`, `hardware` or `notify` is asked about first; one that asks for the web alone installs at once (its hosts are listed on its page). The zip is installed only when its size and SHA-256 are the index's and its manifest's `id` and `version` are the entry's; then it is checked as any zip is. It is marked reviewed, and the permissions it asks for are recorded as granted. Packs install from the market in a later version.
+- Updates: she looks once a day (only when something from the market is installed). A newer version asking for nothing beyond what was granted installs by itself and its frame loads again, unless 插件自动更新 (Update plugins automatically) is off. One asking for more waits: the Plugins page says 「N 个插件有更新」 with 全部更新 (Update all), which first lists what each newly asks for. Raise `version` for every change, or nobody gets it.

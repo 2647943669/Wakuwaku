@@ -9,7 +9,24 @@
   "api": 1,
   "main": "main.js",
   "category": "info",
-  "widget": { "sizes": ["s", "m"], "color": "#8cc8ff", "icon": "weather" },
+  "widget": {
+    "sizes": ["s", "m"],
+    "color": "#8cc8ff",
+    "icon": "weather",
+    "sample": {
+      "label": "Dresden",
+      "value": "70%",
+      "detail": {
+        "series": { "points": [10, 15, 30, 55, 70, 62], "unit": "%", "hi": 100, "lo": 0 },
+        "rows": [
+          { "kind": "hour", "when": "15:00", "icon": "cloud", "value": "10%" },
+          { "kind": "hour", "when": "16:00", "icon": "cloud", "value": "30%" },
+          { "kind": "hour", "when": "17:00", "icon": "rain", "value": "70%" }
+        ],
+        "extra": "17:00 ☂"
+      }
+    }
+  },
   "settings": [
     { "key": "City", "type": "text", "required": true, "label": { "en": "City", "zh": "城市" }, "hint": { "en": "e.g. Dresden", "zh": "比如 Dresden" } },
     { "key": "Hours", "type": "choice", "options": ["3", "6", "12"], "default": "6", "label": { "en": "Look ahead", "zh": "往后看" },

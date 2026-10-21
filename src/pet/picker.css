@@ -511,20 +511,6 @@
   text-align: center;
 }
 
-.pk-note {
-  flex: none;
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--pk-card);
-  color: var(--pk-2);
-  font-size: 12px;
-}
-
-.pk-note[hidden] {
-  display: none;
-}
-
 .pk-foot {
   display: flex;
   flex: none;

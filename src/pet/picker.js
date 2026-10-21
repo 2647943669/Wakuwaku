@@ -13,8 +13,8 @@
 // card for each widget (its icon, name and what it is, and "已放 N" where it
 // is put), other people's plugins among them in their manifest's kind
 // (@who made it, then what it is; one just installed and put nowhere yet
-// first, marked 新: addonui.js), 获取更多… (to come) and 管理… (Settings,
-// 插件). One instance of each
+// first, marked 新: addonui.js), 获取更多… (Settings, 插件 › 获取更多, its
+// widgets) and 管理… (Settings, 插件). One instance of each
 // for now: a card put again is the same widget moved. 组合: the boards kept
 // as combos (a board's 存为组合…, settings boardSets), each card its name,
 // how many and their icons; dragged onto the desktop its board is put up
@@ -96,14 +96,12 @@
     <div class="pk-chips"></div>
     <p class="pk-hint"></p>
     <div class="pk-grid"></div>
-    <p class="pk-note" hidden></p>
     <div class="pk-foot"><button type="button" data-pk="more"></button><button type="button" data-pk="manage"></button></div>`
   const $ = sel => pk.querySelector(sel)
   const search = $('input')
   const grid = $('.pk-grid')
   const chips = $('.pk-chips')
   const menu = $('.pk-menu')
-  const note = $('.pk-note')
 
   // The popover over a widget on the strip, the toasts, the ghost under the
   // pointer, the band above the strip, the gap opened on the strip.
@@ -332,7 +330,6 @@
     menu.hidden = true
     endRenameSet(true)
     closeSetMenu()
-    note.hidden = true
     focusKey = ''
     query = ''
     search.value = ''
@@ -368,19 +365,15 @@
       return Isle.sendSolid()
     }
     if (what === 'reset') return resetParts()
-    if (what === 'more') return say(T('picker.moreNote'))
-    if (what === 'manage') {
+    // 获取更多…: the market, its widgets (settings.js, widgets:market:widget);
+    // 管理…: the Plugins page.
+    if (what === 'more' || what === 'manage') {
       // The settings over her island: editing lets the pointer through it, so done first.
       if (editing()) Isle.endEdit(true)
       hide()
-      return window.pet.openSettings('widgets')
+      return window.pet.openSettings(what === 'more' ? 'widgets:market:widget' : 'widgets')
     }
   })
-  const say = text => {
-    const again = note.textContent === text && !note.hidden
-    note.textContent = text
-    note.hidden = again
-  }
   search.addEventListener('input', () => {
     query = search.value
     drawGrid()

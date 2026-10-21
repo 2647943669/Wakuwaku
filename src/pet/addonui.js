@@ -4,8 +4,10 @@
 // what it may do in words, which cards come first in the picker (one
 // installed here and never placed since: 新), the steps of installing one
 // from a file and the confirm layer each shows, and a folder's line that
-// did not install. The words come from T(key, vars) as the page has them;
-// the markup stays the page's.
+// did not install; the market's list, buttons, layers, words for what went
+// wrong, and the widget its cards are drawn from (spec §1, §2, §5). The
+// words come from T(key, vars) as the page has them; the markup stays the
+// page's.
 ;(function (root) {
   // The picker's kinds (picker.js CATS) for a manifest's category.
   const CATS = { system: 'system', productivity: 'work', info: 'info' }
@@ -257,7 +259,206 @@
   // view of its own.
   const aboutOf = (a, T) => [byline(a), T(`picker.cat.${catOf(a)}`), a?.view ? T('addons.ownView') : ''].filter(Boolean).join(' · ')
 
-  const api = { CATS, catOf, byline, labelOf, clockOf, stoppedWords, statusOf, aboutOf, permLines, isSensitive, freshFirst, badgeOf, makeNews, IDLE, verdict, next, refusedWords, layerOf, uninstallLayerOf, brokenLine, cut, fileOf }
+  // --- The market (market.rs; spec §1, §2, §3's banner, §5) ------------------------------
+  // Its categories, the chips over its list: all, widgets (plugins), pets, wallpapers.
+  const MARKET_CATS = ['all', 'widget', 'pet', 'wallpaper']
+  const marketCat = item => (item?.kind === 'pet' ? 'pet' : item?.kind === 'wallpaper' ? 'wallpaper' : 'widget')
+  // Words the index gives as { en, zh } (or a string): hers, else English.
+  const wordsIn = (v, lang) => (v && typeof v === 'object' ? v[lang] || v.en || '' : String(v ?? ''))
+
+  // A link that opens the settings on the market, by category (spec §1):
+  // widgets:market (all), widgets:market:widget (the picker's 获取更多…),
+  // :pet and :wallpaper (the Look page's, phase 4). null for any other.
+  function marketLink(next) {
+    const m = /^widgets:market(?::(widget|pet|wallpaper))?$/.exec(String(next ?? ''))
+    return m ? { cat: m[1] || 'all' } : null
+  }
+
+  // Those its list shows: of the category, with the words looked for in
+  // either language's name or description, its author or its id, any case.
+  function marketList(items, { cat = 'all', query = '' } = {}) {
+    const q = String(query).trim().toLowerCase()
+    const said = i => [i.name?.en, i.name?.zh, i.name, i.description?.en, i.description?.zh, i.description, i.author, i.id].filter(w => typeof w === 'string')
+    return (Array.isArray(items) ? items : []).filter(i => (cat === 'all' || marketCat(i) === cat) && (!q || said(i).some(w => w.toLowerCase().includes(q))))
+  }
+
+  // Whether one version is newer than another, part by part (1.10.0 after 1.9.0).
+  function isNewer(a, b) {
+    const x = String(a ?? '').split('.').map(Number)
+    const y = String(b ?? '').split('.').map(Number)
+    for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0)
+    return false
+  }
+
+  // The button at its row's end, and on its page (spec §2): a download
+  // under way, how far (busy: its share, then 校验中… and 安装中…); here and
+  // older, 更新; here, 已安装 (on its page: 添加小工具… for a plugin, 去
+  // 「外观」里选 for a pack); else 安装. installed: the version here (null:
+  // none); job: its download's last word (market:progress).
+  function marketButton(item, { installed = null, job = null, detail = false, T }) {
+    if (job && !['done', 'failed'].includes(job.stage)) {
+      const pct = job.total ? Math.min(100, Math.floor((100 * (job.got || 0)) / job.total)) : 0
+      const fetching = job.stage === 'download'
+      return { what: 'busy', label: fetching ? `${pct}%` : T(job.stage === 'verify' ? 'mk.verify' : 'mk.installing'), pct: fetching ? pct : 100, primary: false, disabled: true }
+    }
+    if (installed && isNewer(item?.version, installed)) return { what: 'update', label: T('mk.update'), pct: 0, primary: true, disabled: false }
+    if (installed && !detail) return { what: 'installed', label: T('mk.installed'), pct: 0, primary: false, disabled: true }
+    if (installed) return item?.kind === 'plugin' ? { what: 'add', label: T('pl.add'), pct: 0, primary: false, disabled: false } : { what: 'look', label: T('mk.toLook'), pct: 0, primary: false, disabled: false }
+    return { what: 'install', label: T('mk.install'), pct: 0, primary: true, disabled: false }
+  }
+
+  // A size as the market says it: 48 KB, 3.2 MB.
+  const sizeOf = (n, T) => (n >= 1048576 ? T('mk.mb', { n: (n / 1048576).toFixed(1) }) : T('mk.kb', { n: Math.max(1, Math.round((n || 0) / 1024)) }))
+  // Its line in the list, under its name: its kind, 自绘界面, what it is.
+  const marketAbout = (item, T, lang) => [T(`mk.kind.${item?.kind}`), item?.view ? T('addons.ownView') : '', wordsIn(item?.description, lang)].filter(Boolean).join(' · ')
+  // Its page's, under its name: @author · v1.2.0 · 48 KB · 小工具 (· 自绘界面).
+  const marketByline = (item, T) => [item?.author ? `@${item.author}` : '', item?.version ? `v${item.version}` : '', item?.size ? sizeOf(item.size, T) : '', T(`mk.kind.${item?.kind}`), item?.view ? T('addons.ownView') : ''].filter(Boolean).join(' · ')
+
+  // What `wanted` asks for beyond what `had` has (a newer version's new
+  // permissions), as permissions: a host none of those had covers (the
+  // same name, or under a *. one, as addons.rs host_allowed), each flag
+  // not had.
+  function permsBeyond(had, wanted) {
+    const h = had && typeof had === 'object' ? had : {}
+    const w = wanted && typeof wanted === 'object' ? wanted : {}
+    const rules = Array.isArray(h.net) ? h.net : []
+    const covered = host => rules.some(r => r === host || (r.startsWith('*.') && host.endsWith(r.slice(1)) && host.length > r.length - 1))
+    return { net: (Array.isArray(w.net) ? w.net : []).filter(x => !covered(x)), agents: !!w.agents && !h.agents, hardware: !!w.hardware && !h.hardware, notify: !!w.notify && !h.notify }
+  }
+  const asksAny = p => !!(p.net.length || p.agents || p.hardware || p.notify)
+
+  // Installing one that asks for more than the web (spec §2): 安装「X」？
+  // 它会：…, 取消 / 安装, over the panel. null for one asking for none of it:
+  // it goes straight in (the hosts it reaches are on its page). Updating
+  // one here (had: what the one here may do): asked only when the new one
+  // asks for anything more, that alone listed (spec §5).
+  function marketAskOf(item, T, list, lang, had = null) {
+    if (!item) return null
+    const name = wordsIn(item.name, lang)
+    const more = had ? permsBeyond(had, item.perms) : item.perms
+    if (had ? !asksAny(more) : !isSensitive(more)) return null
+    return {
+      kind: 'ask',
+      title: T(had ? 'mk.updateAsk' : 'addons.installAsk', { name }),
+      warn: null,
+      willHead: T(had ? 'mk.updateWill' : 'addons.will'),
+      will: permLines(more, T, list).map(x => x.text),
+      notes: [],
+      line: null,
+      busy: false,
+      buttons: [
+        ['cancel', T('addons.cancel'), ''],
+        ['mkgo', T(had ? 'mk.update' : 'mk.install'), 'al'],
+      ],
+    }
+  }
+
+  // What an update newly asks for (market.rs: "net:<host>", "agents",
+  // "hardware", "notify") as permissions, for permLines.
+  const permsOfNew = list => {
+    const l = Array.isArray(list) ? list : []
+    return { net: l.filter(p => String(p).startsWith('net:')).map(p => String(p).slice(4)), agents: l.includes('agents'), hardware: l.includes('hardware'), notify: l.includes('notify') }
+  }
+  // The line under 获取更多 when updates wait for the person (spec §3):
+  // 「N 个插件有更新」 and 全部更新; null with none.
+  const updatesBanner = (updates, T) => (Array.isArray(updates) && updates.length ? { text: T('mk.updates', { n: updates.length }), button: T('mk.updateAll') } : null)
+  // 全部更新, asked first when any of them asks for more (spec §5): each of
+  // those, its versions and what it newly asks for; how many others there
+  // are. null: none asks for more (they go at once).
+  function updatesAskOf(updates, T, list) {
+    const all = Array.isArray(updates) ? updates : []
+    const asking = all.filter(u => Array.isArray(u.newPerms) && u.newPerms.length)
+    if (!asking.length) return null
+    const rest = all.length - asking.length
+    return {
+      kind: 'ask',
+      title: T('mk.updatesAsk', { n: all.length }),
+      warn: null,
+      willHead: T('mk.updatesHead'),
+      will: asking.map(u => T('mk.updateLine', { name: u.name, from: u.from, to: u.to, perms: permLines(permsOfNew(u.newPerms), T, list).map(p => p.text).join(T('mk.permSep')) })),
+      notes: rest > 0 ? [T('mk.updatesRest', { n: rest })] : [],
+      line: null,
+      busy: false,
+      buttons: [
+        ['cancel', T('addons.cancel'), ''],
+        ['mkall', T('mk.updateAll'), 'al'],
+      ],
+    }
+  }
+
+  // Why the market will not show (its index's error, market.rs), in words:
+  // not open yet (404: closed, no error at all); not reached, as her
+  // updates say it, with the Network proxy to look at (proxy); its index
+  // unreadable. null: no error.
+  function marketTroubleOf(err, T) {
+    if (!err || typeof err !== 'object') return null
+    if (err.code === 'closed') return { closed: true, text: T('mk.closed'), note: T('mk.closedNote'), proxy: false }
+    if (err.code === 'bad') return { closed: false, text: T('mk.errorBad', { detail: cut(err.detail || '', 160) }), note: '', proxy: false }
+    return { closed: false, text: T('mk.error', { detail: cut(err.detail || '', 240) }), note: T('mk.proxyHint'), proxy: true }
+  }
+  // Why one did not go in (market.rs install's error), in words; '' for one called off.
+  function marketFailOf(err, T) {
+    const detail = cut(err?.detail || '', 160)
+    switch (err?.code) {
+      case 'pack':
+        return T('mk.no.pack')
+      case 'download':
+        return T('mk.no.download', { detail })
+      case 'size':
+        return T('mk.no.size')
+      case 'digest':
+        return T('mk.no.digest')
+      case 'mismatch':
+        return T('mk.no.mismatch', { detail })
+      case 'refused': {
+        const w = refusedWords(err.refused || { reason: 'read', detail: err.detail }, T)
+        return T('mk.no.refused', { detail: `${w.head}${w.text}` })
+      }
+      case 'notFound':
+        return T('mk.no.notFound')
+      case 'busy':
+        return T('mk.no.busy')
+      case 'cancelled':
+        return ''
+      default:
+        return T('mk.no.other', { detail })
+    }
+  }
+  // Installed: the word at the panel's foot (spec §2): a plugin, where to
+  // put it; a pack, the Look page.
+  const marketDoneOf = (item, T, lang) => T(item?.kind === 'plugin' ? 'addons.installed' : 'mk.installedPack', { name: wordsIn(item?.name, lang) })
+
+  // What its widget would say (the index's sample), as her pages take a
+  // widget of a plugin's: its name for a label where it gives none, its
+  // sizes the manifest's, its colour and icon there unless it gives its
+  // own, its own .svg as its picture; for her card templates (wdesk.js) to
+  // draw before it is installed. null: no sample.
+  function sampleWidget(item, lang) {
+    const s = item?.sample
+    if (!s || typeof s !== 'object') return null
+    const icon = s.icon || item.glyph || 'dot'
+    const w = {
+      id: item.id,
+      plugin: item.id,
+      from: 'addon',
+      on: true,
+      label: s.label || wordsIn(item.name, lang),
+      value: s.value || '',
+      icon,
+      color: s.color || item.color || '',
+      private: false,
+      detail: { ...(s.detail && typeof s.detail === 'object' ? s.detail : {}), sizes: sampleSizes(item) },
+    }
+    if (icon === 'dot' && item.icon) w.iconUrl = item.icon
+    return w
+  }
+  // The sizes its cards are drawn at: those it has of s, m, l.
+  const sampleSizes = item => ['s', 'm', 'l'].filter(z => (Array.isArray(item?.sizes) && item.sizes.length ? item.sizes : ['s', 'm']).includes(z))
+
+  const api = {
+    CATS, catOf, byline, labelOf, clockOf, stoppedWords, statusOf, aboutOf, permLines, isSensitive, freshFirst, badgeOf, makeNews, IDLE, verdict, next, refusedWords, layerOf, uninstallLayerOf, brokenLine, cut, fileOf,
+    MARKET_CATS, marketCat, wordsIn, marketLink, marketList, isNewer, marketButton, sizeOf, marketAbout, marketByline, permsBeyond, marketAskOf, permsOfNew, updatesBanner, updatesAskOf, marketTroubleOf, marketFailOf, marketDoneOf, sampleWidget, sampleSizes,
+  }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else {
     // The page's own: those installed since it came up (settings.js marks
