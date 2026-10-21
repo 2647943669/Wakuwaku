@@ -316,6 +316,15 @@ static READING: Mutex<()> = Mutex::new(());
 // Each download under way, and whether it was called off.
 static JOBS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+// A download or update of this id called off, if one is under way (its loop
+// checks the flag): so an uninstall of it does not race a market job
+// (addons::uninstall, finding 8).
+pub fn cancel(id: &str) {
+    if let Some(c) = JOBS.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
+        c.store(true, Ordering::Relaxed);
+    }
+}
+
 fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -563,6 +572,18 @@ fn tell(sh: &Shared, id: &str, got: u64, total: u64, stage: &str, more: Value) {
     let _ = sh.app.emit_to("island", "market:progress", p);
 }
 
+// The same permissions, the hosts in any order (perms_of keeps the JSON's
+// order, so a hand-made index could list them another way).
+pub fn same_perms(a: &Perms, b: &Perms) -> bool {
+    if (a.agents, a.hardware, a.notify) != (b.agents, b.hardware, b.notify) || a.net.len() != b.net.len() {
+        return false;
+    }
+    let (mut x, mut y) = (a.net.clone(), b.net.clone());
+    x.sort();
+    y.sort();
+    x == y
+}
+
 // Its size and SHA-256 as the index gives them.
 pub fn verify(item: &Item, size: u64, sha256: &str) -> Result<(), Value> {
     if size != item.size {
@@ -689,6 +710,13 @@ fn get(sh: &Arc<Shared>, item: &Item, cancel: &AtomicBool) -> Result<Value, Valu
     // Its kind too: a pack's item asks nothing before it goes in.
     if pkg.manifest.id != item.id || pkg.manifest.version != item.version || pkg.manifest.kind != item.kind {
         return Err(error("mismatch", format!("{} {} {} in place of {} {} {}", pkg.manifest.kind.name(), pkg.manifest.id, pkg.manifest.version, item.kind.name(), item.id, item.version)));
+    }
+    // Its permissions too: the page asked about (and granted) the index
+    // item's; a zip whose manifest asks for others must not slip in under
+    // them. Compared as what it asks (`wants`), so a plugin of a newer API
+    // (whose enforced `perms` are read empty) is still checked.
+    if !same_perms(&pkg.manifest.wants, &item.perms) {
+        return Err(error("mismatch", format!("{} asks for {}, the market lists {}", pkg.manifest.id, pkg.manifest.wants.json(), item.perms.json())));
     }
     tell(sh, id, item.size, item.size, "install", Value::Null);
     addons::put_in(sh, pkg, "market", &format!("the market ({how})"), &item.file).map_err(|r| json!({ "code": "refused", "detail": r.detail, "refused": { "reason": r.reason, "file": r.file, "detail": r.detail } }))
@@ -862,6 +890,18 @@ mod tests {
         assert!(verify(&i, 3, SHA).is_ok());
         assert_eq!(verify(&i, 4, SHA).unwrap_err()["code"], "size");
         assert_eq!(verify(&i, 3, &"0".repeat(64)).unwrap_err()["code"], "digest");
+    }
+
+    // The index item's permissions and the downloaded manifest's must be the
+    // same (the hosts in any order), else the install would run under what
+    // the page showed while the manifest asks for other things.
+    #[test]
+    fn a_manifest_asking_for_other_permissions_than_the_index_is_a_mismatch() {
+        let a = perms(&["api.open-meteo.com", "*.github.io"], false, true);
+        assert!(same_perms(&a, &perms(&["*.github.io", "api.open-meteo.com"], false, true)), "order does not matter");
+        assert!(!same_perms(&a, &perms(&["api.open-meteo.com"], false, true)), "one fewer host");
+        assert!(!same_perms(&a, &perms(&["api.open-meteo.com", "*.github.io"], true, true)), "a flag more");
+        assert!(!same_perms(&a, &perms(&["api.open-meteo.com", "evil.com"], false, true)), "another host");
     }
 
     // A local server that answers each connection with the next of

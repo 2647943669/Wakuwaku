@@ -285,10 +285,11 @@ test('the watchdog: a ping every 5 s while any plugin runs, none before a frame 
   s.advance(4999)
   assert.equal(s.pings(), 0)
   s.advance(1)
-  assert.deepEqual(s.posted.filter(x => x.t === 'ping').map(x => [x.to, x.n]), [
-    [s.win('ann').name, 1],
-    [s.win('bob').name, 1],
-  ])
+  // A fresh nonce per ping, so a plugin cannot forge an answer (not a plain
+  // round counter): the recipients are what matter here.
+  const first = s.posted.filter(x => x.t === 'ping')
+  assert.deepEqual(first.map(x => x.to), [s.win('ann').name, s.win('bob').name])
+  assert.ok(first.every(x => typeof x.n === 'string' && x.n) && first[0].n !== first[1].n)
   s.answer()
   s.advance(3000)
   s.advance(2000)
@@ -509,6 +510,85 @@ test('the watchdog: over 2 s of its own long tasks in a minute, stopped as busy;
   assert.deepEqual(t.stops(), [])
   ping(t, { calm: 1500 })
   assert.deepEqual(t.stops().map(x => x.why), ['busy'], 'within its minute: over')
+})
+
+test('the watchdog: a forged pong does not count, so a hung plugin is still stopped', () => {
+  const s = setup()
+  s.host.setEnv({ lang: 'zh' })
+  s.host.apply([item('good'), item('evil')])
+  for (const id of ['good', 'evil']) s.host.receive(s.win(id), { waku: 1, t: 'ready' })
+  const stops = () => s.asked.filter(a => a.cmd === 'stop').map(a => a.args)
+  // good answers with the nonce she sent it; evil forges a huge fixed n, as
+  // the review's evil did — it never knows the real one, so it never counts.
+  const answer = () => {
+    for (const p of s.posted.filter(x => x.t === 'ping' && !x.seen)) {
+      p.seen = true
+      const m = s.made.find(x => x.win.name === p.to)
+      if (m) s.host.receive(m.win, { waku: 1, t: 'pong', n: m.id === 'good' ? p.n : 999999999 })
+    }
+  }
+  s.advance(5000)
+  answer()
+  s.advance(3000)
+  assert.deepEqual(s.dropped, ['evil'], 'evil alone missed; good counted, evil’s forgery did not')
+  s.advance(A.RELOAD_MS)
+  s.host.receive(s.win('evil'), { waku: 1, t: 'ready' })
+  // Its new frame needs a moment to be pinged again; then it misses a second
+  // time within ten minutes and is stopped (good, which answers, is left be).
+  for (let i = 0; i < 2; i++) {
+    s.advance(5000)
+    answer()
+    s.advance(3000)
+  }
+  const [stop] = stops()
+  assert.equal(stop && stop.id, 'evil')
+  assert.equal(stop && stop.why, 'hung')
+  assert.ok(s.host.recs.has('good') && !s.host.recs.has('evil'))
+})
+
+test('a flood of messages from one frame is dropped before its data is read, one line said', async () => {
+  const s = setup({ storage: { value: 1 } })
+  s.host.setEnv({ lang: 'zh' })
+  s.host.apply([item('loud')])
+  s.host.receive(s.win('loud'), { waku: 1, t: 'ready' })
+  const win = s.win('loud')
+  s.advance(1000) // past the window the 'ready' was in
+  for (let i = 1; i <= 70; i++) s.host.receive(win, { waku: 1, t: 'storage', op: 'get', key: 'k', n: i })
+  await s.flush()
+  const replies = s.posted.filter(p => p.t === 'reply')
+  assert.equal(replies.length, 60, '60 a second read, the other 10 dropped')
+  assert.ok(s.logs.some(l => /too many messages/.test(l)))
+})
+
+test('requests of every kind at once are capped per plugin, not only fetch', async () => {
+  const s = setup({ storage: { value: 1 } })
+  s.host.setEnv({ lang: 'zh' })
+  s.host.apply([item('heavy')])
+  s.host.receive(s.win('heavy'), { waku: 1, t: 'ready' })
+  const win = s.win('heavy')
+  for (let i = 1; i <= 12; i++) s.host.receive(win, { waku: 1, t: 'storage', op: 'get', key: 'k', n: i })
+  // Four refused at once, before her side is asked (that reply is synchronous).
+  const refused = s.posted.filter(p => p.t === 'reply' && !p.ok && /requests at once/.test(String(p.error)))
+  assert.equal(refused.length, 4)
+  await s.flush()
+  // Only eight ever reached her side.
+  assert.equal(s.asked.filter(a => a.cmd === 'storage').length, 8)
+})
+
+test('a plugin cannot keep more widget entries than her side holds', () => {
+  const s = setup()
+  s.host.setEnv({ lang: 'zh' })
+  s.host.apply([item('many')])
+  s.host.receive(s.win('many'), { waku: 1, t: 'ready' })
+  const win = s.win('many')
+  let refused = 0
+  for (let i = 0; i < 20; i++) {
+    s.host.receive(win, { waku: 1, t: 'widget', sub: `s${i}`, data: { value: String(i) }, n: 100 + i })
+    const r = s.posted.find(p => p.t === 'reply' && p.n === 100 + i)
+    if (r && !r.ok && /widgets at most/.test(String(r.error))) refused++
+  }
+  // Eight subs kept, the rest turned away without an entry (no timer) made.
+  assert.equal(refused, 12)
 })
 
 test('a message of its view goes to its main.js, with which card it came from', () => {

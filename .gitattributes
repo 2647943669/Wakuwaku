@@ -1,3 +1,19 @@
+# The example plugins and packs are read from the working tree by the tests
+# (addons::tests::the_examples_read) and served to WebView2: their text files
+# in LF whatever the checkout's core.autocrlf, their pictures left as bytes.
+examples/**/*.js text eol=lf
+examples/**/*.mjs text eol=lf
+examples/**/*.json text eol=lf
+examples/**/*.html text eol=lf
+examples/**/*.css text eol=lf
+examples/**/*.md text eol=lf
+examples/**/*.txt text eol=lf
+examples/**/*.svg text eol=lf
+examples/**/*.png binary
+examples/**/*.jpg binary
+examples/**/*.jpeg binary
+examples/**/*.webp binary
+
 # DeepSeek Harness session logs (zstd) the tests read: bytes as they are
 test/fixtures/dsh/*.zstd binary
 # Zips as Windows' tar and PowerShell's Compress-Archive make them (lhm_setup.rs tests)

@@ -345,7 +345,7 @@
         field('Alert', 'flag', '下雨前提醒我', { default: true }),
       ],
     }),
-    addon('hello', {
+    addon('tally', {
       name: '数数', description: '一直往上数，记得数到了几', author: 'wakuwaku', version: '1.0.0', category: 'productivity', color: '#7fd8a6', icon: { url: TALLY },
       settings: [
         field('Step', 'number', '每次加', { default: 1 }),
@@ -358,12 +358,19 @@
       perms: { net: ['api.rainviewer.com'], agents: false, hardware: false, notify: false }, source: 'market', reviewed: true, on: true, state: 'stopped',
       stopped: { why: 'hung', since: new Date(2026, 9, 17, 10, 12).getTime(), at: new Date(2026, 9, 17, 10, 12, 18).getTime(), times: 3 },
     }),
+    // One whose new version asks for more than was allowed: 要更多权限, 允许…
+    // (finding 1). perms is what it shows (its manifest's); newPerms the new.
+    addon('note-pad', {
+      name: '便签', description: '桌面上的一张便签，想起什么写一句', author: 'sam', version: '2.0.0', category: 'productivity', color: '#f5c86b',
+      perms: { net: ['api.example.com'], agents: true, hardware: false, notify: false }, sensitive: true, source: 'market', reviewed: true, on: true,
+      state: 'needsApproval', newPerms: ['agents', 'net:api.example.com'],
+    }),
   ]
   // What each says once it runs (addons.rs widget: its name its label, its
   // manifest's sizes, colour, icon; its own picture as iconUrl).
   const ADDON_WIDGETS = {
     'rain-alert': { id: 'rain-alert', plugin: 'rain-alert', from: 'addon', on: true, icon: 'weather', color: '#8cc8ff', label: '下雨提醒', value: '70%', detail: { sizes: ['s', 'm'], extra: '17:00 起有雨 · Dresden', series: { points: [10, 15, 30, 55, 70, 62, 40, 22, 12], unit: '%', lo: 0, hi: 100 } } },
-    hello: { id: 'hello', plugin: 'hello', from: 'addon', on: true, icon: 'dot', iconUrl: TALLY, color: '#7fd8a6', label: '数羊', value: '42', detail: { sizes: ['s', 'm'], extra: '每 5 秒加 1' } },
+    tally: { id: 'tally', plugin: 'tally', from: 'addon', on: true, icon: 'dot', iconUrl: TALLY, color: '#7fd8a6', label: '数羊', value: '42', detail: { sizes: ['s', 'm'], extra: '每 5 秒加 1' } },
     'weather-radar': { id: 'weather-radar', plugin: 'weather-radar', from: 'addon', on: true, icon: 'dot', color: '#6fa6ff', label: '天气雷达', value: '无雨', detail: { sizes: ['s', 'm'], extra: '50 公里内' } },
     // A view of its own (examples/plugins/agent-board): its revision in the
     // widget, the view itself asked for (addon_view: ADDON_VIEWS).
@@ -400,7 +407,7 @@
     'my-plugin.zip': addon('my-plugin', { name: '我的测试插件', description: '自己写着玩的', author: 'you', version: '0.1.0', category: 'productivity', perms: { net: ['api.example.com'], agents: false, hardware: false, notify: false } }),
     'agent-board.zip': addon('agent-board', { name: 'Agent 排行', description: '今天哪个项目让 agent 干得最多', author: 'mika', version: '0.9.1', category: 'productivity', color: '#f08a62', icon: { name: 'chart' }, perms: { net: [], agents: true, hardware: false, notify: true }, sensitive: true }),
     'cool-tool.zip': { refused: { reason: 'program', file: 'helper.exe', detail: 'a program' } },
-    'hello-1.1.0.zip': { ...ADDONS[1], version: '1.1.0', installedAt: T0 },
+    'tally-1.1.0.zip': { ...ADDONS[1], version: '1.1.0', installedAt: T0 },
     // A pet pack someone sent (packs.rs: pictures alone), and one with a script in it.
     'mochi.zip': { id: 'mochi', kind: 'pet', name: '团子', description: '一只圆滚滚的小团子', author: 'mika', version: '1.0.0', perms: { net: [], agents: false, hardware: false, notify: false }, sensitive: false, size: 1.4 * 1048576, pictures: 0 },
     'walls-plus.zip': { refused: { reason: 'packType', file: 'slideshow.js', detail: 'a pack holds pictures and words alone' } },

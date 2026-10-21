@@ -296,6 +296,53 @@ impl Way {
     pub fn agent(&self, timeout: Duration) -> Option<ureq::Agent> {
         self.agent_with(timeout, |c| c)
     }
+
+    // An agent for a plugin's waku.fetch: as agent_with, but a direct
+    // connection resolves the name through Guard, which drops any address of
+    // this computer or the network at home and connects to exactly what is
+    // left — the same lookup ureq uses, so a name that answered one address
+    // to the pre-check cannot answer an inside one to the connection
+    // (addons.rs resolves_inside). Through a proxy the proxy resolves, so the
+    // resolver is not consulted there (the pre-check is all, its residual
+    // risk in docs/PLUGINS.md).
+    pub fn guarded_agent(&self, timeout: Duration, tweak: impl FnOnce(ConfigBuilder<AgentScope>) -> ConfigBuilder<AgentScope>) -> Option<ureq::Agent> {
+        use ureq::unversioned::resolver::DefaultResolver;
+        use ureq::unversioned::transport::DefaultConnector;
+        let config = ureq::Agent::config_builder()
+            .timeout_global(Some(timeout))
+            .timeout_connect(Some(CONNECT.min(timeout)))
+            .timeout_recv_response(Some(HEAD.min(timeout)));
+        let built = |cfg: ConfigBuilder<AgentScope>| ureq::Agent::with_parts(cfg.build(), DefaultConnector::new(), Guard(DefaultResolver::default()));
+        Some(match self {
+            Way::Through(p) => built(tweak(config.proxy(Some(ureq::Proxy::new(p).ok()?)))),
+            Way::Straight => built(tweak(config.proxy(None))),
+            Way::Default => built(tweak(config)),
+            Way::Manual(p) => crate::mail::proxy::through(p, CONNECT.min(timeout), tweak(config)),
+        })
+    }
+}
+
+// A resolver that looks a name up once and keeps only the addresses that are
+// not this computer's nor the network's at home (addons::is_inside): ureq
+// then connects to one of exactly those, keeping the name for Host and SNI,
+// so there is no second lookup to point somewhere else.
+#[derive(Debug)]
+struct Guard(ureq::unversioned::resolver::DefaultResolver);
+
+impl ureq::unversioned::resolver::Resolver for Guard {
+    fn resolve(&self, uri: &ureq::http::Uri, config: &ureq::config::Config, timeout: ureq::unversioned::transport::NextTimeout) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::Error> {
+        let all = self.0.resolve(uri, config, timeout)?;
+        let mut out = self.empty();
+        for addr in &all {
+            if !crate::addons::is_inside(addr.ip()) {
+                out.push(*addr);
+            }
+        }
+        if out.is_empty() {
+            return Err(ureq::Error::HostNotFound);
+        }
+        Ok(out)
+    }
 }
 
 // The host of an address, lower case; IPv6 without its brackets.

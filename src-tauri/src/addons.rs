@@ -318,7 +318,14 @@ pub struct Manifest {
     pub color: Option<String>,
     pub icon: Icon,
     pub settings: Vec<Field>,
+    // What she enforces: the permissions, but none for a plugin of a newer
+    // API she does not run yet (so its grant is recorded empty and she asks
+    // once a newer Wakuwaku supports it: finding 7).
     pub perms: Perms,
+    // What it asks for as written, whatever its API: shown on the detail and
+    // install pages even for one she cannot run yet (finding 7). The same as
+    // `perms` for one she runs.
+    pub wants: Perms,
 }
 
 impl Manifest {
@@ -433,9 +440,18 @@ pub fn manifest_of(v: &Value) -> Result<Manifest, String> {
         icon: Icon::None,
         settings: Vec::new(),
         perms: Perms::default(),
+        wants: Perms::default(),
     };
-    // Newer than hers: what it says of itself only, the rest unread.
+    // Newer than hers: the rest is unread and she will not run it, but its
+    // permissions are read all the same, to show on its page (finding 7);
+    // `perms` (what she would enforce) stays empty, so its grant is recorded
+    // empty and she asks once a newer Wakuwaku can run it.
     if api > API {
+        if let Some(p) = m.get("permissions") {
+            if let Ok(wants) = perms_of(p) {
+                out.wants = wants;
+            }
+        }
         return Ok(out);
     }
     let pack = kind != Kind::Plugin;
@@ -502,6 +518,8 @@ pub fn manifest_of(v: &Value) -> Result<Manifest, String> {
     if let Some(p) = m.get("permissions") {
         out.perms = perms_of(p)?;
     }
+    // One she runs asks for exactly what it is granted and shown.
+    out.wants = out.perms.clone();
     Ok(out)
 }
 
@@ -631,17 +649,36 @@ pub fn host_allowed(rules: &[String], host: &str) -> bool {
 
 // An address of this computer or of the network at home: loopback, private,
 // link-local, carrier-grade NAT, unspecified, multicast, broadcast; IPv6's
-// unique-local and link-local, and an IPv4 one written in IPv6.
-fn is_inside(ip: std::net::IpAddr) -> bool {
-    use std::net::IpAddr;
+// unique-local and link-local, and an IPv4 one reachable through IPv6 (a
+// mapped or compatible ::a.b.c.d, a 6to4 2002::/16 or a NAT64 64:ff9b::/96
+// address carrying one of those IPv4 addresses).
+pub(crate) fn is_inside(ip: std::net::IpAddr) -> bool {
+    use std::net::{IpAddr, Ipv4Addr};
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
             v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast() || v4.is_multicast() || a == 0 || (a == 100 && (64..128).contains(&b))
         }
         IpAddr::V6(v6) => {
-            let first = v6.segments()[0];
-            v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80 || v6.to_ipv4_mapped().is_some_and(|v4| is_inside(std::net::IpAddr::V4(v4)))
+            let seg = v6.segments();
+            let first = seg[0];
+            // An IPv4 address carried in this IPv6 one, if any: a mapped or
+            // compatible ::a.b.c.d (to_ipv4), a 6to4 2002:AABB:CCDD::, or the
+            // well-known NAT64 prefix 64:ff9b::/96.
+            let in_v4 = |a, b, c, d| Ipv4Addr::new(a, b, c, d);
+            let carried = if first == 0x2002 {
+                Some(in_v4((seg[1] >> 8) as u8, seg[1] as u8, (seg[2] >> 8) as u8, seg[2] as u8))
+            } else if first == 0x0064 && seg[1] == 0xff9b && seg[2..6].iter().all(|&s| s == 0) {
+                Some(in_v4((seg[6] >> 8) as u8, seg[6] as u8, (seg[7] >> 8) as u8, seg[7] as u8))
+            } else {
+                v6.to_ipv4()
+            };
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80
+                || carried.is_some_and(|v4| is_inside(IpAddr::V4(v4)))
         }
     }
 }
@@ -789,27 +826,50 @@ fn resolves_inside(host: &str, port: u16) -> bool {
 }
 
 fn send(url: &str, method: &str, headers: &[(String, String)], body: Option<&str>, until: std::time::Instant) -> Result<ureq::http::Response<ureq::Body>, String> {
+    // A request that is not idempotent (a POST and the like) may have reached
+    // the server and been acted on even when its answer never came, so it is
+    // tried another way only when the first never opened its connection
+    // (a proxy down, the name not found): else one plugin POST could be sent
+    // twice. A GET or HEAD may always be tried again.
+    let idempotent = matches!(method, "GET" | "HEAD");
     let mut last = "no way to the web".to_string();
     for way in crate::proxy::web_ways(url) {
         let left = until.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
             return Err("timed out".into());
         }
-        let Some(agent) = way.agent_with(left, |c| c.http_status_as_error(false).max_redirects(0).max_redirects_will_error(false)) else { continue };
+        let Some(agent) = way.guarded_agent(left, |c| c.http_status_as_error(false).max_redirects(0).max_redirects_will_error(false)) else { continue };
         let mut req = ureq::http::Request::builder().method(method).uri(url);
         for (k, v) in headers {
             req = req.header(k.as_str(), v.as_str());
         }
         let sent = match body {
-            Some(b) => req.body(b.to_string()).map_err(|e| e.to_string()).and_then(|r| agent.run(r).map_err(|e| words(&e))),
-            None => req.body(()).map_err(|e| e.to_string()).and_then(|r| agent.run(r).map_err(|e| words(&e))),
+            Some(b) => req.body(b.to_string()).map_err(|e| e.to_string()).map(|r| agent.run(r)),
+            None => req.body(()).map_err(|e| e.to_string()).map(|r| agent.run(r)),
         };
         match sent {
-            Ok(res) => return Ok(res),
-            Err(e) => last = e,
+            Err(e) => return Err(e), // the request could not be built
+            Ok(Ok(res)) => return Ok(res),
+            // The connection had opened and this is not idempotent: the
+            // server may have acted on it, so it is not tried another way.
+            Ok(Err(e)) if !idempotent && !before_server(&e) => return Err(words(&e)),
+            Ok(Err(e)) => last = words(&e),
         }
     }
     Err(last)
+}
+
+// Whether a failure came before the request could reach the server: the
+// connection was never opened (the name not found, the connection refused
+// or timed out while opening, no proxy to go through). Such a request is
+// safe to try another way even when it is not idempotent.
+fn before_server(e: &ureq::Error) -> bool {
+    match e {
+        ureq::Error::Timeout(t) => matches!(t, ureq::Timeout::Connect | ureq::Timeout::Resolve),
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Io(io) => matches!(io.kind(), std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::NetworkUnreachable | std::io::ErrorKind::HostUnreachable),
+        _ => false,
+    }
 }
 
 fn words(e: &ureq::Error) -> String {
@@ -854,6 +914,19 @@ pub struct Registry {
 
 static REGISTRY: LazyLock<RwLock<Registry>> = LazyLock::new(|| RwLock::new(Registry::default()));
 
+// One lock per package id, held for the whole of an install, update or
+// uninstall of it (finding 8): a file install, a market install or update,
+// a pack install, and an uninstall of the same id never run at once and
+// leave its folder or record half-written. Keyed by id alone across kinds:
+// conservative, so even a pet and a plugin of one id do not race.
+static LOCKS: LazyLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub(crate) fn with_id_lock<T>(id: &str, f: impl FnOnce() -> T) -> T {
+    let lock = LOCKS.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone();
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    f()
+}
+
 fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
     let m = std::fs::metadata(path).ok()?;
     Some((m.modified().ok()?, m.len()))
@@ -861,6 +934,36 @@ fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
 
 fn plugins_dir(dir: &Path) -> PathBuf {
     dir.join("plugins")
+}
+
+// The id in a ".old-<id>-<n>" folder's name (<n> the time it was set aside);
+// None for any other name.
+fn old_id_of(name: &str) -> Option<String> {
+    let (id, n) = name.strip_prefix(".old-")?.rsplit_once('-')?;
+    (is_id(id) && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())).then(|| id.to_string())
+}
+
+// What an install, update or uninstall cut short left in a package folder
+// (plugins, pets, wallpapers): a `.staging-<id>-<n>` (an incomplete new
+// copy) thrown away; a `.old-<id>-<n>` (the copy moved aside between two
+// renames) thrown away when `<id>` is there again, or renamed back to `<id>`
+// when it is not — so a swap stopped after the move-aside but before the
+// move-in does not leave the only copy in a hidden folder a scan ignores.
+pub(crate) fn clean_interrupted(root: &Path) {
+    for e in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if !e.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        if name.starts_with(".staging-") {
+            let _ = std::fs::remove_dir_all(e.path());
+        } else if let Some(id) = old_id_of(&name) {
+            let target = root.join(&id);
+            if target.exists() || rename_soon(&e.path(), &target).is_err() {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
 }
 
 fn records_file(dir: &Path) -> PathBuf {
@@ -897,16 +1000,16 @@ impl Registry {
     fn refresh(&mut self, dir: &Path) -> (bool, Vec<String>) {
         let root = plugins_dir(dir);
         let first = !std::mem::replace(&mut self.scanned, true);
+        // An install, update or removal cut short before: what it left put
+        // right, the only copy kept where one was left aside (clean_interrupted).
+        if first {
+            clean_interrupted(&root);
+        }
         let mut changed = first;
         let mut seen = HashSet::new();
         for entry in std::fs::read_dir(&root).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if !entry.file_type().is_ok_and(|t| t.is_dir()) {
-                continue;
-            }
-            // An install or a removal cut short before: what was left.
-            if first && (name.starts_with(".staging-") || name.starts_with(".old-")) {
-                let _ = std::fs::remove_dir_all(entry.path());
                 continue;
             }
             if !is_id(&name) {
@@ -921,15 +1024,23 @@ impl Registry {
             self.found.insert(name, Found { manifest, stamp });
             changed = true;
         }
-        let before = self.found.len();
+        // Folders gone since the last look, whether or not they have a record
+        // (one deleted by hand without an installed.json: finding 3's scenario
+        // B): their places and settings are cleaned the same (forget).
+        let vanished: Vec<String> = self.found.keys().filter(|id| !seen.contains(*id)).cloned().collect();
         self.found.retain(|id, _| seen.contains(id));
-        changed |= self.found.len() != before;
+        changed |= !vanished.is_empty();
         let records: Map<String, Value> = std::fs::read_to_string(records_file(dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         if records != self.records {
             self.records = records;
             changed = true;
         }
-        let gone = self.records.keys().filter(|id| !self.found.contains_key(*id)).cloned().collect();
+        let mut gone: Vec<String> = self.records.keys().filter(|id| !self.found.contains_key(*id)).cloned().collect();
+        for id in vanished {
+            if !gone.contains(&id) {
+                gone.push(id);
+            }
+        }
         (changed, gone)
     }
 
@@ -950,16 +1061,53 @@ impl Registry {
     fn conf_ok(&self, id: &str, conf: &Value) -> Option<bool> {
         let found = self.found.get(id)?;
         let Some(conf) = conf.as_object() else { return Some(false) };
+        Some(conf.iter().all(|(k, v)| self.key_ok(found, k, v)))
+    }
+
+    // Whether one key of a plugin's entry is kept: "on" a switch; a value by
+    // its manifest's field (one of a newer API, or one that will not read,
+    // keeps what it had as long as it is text, a number or a switch).
+    fn key_ok(&self, found: &Found, k: &str, v: &Value) -> bool {
         let scalar = |v: &Value| v.is_boolean() || v.as_f64().is_some() || v.as_str().is_some_and(|t| t.chars().count() <= 300);
-        Some(conf.iter().all(|(k, v)| match (&found.manifest, k.as_str()) {
+        match (&found.manifest, k) {
             (_, "on") => v.is_boolean(),
             (Ok(m), _) if m.api <= API => m.field(k).is_some_and(|f| f.accepts(v)),
             _ => k.len() <= 32 && k.bytes().all(|b| b.is_ascii_alphanumeric()) && scalar(v),
-        }))
+        }
+    }
+
+    // A third-party plugin's entry cleaned: its keys that will not do dropped
+    // (finding 3); None when no such folder is here (the id stale).
+    fn clean_conf(&self, id: &str, conf: &Map<String, Value>) -> Option<Map<String, Value>> {
+        let found = self.found.get(id)?;
+        Some(conf.iter().filter(|(k, v)| self.key_ok(found, k, v)).map(|(k, v)| (k.clone(), v.clone())).collect())
     }
 
     fn record(&self, id: &str) -> &Value {
         self.records.get(id).unwrap_or(&Value::Null)
+    }
+
+    // What the plugin was granted when it went in (installed.json
+    // grantedPerms): a market install's index permissions, a file install's
+    // the confirm layer's (its manifest's), a newer-API one's what little it
+    // said of itself. A record from before this was kept, or none at all (a
+    // folder copied in by hand), is read as granting its current manifest's,
+    // so it is not asked out of the blue (migrate_grants writes it once).
+    fn granted(&self, id: &str) -> Perms {
+        match self.record(id).get("grantedPerms") {
+            Some(g) => perms_of(g).unwrap_or_default(),
+            None => self.manifest(id).map(|m| m.perms.clone()).unwrap_or_default(),
+        }
+    }
+
+    // What a running plugin's manifest asks for beyond what was granted: none
+    // means it may run; else it waits for the person to allow it (needsApproval).
+    fn needs_approval(&self, id: &str, m: &Manifest) -> Vec<String> {
+        if m.runs() {
+            crate::market::new_perms(&self.granted(id), &m.perms)
+        } else {
+            Vec::new()
+        }
     }
 
     // What the manifest's time says: a manifest changed (a plugin edited in
@@ -982,6 +1130,47 @@ pub fn start(sh: &Arc<Shared>) {
     for id in gone {
         forget(sh, &id, "its folder is gone");
     }
+    migrate_grants(sh);
+    prune_plugins(sh);
+}
+
+// A record from before grantedPerms was kept (an older release) is read as
+// granting its current manifest's permissions, written once, so the person
+// is not asked about a plugin they already live with — only about one whose
+// manifest later asks for more (finding 1's migration).
+fn migrate_grants(sh: &Shared) {
+    let todo: Vec<(String, Value)> = read(|r| {
+        r.found
+            .iter()
+            .filter_map(|(id, f)| {
+                let m = f.manifest.as_ref().ok()?;
+                let rec = r.record(id);
+                (rec.get("source").is_some() && rec.get("grantedPerms").is_none()).then(|| (id.clone(), m.perms.json()))
+            })
+            .collect()
+    });
+    if todo.is_empty() {
+        return;
+    }
+    records_write(&sh.dir, |r| {
+        for (id, perms) in &todo {
+            if let Some(rec) = r.get_mut(id).and_then(Value::as_object_mut) {
+                rec.insert("grantedPerms".into(), perms.clone());
+            }
+        }
+    });
+}
+
+// The stored "plugins" setting cleaned (plugins::clean): a value a changed
+// or removed manifest left stale dropped, written only when it differs — so
+// it never loops (clean is idempotent). At start and after an install
+// (a refresh may have changed what a plugin's manifest asks for).
+pub(crate) fn prune_plugins(sh: &Shared) {
+    let stored = sh.setting("plugins");
+    let cleaned = crate::plugins::clean(&stored);
+    if cleaned != stored {
+        shared(&sh.app).change(json!({ "plugins": cleaned }));
+    }
 }
 
 fn read<T>(f: impl FnOnce(&Registry) -> T) -> T {
@@ -1001,6 +1190,12 @@ pub fn is_known(id: &str) -> bool {
 // A "plugins" entry for a plugin here, checked by its manifest; None: none here.
 pub fn is_conf_ok(id: &str, conf: &Value) -> Option<bool> {
     read(|r| r.conf_ok(id, conf))
+}
+
+// A third-party plugin's "plugins" entry cleaned (plugins::clean, finding 3):
+// the keys that will not do dropped; None when the id is of no folder here.
+pub fn clean_conf(id: &str, conf: &Map<String, Value>) -> Option<Map<String, Value>> {
+    read(|r| r.clean_conf(id, conf))
 }
 
 fn records_write(dir: &Path, f: impl FnOnce(&mut Map<String, Value>)) {
@@ -1082,7 +1277,11 @@ fn wanted(sh: &Shared) -> Value {
                 .filter_map(|(id, f)| {
                     let m = f.manifest.as_ref().ok().filter(|m| m.runs())?;
                     let c = &conf[id.as_str()];
-                    (c["on"] == true && m.missing(c).is_none() && !stopped.contains(id)).then(|| json!({ "id": id, "version": m.version, "rev": r.rev(id), "main": m.main, "perms": m.perms.json(), "settings": m.values(c) }))
+                    // It runs only when it is placed, its settings are filled,
+                    // it is not stopped, and its manifest asks for nothing
+                    // beyond what was granted (else it waits: needsApproval).
+                    (c["on"] == true && m.missing(c).is_none() && !stopped.contains(id) && r.needs_approval(id, m).is_empty())
+                        .then(|| json!({ "id": id, "version": m.version, "rev": r.rev(id), "main": m.main, "perms": m.perms.json(), "settings": m.values(c) }))
                 })
                 .collect(),
         )
@@ -1168,10 +1367,15 @@ pub fn view(sh: &Shared) -> Value {
                     let c = &conf[id.as_str()];
                     let on = c["on"] == true;
                     let missing = m.missing(c);
+                    // It asks for more than was granted (an edited folder, a
+                    // manifest that changed, a newer-API one now supported):
+                    // it waits until the person allows it (finding 1, finding 7).
+                    let more = r.needs_approval(id, m);
                     let state = match () {
                         _ if !m.runs() => "unsupported",
                         _ if !on => "off",
                         _ if missing.is_some() => "needs",
+                        _ if !more.is_empty() => "needsApproval",
                         _ if stopped.contains_key(id) => "stopped",
                         _ => "running",
                     };
@@ -1217,8 +1421,9 @@ pub fn view(sh: &Shared) -> Value {
                         "color": m.color,
                         "icon": icon,
                         "view": m.view.is_some(),
-                        "perms": m.perms.json(),
-                        "sensitive": m.perms.sensitive(),
+                        // What it asks for, shown whatever its API (finding 7).
+                        "perms": m.wants.json(),
+                        "sensitive": m.wants.sensitive(),
                         // Copied in by hand, with no record: as one from a file.
                         "source": rec["source"].as_str().unwrap_or("file"),
                         "reviewed": rec["reviewed"] == true,
@@ -1226,6 +1431,10 @@ pub fn view(sh: &Shared) -> Value {
                         "on": on,
                         "state": state,
                         "missing": missing,
+                        // The permissions it newly asks for (market.rs's words:
+                        // "net:<host>", "agents", "hardware", "notify"), for the
+                        // 「允许…」 layer (addonui.js) when it needsApproval.
+                        "newPerms": more,
                         "said": said.get(id),
                         // Stopped by the watchdog: why, when, since when it
                         // did not answer and how many times (addonui.js says it).
@@ -1314,6 +1523,16 @@ pub fn open_package(bytes: Vec<u8>) -> Result<Package, Refused> {
     if files.len() > FILES {
         return Err(refused("files", None, format!("{} files, {FILES} at most", files.len())));
     }
+    // Two names the same but for case (manifest.json and Manifest.json): on
+    // Windows one overwrites the other, so the consent could show one
+    // manifest's permissions while another runs. Refused, as the market's
+    // check does (finding 1; tools/market/package.js path-duplicate).
+    let mut lower: HashMap<String, String> = HashMap::new();
+    for (_, path) in &files {
+        if let Some(first) = lower.insert(path.to_ascii_lowercase(), path.clone()) {
+            return Err(refused("dup", Some(path), format!("the same name as {first} but for case (Windows ignores case)")));
+        }
+    }
     for (_, path) in &files {
         if !EXTENSIONS.contains(&ext_of(path).as_str()) {
             return Err(refused("type", Some(path), "a type of file a plugin may not hold"));
@@ -1383,11 +1602,15 @@ pub fn summary(dir: &Path, pkg: &Result<Package, Refused>, lang: &str, file: &st
                 "version": m.version,
                 "author": m.author,
                 "kind": m.kind.name(),
-                "perms": m.perms.json(),
-                "sensitive": m.perms.sensitive(),
+                // What it asks for, shown whatever its API (finding 7).
+                "perms": m.wants.json(),
+                "sensitive": m.wants.sensitive(),
                 "replaces": replaces,
                 "api": m.api,
                 "supported": m.api <= API,
+                // So the install can refuse a file changed since it was looked
+                // at: the page passes this back (finding 12).
+                "sha256": p.sha256,
                 "refused": null,
             })
         }
@@ -1455,9 +1678,16 @@ pub(crate) fn rename_soon(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 // A package installed from a file: checked again, then put in (from a
-// file: not reviewed).
-pub fn install(sh: &Shared, path: &Path) -> Result<Value, Refused> {
+// file: not reviewed). `expect`: the SHA-256 inspect gave the page; a file
+// that is no longer that one (swapped since it was looked at and agreed to)
+// is refused, so what goes in is what the person saw (finding 12).
+pub fn install(sh: &Shared, path: &Path, expect: Option<&str>) -> Result<Value, Refused> {
     let pkg = read_package(path)?;
+    if let Some(expect) = expect.filter(|e| !e.is_empty()) {
+        if !pkg.sha256.eq_ignore_ascii_case(expect) {
+            return Err(refused("sha", None, "the file has changed since it was looked at; look again"));
+        }
+    }
     let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     put_in(sh, pkg, "file", &path.display().to_string(), &file)
 }
@@ -1474,26 +1704,37 @@ pub fn put_in(sh: &Shared, pkg: Package, source: &'static str, from: &str, file:
     if pkg.manifest.kind != Kind::Plugin {
         return crate::packs::put_in(sh, pkg, source, from, file);
     }
-    let m = &pkg.manifest;
-    let replaces = read(|r| r.manifest(&m.id).map(|old| old.version.clone()));
-    unpack(&pkg, &plugins_dir(&sh.dir)).map_err(|e| refused("write", None, e))?;
-    let rec = json!({ "source": source, "reviewed": source == "market", "sha256": pkg.sha256, "version": m.version, "grantedPerms": m.perms.json(), "installedAt": now_ms() });
-    records_write(&sh.dir, |r| {
-        r.insert(m.id.clone(), rec);
-    });
-    // A new copy: what was said of the old one forgotten, and one stopped tried again.
-    {
-        let mut r = run();
-        r.said.remove(&m.id);
-        r.stopped.remove(&m.id);
-    }
-    sh.log(&format!("addons: {} {} installed from {from}{}", m.id, m.version, replaces.as_ref().map(|v| format!(", in place of {v}")).unwrap_or_default()));
-    if crate::plugins::sync(sh) {
-        sh.redraw_widgets();
-    }
-    let mut out = summary(&sh.dir, &Ok(pkg), sh.lang(), file);
-    out["replaces"] = json!(replaces);
-    Ok(out)
+    let id = pkg.manifest.id.clone();
+    // The id held for the write, so no other install or an uninstall of it runs at the same time (finding 8).
+    with_id_lock(&id, || {
+        let m = &pkg.manifest;
+        let replaces = read(|r| r.manifest(&m.id).map(|old| old.version.clone()));
+        unpack(&pkg, &plugins_dir(&sh.dir)).map_err(|e| refused("write", None, e))?;
+        // The permissions granted: the manifest's, which the page's confirm
+        // showed for a file install and which the market verified against its
+        // index item for a market install (finding 1, finding 13). Any widgets
+        // the old copy noted kept, so its places are still cleaned on uninstall.
+        let widgets = read(|r| r.record(&m.id)["widgets"].clone());
+        let rec = json!({ "source": source, "reviewed": source == "market", "sha256": pkg.sha256, "version": m.version, "grantedPerms": m.perms.json(), "installedAt": now_ms(), "widgets": widgets });
+        records_write(&sh.dir, |r| {
+            r.insert(m.id.clone(), rec);
+        });
+        // A new copy: what was said of the old one forgotten, and one stopped tried again.
+        {
+            let mut r = run();
+            r.said.remove(&m.id);
+            r.stopped.remove(&m.id);
+        }
+        sh.log(&format!("addons: {} {} installed from {from}{}", m.id, m.version, replaces.as_ref().map(|v| format!(", in place of {v}")).unwrap_or_default()));
+        if crate::plugins::sync(sh) {
+            sh.redraw_widgets();
+        }
+        // An update may ask for other settings than the copy before: any now stale stored value pruned.
+        prune_plugins(sh);
+        let mut out = summary(&sh.dir, &Ok(pkg), sh.lang(), file);
+        out["replaces"] = json!(replaces);
+        Ok(out)
+    })
 }
 
 // Those installed from the market, for its updates (market.rs): each id,
@@ -1532,10 +1773,15 @@ fn is_widget_of(id: &str, widget: &str) -> bool {
 // that one alone), the desktop (a stack likewise; a board keeps its other
 // tiles), her capsule, the widgets' order, switches and sizes, and the
 // combos kept (one with nothing left, gone). Only the settings it was in.
-pub fn without_plugin(settings: &Map<String, Value>, id: &str) -> Map<String, Value> {
+// `widgets`: the ids of the widgets this plugin actually made (its own id and
+// the subs recorded or up now), so a person's own script widget that merely
+// begins like the plugin's (`cpu_temp` next to a `cpu` plugin: finding 11)
+// is left where it is.
+pub fn without_plugin(settings: &Map<String, Value>, id: &str, widgets: &HashSet<String>) -> Map<String, Value> {
+    let is_sub = |of: &str| of == id || widgets.contains(of);
     let mine = |m: &Value| match (m["type"].as_str(), m["of"].as_str()) {
         (Some("plugin"), Some(of)) => of == id,
-        (Some("widget"), Some(of)) => is_widget_of(id, of),
+        (Some("widget"), Some(of)) => is_sub(of),
         _ => false,
     };
     let mut patch = Map::new();
@@ -1625,7 +1871,7 @@ pub fn without_plugin(settings: &Map<String, Value>, id: &str) -> Map<String, Va
                 .iter()
                 .filter(|m| {
                     let key = m["key"].as_str().unwrap_or("");
-                    key != format!("plugin:{id}") && !key.strip_prefix("widget:").is_some_and(|w| is_widget_of(id, w))
+                    key != format!("plugin:{id}") && !key.strip_prefix("widget:").is_some_and(is_sub)
                 })
                 .cloned()
                 .collect();
@@ -1638,14 +1884,14 @@ pub fn without_plugin(settings: &Map<String, Value>, id: &str) -> Map<String, Va
     }
     for key in ["widgetsOff", "widgetOrder"] {
         if let Some(Value::Array(list)) = settings.get(key) {
-            let left: Vec<Value> = list.iter().filter(|w| !w.as_str().is_some_and(|w| is_widget_of(id, w))).cloned().collect();
+            let left: Vec<Value> = list.iter().filter(|w| !w.as_str().is_some_and(is_sub)).cloned().collect();
             if &left != list {
                 patch.insert(key.into(), json!(left));
             }
         }
     }
     if let Some(Value::Object(sizes)) = settings.get("widgetSize") {
-        let left: Map<String, Value> = sizes.iter().filter(|(w, _)| !is_widget_of(id, w)).map(|(k, v)| (k.clone(), v.clone())).collect();
+        let left: Map<String, Value> = sizes.iter().filter(|(w, _)| !is_sub(w)).map(|(k, v)| (k.clone(), v.clone())).collect();
         if &left != sizes {
             patch.insert("widgetSize".into(), Value::Object(left));
         }
@@ -1669,10 +1915,41 @@ pub fn without_plugin(settings: &Map<String, Value>, id: &str) -> Map<String, Va
     patch
 }
 
+// The widget ids a plugin has made: its own, the subs recorded in
+// installed.json (so they are known even when it is not running) and any up
+// now; never a person's script widget that only begins like it (finding 11).
+fn widget_ids_of(sh: &Shared, id: &str) -> HashSet<String> {
+    let mut ids: HashSet<String> = read(|r| r.record(id)["widgets"].as_array().into_iter().flatten().filter_map(|w| w.as_str().map(str::to_string)).collect());
+    ids.extend(sh.widgets.lock().unwrap().addon_ids(|w| is_widget_of(id, w)));
+    ids.insert(id.to_string());
+    ids
+}
+
+// One widget a plugin made noted in its record (installed.json), so its
+// places are cleaned on uninstall even when it is not running. Up to the
+// most it may have (WIDGETS); nothing without a record (copied in by hand).
+fn record_widget(sh: &Shared, id: &str, wid: &str) {
+    let known = read(|r| r.record(id)["widgets"].as_array().is_some_and(|a| a.iter().any(|w| w.as_str() == Some(wid))));
+    if known {
+        return;
+    }
+    records_write(&sh.dir, |r| {
+        if let Some(rec) = r.get_mut(id).and_then(Value::as_object_mut) {
+            let list = rec.entry("widgets").or_insert_with(|| json!([])).as_array_mut();
+            if let Some(arr) = list {
+                if arr.len() < WIDGETS && !arr.iter().any(|w| w.as_str() == Some(wid)) {
+                    arr.push(json!(wid));
+                }
+            }
+        }
+    });
+}
+
 // A plugin's settings and places taken out, its widgets gone, its record
 // and words forgotten: as it is taken away, or as its folder was by hand.
 fn forget(sh: &Shared, id: &str, why: &str) {
-    let patch = without_plugin(&sh.settings.lock().unwrap().clone(), id);
+    let widgets = widget_ids_of(sh, id);
+    let patch = without_plugin(&sh.settings.lock().unwrap().clone(), id, &widgets);
     if !patch.is_empty() {
         // Through the settings' own way (Arc for change): its pages redrawn.
         let sh = shared(&sh.app);
@@ -1698,20 +1975,29 @@ pub fn uninstall(sh: &Shared, id: &str) -> Result<(), String> {
     if !is_id(id) || !(is_known(id) || read(|r| r.records.contains_key(id))) {
         return Err(format!("{id}: not installed"));
     }
-    forget(sh, id, "taken away");
-    let root = plugins_dir(&sh.dir);
-    let folder = root.join(id);
-    if folder.exists() {
-        let aside = root.join(format!(".old-{id}-{}", now_ms()));
-        rename_soon(&folder, &aside).map_err(|e| format!("its folder: {e}"))?;
-        let _ = std::fs::remove_dir_all(&aside);
-    }
-    let _ = std::fs::remove_file(store_file(&sh.dir, id));
-    stores().remove(&store_file(&sh.dir, id));
-    if crate::plugins::sync(sh) {
-        sh.redraw_widgets();
-    }
-    Ok(())
+    // Any market download or update of it called off, and the id held, so a
+    // concurrent install does not put it back after it is taken away (finding 8).
+    crate::market::cancel(id);
+    with_id_lock(id, || {
+        let root = plugins_dir(&sh.dir);
+        let folder = root.join(id);
+        // Its folder gone first; only then is it forgotten, so a rename that
+        // fails (a file held) leaves it installed with its record, not half gone.
+        if folder.exists() {
+            let aside = root.join(format!(".old-{id}-{}", now_ms()));
+            if let Err(e) = rename_soon(&folder, &aside) {
+                return Err(format!("its folder could not be removed ({e}); still installed"));
+            }
+            let _ = std::fs::remove_dir_all(&aside);
+        }
+        forget(sh, id, "taken away");
+        let _ = std::fs::remove_file(store_file(&sh.dir, id));
+        stores().remove(&store_file(&sh.dir, id));
+        if crate::plugins::sync(sh) {
+            sh.redraw_widgets();
+        }
+        Ok(())
+    })
 }
 
 // --- Storage -----------------------------------------------------------------------------
@@ -1760,11 +2046,13 @@ pub fn storage(dir: &Path, id: &str, op: &str, key: Option<&str>, value: Option<
 
 // The policy each of its files is served with: scripts, styles, pictures,
 // fonts and sounds from its own folder (and data:, blob:), nothing else;
-// no network, no frames, no forms; framed by her pages alone.
+// no network, no frames, no forms, no workers (a worker runs off her page's
+// main thread, out of the watchdog's long-task budget: none in v1); framed
+// by her pages alone.
 fn policy(id: &str) -> String {
     let own = format!("{ORIGIN}/{id}/");
     format!(
-        "default-src 'none'; script-src {own} blob: data: 'wasm-unsafe-eval'; style-src {own} blob: data: 'unsafe-inline'; img-src {own} blob: data:; font-src {own} blob: data:; media-src {own} blob: data:; worker-src {own} blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors http://tauri.localhost https://tauri.localhost"
+        "default-src 'none'; script-src {own} blob: data: 'wasm-unsafe-eval'; style-src {own} blob: data: 'unsafe-inline'; img-src {own} blob: data:; font-src {own} blob: data:; media-src {own} blob: data:; worker-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors http://tauri.localhost https://tauri.localhost"
     )
 }
 
@@ -2120,6 +2408,8 @@ fn widget(sh: &Shared, id: &str, sub: Option<&str>, data: &Value) -> Result<Valu
         }
         widgets.put_addon(&wid, &Value::Object(data), &name, picture, has_view, now_ms())?;
     }
+    // Noted as one of its own, so its place is cleaned on uninstall.
+    record_widget(sh, id, &wid);
     sh.redraw_widgets();
     Ok(json!({ "ok": true }))
 }
@@ -2227,16 +2517,16 @@ fn said(sh: &Shared, id: &str, line: &str) {
 // own dialog over her island: { path }, null when closed), revive (one
 // stopped turned on again). `arg`: the path, or the id.
 #[tauri::command]
-pub async fn addon_manage(app: AppHandle, what: String, arg: Option<String>) -> Value {
+pub async fn addon_manage(app: AppHandle, what: String, arg: Option<String>, sha: Option<String>) -> Value {
     let sh = shared(&app);
-    tauri::async_runtime::spawn_blocking(move || manage(&sh, &what, arg.as_deref().unwrap_or(""))).await.unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() }))
+    tauri::async_runtime::spawn_blocking(move || manage(&sh, &what, arg.as_deref().unwrap_or(""), sha.as_deref())).await.unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() }))
 }
 
-fn manage(sh: &Shared, what: &str, arg: &str) -> Value {
+fn manage(sh: &Shared, what: &str, arg: &str, sha: Option<&str>) -> Value {
     let file = || Path::new(arg).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     match what {
         "inspect" => summary(&sh.dir, &read_package(Path::new(arg)).and_then(|p| crate::packs::may_go_in(&sh.dir, &p.manifest).map(|_| p)), sh.lang(), &file()),
-        "install" => install(sh, Path::new(arg)).unwrap_or_else(|r| {
+        "install" => install(sh, Path::new(arg), sha).unwrap_or_else(|r| {
             sh.log(&format!("addons: {arg} not installed: {} ({})", r.detail, r.reason));
             json!({ "ok": false, "file": file(), "refused": r.json() })
         }),
@@ -2267,7 +2557,24 @@ fn manage(sh: &Shared, what: &str, arg: &str) -> Value {
             }
             crate::settings::snapshot(sh)
         }
-        _ => json!({ "ok": false, "error": format!("{what}: inspect, install, uninstall, uninstallPack, pick or revive") }),
+        // The person allows a plugin the permissions its manifest now asks
+        // for (the 「允许…」 layer): its grant set to its current manifest's,
+        // so it runs again (finding 1).
+        "approve" => {
+            if let Some(perms) = perms_of_id(arg) {
+                records_write(&sh.dir, |r| {
+                    if let Some(rec) = r.get_mut(arg).and_then(Value::as_object_mut) {
+                        rec.insert("grantedPerms".into(), perms.json());
+                    }
+                });
+                sh.log(&format!("addons: {arg}'s new permissions allowed"));
+                if crate::plugins::sync(sh) {
+                    sh.redraw_widgets();
+                }
+            }
+            crate::settings::snapshot(sh)
+        }
+        _ => json!({ "ok": false, "error": format!("{what}: inspect, install, uninstall, uninstallPack, pick, revive or approve") }),
     }
 }
 
@@ -2340,7 +2647,7 @@ mod tests {
     // hers would.
     #[test]
     fn the_examples_read() {
-        for id in ["hello", "rain-alert", "agent-board"] {
+        for id in ["tally", "rain-alert", "agent-board"] {
             let m = read_manifest(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins").join(id), id).unwrap();
             assert!(m.runs(), "{id}");
         }
@@ -2352,7 +2659,9 @@ mod tests {
         assert_eq!((board.view.as_deref(), board.sizes.clone()), (Some("view.html"), vec!["s", "m", "l"]));
         assert!(board.perms.agents && board.perms.net.is_empty() && !board.perms.notify && !board.perms.hardware);
         let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins/agent-board");
-        let html = std::fs::read_to_string(folder.join("view.html")).unwrap();
+        // Line-ending agnostic: a checkout with core.autocrlf=true has the
+        // example's view.html in CRLF, view_page keeps the file's own endings.
+        let html = std::fs::read_to_string(folder.join("view.html")).unwrap().replace("\r\n", "\n");
         assert!(view_page("agent-board", &html).contains("<head><script src=\"/agent-board/__waku/sdk.js\"></script>\n    <meta charset=\"utf-8\" />"));
         for f in ["view.js", "view.css"] {
             assert!(own_file(&folder, f).is_some(), "{f}");
@@ -2517,7 +2826,33 @@ mod tests {
         for bad in ["http://localhost/", "http://127.0.0.1:47213/health", "https://example.com:47213/", "http://[::1]/", "https://user:pw@example.com/", "ftp://example.com/", "file:///C:/x", "http://2130706433/", "http://0x7f.0.0.1/", "https://example.com/a b", "http://intranet/", "javascript:alert(1)"] {
             assert!(target_of(bad).is_err(), "{bad}");
         }
-        for (ip, inside) in [("127.0.0.1", true), ("10.1.2.3", true), ("192.168.1.1", true), ("172.20.0.1", true), ("169.254.1.1", true), ("100.64.0.1", true), ("0.0.0.0", true), ("::1", true), ("fd00::1", true), ("fe80::1", true), ("::ffff:127.0.0.1", true), ("1.1.1.1", false), ("198.18.0.5", false), ("2606:4700::1111", false)] {
+        for (ip, inside) in [
+            ("127.0.0.1", true),
+            ("10.1.2.3", true),
+            ("192.168.1.1", true),
+            ("172.20.0.1", true),
+            ("169.254.1.1", true),
+            ("100.64.0.1", true),
+            ("0.0.0.0", true),
+            ("::1", true),
+            ("fd00::1", true),
+            ("fe80::1", true),
+            ("::ffff:127.0.0.1", true),
+            // An IPv4 one reached through IPv6: compatible ::a.b.c.d, 6to4
+            // 2002::/16, and the well-known NAT64 prefix 64:ff9b::/96.
+            ("::0a00:0001", true),
+            ("::ffff:10.0.0.1", true),
+            ("2002:0a00:0001::", true),
+            ("2002:ac10:0001::", true),
+            ("64:ff9b::7f00:1", true),
+            ("64:ff9b::0a00:1", true),
+            ("1.1.1.1", false),
+            ("198.18.0.5", false),
+            ("2606:4700::1111", false),
+            // NAT64 and 6to4 carrying a public IPv4: not inside.
+            ("64:ff9b::808:808", false),
+            ("2002:0808:0808::", false),
+        ] {
             assert_eq!(is_inside(ip.parse().unwrap()), inside, "{ip}");
         }
         assert!(resolves_inside("localhost", 80));
@@ -2576,6 +2911,11 @@ mod tests {
         for bad in ["../evil.js", "/abs.js", "C:/x.js", "a/../../b.js", "x\\..\\..\\y.js", "a:b.js"] {
             assert_eq!(reason(&[("manifest.json", &m), ("main.js", b"x"), ("icon.svg", b"<svg/>"), (bad, b"x")]).map(|r| r.0), Some("path"), "{bad}");
         }
+        // Two manifests that differ only in case: refused, so one cannot show
+        // one set of permissions while another runs (finding 1).
+        let two = serde_json::to_vec(&json!({ "id": "hello", "kind": "plugin", "name": "Evil", "version": "1.0.0", "api": 1, "main": "main.js", "category": "info", "permissions": { "agents": true } })).unwrap();
+        assert_eq!(reason(&[("manifest.json", &m), ("Manifest.json", &two), ("main.js", b"x"), ("icon.svg", b"<svg/>")]).map(|r| r.0), Some("dup"));
+        assert_eq!(reason(&[("manifest.json", &m), ("main.js", b"x"), ("icon.svg", b"<svg/>"), ("IMG/a.png", b"x"), ("img/a.png", b"y")]).map(|r| r.0), Some("dup"));
         // Its manifest: at the root, good, naming files it has.
         assert_eq!(reason(&[("sub/manifest.json", &m), ("main.js", b"x")]).map(|r| r.0), Some("manifest"));
         assert_eq!(reason(&[("manifest.json", b"{ not json"), ("main.js", b"x")]).map(|r| r.0), Some("manifest"));
@@ -2647,6 +2987,82 @@ mod tests {
         }
     }
 
+    // A swap cut short between moving the old copy aside and the new one in:
+    // the only copy is in .old-<id>-<n>. At start it is renamed back, not
+    // deleted; a .old- whose <id> is there again, and a .staging-, go.
+    #[test]
+    fn an_interrupted_swap_keeps_the_only_copy() {
+        let root = scratch("interrupted");
+        // <id> missing, its only copy set aside: renamed back.
+        let only = root.join(".old-hello-123");
+        std::fs::create_dir_all(&only).unwrap();
+        std::fs::write(only.join("main.js"), b"kept").unwrap();
+        // <id> there and a .old- beside it (a swap that finished all but the
+        // tidy-up), plus a leftover staging: both thrown away.
+        std::fs::create_dir_all(root.join("world")).unwrap();
+        std::fs::create_dir_all(root.join(".old-world-9")).unwrap();
+        std::fs::create_dir_all(root.join(".staging-world-9")).unwrap();
+        // A pack id with a dash, and a name that is no .old- (left alone).
+        std::fs::create_dir_all(root.join(".old-two-cats-77")).unwrap();
+        std::fs::create_dir_all(root.join(".old-nope")).unwrap();
+        clean_interrupted(&root);
+        assert_eq!(std::fs::read(root.join("hello").join("main.js")).unwrap(), b"kept");
+        assert!(root.join("world").exists() && !root.join(".old-world-9").exists() && !root.join(".staging-world-9").exists());
+        assert!(root.join("two-cats").exists() && !root.join(".old-two-cats-77").exists());
+        assert!(root.join(".old-nope").exists(), "no <n>: not a .old- of ours");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    // A stale value in a plugin's entry is dropped (not the whole entry), and
+    // a folder gone by hand without a record is reported gone (finding 3).
+    #[test]
+    fn clean_conf_drops_stale_values_and_a_vanished_folder_is_gone() {
+        let m = manifest_of(&rain()).unwrap();
+        let mut reg = Registry::default();
+        reg.found.insert("rain-alert".into(), Found { manifest: Ok(m), stamp: None });
+        let conf = json!({ "on": true, "City": "上海", "Hours": "99", "Nope": "x" });
+        let cleaned = reg.clean_conf("rain-alert", conf.as_object().unwrap()).unwrap();
+        assert_eq!(Value::Object(cleaned), json!({ "on": true, "City": "上海" }), "a choice no longer an option, and an unknown key, dropped");
+        assert!(reg.clean_conf("missing", conf.as_object().unwrap()).is_none(), "no folder of that id here");
+
+        let dir = scratch("vanish");
+        let hello = dir.join("plugins").join("hello");
+        std::fs::create_dir_all(&hello).unwrap();
+        std::fs::write(hello.join("manifest.json"), hello_manifest()).unwrap();
+        std::fs::write(hello.join("main.js"), b"x").unwrap();
+        std::fs::write(hello.join("icon.svg"), b"<svg/>").unwrap();
+        let mut reg2 = Registry::default();
+        let (_, gone) = reg2.refresh(&dir);
+        assert!(gone.is_empty() && reg2.manifest("hello").is_some());
+        std::fs::remove_dir_all(&hello).unwrap();
+        let (_, gone) = reg2.refresh(&dir);
+        assert_eq!(gone, ["hello"], "no installed.json record, yet gone");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // A plugin runs only when it was granted at least what its manifest asks;
+    // asking for more makes it wait (needsApproval); a newer-API one never
+    // needs approval while she cannot run it (finding 1, finding 7).
+    #[test]
+    fn a_plugin_waits_when_it_asks_for_more_than_granted() {
+        let m = manifest_of(&rain()).unwrap();
+        let mut reg = Registry::default();
+        reg.found.insert("rain-alert".into(), Found { manifest: Ok(m.clone()), stamp: None });
+        reg.records.insert("rain-alert".into(), json!({ "source": "market", "grantedPerms": { "net": ["api.open-meteo.com"], "agents": false, "hardware": false, "notify": true } }));
+        assert!(reg.needs_approval("rain-alert", &m).is_empty(), "granted exactly what it asks");
+        reg.records.insert("rain-alert".into(), json!({ "source": "file", "grantedPerms": { "net": [], "agents": false, "hardware": false, "notify": false } }));
+        assert_eq!(reg.needs_approval("rain-alert", &m), ["net:api.open-meteo.com", "notify"], "waits for what was not granted");
+        // No record (copied in by hand): its manifest is taken as granted.
+        reg.records.remove("rain-alert");
+        assert!(reg.needs_approval("rain-alert", &m).is_empty());
+        // A newer-API plugin: its permissions are read for display (wants) but
+        // enforced empty (perms), and it never waits while she cannot run it.
+        let newer = manifest_of(&json!({ "id": "later", "kind": "plugin", "name": "L", "version": "2.0.0", "api": 2, "permissions": { "agents": true } })).unwrap();
+        reg.found.insert("later".into(), Found { manifest: Ok(newer.clone()), stamp: None });
+        assert_eq!((newer.wants.agents, newer.perms.agents, newer.runs()), (true, false, false));
+        assert!(reg.needs_approval("later", &newer).is_empty());
+    }
+
     #[test]
     fn settings_hold_what_the_manifest_says() {
         let m = manifest_of(&rain()).unwrap();
@@ -2689,7 +3105,10 @@ mod tests {
             ],
             "lang": "zh"
         });
-        let patch = without_plugin(settings.as_object().unwrap(), "hello");
+        // The widgets this plugin actually made: its own, and the sub `hello_x`.
+        // A person's `hellox` / `hellox` widget is not among them, so it stays.
+        let widgets = HashSet::from(["hello".to_string(), "hello_x".to_string()]);
+        let patch = without_plugin(settings.as_object().unwrap(), "hello", &widgets);
         assert_eq!(patch["plugins"], json!({ "weather": { "on": true } }));
         assert_eq!(
             patch["taskbarLayout"]["right"],
@@ -2714,8 +3133,14 @@ mod tests {
         assert!(!patch.contains_key("lang"));
         // What it leaves passes the settings' own checks (her plugins only here).
         assert!(crate::settings::is_desk_layout(&patch["deskLayout"]) && crate::settings::is_board_sets(&patch["boardSets"]) && crate::settings::is_capsule(&patch["capsule"]));
+        // A script widget that only begins like the plugin (hello_mine), never
+        // made by it, is left in its places.
+        let kept = json!({ "widgetsOff": ["hello_mine", "hello_x"], "deskLayout": [{ "id": "wz", "type": "widget", "of": "hello_mine", "size": "s" }] });
+        let patch = without_plugin(kept.as_object().unwrap(), "hello", &widgets);
+        assert_eq!(patch["widgetsOff"], json!(["hello_mine"]), "hello_x removed, hello_mine kept");
+        assert!(!patch.contains_key("deskLayout"), "the person’s hello_mine tile untouched");
         // In nothing: nothing to change.
-        assert!(without_plugin(json!({ "lang": "zh", "plugins": {} }).as_object().unwrap(), "hello").is_empty());
+        assert!(without_plugin(json!({ "lang": "zh", "plugins": {} }).as_object().unwrap(), "hello", &widgets).is_empty());
     }
 
     #[test]

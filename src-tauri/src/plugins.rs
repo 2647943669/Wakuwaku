@@ -190,27 +190,63 @@ fn plugin(id: &str) -> Option<&'static Plugin> {
     PLUGINS.iter().find(|p| p.id == id)
 }
 
+// A built-in plugin's parameter value as its settings keep it: a flag true
+// or false, text without control characters, a number as text (positive, up
+// to 100000, or empty), one of a choice's options.
+fn param_ok(p: &Param, v: &Value) -> bool {
+    match p.kind {
+        Kind::Flag => v.is_boolean(),
+        Kind::Text => v.as_str().is_some_and(|t| t.chars().count() <= 300 && !t.chars().any(char::is_control)),
+        Kind::Number => v.as_str().is_some_and(|t| t.trim().is_empty() || t.trim().parse::<f64>().is_ok_and(|n| n > 0.0 && n <= 100_000.0)),
+        Kind::Choice { options, .. } => v.as_str().is_some_and(|o| options.contains(&o)),
+    }
+}
+
 // A "plugins" setting: only the plugins here, each with "on" and its own
 // parameters, text without control characters, numbers as text; and the
 // third-party ones installed, each by its manifest (addons.rs is_conf_ok).
 pub fn is_ok(v: &Value) -> bool {
-    let Some(all) = v.as_object() else { return false };
-    all.iter().all(|(id, conf)| {
+    v.as_object().is_some_and(|all| all.iter().all(|(id, conf)| {
         if plugin(id).is_none() {
             return crate::addons::is_conf_ok(id, conf).unwrap_or(false);
         }
         let (Some(s), Some(conf)) = (plugin(id), conf.as_object()) else { return false };
         conf.iter().all(|(key, v)| match (key.as_str(), s.params.iter().find(|p| p.name == key)) {
             ("on", _) => v.is_boolean(),
-            (_, Some(p)) => match p.kind {
-                Kind::Flag => v.is_boolean(),
-                Kind::Text => v.as_str().is_some_and(|t| t.chars().count() <= 300 && !t.chars().any(char::is_control)),
-                Kind::Number => v.as_str().is_some_and(|t| t.trim().is_empty() || t.trim().parse::<f64>().is_ok_and(|n| n > 0.0 && n <= 100_000.0)),
-                Kind::Choice { options, .. } => v.as_str().is_some_and(|o| options.contains(&o)),
-            },
+            (_, Some(p)) => param_ok(p, v),
             _ => false,
         })
-    })
+    }))
+}
+
+// A "plugins" setting cleaned, entry by entry (zhoupengjie/Wakuwaku's
+// plugins review, finding 3): an id that is neither a plugin of hers nor one
+// installed is dropped (stale, a plugin taken away), and within a kept entry
+// an unknown key, or a value that will not do (a choice whose options
+// changed in an update), is dropped — so one stale entry no longer refuses
+// the whole patch, which carried a good change with it. The pages send the
+// whole object, so this is what is kept.
+pub fn clean(v: &Value) -> Value {
+    let Some(all) = v.as_object() else { return Value::Object(serde_json::Map::new()) };
+    let mut out = serde_json::Map::new();
+    for (id, conf) in all {
+        let Some(conf) = conf.as_object() else { continue };
+        let kept = match plugin(id) {
+            Some(s) => {
+                let keep = |key: &str, v: &Value| match (key, s.params.iter().find(|p| p.name == key)) {
+                    ("on", _) => v.is_boolean(),
+                    (_, Some(p)) => param_ok(p, v),
+                    _ => false,
+                };
+                Some(conf.iter().filter(|(k, v)| keep(k, v)).map(|(k, v)| (k.clone(), v.clone())).collect())
+            }
+            None => crate::addons::clean_conf(id, conf),
+        };
+        if let Some(kept) = kept {
+            out.insert(id.clone(), Value::Object(kept));
+        }
+    }
+    Value::Object(out)
 }
 
 fn text<'a>(conf: &'a Value, name: &str) -> &'a str {
@@ -653,6 +689,27 @@ pub(crate) mod tests {
         let ci = plugin("ci").unwrap();
         assert_eq!(missing(ci, &json!({ "Repo": " " })), Some("Repo"));
         assert_eq!(missing(plugin("weather").unwrap(), &json!({})), None);
+    }
+
+    // One stale entry no longer refuses the whole patch (the plugins review,
+    // finding 3): a good change to a built-in is kept while an id that is no
+    // plugin, a value that will not do, and an unknown key are dropped.
+    #[test]
+    fn a_stale_entry_does_not_lose_the_good_change() {
+        let patch = json!({
+            "weather": { "on": true, "City": "上海" },
+            "gone-addon": { "on": true, "City": "x" },
+            "ci": { "Repo": "a/b", "Prs": "yes", "Bogus": 1 },
+        });
+        let cleaned = clean(&patch);
+        assert_eq!(cleaned["weather"], json!({ "on": true, "City": "上海" }), "the good change is kept");
+        assert_eq!(cleaned["ci"], json!({ "Repo": "a/b" }), "the bad value and unknown key dropped, the good kept");
+        assert!(cleaned.get("gone-addon").is_none(), "an id that is no plugin here dropped");
+        // What survives is itself valid.
+        assert!(is_ok(&cleaned));
+        // A fully good patch is kept whole; a non-object becomes nothing.
+        assert_eq!(clean(&json!({ "weather": { "on": false } })), json!({ "weather": { "on": false } }));
+        assert_eq!(clean(&json!("nonsense")), json!({}));
     }
 
     // Settings made for the scripts keep working: every parameter keeps the

@@ -26,12 +26,59 @@
   const parent = window.parent
   if (!parent || parent === window) return
 
-  // What the frame's Content-Security-Policy does not reach: WebRTC's
-  // connections. Taken away before the plugin's code runs, for good.
-  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCSessionDescription', 'RTCIceCandidate', 'RTCRtpSender', 'RTCRtpReceiver', 'RTCRtpTransceiver']) {
+  // WebRTC can reach the network past the frame's Content-Security-Policy
+  // (connect-src 'none') and past her proxy. The real guard is WebView2
+  // started with non-proxied UDP off (addons.rs browser_args); this is a
+  // second layer only, and a leaky one, because a child about:blank frame
+  // (window[0]) has its own fresh constructors with no contentWindow to
+  // reach through. Its residual risk is in docs/PLUGINS.md.
+  const RTC = ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCSessionDescription', 'RTCIceCandidate', 'RTCRtpSender', 'RTCRtpReceiver', 'RTCRtpTransceiver', 'RTCCertificate']
+  function blankRtc(win) {
+    if (!win) return
+    for (const name of RTC) {
+      try {
+        Object.defineProperty(win, name, { value: undefined, writable: false, configurable: false })
+      } catch {}
+    }
+  }
+  blankRtc(window)
+  // Every child frame blanked the moment the DOM changes through one of the
+  // synchronous paths that connect a frame (so window[0] is blanked before
+  // the plugin's next line runs). Not every path is covered — hence a second
+  // layer, not the guard.
+  function sweepFrames() {
     try {
-      Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false })
+      for (let i = 0; i < window.length; i++) blankRtc(window[i])
     } catch {}
+  }
+  if (typeof Node !== 'undefined' && typeof Element !== 'undefined') {
+    const hooks = [
+      [Node.prototype, ['appendChild', 'insertBefore', 'replaceChild']],
+      [Element.prototype, ['append', 'prepend', 'before', 'after', 'replaceWith', 'insertAdjacentElement', 'insertAdjacentHTML']],
+    ]
+    for (const [proto, names] of hooks) {
+      for (const name of names) {
+        const orig = proto && proto[name]
+        if (typeof orig !== 'function') continue
+        try {
+          Object.defineProperty(proto, name, { configurable: true, writable: true, value: function (...args) {
+            const out = orig.apply(this, args)
+            sweepFrames()
+            return out
+          } })
+        } catch {}
+      }
+    }
+    for (const [proto, prop] of [[Element.prototype, 'innerHTML'], [Element.prototype, 'outerHTML']]) {
+      const desc = proto && Object.getOwnPropertyDescriptor(proto, prop)
+      if (!desc || !desc.set) continue
+      try {
+        Object.defineProperty(proto, prop, { configurable: true, enumerable: desc.enumerable, get: desc.get, set: function (v) {
+          desc.set.call(this, v)
+          sweepFrames()
+        } })
+      } catch {}
+    }
   }
 
   // A view's page is any of its folder's but her first page for main.js.

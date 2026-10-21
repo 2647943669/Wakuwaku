@@ -305,6 +305,11 @@ fn mark_json(m: &Manifest, source: &str, sha256: &str, size: u64, pictures: u64,
 // one there replaced, the person's choice kept), its preview beside;
 // her pets looked for anew. Its summary, as addons.rs put_in's.
 pub fn put_in(sh: &Shared, pkg: Package, source: &'static str, from: &str, file: &str) -> Result<Value, Refused> {
+    let id = pkg.manifest.id.clone();
+    addons::with_id_lock(&id, || put_in_held(sh, pkg, source, from, file))
+}
+
+fn put_in_held(sh: &Shared, pkg: Package, source: &'static str, from: &str, file: &str) -> Result<Value, Refused> {
     let m = &pkg.manifest;
     may_go_in(&sh.dir, m)?;
     let root = root(&sh.dir, m.kind);
@@ -381,20 +386,25 @@ fn write(root: &Path, id: &str, files: &[(String, Vec<u8>)], mark: &Value) -> Re
     Ok(())
 }
 
-// The new files over the old in a folder that cannot be moved: what was in
-// it taken out (the folder itself stays), then each moved in.
+// The new files over the old in a folder that cannot be moved (Windows'
+// slideshow on it, a sheet open): what was in it taken out but its pack.json
+// last, then each new one moved in and the new pack.json last of all, so a
+// stop mid-way (a locked file) never leaves the folder without a mark — it
+// stays a marked pack, stale at worst, never one taken for the person's own.
 fn over_in_place(from: &Path, to: &Path) -> std::io::Result<()> {
-    for e in fs::read_dir(to)?.flatten() {
+    let is_mark = |e: &fs::DirEntry| e.file_name() == std::ffi::OsStr::new(MARK);
+    for e in fs::read_dir(to)?.flatten().filter(|e| !is_mark(e)) {
         if e.file_type()?.is_dir() {
             fs::remove_dir_all(e.path())?;
         } else {
             fs::remove_file(e.path())?;
         }
     }
-    for e in fs::read_dir(from)?.flatten() {
+    for e in fs::read_dir(from)?.flatten().filter(|e| !is_mark(e)) {
         fs::rename(e.path(), to.join(e.file_name()))?;
     }
-    Ok(())
+    // The mark last, over the old: the moment it is gone the new one is there.
+    fs::rename(from.join(MARK), to.join(MARK))
 }
 
 // Its preview kept as <root>/.previews/<id>.<ext>, one before of another
@@ -449,6 +459,10 @@ fn keep_shown(root: &Path, file: &Path) -> Result<PathBuf, String> {
 // never the person's own. Her pet, if it was this one, the default one
 // first; Windows' slideshow, if on its folder, ended on the picture shown.
 pub fn uninstall(sh: &Shared, kind: Kind, id: &str) -> Result<(), String> {
+    addons::with_id_lock(id, || uninstall_held(sh, kind, id))
+}
+
+fn uninstall_held(sh: &Shared, kind: Kind, id: &str) -> Result<(), String> {
     let root = root(&sh.dir, kind);
     let folder = root.join(id);
     let pack = addons::is_id(id).then(|| mark_of(&folder, kind)).flatten().ok_or_else(|| format!("{id}: no {} pack of that name here", kind.name()))?;
@@ -485,15 +499,12 @@ pub fn uninstall(sh: &Shared, kind: Kind, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-// As she starts: what an install or a removal cut short left beside the packs.
+// As she starts: what an install or a removal cut short left beside the
+// packs put right (a staging thrown away, the only copy kept where it was
+// set aside: addons::clean_interrupted).
 pub fn start(dir: &Path) {
     for kind in [Kind::Pet, Kind::Wallpaper] {
-        for e in fs::read_dir(root(dir, kind)).into_iter().flatten().flatten() {
-            let name = e.file_name().to_string_lossy().into_owned();
-            if (name.starts_with(".staging-") || name.starts_with(".old-")) && e.file_type().is_ok_and(|t| t.is_dir()) {
-                let _ = fs::remove_dir_all(e.path());
-            }
-        }
+        addons::clean_interrupted(&root(dir, kind));
     }
 }
 
@@ -659,15 +670,18 @@ mod tests {
         assert!(!folder.join("old.txt").exists(), "the new files alone");
         let left: Vec<String> = fs::read_dir(dir.join("pets")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         assert_eq!(left, ["pixel-cat"], "nothing beside it");
-        // Held: the new files over the old in place.
+        // Held: the new files over the old in place, pack.json last (finding 9),
+        // so a stop mid-way never leaves the folder without a mark.
         let staging = dir.join("staging");
         fs::create_dir_all(staging.join("sub")).unwrap();
         fs::write(staging.join("spritesheet.webp"), b"new").unwrap();
         fs::write(staging.join("sub").join("a.txt"), b"a").unwrap();
+        fs::write(staging.join(MARK), br#"{"id":"pixel-cat","kind":"pet","name":"Cat","version":"1.2.0"}"#).unwrap();
         fs::write(folder.join("gone.txt"), b"x").unwrap();
         over_in_place(&staging, &folder).unwrap();
         assert_eq!(fs::read(folder.join("spritesheet.webp")).unwrap(), b"new");
         assert!(folder.join("sub").join("a.txt").is_file() && !folder.join("gone.txt").exists());
+        assert_eq!(mark_of(&folder, Kind::Pet).map(|p| p.version), Some("1.2.0".into()), "the new mark, not the old");
         // The folder for Windows' slideshow: a marked wallpaper pack's alone, whole.
         put(&dir, &walls("1.0.0"), "market");
         let walls = folder_of(&dir, Kind::Wallpaper, "aurora").unwrap();

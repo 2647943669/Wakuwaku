@@ -1,4 +1,4 @@
-// Hello: counts up while its widget is placed, and remembers how far it got
+// Tally: counts up while its widget is placed, and remembers how far it got
 // (waku.storage), as its settings say: by how much, how often, and what it
 // is called. It asks for no permissions: its own widget, its settings and
 // its storage are all it uses. Zip this folder and install it from the

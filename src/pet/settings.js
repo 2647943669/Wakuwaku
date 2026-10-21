@@ -107,6 +107,8 @@
   let sub = null
   let flow = AddonUI.IDLE
   let gone = null
+  // A plugin whose newly-asked permissions are being allowed (finding 1).
+  let approveFor = null
   let pickingZip = false
   const freshRows = new Set()
   // The plugin market (market.rs; addonui.js its words and steps), a part
@@ -887,7 +889,11 @@
     const note = AddonUI.statusOf(a, { placed: !!place.at, mine, T })
     const open = openPlugin === a.id
     const more = a.settings?.length ? `<button class="pbtn sm" data-pexp="${esc(a.id)}">${esc(T(open ? 'pl.fold' : 'pl.settings'))}</button>` : ''
-    const end = note.revive ? `<button class="pbtn sm" data-revive="${esc(a.id)}">${esc(T('addons.revive'))}</button>` : placeHTML(place, `plugin:${a.id}`)
+    const end = note.revive
+      ? `<button class="pbtn sm" data-revive="${esc(a.id)}">${esc(T('addons.revive'))}</button>`
+      : note.approve
+        ? `<button class="pbtn sm" data-approve="${esc(a.id)}">${esc(T('addons.allow'))}</button>`
+        : placeHTML(place, `plugin:${a.id}`)
     const name = `<button class="nm" data-addon="${esc(a.id)}">${esc(a.name)}</button>`
     return `<div class="r${freshRows.has(a.id) ? ' fresh' : ''}" data-part="widgets:${esc(a.id)}"><span class="wi" style="color:${esc(addonColor(a, mine))}">${addonIcon(a)}</span><div class="grow"><div class="ellip">${name}${unreviewedChip(a)}${says ? `<span class="d"> ${esc(says)}</span>` : ''}</div><div class="d ellip${note.bad ? ' bad' : ''}">${esc(note.text)}</div></div>${more}${end}</div>${open ? addonFields(a) : ''}`
   }
@@ -1204,7 +1210,8 @@
   function sheetHTML() {
     const mk = mkAsk?.kind === 'install' ? marketAsk(mkAsk.id) : mkAsk?.kind === 'updates' ? AddonUI.updatesAskOf(snap?.marketUpdates, T, andList) : null
     const out = gone && (gone.kind ? AddonUI.packUninstallLayerOf(packById(gone.kind, gone.id) || { id: gone.id, kind: gone.kind }, T, gone.busy) : AddonUI.uninstallLayerOf(addonById(gone.id) || { id: gone.id }, T, gone.busy))
-    const l = out || mk || AddonUI.layerOf(flow, T, andList)
+    const ap = approveFor ? AddonUI.approveLayerOf(addonById(approveFor), T, andList) : null
+    const l = out || mk || ap || AddonUI.layerOf(flow, T, andList)
     if (!l) return ''
     const warn = l.warn ? `<div class="sh-warn">${l.warn.head ? `<b>${esc(l.warn.head)}</b>` : ''}${esc(l.warn.text)}</div>` : ''
     const will = l.will.length ? `<div class="sh-will"><div class="d">${esc(l.willHead)}</div><ul>${l.will.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''
@@ -1249,7 +1256,7 @@
   async function installGo() {
     if (flow.step !== 'ask') return
     flowStep({ type: 'go' })
-    const result = await window.pet.addons.install(flow.path).catch(e => ({ ok: false, refused: { reason: 'write', file: null, detail: String(e?.message || e || '') } }))
+    const result = await window.pet.addons.install(flow.path, flow.summary?.sha256).catch(e => ({ ok: false, refused: { reason: 'write', file: null, detail: String(e?.message || e || '') } }))
     flowStep({ type: 'installed', result })
     const done = flow.done
     if (!done) return
@@ -1283,6 +1290,19 @@
       if (!kind) AddonUI.news.placed(id)
       if ((sub?.page === 'addon' || sub?.page === 'pack') && sub.id === id) sub = null
     } else if (got?.error) toast(got.error)
+    draw(true)
+    relayout()
+  }
+
+  // The new permissions allowed (允许 on its row): its grant set to its
+  // manifest's, so it runs again (addon_manage approve, finding 1).
+  async function approveGo() {
+    const id = approveFor
+    if (!id) return
+    approveFor = null
+    drawSheet()
+    const got = await window.pet.addons.approve(id).catch(() => null)
+    if (got && typeof got === 'object' && got.settings) snap = got
     draw(true)
     relayout()
   }
@@ -3557,6 +3577,7 @@
       const what = b ? b.dataset.sheet : at('.sh') ? '' : 'cancel'
       if (what === 'go') return installGo()
       if (what === 'uninstall') return uninstallGo()
+      if (what === 'approve') return approveGo()
       // The market's: installing one that asks for more, 全部更新 asked first.
       if (what === 'mkgo' || what === 'mkall') {
         const asked = mkAsk
@@ -3567,6 +3588,7 @@
       if (what === 'cancel' && !(gone?.busy || flow.step === 'installing')) {
         gone = null
         mkAsk = null
+        approveFor = null
         flowStep({ type: 'cancel' })
       }
       return
@@ -3729,6 +3751,11 @@
         if (got && typeof got === 'object' && got.settings) snap = got
         draw()
       })
+    }
+    const allow = at('[data-approve]')
+    if (allow && !allow.disabled) {
+      approveFor = allow.dataset.approve
+      return drawSheet()
     }
     const out = at('[data-uninstall]')
     if (out) {

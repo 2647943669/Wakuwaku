@@ -78,6 +78,8 @@ rain-alert/
 | `hardware: true` | `waku.hardware`: CPU, memory, GPU, network readings | Yes |
 | `notify: true` | `waku.notify`: a nudge on her widget | Yes |
 
+A plugin runs with what was granted when it went in (a market install's reviewed index permissions, a file install's the manifest's, as the confirm layer showed). If a later version — or an edited folder — asks for **more** than was granted, the plugin stops and its Plugins-page row says 要更多权限 (Needs more permissions) with 允许… (Allow…), which lists the new permissions; until the user agrees it does not run. At run time a plugin is given only what was both granted and still asked for. A plugin that asks for a newer `api` installs with its permissions unread, so the user is asked once a newer Wakuwaku can run it.
+
 ## The `waku` object
 
 `main.js` runs in a hidden sandboxed frame while the plugin's widget is placed somewhere. Placing it turns the plugin on, and taking it from its last place turns it off, as for built-in plugins. The frame has no storage of its own, and no network except `waku.fetch`.
@@ -138,6 +140,8 @@ While nobody is about, while the desktop is covered, or while Windows has animat
 
 - The frame is `sandbox="allow-scripts"`, so it has no origin of its own: no cookies, `localStorage` or IndexedDB, no forms, no popups, and no reaching her page or other plugins.
 - Its files come from `http://wakuplugin.localhost/<id>/`. A Content-Security-Policy allows scripts, styles, images and fonts from your own folder and `data:` / `blob:`, and blocks all network access (`connect-src 'none'`). Use `waku.fetch`. That includes your own folder: `import` your modules, and put data your code needs in a `.js` module rather than fetching a `.json`.
+- No network but `waku.fetch`: `connect-src 'none'` stops `fetch`, `XMLHttpRequest`, `WebSocket` and `EventSource`, and WebView2 is started with WebRTC's non-proxied UDP turned off so a plugin cannot reach the network by WebRTC either. The SDK also blanks the WebRTC constructors in the frame and in its child frames, as a second layer.
+- No workers: `worker-src 'none'`. A worker would run off her page's main thread, out of the watchdog's reach, so there are none in v1.
 - `main.js` is loaded as a module (`import`, top-level `await`).
 - It cannot reach her local port (`127.0.0.1:47213`), the file system, other programs or Windows.
 - Watchdog: she pings every plugin every 5 s. One that does not answer within 3 s is reloaded. One that hangs again within ten minutes is turned off and marked "not responding" on the Plugins page, until the user turns it back on. So is one whose own long tasks (the main thread held 50 ms or more at a time) add up to over 2 s in a minute ("too busy"). All plugins share one process: when none answers, she restarts them one at a time to find the one that hangs. Do heavy work in small pieces.

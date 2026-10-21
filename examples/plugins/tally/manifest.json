@@ -1,7 +1,7 @@
 {
-  "id": "hello",
+  "id": "tally",
   "kind": "plugin",
-  "name": { "en": "Hello", "zh": "数数" },
+  "name": { "en": "Tally", "zh": "数数" },
   "description": { "en": "Counts up, and remembers how far it got", "zh": "一直往上数，记得数到了几" },
   "version": "1.0.0",
   "author": "wakuwaku",

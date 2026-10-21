@@ -954,7 +954,7 @@
       ['my-plugin.zip', '只联网'],
       ['agent-board.zip', '要权限'],
       ['cool-tool.zip', '带程序'],
-      ['hello-1.1.0.zip', '更新'],
+      ['tally-1.1.0.zip', '更新'],
     ],
   }
   const QUICK_HOLDS = [8, 30, 120]

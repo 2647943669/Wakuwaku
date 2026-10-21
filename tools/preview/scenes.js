@@ -781,18 +781,23 @@
     }),
     addonShot('settings-plugins-addon-detail-file', '数数的详情（从文件装的，未经审核）', async p => {
       await openPluginsPage(p)
-      p.click('#island-settings [data-addon="hello"]')
+      p.click('#island-settings [data-addon="tally"]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-addon-approval', '要更多权限，先问（允许…）', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-approve="note-pad"]')
       await p.wait(400)
     }),
     addonShot('settings-plugins-uninstall-confirm', '卸载先问一句', async p => {
       await openPluginsPage(p)
-      p.click('#island-settings [data-addon="hello"]')
+      p.click('#island-settings [data-addon="tally"]')
       await p.wait(300)
       p.click('#island-settings [data-uninstall]')
       await p.wait(400)
     }),
     addonShot('settings-plugins-install-confirm', '从文件安装：要权限的，先问', installFromFile, { addonPick: 'agent-board.zip' }),
-    addonShot('settings-plugins-install-update', '从文件安装：同一个插件的新版，替换旧版', installFromFile, { addonPick: 'hello-1.1.0.zip' }),
+    addonShot('settings-plugins-install-update', '从文件安装：同一个插件的新版，替换旧版', installFromFile, { addonPick: 'tally-1.1.0.zip' }),
     addonShot('settings-plugins-install-refused', '从文件安装：包里有程序，装不了', installFromFile, { addonPick: 'cool-tool.zip' }),
     // A plugin with a view of its own (Agent 排行): its page says 自绘界面;
     // too busy for the watchdog, stopped, its row says so (spec §3, §8).
@@ -1074,7 +1079,7 @@
       settle: 700,
       world: F => ({ ...withAddons(F), sessions: [F.session('working')], taskbarLayout: { left: ['her'], center: ['start', 'apps'], right: [{ id: 'wtw', type: 'plugin', of: 'weather', size: 'M', icon: 'weather' }, 'monitor', 'tray', 'keys', 'quick', 'clock'] } }),
       steps: async p => {
-        window.AddonUI?.news.add('hello')
+        window.AddonUI?.news.add('tally')
         await p.wait(200)
         p.emit('taskbar:edit', { picker: true })
         await p.wait(600)
@@ -1096,7 +1101,7 @@
           center: ['start', 'apps'],
           right: [
             { id: 'wra', type: 'plugin', of: 'rain-alert', size: 'M', name: '下雨提醒', icon: 'weather' },
-            { id: 'wrh', type: 'plugin', of: 'hello', size: 'S', name: '数数' },
+            { id: 'wrh', type: 'plugin', of: 'tally', size: 'S', name: '数数' },
             { id: 'wrr', type: 'plugin', of: 'weather-radar', size: 'M', name: '天气雷达' },
             'tray',
             'keys',
@@ -1128,10 +1133,10 @@
         addons: addonsRunning(F),
         deskLayout: [
           { id: 'wa1', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 0] } },
-          { id: 'wa2', type: 'plugin', of: 'hello', size: 'm', name: '数数', d: 'd1', at: { d1: [4, 0] } },
+          { id: 'wa2', type: 'plugin', of: 'tally', size: 'm', name: '数数', d: 'd1', at: { d1: [4, 0] } },
           { id: 'wa3', type: 'plugin', of: 'weather-radar', size: 'm', name: '天气雷达', d: 'd1', at: { d1: [8, 0] } },
           { id: 'wa4', type: 'plugin', of: 'rain-alert', size: 's', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 2] } },
-          { id: 'wa5', type: 'plugin', of: 'hello', size: 's', name: '数数', d: 'd1', at: { d1: [2, 2] } },
+          { id: 'wa5', type: 'plugin', of: 'tally', size: 's', name: '数数', d: 'd1', at: { d1: [2, 2] } },
           { id: 'wa6', type: 'plugin', of: 'weather-radar', size: 's', name: '天气雷达', d: 'd1', at: { d1: [4, 2] } },
         ],
       }),

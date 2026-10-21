@@ -635,6 +635,17 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     let mut rest = Map::new();
     let (mut scale, mut display, mut out) = (None, None, None);
     for (key, value) in patch.as_object().into_iter().flatten() {
+        // The plugins setting is cleaned entry by entry, not refused whole
+        // (finding 3): a stale entry is dropped, the good ones (the page
+        // sends them all) kept. An empty object (nothing valid) is left
+        // alone so it cannot wipe what is stored.
+        if key == "plugins" {
+            let cleaned = plugins::clean(value);
+            if cleaned.as_object().is_some_and(|m| !m.is_empty()) {
+                rest.insert("plugins".into(), cleaned);
+            }
+            continue;
+        }
         if !is_ok(sh, key, value) {
             continue;
         }

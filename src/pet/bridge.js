@@ -252,11 +252,14 @@
       // .zip picked in Windows' dialog ({ path }, null: closed), one
       // stopped turned on again.
       inspect: path => invoke('addon_manage', { what: 'inspect', arg: String(path) }),
-      install: path => invoke('addon_manage', { what: 'install', arg: String(path) }),
+      // sha: the SHA-256 inspect gave, so the install refuses a file changed since.
+      install: (path, sha) => invoke('addon_manage', { what: 'install', arg: String(path), sha: sha ? String(sha) : null }),
       uninstall: id => invoke('addon_manage', { what: 'uninstall', arg: String(id) }),
       uninstallPack: (kind, id) => invoke('addon_manage', { what: 'uninstallPack', arg: `${kind}:${id}` }),
       pickZip: () => invoke('addon_manage', { what: 'pick', arg: null }).then(r => r?.path ?? null, () => null),
       revive: id => invoke('addon_manage', { what: 'revive', arg: String(id) }),
+      // Allow a plugin the permissions its manifest now asks for (finding 1).
+      approve: id => invoke('addon_manage', { what: 'approve', arg: String(id) }),
     },
     // The plugin market (market.rs): its index ({ items, at, from, error },
     // read again when asked or an hour old), one got from it (answered once

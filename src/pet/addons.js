@@ -42,6 +42,14 @@
   // over in a minute before a frame is left stopped.
   const WIDGET_EVERY = 1000
   const FETCHES = 4
+  // Requests of every kind at once for one plugin (storage, remove,
+  // hardware, notify, fetch, a widget's words): so a storm cannot queue
+  // unbounded work on her side. Messages a second from one frame, dropped
+  // over that (before its data is even read). Widgets one plugin may have,
+  // as many as her side keeps (addons.rs WIDGETS): no more entries made.
+  const INFLIGHT = 8
+  const MESSAGES = 60
+  const WIDGETS = 8
   const LOGS = 30
   const AGENTS_EVERY = 1000
   const HARDWARE_EVERY = 5000
@@ -97,7 +105,7 @@
   // drop(rec) takes one away; post(win, message); log(line); now(); the
   // timers; views(on), the cards' views of this page taken away or back
   // (the desktop's are told by her: invoke views).
-  function createHost({ invoke, make, drop, post, log = () => {}, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, views = () => {} }) {
+  function createHost({ invoke, make, drop, post, log = () => {}, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, views = () => {}, rand = Math.random }) {
     const recs = new Map()
     const bySource = new Map()
     // Kept stopped (given up on), by id: its rev then, until she sends it changed.
@@ -117,19 +125,24 @@
     const reply = (rec, n, ok, value) => post(rec.win, ok ? { waku: 1, t: 'reply', n, ok: true, value } : { waku: 1, t: 'reply', n, ok: false, error: String(value?.message ?? value) })
     const refusal = r => (r && typeof r === 'object' && r.error ? String(r.error) : null)
     // Asked of her in its name: { error } a refusal, else its value (pick).
+    // One slot of its in-flight budget held until the answer comes, so a
+    // plugin cannot have more than INFLIGHT asking at once (whatever the kind).
     function ask(rec, n, cmd, args, pick = r => r ?? null) {
+      if (rec.inflight >= INFLIGHT) return reply(rec, n, false, `${INFLIGHT} requests at once at most`)
+      rec.inflight++
       return Promise.resolve()
         .then(() => invoke(cmd, { id: rec.id, ...args }))
         .then(
           r => (refusal(r) ? reply(rec, n, false, refusal(r)) : reply(rec, n, true, pick(r))),
           e => reply(rec, n, false, e),
         )
+        .finally(() => rec.inflight--)
     }
     const quietly = promise => Promise.resolve(promise).catch(() => {})
 
     function start(item) {
       const { el, win } = make(item.id, pageOf(item.id))
-      const rec = { id: item.id, item, el, win, ready: false, loads: 0, restarts: [], fetches: 0, logs: [], listens: new Set(), widgets: new Map(), startedAt: now(), answered: 0 }
+      const rec = { id: item.id, item, el, win, ready: false, loads: 0, restarts: [], fetches: 0, inflight: 0, logs: [], msgs: [], listens: new Set(), widgets: new Map(), startedAt: now(), ping: null, ponged: null }
       recs.set(item.id, rec)
       bySource.set(win, rec)
       keepWatch()
@@ -266,6 +279,9 @@
       const text = json(m.data)
       if (text === null || text.length > DATA_MAX) return reply(rec, m.n, false, 'a widget is JSON, up to 64 KB')
       let w = rec.widgets.get(sub)
+      // No more entries than her side keeps widgets: a plugin naming numberless
+      // subs cannot make the map (and its timers) grow without end.
+      if (!w && rec.widgets.size >= WIDGETS) return reply(rec, m.n, false, `${WIDGETS} widgets at most`)
       if (!w) rec.widgets.set(sub, (w = { at: -Infinity, timer: 0, data: null, waiting: [] }))
       w.data = JSON.parse(text)
       w.waiting.push(m.n)
@@ -275,12 +291,19 @@
         w.at = now()
         const [data, waiting] = [w.data, w.waiting]
         w.waiting = []
+        rec.inflight++
         Promise.resolve()
           .then(() => invoke('widget', { id: rec.id, sub: sub || null, data }))
           .then(
-            r => waiting.forEach(n => (refusal(r) ? reply(rec, n, false, refusal(r)) : reply(rec, n, true, null))),
+            r => {
+              // Her side would not take it (over her own 8): forget the sub,
+              // so it is not kept as one she has.
+              if (refusal(r) && !w.waiting.length && rec.widgets.get(sub) === w) rec.widgets.delete(sub)
+              waiting.forEach(n => (refusal(r) ? reply(rec, n, false, refusal(r)) : reply(rec, n, true, null)))
+            },
             e => waiting.forEach(n => reply(rec, n, false, e)),
           )
+          .finally(() => rec.inflight--)
       }
       const wait = w.at + WIDGET_EVERY - now()
       if (wait <= 0) go()
@@ -335,16 +358,32 @@
           if (logLine(rec, `error: ${str(m.line, 300)}`)) quietly(invoke('said', { id: rec.id, line: str(m.line, 300) }))
           return
         case 'pong':
-          if (Number.isFinite(m.n)) rec.answered = Math.max(rec.answered, m.n)
+          // Only the pong for the nonce she last sent this frame counts: a
+          // plugin cannot forge one (a huge number, say) to look answered
+          // while it is hung, because it cannot know the next nonce.
+          if (m.n === rec.ping) rec.ponged = m.n
           busy(rec, m.busy)
           return
       }
     }
 
     // A message from a frame: the plugin whose frame sent it, or nobody's.
+    // Counted per second before its data is looked at, so a flood of
+    // messages is dropped early, one line said the first time in a window.
     function receive(source, data) {
       const rec = bySource.get(source)
       if (!rec || !data || typeof data !== 'object' || data.waku !== 1 || typeof data.t !== 'string') return false
+      const t = now()
+      rec.msgs = rec.msgs.filter(at => t - at < 1000)
+      if (rec.msgs.length >= MESSAGES) {
+        if (!rec.flooding) {
+          rec.flooding = true
+          logLine(rec, `too many messages at once: some dropped (${MESSAGES} a second at most)`)
+        }
+        return true
+      }
+      rec.flooding = false
+      rec.msgs.push(t)
       handle(rec, data)
       return true
     }
@@ -382,7 +421,12 @@
     // ([when, ms]), kept across its frames; the pings' count; the timers.
     const trouble = new Map()
     const tasks = new Map()
-    let pings = 0
+    // A fresh unguessable nonce for each ping, so only the frame it was sent
+    // to can answer it (not a plugin forging a pong). Whether a frame has
+    // answered the nonce she last sent it.
+    let seq = 0
+    const nonce = () => `${++seq}.${Math.floor(rand() * 0x100000000).toString(36)}`
+    const answered = rec => rec.ping != null && rec.ponged === rec.ping
     let pingTimer = 0
     let checkTimer = 0
     let reloadTimer = 0
@@ -420,20 +464,22 @@
       pingTimer = 0
       if (!recs.size || recovering) return
       const at = now()
-      const n = ++pings
       const asked = [...recs.values()].filter(rec => at - rec.startedAt >= GRACE_MS)
-      for (const rec of asked) post(rec.win, { waku: 1, t: 'ping', n })
+      for (const rec of asked) {
+        rec.ping = nonce()
+        post(rec.win, { waku: 1, t: 'ping', n: rec.ping })
+      }
       if (asked.length) {
         clearTimer(checkTimer)
-        checkTimer = setTimer(() => check(n, at, asked), ANSWER_MS)
+        checkTimer = setTimer(() => check(at, asked), ANSWER_MS)
       }
       keepWatch()
     }
 
-    function check(n, at, asked) {
+    function check(at, asked) {
       checkTimer = 0
       const live = asked.filter(rec => recs.get(rec.id) === rec)
-      const missed = live.filter(rec => rec.answered < n)
+      const missed = live.filter(rec => !answered(rec))
       if (now() - at <= ANSWER_MS + LATE_MS && missed.length) {
         // All those asked silent, and another there (one just started, too
         // soon to be asked, among them): their process held, by any of them.
@@ -536,14 +582,16 @@
     function probe(r, rec) {
       r.timer = setTimer(() => {
         r.timer = 0
-        const n = ++pings
         const up = r.started.filter(x => recs.get(x.id) === x)
-        for (const x of up) post(x.win, { waku: 1, t: 'ping', n })
+        for (const x of up) {
+          x.ping = nonce()
+          post(x.win, { waku: 1, t: 'ping', n: x.ping })
+        }
         r.timer = setTimer(() => {
           r.timer = 0
           if (recovering !== r) return
           const live = up.filter(x => recs.get(x.id) === x)
-          if (live.every(x => x.answered >= n)) {
+          if (live.every(answered)) {
             r.answered = true
             return now() - r.at >= r.wait ? step() : probe(r, rec)
           }
@@ -580,10 +628,13 @@
       keepWatch()
     }
 
-    // One pinged now, by hand (the tests).
-    function ping(id, n = now()) {
+    // One pinged now, by hand (the tests): the nonce kept, so its pong counts.
+    function ping(id, n = nonce()) {
       const rec = recs.get(id)
-      if (rec?.ready) post(rec.win, { waku: 1, t: 'ping', n })
+      if (rec?.ready) {
+        rec.ping = n
+        post(rec.win, { waku: 1, t: 'ping', n })
+      }
       return !!rec
     }
 

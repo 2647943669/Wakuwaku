@@ -26,9 +26,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      # From the BASE branch, never the pull request's: a PR must not be able
+      # to point the tools at its own code (a fork's) by editing
+      # .github/wakuwaku-ref. Only a release tag vX.Y.Z is accepted.
       - name: Which Wakuwaku the rules are from
         id: ref
-        run: echo "ref=$(grep -v '^[[:space:]]*#' .github/wakuwaku-ref | tr -d ' \t\r\n')" >> "$GITHUB_OUTPUT"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          ref="$(git show "$BASE:.github/wakuwaku-ref" | grep -v '^[[:space:]]*#' | tr -d ' \t\r\n')"
+          if ! printf '%s' "$ref" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::.github/wakuwaku-ref must be a release tag like v0.4.0, not '$ref' / 必须是 v0.4.0 这样的发布标签"
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - name: Wakuwaku's market tools
         uses: actions/checkout@v4

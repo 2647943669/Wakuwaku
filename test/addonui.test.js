@@ -93,16 +93,16 @@ test('what it may do, a line each; the web is no question at install, the rest a
 })
 
 test('in the picker one just installed and put nowhere yet comes first, marked 新, until it is put somewhere', () => {
-  const cards = ['widget:monitor', 'plugin:weather', 'plugin:rain-alert', 'plugin:hello', 'widget:deploy'].map(key => ({ key }))
+  const cards = ['widget:monitor', 'plugin:weather', 'plugin:rain-alert', 'plugin:tally', 'widget:deploy'].map(key => ({ key }))
   const news = A.makeNews()
-  news.add('hello')
+  news.add('tally')
   const fresh = key => key.startsWith('plugin:') && news.has(key.slice(7))
-  assert.deepEqual(A.freshFirst(cards, fresh).map(c => c.key), ['plugin:hello', 'widget:monitor', 'plugin:weather', 'plugin:rain-alert', 'widget:deploy'])
+  assert.deepEqual(A.freshFirst(cards, fresh).map(c => c.key), ['plugin:tally', 'widget:monitor', 'plugin:weather', 'plugin:rain-alert', 'widget:deploy'])
   assert.deepEqual(A.badgeOf(0, true, zh), { text: '新', fresh: true })
   assert.deepEqual(A.badgeOf(2, true, zh), { text: '已放 2', fresh: false }, 'placed: its count, not 新')
   assert.deepEqual(A.badgeOf(0, false, zh), { text: '', fresh: false })
   // Put somewhere once: new no more, back in its place.
-  news.placed('hello')
+  news.placed('tally')
   assert.deepEqual(A.freshFirst(cards, fresh).map(c => c.key), cards.map(c => c.key))
   assert.deepEqual(news.ids(), [])
   // Placing it turns it on as hers are (plugins[id].on), its settings kept.

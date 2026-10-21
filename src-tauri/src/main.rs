@@ -559,10 +559,11 @@ impl Shared {
     }
 
     // A widget from a script: there it is, and it may open the island for
-    // itself. Never one by the ids of a third-party plugin installed: those
-    // are its own (addons.rs).
+    // itself. Never one by the id of a third-party plugin's widget that is
+    // up now (not any id merely beginning like a plugin's: finding 11), so a
+    // plugin cannot claim the person's `cpu_temp` next to a `cpu` plugin.
     pub fn put_widget(&self, v: &Value) -> Result<(), &'static str> {
-        if v.get("id").and_then(Value::as_str).and_then(addons::owner_of).is_some() {
+        if v.get("id").and_then(Value::as_str).is_some_and(|id| self.widgets.lock().unwrap().is_addon(id)) {
             return Err("id: taken by a plugin");
         }
         let put = self.widgets.lock().unwrap().put(v, now_ms())?;
@@ -1156,14 +1157,20 @@ fn quiet_after_ms() -> u64 {
 // (same origin, same show; the second was 90 MB and its own idle); the
 // network service in its browser process, not a process of its own (#14;
 // the storage service's process has no such switch any more: it stays);
-// and rendering on the graphics card that drives her display
-// (gpu.rs, #13). WebView2 takes them once, for all her windows (another
-// set refused): worked out as the first is made, her home's display then
-// the primary one. WAKUWAKU_BROWSER_ARGS, more of them (to try one).
+// WebRTC's non-proxied UDP off, so a plugin cannot reach the network by
+// WebRTC past its frame's Content-Security-Policy and past her proxy
+// (the plugins review, finding 2; she uses WebRTC nowhere herself, and
+// with no proxy set this leaves it no way out by UDP); and rendering on the
+// graphics card that drives her display (gpu.rs, #13). WebView2 takes them
+// once, for all her windows (another set refused): worked out as the first
+// is made, her home's display then the primary one. A self-update changes
+// them across versions safely because the new exe makes its WebView2 only
+// after the old one has ended (updates.rs wait_after_update, hand_over).
+// WAKUWAKU_BROWSER_ARGS, more of them (to try one).
 pub fn browser_args(sh: &Shared) -> &'static str {
     static ARGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     ARGS.get_or_init(|| {
-        let mut args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --renderer-process-limit=1".to_string();
+        let mut args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --renderer-process-limit=1 --force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string();
         match island::display(sh).and_then(gpu::switch_for) {
             Some((switch, display)) => {
                 sh.log(&format!("webview: rendering on the card driving {display} ({switch})"));

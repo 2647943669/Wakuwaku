@@ -52,6 +52,9 @@
     const by = byline(a)
     const tail = text => [text, by].filter(Boolean).join(' · ')
     if (a.state === 'unsupported') return { text: tail(T('addons.newerApp')), bad: true }
+    // It asks for more than was allowed (an edited folder, a changed manifest):
+    // 要更多权限, with 允许… (finding 1).
+    if (a.state === 'needsApproval') return { text: tail(T('addons.needsApproval')), bad: true, approve: true }
     if (a.state === 'stopped') return { text: tail(stoppedWords(a, T)), bad: true, revive: true }
     if (!placed) return { text: tail(T('pl.unplaced')) }
     if (a.state === 'off') return { text: tail(T('pl.starting')) }
@@ -170,6 +173,8 @@
         return { head: '', text: T(detail.startsWith('wallpaper') ? 'addons.no.clashWall' : 'addons.no.clashPet', { id: file }) }
       case 'path':
         return { head: '', text: T('addons.no.path', { file }) }
+      case 'dup':
+        return { head: '', text: T('addons.no.dup', { file }) }
       case 'big': {
         const m = /over (\d+) MB( unpacked)?/.exec(detail)
         return { head: '', text: m ? T(m[2] ? 'addons.no.bigUnpacked' : 'addons.no.big', { n: m[1] }) : T('addons.no.bigAny') }
@@ -184,6 +189,8 @@
         return { head: '', text: /no manifest\.json/.test(detail) ? T('addons.no.noManifest') : T('addons.no.manifest', { detail: cut(detail, 120) }) }
       case 'kind':
         return { head: '', text: T('addons.no.kind') }
+      case 'sha':
+        return { head: '', text: T('addons.no.changed') }
       case 'write':
         return { head: '', text: detail ? T('addons.no.write', { detail: cut(detail, 120) }) : T('addons.no.writeAny') }
       default:
@@ -231,6 +238,27 @@
       }
     }
     return null
+  }
+
+  // Allowing a plugin the permissions its manifest now asks for (finding 1):
+  // 允许「X」要的权限？它会：…, listing only the new ones (a.newPerms, as
+  // market.rs words them), 取消 / 允许.
+  function approveLayerOf(a, T, list, busy = false) {
+    const more = permsOfNew(a?.newPerms)
+    return {
+      kind: 'ask',
+      title: T('addons.approveAsk', { name: a?.name || a?.id || '' }),
+      warn: null,
+      willHead: T('addons.approveWill'),
+      will: permLines(more, T, list).map(x => x.text),
+      notes: [],
+      line: null,
+      busy,
+      buttons: [
+        ['cancel', T('addons.cancel'), ''],
+        ['approve', T('addons.allow'), 'al'],
+      ],
+    }
   }
 
   // Taking one away, asked first (spec §3: 卸载「X」？它存的数据也一起删掉。).
@@ -507,7 +535,7 @@
   const api = {
     CATS, catOf, byline, labelOf, clockOf, stoppedWords, statusOf, aboutOf, permLines, isSensitive, freshFirst, badgeOf, makeNews, IDLE, verdict, next, refusedWords, layerOf, uninstallLayerOf, brokenLine, cut, fileOf,
     MARKET_CATS, marketCat, wordsIn, marketLink, marketList, isNewer, marketButton, sizeOf, marketAbout, marketByline, permsBeyond, marketAskOf, permsOfNew, updatesBanner, updatesAskOf, marketTroubleOf, marketFailOf, marketDoneOf, sampleWidget, sampleSizes,
-    isPack, packKey, packLine, packByline, lookPartOf, petNote, wallLine, installedOf, installedWords, packUninstallLayerOf,
+    isPack, packKey, packLine, packByline, lookPartOf, petNote, wallLine, installedOf, installedWords, packUninstallLayerOf, approveLayerOf,
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = api
   else {

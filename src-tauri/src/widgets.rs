@@ -312,6 +312,19 @@ impl Widgets {
         self.list.iter().filter(|w| w.addon && mine(&w.id)).count()
     }
 
+    // Whether this id is a plugin's widget up now (addon): a script's POST
+    // /widget is turned away only for one of these, not for any id that
+    // begins like a plugin's (finding 11).
+    pub fn is_addon(&self, id: &str) -> bool {
+        self.list.iter().any(|w| w.addon && w.id == id)
+    }
+
+    // The ids of a plugin's widgets up now (`mine`: its ids): the subs it has
+    // actually made, for recording and for cleaning its places on uninstall.
+    pub fn addon_ids(&self, mine: impl Fn(&str) -> bool) -> Vec<String> {
+        self.list.iter().filter(|w| w.addon && mine(&w.id)).map(|w| w.id.clone()).collect()
+    }
+
     // Plugins' widgets gone with them (stopped, taken away). True when any were there.
     pub fn remove_addons(&mut self, gone: impl Fn(&str) -> bool) -> bool {
         let before = self.list.len();
@@ -1621,6 +1634,23 @@ mod tests {
         assert!(w.remove_addons(|id| id == "hello_two"));
         assert!(w.remove_addons(|id| id.starts_with("hello")));
         assert!(scripted(w.view(0, &[], &[], &|_| None)).as_array().unwrap().is_empty());
+    }
+
+    // A script widget is turned away only for a plugin's widget up now, not
+    // for any id that begins like a plugin's: a `cpu` plugin with no
+    // `cpu_temp` widget does not block the person's `cpu_temp` (finding 11).
+    #[test]
+    fn a_plugin_claims_only_its_own_widgets() {
+        let mut w = Widgets::default();
+        assert!(!w.is_addon("cpu_temp"), "nothing yet");
+        // The person's script widget cpu_temp goes in: no plugin made it.
+        assert!(w.put(&json!({ "id": "cpu_temp", "label": "CPU 温度", "value": "61°" }), 0).is_ok());
+        // A cpu plugin with its own widget (cpu, cpu_load): those are claimed.
+        w.put_addon("cpu", &json!({ "value": "20%" }), "CPU", None, false, 0).unwrap();
+        w.put_addon("cpu_load", &json!({ "value": "1.2" }), "CPU", None, false, 0).unwrap();
+        assert!(w.is_addon("cpu") && w.is_addon("cpu_load"));
+        assert!(!w.is_addon("cpu_temp"), "the person’s, not the plugin’s");
+        assert_eq!(w.addon_ids(|id| id == "cpu" || id.starts_with("cpu_")).len(), 2, "its two, not cpu_temp");
     }
 
     #[test]

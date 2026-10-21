@@ -352,7 +352,7 @@
       const on = pluginOn(a.id)
       const settings = (a.settings || []).map(f => ({ ...f, value: conf[a.id]?.[f.key] ?? f.value ?? null }))
       const missing = settings.find(f => f.required && String(f.value ?? f.default ?? '').trim() === '')?.key || null
-      const state = a.state === 'unsupported' ? 'unsupported' : !on ? 'off' : missing ? 'needs' : a.state === 'stopped' ? 'stopped' : 'running'
+      const state = a.state === 'unsupported' ? 'unsupported' : !on ? 'off' : missing ? 'needs' : a.state === 'needsApproval' ? 'needsApproval' : a.state === 'stopped' ? 'stopped' : 'running'
       return { ...clone(a), on, state, missing, settings }
     })
   }
@@ -960,6 +960,12 @@
     }
     if (what === 'revive') {
       world.addons = (world.addons || []).map(a => (a.id === arg && a.state === 'stopped' ? { ...a, state: 'running', said: null } : a))
+      tellMail()
+      return snapshot()
+    }
+    // The new permissions allowed (finding 1): it runs again, nothing more to ask.
+    if (what === 'approve') {
+      world.addons = (world.addons || []).map(a => (a.id === arg && a.state === 'needsApproval' ? { ...a, state: 'running', newPerms: [] } : a))
       tellMail()
       return snapshot()
     }

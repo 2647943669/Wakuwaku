@@ -303,7 +303,7 @@ test('a build has every file its two pages load', () => {
   for (const f of ['playground.html', 'preview/scenes.js', 'preview/fixtures.js', 'preview/playground.js', 'assets/wall.jpg', 'pets/claude-chan/spritesheet.webp']) assert.ok(plan.has(f), f)
   // The example plugin with a view of its own, and her SDK, for the cards that draw it.
   for (const f of ['addon/sdk.js', 'plugins/agent-board/view.html', 'plugins/agent-board/view.js', 'plugins/agent-board/view.css', 'plugins/agent-board/manifest.json']) assert.ok(plan.has(f), f)
-  assert.ok(![...plan.keys()].some(f => f.startsWith('plugins/hello/')), 'none without a view')
+  assert.ok(![...plan.keys()].some(f => f.startsWith('plugins/tally/')), 'none without a view')
 })
 
 // --- compare.js: PNGs read, pictures compared -----------------------------------------------
