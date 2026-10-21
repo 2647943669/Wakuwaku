@@ -1,0 +1,9 @@
+# packages/
+
+每个包一个文件夹：`packages/<id>/`，文件夹名就是它 `manifest.json` 里的 `id`。这里的文件（比如这一份）不是包，不会发布。
+
+示例插件还没放进来：Wakuwaku 仓库的 `examples/plugins/` 写好后，把那两个文件夹复制到这里，作为第一批包。
+
+One folder per package: `packages/<id>/`, named after the `id` in its `manifest.json`. Files here (like this one) are no package and are not published.
+
+The example plugins are not here yet: once the Wakuwaku repository's `examples/plugins/` is written, copy its two folders here as the first packages.
