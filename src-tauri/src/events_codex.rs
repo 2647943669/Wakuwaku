@@ -46,6 +46,24 @@ mod tests {
         assert_eq!(to_message(&event("SessionEnd", json!({ "reason": "other" }))).unwrap()["event"], "session-end");
     }
 
+    // The desktop app's own request (a suggested next message) is no task of
+    // the person's: its session gone, its ending nothing; with an image, the
+    // person's words after the app's headings are the task (#74).
+    #[test]
+    fn codex_desktop_asking_of_its_own_accord() {
+        let mine = |name: &str, turn: &str, more: Value| {
+            let mut e = event(name, more);
+            e["session_id"] = json!("desk-74");
+            e["turn_id"] = json!(turn);
+            to_message(&e)
+        };
+        let ask = "This is an app-generated request for a suggested next user message. Reply with one short message.";
+        assert_eq!(mine("UserPromptSubmit", "a1", json!({ "prompt": ask })).unwrap()["event"], "session-end");
+        assert!(mine("Stop", "a1", json!({ "last_assistant_message": "Thanks!" })).is_none());
+        let image = "# Files mentioned by the user:\n\n## shot.png: C:\\w\\shot.png\nImage attachment: true\n\n## My request for Codex:\nwhy is this button grey?\n";
+        assert_eq!(mine("UserPromptSubmit", "p1", json!({ "prompt": image })).unwrap()["task"], "why is this button grey?");
+    }
+
     #[test]
     fn codex_events_that_change_nothing() {
         assert!(to_message(&event("SessionStart", json!({ "source": "compact" }))).is_none());
