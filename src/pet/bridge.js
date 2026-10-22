@@ -232,6 +232,47 @@
     },
     // Windows' Start menu opened or closed ({ open }), for the Start button.
     onStart: on('taskbar:start'),
+    // Third-party plugins (addons.rs; the island's page runs them, addons.js):
+    // which to run as that changes ([{ id, version, rev, main, perms, settings }]).
+    onAddons: on('addons:changed'),
+    // A message of a plugin's view to its main.js ({ id, sub, message }:
+    // addons.rs addon_view, the page holding the view knowing it by its frame).
+    onAddonView: on('addons:view'),
+    addons: {
+      running: () => invoke('addons_running').catch(() => []),
+      // A running plugin's asking (widget, remove, fetch, storage, notify,
+      // hardware, said), in its name: addons.js knows it by its frame; and
+      // its watchdog's (stop, views).
+      call: (what, args) => invoke('addon_call', { id: String(args?.id || ''), what: String(what), args: args || {} }),
+      // A card's view (views.js): what a widget's view shows ({ page, data,
+      // rev }), a message of it for its main.js.
+      view: (what, widget, message) => invoke('addon_view', { what: String(what), widget: String(widget), message: message ?? null }),
+      // From the settings: a package looked at, installed, a plugin taken
+      // away, a pack taken away (its kind, pet or wallpaper, and id), a
+      // .zip picked in Windows' dialog ({ path }, null: closed), one
+      // stopped turned on again.
+      inspect: path => invoke('addon_manage', { what: 'inspect', arg: String(path) }),
+      // sha: the SHA-256 inspect gave, so the install refuses a file changed since.
+      install: (path, sha) => invoke('addon_manage', { what: 'install', arg: String(path), sha: sha ? String(sha) : null }),
+      uninstall: id => invoke('addon_manage', { what: 'uninstall', arg: String(id) }),
+      uninstallPack: (kind, id) => invoke('addon_manage', { what: 'uninstallPack', arg: `${kind}:${id}` }),
+      pickZip: () => invoke('addon_manage', { what: 'pick', arg: null }).then(r => r?.path ?? null, () => null),
+      revive: id => invoke('addon_manage', { what: 'revive', arg: String(id) }),
+      // Allow a plugin the permissions its manifest now asks for (finding 1).
+      approve: id => invoke('addon_manage', { what: 'approve', arg: String(id) }),
+    },
+    // The plugin market (market.rs): its index ({ items, at, from, error },
+    // read again when asked or an hour old), one got from it (answered once
+    // it is in, or why not: { ok, error }), every update there is, a
+    // download called off; how a download goes as it goes ({ id, got,
+    // total, stage }).
+    onMarket: on('market:progress'),
+    market: {
+      index: force => invoke('market', { what: 'index', arg: force ? 'force' : null }),
+      install: id => invoke('market', { what: 'install', arg: String(id) }),
+      updateAll: () => invoke('market', { what: 'updateAll', arg: null }),
+      cancel: id => invoke('market', { what: 'cancel', arg: String(id) }),
+    },
     settings: {
       get: () => invoke('settings_get'),
       set: patch => invoke('settings_set', { patch }),
@@ -239,7 +280,7 @@
       login: on => invoke('settings_login', { on: on === true }),
       // Windows' own mode ({ light }) or accent colour ({ accent: "#rrggbb" }).
       winLook: ({ light, accent } = {}) => invoke('settings_win_look', { light: typeof light === 'boolean' ? light : null, accent: typeof accent === 'string' ? accent : null }),
-      // The desktop's picture: picked (picture, folder), laid (position), its turns (every, shuffle), the next now.
+      // The desktop's picture: picked (picture, folder), a wallpaper pack's folder by its id (pack), laid (position), its turns (every, shuffle), the next now.
       wallpaper: (what, value) => invoke('settings_wallpaper', { what: String(what), value: value == null ? null : String(value) }),
       hooks: action => invoke('settings_hooks', { action }),
       codexHooks: action => invoke('settings_codex_hooks', { action }),

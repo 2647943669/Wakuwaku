@@ -296,6 +296,53 @@ impl Way {
     pub fn agent(&self, timeout: Duration) -> Option<ureq::Agent> {
         self.agent_with(timeout, |c| c)
     }
+
+    // An agent for a plugin's waku.fetch: as agent_with, but a direct
+    // connection resolves the name through Guard, which drops any address of
+    // this computer or the network at home and connects to exactly what is
+    // left — the same lookup ureq uses, so a name that answered one address
+    // to the pre-check cannot answer an inside one to the connection
+    // (addons.rs resolves_inside). Through a proxy the proxy resolves, so the
+    // resolver is not consulted there (the pre-check is all, its residual
+    // risk in docs/PLUGINS.md).
+    pub fn guarded_agent(&self, timeout: Duration, tweak: impl FnOnce(ConfigBuilder<AgentScope>) -> ConfigBuilder<AgentScope>) -> Option<ureq::Agent> {
+        use ureq::unversioned::resolver::DefaultResolver;
+        use ureq::unversioned::transport::DefaultConnector;
+        let config = ureq::Agent::config_builder()
+            .timeout_global(Some(timeout))
+            .timeout_connect(Some(CONNECT.min(timeout)))
+            .timeout_recv_response(Some(HEAD.min(timeout)));
+        let built = |cfg: ConfigBuilder<AgentScope>| ureq::Agent::with_parts(cfg.build(), DefaultConnector::new(), Guard(DefaultResolver::default()));
+        Some(match self {
+            Way::Through(p) => built(tweak(config.proxy(Some(ureq::Proxy::new(p).ok()?)))),
+            Way::Straight => built(tweak(config.proxy(None))),
+            Way::Default => built(tweak(config)),
+            Way::Manual(p) => crate::mail::proxy::through(p, CONNECT.min(timeout), tweak(config)),
+        })
+    }
+}
+
+// A resolver that looks a name up once and keeps only the addresses that are
+// not this computer's nor the network's at home (addons::is_inside): ureq
+// then connects to one of exactly those, keeping the name for Host and SNI,
+// so there is no second lookup to point somewhere else.
+#[derive(Debug)]
+struct Guard(ureq::unversioned::resolver::DefaultResolver);
+
+impl ureq::unversioned::resolver::Resolver for Guard {
+    fn resolve(&self, uri: &ureq::http::Uri, config: &ureq::config::Config, timeout: ureq::unversioned::transport::NextTimeout) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::Error> {
+        let all = self.0.resolve(uri, config, timeout)?;
+        let mut out = self.empty();
+        for addr in &all {
+            if !crate::addons::is_inside(addr.ip()) {
+                out.push(*addr);
+            }
+        }
+        if out.is_empty() {
+            return Err(ureq::Error::HostNotFound);
+        }
+        Ok(out)
+    }
 }
 
 // The host of an address, lower case; IPv6 without its brackets.
@@ -338,6 +385,95 @@ pub fn web_ways(url: &str) -> Vec<Way> {
 pub fn web_ways_by(url: &str, via: &Via) -> Vec<Way> {
     let system = if *via == Via::System { system() } else { None };
     ways(&host_of(url).unwrap_or_default(), via, system, ureq::Proxy::try_from_env().is_some())
+}
+
+// --- A GET by hand (her updates, the plugin market) -----------------------
+// Moved here from updates.rs as it was, for the market (market.rs) to go the
+// same way: each way in turn, redirects followed by hand so a failure says
+// at which host, a 404 apart from the rest. `plain`: a redirect may go to
+// http:// too (a test's server); else https only.
+
+// At most so many redirects (GitHub's exe: one, to release-assets.githubusercontent.com).
+const HOPS: usize = 5;
+
+// A GET answered: the answer, the way it came (Way's name) and the
+// hosts it went by ("github.com → release-assets.githubusercontent.com").
+pub struct Answer {
+    pub res: ureq::http::Response<ureq::Body>,
+    pub way: String,
+    pub path: String,
+}
+
+// A GET not answered: not there (404, as the server says it), or what went
+// wrong each way it was tried: "<way>, <hosts>: <error>", "; " between.
+pub enum Miss {
+    NotThere,
+    Failed(String),
+}
+
+// A GET, each way in turn (web_ways: Windows' proxy first, where one is
+// set; then as is) till one is answered.
+pub fn get(url: &str, seconds: u64, accept: Option<&str>, plain: bool) -> Result<Answer, Miss> {
+    let mut failed = Vec::new();
+    for way in web_ways(url) {
+        match get_way(&way, url, seconds, accept, plain) {
+            Ok(answer) => return Ok(answer),
+            Err(None) => return Err(Miss::NotThere),
+            Err(Some(e)) => failed.push(format!("{}, {e}", way.name())),
+        }
+    }
+    Err(Miss::Failed(failed.join("; ")))
+}
+
+// One way: its redirects followed by hand (to https only, unless `plain`),
+// so what goes wrong says at which host. Err(None): not there (404).
+pub fn get_way(way: &Way, url: &str, seconds: u64, accept: Option<&str>, plain: bool) -> Result<Answer, Option<String>> {
+    let agent = way.agent_with(Duration::from_secs(seconds), |c| c.max_redirects(0)).ok_or_else(|| Some(format!("{}: not a proxy to go through", way.name())))?;
+    let mut at = url.to_string();
+    let mut hosts = vec![host_of(url).unwrap_or_default()];
+    for _ in 0..=HOPS {
+        let path = hosts.join(" → ");
+        let mut req = agent.get(&at).header("user-agent", &format!("wakuwaku/{}", crate::updates::current()));
+        if let Some(accept) = accept {
+            req = req.header("accept", accept);
+        }
+        let res = match req.call() {
+            Err(ureq::Error::StatusCode(404)) => return Err(None),
+            Err(e) => return Err(Some(format!("{path}: {e}"))),
+            Ok(res) => res,
+        };
+        if !res.status().is_redirection() {
+            return Ok(Answer { res, way: way.name(), path });
+        }
+        let to = res.headers().get("location").and_then(|l| l.to_str().ok()).and_then(|l| redirected(&at, l, plain));
+        at = to.ok_or_else(|| Some(format!("{path}: a {} to nowhere it may go", res.status().as_u16())))?;
+        hosts.push(host_of(&at).unwrap_or_default());
+    }
+    Err(Some(format!("{}: more than {HOPS} redirects", hosts.join(" → "))))
+}
+
+// Where a redirect goes from `from`: its Location made whole (one that
+// starts with / or // is on the same host or scheme); https only, unless
+// `plain`.
+pub fn redirected(from: &str, to: &str, plain: bool) -> Option<String> {
+    let to = to.trim();
+    let (scheme, rest) = from.split_once("://")?;
+    let url = if to.contains("://") {
+        to.to_string()
+    } else if let Some(net) = to.strip_prefix("//") {
+        format!("{scheme}://{net}")
+    } else if to.starts_with('/') {
+        format!("{scheme}://{}{to}", rest.split('/').next().unwrap_or(""))
+    } else {
+        return None;
+    };
+    (url.starts_with("https://") || (plain && url.starts_with("http://"))).then_some(url)
+}
+
+// Whether an address is under one of these, as they are written (the
+// scheme and host in either case): her releases' pages, the market's files.
+pub fn is_under(url: &str, places: &[&str]) -> bool {
+    places.iter().any(|p| url.get(..p.len()).is_some_and(|head| head.eq_ignore_ascii_case(p)))
 }
 
 // The page's Test: GitHub asked the way given (each of its ways in turn, as

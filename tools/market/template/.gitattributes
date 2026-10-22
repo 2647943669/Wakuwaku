@@ -1,0 +1,3 @@
+# A package's files byte for byte as committed, on Windows too: the zip
+# built from them, and its SHA-256, the same on every machine.
+packages/** -text

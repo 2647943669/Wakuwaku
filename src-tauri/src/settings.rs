@@ -9,6 +9,8 @@ use tauri::{AppHandle, WebviewWindow};
 use crate::{connection, data, fetch, fullscreen, i18n, island, mail, now_ms, pet, plugins, set_display, set_out, shared, Shared};
 
 const REPO: &str = "https://github.com/zhoupengjie/wakuwaku";
+// How to write a plugin (the Plugins page's 开发文档, under a .zip it cannot take).
+const PLUGIN_DOCS: &str = "https://github.com/zhoupengjie/wakuwaku/blob/main/docs/PLUGINS.md";
 
 // Each agent's own page, by its id (src/pet/agents.js), for the Agent page's
 // other supported tools: the only pages it may open.
@@ -42,10 +44,13 @@ fn dsh_block(sh: &Shared) -> Value {
 
 // Everything the settings show.
 pub fn snapshot(sh: &Shared) -> Value {
+    // The packs installed (packs.rs): a pet that is one says where it came from.
+    let packs = crate::packs::list(&sh.dir);
     let pets: Vec<Value> = data::pets(&sh.dir)
         .iter()
-        .map(|p| json!({ "id": p.id, "name": p.name, "author": p.author, "url": data::asset_url(&p.sheet), "version": p.version, "codex": p.from_codex }))
+        .map(|p| json!({ "id": p.id, "name": p.name, "author": p.author, "url": p.url(), "version": p.version, "codex": p.from_codex, "pack": crate::packs::of_pet(&packs, p) }))
         .collect();
+    let paper = crate::paper::now();
     let (now, sessions) = {
         let pet = sh.pet.lock().unwrap();
         (pet.get(now_ms()), pet.list())
@@ -161,7 +166,10 @@ pub fn snapshot(sh: &Shared) -> Value {
         // Windows' own mode and accent colour (settings_win_look sets them).
         "winLook": { "light": win_light, "accent": crate::theme::current_accent().or(win_accent.map(|a| a.base)) },
         // The desktop's picture as it is (paper.rs).
-        "winPaper": crate::paper::now(),
+        "winPaper": paper.clone(),
+        // The pets and wallpapers installed as packs, each in use or not
+        // (her pet; Windows' slideshow on its folder).
+        "packs": crate::packs::view(sh, &packs, &paper),
         "version": sh.app.package_info().version.to_string(),
         // Her updates: this version, the latest, an update under way (updates.rs).
         "update": crate::updates::view(&sh),
@@ -186,6 +194,14 @@ pub fn snapshot(sh: &Shared) -> Value {
         "lhmSetup": crate::lhm_setup::view(sh, &lhm_status, lhm_shown),
         // The plugins she runs, and where waku is for the terminal.
         "plugins": plugins::view(sh),
+        // The third-party ones installed (addons.rs view), and the folders
+        // there whose manifest will not do, each with why.
+        "addons": crate::addons::view(sh),
+        "addonsBroken": crate::addons::broken_view(),
+        // The market's plugins here with a newer version waiting for the
+        // person (market.rs: asking for more, or all with auto-update off),
+        // each with what it newly asks for.
+        "marketUpdates": crate::market::updates_view(sh),
         // The mail accounts, each with how its watch is going.
         "mail": mail::view(sh),
         // Who a letter can go to (claude, codex, agy: found or not; looked
@@ -264,11 +280,12 @@ fn is_name(n: &str) -> bool {
     n.chars().count() <= 40 && !n.chars().any(char::is_control)
 }
 
-// A widget by its id, or a plugin she runs.
+// A widget by its id, or a plugin she runs: hers, or a third-party one
+// installed (its folder there, its manifest good or not: addons.rs is_known).
 fn is_source_of(kind: &str, of: &str) -> bool {
     match kind {
         "widget" => crate::widgets::is_id(of),
-        "plugin" => crate::plugins::PLUGINS.iter().any(|s| s.id == of),
+        "plugin" => crate::plugins::PLUGINS.iter().any(|s| s.id == of) || crate::addons::is_known(of),
         _ => false,
     }
 }
@@ -293,7 +310,7 @@ pub fn is_on_taskbar(layout: &Value, widget: &str) -> bool {
     let owner = crate::plugins::owner_of(widget);
     let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
-        (Some("plugin"), Some(of)) => Some(of) == owner,
+        (Some("plugin"), Some(of)) => Some(of) == owner.as_deref(),
         _ => false,
     };
     layout
@@ -469,7 +486,7 @@ pub fn is_on_desk(layout: &Value, widget: &str) -> bool {
     let owner = crate::plugins::owner_of(widget);
     let shows = |e: &Value| match (e["type"].as_str(), e["of"].as_str()) {
         (Some("widget"), Some(of)) => of == widget,
-        (Some("plugin"), Some(of)) => Some(of) == owner,
+        (Some("plugin"), Some(of)) => Some(of) == owner.as_deref(),
         _ => false,
     };
     layout.as_array().into_iter().flatten().any(|e| shows(e) || e["items"].as_array().is_some_and(|items| items.iter().any(shows)))
@@ -586,6 +603,8 @@ fn is_ok(sh: &Shared, key: &str, v: &Value) -> bool {
         // Where the monitor's sensors come from (hw.rs Source).
         "monitorSource" => crate::hw::is_source(v),
         "widgetNudge" => is_bool,
+        // The market's plugins updated by themselves when they ask for no more (market.rs).
+        "pluginAutoUpdate" => is_bool,
         // Not to be reminded that nothing is connected (island.js isHinting).
         "connectHintOff" => is_bool,
         // Her island's look on the taskbar, by Windows' mode (island.js
@@ -616,6 +635,17 @@ pub fn apply_patch(sh: &Arc<Shared>, patch: &Value) -> Value {
     let mut rest = Map::new();
     let (mut scale, mut display, mut out) = (None, None, None);
     for (key, value) in patch.as_object().into_iter().flatten() {
+        // The plugins setting is cleaned entry by entry, not refused whole
+        // (finding 3): a stale entry is dropped, the good ones (the page
+        // sends them all) kept. An empty object (nothing valid) is left
+        // alone so it cannot wipe what is stored.
+        if key == "plugins" {
+            let cleaned = plugins::clean(value);
+            if cleaned.as_object().is_some_and(|m| !m.is_empty()) {
+                rest.insert("plugins".into(), cleaned);
+            }
+            continue;
+        }
         if !is_ok(sh, key, value) {
             continue;
         }
@@ -730,9 +760,11 @@ pub async fn settings_win_look(app: AppHandle, light: Option<bool>, accent: Opti
 }
 
 // The desktop's picture (paper.rs): a picture or a folder picked in Windows'
-// file dialog ("picture", "folder"), how it is laid ("position"), the
-// folder's turns ("every", "shuffle"), the next or the one before ("next",
-// "previous"); a change of these undone ("undo").
+// file dialog ("picture", "folder"), a wallpaper pack's folder by its id as
+// that folder picked ("pack": the Look page's 用这一包, packs.rs folder_of),
+// how it is laid ("position"), the folder's turns ("every", "shuffle"), the
+// next or the one before ("next", "previous"); a change of these undone
+// ("undo").
 #[tauri::command]
 pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<String>) -> Value {
     let sh = shared(&app);
@@ -740,6 +772,7 @@ pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<Stri
     let lang = sh.lang();
     let t = move |key: &str| crate::i18n::t(lang, key);
     let what_done = what.clone();
+    let dir = sh.dir.clone();
     // What changes the picture is kept to be undone ("undo"), once picked.
     let changed = |done: bool| {
         crate::paper::remember();
@@ -748,6 +781,7 @@ pub async fn settings_wallpaper(app: AppHandle, what: String, value: Option<Stri
     let done = tauri::async_runtime::spawn_blocking(move || match what.as_str() {
         "picture" => crate::paper::pick(false, &t("wallpaper.pickPicture"), &t("wallpaper.pictures"), owner).map(|p| (changed(true) && crate::paper::set_picture(&p), p)),
         "folder" => crate::paper::pick(true, &t("wallpaper.pickFolder"), "", owner).map(|p| (changed(true) && crate::paper::set_folder(&p), p)),
+        "pack" => value.as_deref().and_then(|id| crate::packs::folder_of(&dir, crate::addons::Kind::Wallpaper, id)).map(|f| f.to_string_lossy().into_owned()).map(|p| (changed(true) && crate::paper::set_folder(&p), p)),
         "position" => value.map(|v| (changed(true) && crate::paper::set_position(&v), v)),
         "every" => value.map(|v| (crate::paper::set_turns(v.parse().ok(), None), v)),
         "shuffle" => value.map(|v| (crate::paper::set_turns(None, Some(v == "true")), v)),
@@ -1082,6 +1116,7 @@ pub async fn settings_open_site(app: AppHandle, place: String, account: Option<S
 fn site_url(place: &str, account: Option<&str>) -> String {
     let url = match place {
         "repo" => REPO,
+        "pluginDocs" => PLUGIN_DOCS,
         "agyCli" => "https://antigravity.google/docs/cli/install",
         "googleAppPasswords" => "https://myaccount.google.com/apppasswords",
         "google2sv" => "https://myaccount.google.com/signinoptions/two-step-verification",
@@ -1125,6 +1160,7 @@ mod tests {
         assert_eq!(site_url("googleAppPasswords", Some("a@b@gmail.com")), "https://myaccount.google.com/apppasswords");
         assert_eq!(site_url("googleAppPasswords", None), "https://myaccount.google.com/apppasswords");
         assert_eq!(site_url("yahooAppPasswords", Some("me@yahoo.com")), "https://login.yahoo.com/account/security");
+        assert_eq!(site_url("pluginDocs", None), super::PLUGIN_DOCS);
     }
 
     #[test]

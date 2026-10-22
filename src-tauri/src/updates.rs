@@ -43,6 +43,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::proxy::{Answer, Miss};
 use crate::Shared;
 
 const GITHUB_LATEST: &str = "https://api.github.com/repos/zhoupengjie/Wakuwaku/releases/latest";
@@ -187,7 +188,7 @@ pub(crate) fn in_china() -> bool {
 }
 
 // Gitee first: as set (updateFrom), or by itself in China.
-fn gitee_first(sh: &Shared) -> bool {
+pub(crate) fn gitee_first(sh: &Shared) -> bool {
     match sh.setting("updateFrom").as_str() {
         Some("gitee") => true,
         Some("github") => false,
@@ -302,84 +303,22 @@ pub fn merge(found: Vec<Found>) -> Option<Release> {
 // From GitHub or Gitee itself (their release pages, and the downloads they
 // redirect to), unless a test gave the release from elsewhere.
 fn allowed(url: &str) -> bool {
-    testing() || [GITHUB_REPO, GITEE_REPO].iter().any(|repo| url.get(..repo.len()).is_some_and(|p| p.eq_ignore_ascii_case(repo)))
+    testing() || crate::proxy::is_under(url, &[GITHUB_REPO, GITEE_REPO])
 }
 
-// At most so many redirects (GitHub's exe: one, to release-assets.githubusercontent.com).
-const HOPS: usize = 5;
-
-// A GET answered: the answer, the way it came (proxy::Way's name) and the
-// hosts it went by ("github.com → release-assets.githubusercontent.com").
-struct Answer {
-    res: ureq::http::Response<ureq::Body>,
-    way: String,
-    path: String,
-}
-
-// A GET not answered: not there (404, as the server says it), or what went
-// wrong each way it was tried: "<way>, <hosts>: <error>", "; " between.
-enum Miss {
-    NotThere,
-    Failed(String),
-}
-
-// A GET, each way in turn (proxy::web_ways: Windows' proxy first, where one
-// is set; then as is) till one is answered.
+// A GET, each way in turn, its redirects followed by hand (proxy.rs, shared
+// with the plugin market's): to http:// too only for a test's release.
 fn get(url: &str, seconds: u64, accept: Option<&str>) -> Result<Answer, Miss> {
-    let mut failed = Vec::new();
-    for way in crate::proxy::web_ways(url) {
-        match get_way(&way, url, seconds, accept) {
-            Ok(answer) => return Ok(answer),
-            Err(None) => return Err(Miss::NotThere),
-            Err(Some(e)) => failed.push(format!("{}, {e}", way.name())),
-        }
-    }
-    Err(Miss::Failed(failed.join("; ")))
+    crate::proxy::get(url, seconds, accept, testing())
 }
 
-// One way: its redirects followed by hand (to https only, unless a test's),
-// so what goes wrong says at which host. Err(None): not there (404).
 fn get_way(way: &crate::proxy::Way, url: &str, seconds: u64, accept: Option<&str>) -> Result<Answer, Option<String>> {
-    let agent = way.agent_with(Duration::from_secs(seconds), |c| c.max_redirects(0)).ok_or_else(|| Some(format!("{}: not a proxy to go through", way.name())))?;
-    let mut at = url.to_string();
-    let mut hosts = vec![crate::proxy::host_of(url).unwrap_or_default()];
-    for _ in 0..=HOPS {
-        let path = hosts.join(" → ");
-        let mut req = agent.get(&at).header("user-agent", &format!("wakuwaku/{}", current()));
-        if let Some(accept) = accept {
-            req = req.header("accept", accept);
-        }
-        let res = match req.call() {
-            Err(ureq::Error::StatusCode(404)) => return Err(None),
-            Err(e) => return Err(Some(format!("{path}: {e}"))),
-            Ok(res) => res,
-        };
-        if !res.status().is_redirection() {
-            return Ok(Answer { res, way: way.name(), path });
-        }
-        let to = res.headers().get("location").and_then(|l| l.to_str().ok()).and_then(|l| redirected(&at, l));
-        at = to.ok_or_else(|| Some(format!("{path}: a {} to nowhere it may go", res.status().as_u16())))?;
-        hosts.push(crate::proxy::host_of(&at).unwrap_or_default());
-    }
-    Err(Some(format!("{}: more than {HOPS} redirects", hosts.join(" → "))))
+    crate::proxy::get_way(way, url, seconds, accept, testing())
 }
 
-// Where a redirect goes from `from`: its Location made whole (one that
-// starts with / or // is on the same host or scheme); https only, unless a
-// test's.
+#[cfg(test)]
 fn redirected(from: &str, to: &str) -> Option<String> {
-    let to = to.trim();
-    let (scheme, rest) = from.split_once("://")?;
-    let url = if to.contains("://") {
-        to.to_string()
-    } else if let Some(net) = to.strip_prefix("//") {
-        format!("{scheme}://{net}")
-    } else if to.starts_with('/') {
-        format!("{scheme}://{}{to}", rest.split('/').next().unwrap_or(""))
-    } else {
-        return None;
-    };
-    (url.starts_with("https://") || (testing() && url.starts_with("http://"))).then_some(url)
+    crate::proxy::redirected(from, to, testing())
 }
 
 // A JSON from there; none if it is not there (404: no release yet).

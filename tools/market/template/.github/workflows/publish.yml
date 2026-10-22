@@ -1,0 +1,101 @@
+# Publishes the market from main: every package in packages/ checked and
+# zipped (Wakuwaku's tools/market/build-index.js, at the version
+# .github/wakuwaku-ref names), then index.json and the zips put up on the
+# release "market", which the app reads from
+#   https://github.com/<owner>/<repo>/releases/download/market/index.json
+# The zips first, only those new or changed, and index.json last, so the
+# index never names a file not there yet. Then the same on Gitee, for those
+# in China, when the GITEE_TOKEN secret is set (the Gitee repository is
+# vars.GITEE_REPO, or this one's owner/name).
+name: publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One at a time, none cancelled: each builds on the index the last put up.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Uploads to Gitee from outside China are slow (some 25 KB a second).
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      GITEE_REPO: ${{ vars.GITEE_REPO || github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # From main (what is checked out): publish only runs on main, never a
+      # pull request. Only a release tag vX.Y.Z is accepted.
+      - name: Which Wakuwaku the rules are from
+        id: ref
+        run: |
+          set -euo pipefail
+          ref="$(grep -v '^[[:space:]]*#' .github/wakuwaku-ref | tr -d ' \t\r\n')"
+          if ! printf '%s' "$ref" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::.github/wakuwaku-ref must be a release tag like v0.3.5, not '$ref' / 必须是 v0.3.5 这样的发布标签"
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          # Before that Wakuwaku is released there are no tools to build
+          # with, and no app to read the market: nothing to publish yet.
+          if git ls-remote --exit-code --tags https://github.com/zhoupengjie/Wakuwaku "refs/tags/$ref" > /dev/null; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Wakuwaku $ref is not released yet: nothing published. / Wakuwaku $ref 还没发布，这次不发布。"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wakuwaku's market tools
+        if: steps.ref.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: zhoupengjie/Wakuwaku
+          ref: ${{ steps.ref.outputs.ref }}
+          path: .wakuwaku
+          sparse-checkout: tools/market
+
+      # Pinned: the same node makes the same zips, so an unchanged package
+      # keeps its SHA-256 and is not uploaded again.
+      - uses: actions/setup-node@v4
+        if: steps.ref.outputs.ready == 'true'
+        with:
+          node-version: '24.14.0'
+
+      - name: The release, made the first time
+        if: steps.ref.outputs.ready == 'true'
+        run: |
+          gh release view market > /dev/null 2>&1 || gh release create market --title "Market" --latest=false \
+            --notes "Wakuwaku's market: index.json and the packages it lists, built from packages/ by .github/workflows/publish.yml."
+
+      - name: The index as published (keeps each version's day)
+        if: steps.ref.outputs.ready == 'true'
+        run: |
+          mkdir -p out
+          gh release download market --pattern index.json --dir out || echo "No index.json yet"
+
+      - name: Build
+        if: steps.ref.outputs.ready == 'true'
+        run: node .wakuwaku/tools/market/build-index.js --packages packages --out out --changed "$RUNNER_TEMP/changed.txt"
+
+      - name: Upload to GitHub
+        if: steps.ref.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          while IFS= read -r f; do
+            [ -n "$f" ] && gh release upload market "out/$f" --clobber
+          done < "$RUNNER_TEMP/changed.txt"
+          gh release upload market out/index.json --clobber
+
+      - name: Mirror to Gitee
+        if: steps.ref.outputs.ready == 'true' && env.GITEE_TOKEN != ''
+        run: node .wakuwaku/tools/market/gitee-mirror.js --repo "$GITEE_REPO" --dir out --changed "$RUNNER_TEMP/changed.txt"

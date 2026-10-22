@@ -83,6 +83,8 @@
     if (kindOf(w) === 'today') return `<span class="wher ${cls}" aria-hidden="true"></span>`
     const g = glyphOf(w)
     if (g) return `<span class="wgl ${cls}" aria-hidden="true">&#x${g};</span>`
+    // A plugin's own picture (widgets.js maskHTML), drawn as her icons are.
+    if (Widgets.hasPicture(w)) return `<span class="wsvg ${cls}">${Widgets.maskHTML(w.iconUrl)}</span>`
     // No icon of its own: its name's first character on its colour (widgets.js markHTML).
     if (!Widgets.hasIcon(w?.icon)) return Widgets.markHTML(w?.markName ?? (typeof w?.label === 'string' ? w.label : w?.id), w?.color, cls)
     return `<span class="wsvg ${cls}">${Widgets.icon(w.icon)}</span>`

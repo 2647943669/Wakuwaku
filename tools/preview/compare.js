@@ -13,7 +13,8 @@
 //
 // Both sides are drawn by the same harness, this checkout's (or --head's)
 // tools/preview: the same scenes, the same stand-in for Tauri; only her
-// pages and their scripts and styles (src/pet, src/shared, her sprites) are
+// pages and their scripts and styles (src/pet, src/shared, her sprites; the
+// plugins' SDK and the example plugins, whose views a card may draw) are
 // each side's own. A ref's are taken with git archive into a temporary
 // folder (removed at the end, unless --keep); no checkout is touched.
 //
@@ -33,7 +34,7 @@ const gitinfo = require('./gitinfo')
 const HERE = __dirname
 const REPO = path.join(HERE, '..', '..')
 // Her code, as a side has it; and the harness that draws it.
-const PRODUCT = ['src/pet', 'src/shared', 'pets/claude-chan']
+const PRODUCT = ['src/pet', 'src/shared', 'src/addon', 'examples/plugins', 'pets/claude-chan']
 const HARNESS = 'tools/preview'
 // A channel differing by more than this is a change; fewer pixels than NOISE changed is none.
 const TOLERANCE = 24

@@ -10,8 +10,10 @@
 // wraps it), preview/ (the stand-in and the playground's own scripts),
 // pet/ and shared/ (her pages and every script and style they load, read
 // from their own HTML), pets/claude-chan/ (her sprites), assets/ (the
-// wallpaper). Her two pages get a viewport meta (published HTML starts with
-// its own); nothing else is changed. The page's header says which code it
+// wallpaper), addon/sdk.js and plugins/<id>/ (her SDK and the example
+// plugins with a view of their own, for the cards that draw them). Her two
+// pages get a viewport meta (published HTML starts with its own); nothing
+// else is changed. The page's header says which code it
 // is (gitinfo.js: 「分支 simulator · 3ec87d9」, or --label's words). files.json
 // maps each published path but the page to its copy; the total size is printed.
 //
@@ -43,7 +45,7 @@ const ROLE_OF = { 'index.html': 'island', 'desk.html': 'desk' }
 const FRAME_FILES = ['page.html', 'boot.js']
 const PAGE_FILES = ['playground.html', 'playground.js', 'fake-tauri.js', 'fixtures.js', 'scenes.js']
 // The folders the code it shows lives in (what a build's label looks at).
-const SOURCES = ['src/pet', 'src/shared', 'pets/claude-chan', 'tools/preview']
+const SOURCES = ['src/pet', 'src/shared', 'src/addon', 'examples/plugins', 'pets/claude-chan', 'tools/preview']
 
 // Her pages' scripts and styles, as their HTML loads them (src/pet relative).
 function pageFiles(page) {
@@ -58,6 +60,25 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 // The playground's page with which code it is on its header.
 const withLabel = (html, label, live = false) => html.replace('<!--wk-build-->', label ? ` <span class="wk-build${live ? ' wk-live' : ''}">${esc(label)}</span>` : '')
 
+// The example plugins with a view of their own (examples/plugins), each
+// file of their folders as published (plugins/<id>/...): the fake's
+// addon_view writes their view.html, with her SDK (addon/sdk.js), into a
+// card's frame.
+const EXAMPLES = path.join(REPO, 'examples', 'plugins')
+function viewFiles() {
+  const out = []
+  for (const id of fs.existsSync(EXAMPLES) ? fs.readdirSync(EXAMPLES) : []) {
+    const dir = path.join(EXAMPLES, id)
+    let manifest = null
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
+    } catch {}
+    if (!manifest?.view) continue
+    for (const f of fs.readdirSync(dir, { recursive: true })) if (fs.statSync(path.join(dir, f)).isFile()) out.push([`plugins/${id}/${String(f).split(path.sep).join('/')}`, path.join(dir, f)])
+  }
+  return out
+}
+
 // Published path -> where it comes from (a file, or text made here).
 function plan() {
   const out = new Map()
@@ -65,6 +86,8 @@ function plan() {
   for (const f of PREVIEW) out.set(`preview/${f}`, { file: path.join(HERE, f) })
   out.set('assets/wall.jpg', { file: path.join(HERE, 'assets', 'wall.jpg') })
   out.set('pets/claude-chan/spritesheet.webp', { file: path.join(REPO, 'pets', 'claude-chan', 'spritesheet.webp') })
+  out.set('addon/sdk.js', { file: path.join(REPO, 'src', 'addon', 'sdk.js') })
+  for (const [pub, file] of viewFiles()) out.set(pub, { file })
   for (const page of PAGES) {
     out.set(`pet/${page}`, { text: pageText(page) })
     for (const ref of pageFiles(page)) {
@@ -146,6 +169,8 @@ const ROOTS = [
   ['shared/', path.join(REPO, 'src', 'shared')],
   ['pets/', path.join(REPO, 'pets')],
   ['assets/', path.join(HERE, 'assets')],
+  ['addon/', path.join(REPO, 'src', 'addon')],
+  ['plugins/', EXAMPLES],
 ]
 // A published path's file in the repo (none outside those folders).
 function repoFile(pub) {
@@ -164,6 +189,8 @@ function publishedOf(rel) {
     ['tools/preview/', 'preview/'],
     ['src/pet/', 'pet/'],
     ['src/shared/', 'shared/'],
+    ['src/addon/', 'addon/'],
+    ['examples/plugins/', 'plugins/'],
     ['pets/', 'pets/'],
   ]
   for (const [from, to] of map) if (rel.startsWith(from)) return to + rel.slice(from.length)
@@ -190,7 +217,8 @@ function liveChange(rel, pages = framePages()) {
     return null
   }
   if (pub.startsWith('assets/')) return { page: true }
-  if (pub.startsWith('pets/')) return { frames: Object.keys(pages) }
+  // Her sprites, a plugin's view and her SDK (read into a card's frame by the fake): the frames again.
+  if (pub.startsWith('pets/') || pub.startsWith('plugins/') || pub.startsWith('addon/')) return { frames: Object.keys(pages) }
   const roles = Object.keys(pages).filter(role => pages[role].has(pub))
   if (!roles.length) return null
   if (pub.endsWith('.css')) return { css: Object.fromEntries(roles.map(role => [role, [pub]])) }
@@ -256,7 +284,7 @@ function dev(port) {
       for (const res of clients) res.write(data)
     }, 150)
   }
-  const WATCHED = ['src/pet', 'src/shared', 'pets/claude-chan', 'tools/preview']
+  const WATCHED = ['src/pet', 'src/shared', 'src/addon', 'examples/plugins', 'pets/claude-chan', 'tools/preview']
   for (const dir of WATCHED) {
     try {
       fs.watch(path.join(REPO, dir), { recursive: true }, (_, name) => {

@@ -1,0 +1,5 @@
+# The Wakuwaku release (a tag of github.com/zhoupengjie/Wakuwaku) whose
+# tools/market/ checks and builds this market: the first release with the
+# market, raised when a release changes the rules (docs/PLUGINS.md).
+# Read by check.yml and publish.yml.
+v0.3.5

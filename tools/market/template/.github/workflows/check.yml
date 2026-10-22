@@ -1,0 +1,80 @@
+# Checks a pull request's packages before the maintainer looks at it:
+# Wakuwaku's own tools/market/check.js, at the version .github/wakuwaku-ref
+# names, run on every folder in packages/ as publish.yml will build them,
+# and a package that changed against its version on main (its version must
+# go up). Nothing from the pull request is run: its files are only read.
+#
+# Why Wakuwaku's tools at a pinned ref, and not a copy kept here: the rules
+# are the app's (docs/PLUGINS.md), so they come from the app's own
+# repository at the release they belong to. Moving to newer rules is one
+# line (.github/wakuwaku-ref) that a review sees; a copy kept here could
+# drift from the app's, or be edited, without anyone noticing.
+name: check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # From the BASE branch, never the pull request's: a PR must not be able
+      # to point the tools at its own code (a fork's) by editing
+      # .github/wakuwaku-ref. Only a release tag vX.Y.Z is accepted.
+      - name: Which Wakuwaku the rules are from
+        id: ref
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          ref="$(git show "$BASE:.github/wakuwaku-ref" | grep -v '^[[:space:]]*#' | tr -d ' \t\r\n')"
+          if ! printf '%s' "$ref" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::.github/wakuwaku-ref must be a release tag like v0.3.5, not '$ref' / 必须是 v0.3.5 这样的发布标签"
+            exit 1
+          fi
+          if ! git ls-remote --exit-code --tags https://github.com/zhoupengjie/Wakuwaku "refs/tags/$ref" > /dev/null; then
+            echo "::error::Wakuwaku $ref is not released yet, so its rules cannot check anything: wait for it. / Wakuwaku $ref 还没发布，没有规则可查：等它发布。"
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Wakuwaku's market tools
+        uses: actions/checkout@v4
+        with:
+          repository: zhoupengjie/Wakuwaku
+          ref: ${{ steps.ref.outputs.ref }}
+          path: .wakuwaku
+          sparse-checkout: tools/market
+
+      # The same node as publish.yml: the same node makes the same zips.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+
+      - name: Check the packages
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE"...HEAD > "$RUNNER_TEMP/changed.txt"
+          echo "Changed / 改动的文件:"
+          cat "$RUNNER_TEMP/changed.txt"
+          if grep -qv '^packages/' "$RUNNER_TEMP/changed.txt"; then
+            echo "::warning::This pull request changes files outside packages/: only the maintainer changes those. / 这个 PR 改了 packages/ 以外的文件：这些只由维护者改。"
+          fi
+          shopt -s nullglob
+          dirs=(packages/*/)
+          if [ ${#dirs[@]} -eq 0 ]; then
+            echo "No packages yet / 还没有包"
+            exit 0
+          fi
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE" > /dev/null
+          node .wakuwaku/tools/market/check.js --market --against "$RUNNER_TEMP/base/packages" "${dirs[@]%/}"

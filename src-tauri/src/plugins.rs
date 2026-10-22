@@ -190,23 +190,63 @@ fn plugin(id: &str) -> Option<&'static Plugin> {
     PLUGINS.iter().find(|p| p.id == id)
 }
 
+// A built-in plugin's parameter value as its settings keep it: a flag true
+// or false, text without control characters, a number as text (positive, up
+// to 100000, or empty), one of a choice's options.
+fn param_ok(p: &Param, v: &Value) -> bool {
+    match p.kind {
+        Kind::Flag => v.is_boolean(),
+        Kind::Text => v.as_str().is_some_and(|t| t.chars().count() <= 300 && !t.chars().any(char::is_control)),
+        Kind::Number => v.as_str().is_some_and(|t| t.trim().is_empty() || t.trim().parse::<f64>().is_ok_and(|n| n > 0.0 && n <= 100_000.0)),
+        Kind::Choice { options, .. } => v.as_str().is_some_and(|o| options.contains(&o)),
+    }
+}
+
 // A "plugins" setting: only the plugins here, each with "on" and its own
-// parameters, text without control characters, numbers as text.
+// parameters, text without control characters, numbers as text; and the
+// third-party ones installed, each by its manifest (addons.rs is_conf_ok).
 pub fn is_ok(v: &Value) -> bool {
-    let Some(all) = v.as_object() else { return false };
-    all.iter().all(|(id, conf)| {
+    v.as_object().is_some_and(|all| all.iter().all(|(id, conf)| {
+        if plugin(id).is_none() {
+            return crate::addons::is_conf_ok(id, conf).unwrap_or(false);
+        }
         let (Some(s), Some(conf)) = (plugin(id), conf.as_object()) else { return false };
         conf.iter().all(|(key, v)| match (key.as_str(), s.params.iter().find(|p| p.name == key)) {
             ("on", _) => v.is_boolean(),
-            (_, Some(p)) => match p.kind {
-                Kind::Flag => v.is_boolean(),
-                Kind::Text => v.as_str().is_some_and(|t| t.chars().count() <= 300 && !t.chars().any(char::is_control)),
-                Kind::Number => v.as_str().is_some_and(|t| t.trim().is_empty() || t.trim().parse::<f64>().is_ok_and(|n| n > 0.0 && n <= 100_000.0)),
-                Kind::Choice { options, .. } => v.as_str().is_some_and(|o| options.contains(&o)),
-            },
+            (_, Some(p)) => param_ok(p, v),
             _ => false,
         })
-    })
+    }))
+}
+
+// A "plugins" setting cleaned, entry by entry (zhoupengjie/Wakuwaku's
+// plugins review, finding 3): an id that is neither a plugin of hers nor one
+// installed is dropped (stale, a plugin taken away), and within a kept entry
+// an unknown key, or a value that will not do (a choice whose options
+// changed in an update), is dropped — so one stale entry no longer refuses
+// the whole patch, which carried a good change with it. The pages send the
+// whole object, so this is what is kept.
+pub fn clean(v: &Value) -> Value {
+    let Some(all) = v.as_object() else { return Value::Object(serde_json::Map::new()) };
+    let mut out = serde_json::Map::new();
+    for (id, conf) in all {
+        let Some(conf) = conf.as_object() else { continue };
+        let kept = match plugin(id) {
+            Some(s) => {
+                let keep = |key: &str, v: &Value| match (key, s.params.iter().find(|p| p.name == key)) {
+                    ("on", _) => v.is_boolean(),
+                    (_, Some(p)) => param_ok(p, v),
+                    _ => false,
+                };
+                Some(conf.iter().filter(|(k, v)| keep(k, v)).map(|(k, v)| (k.clone(), v.clone())).collect())
+            }
+            None => crate::addons::clean_conf(id, conf),
+        };
+        if let Some(kept) = kept {
+            out.insert(id.clone(), Value::Object(kept));
+        }
+    }
+    Value::Object(out)
 }
 
 fn text<'a>(conf: &'a Value, name: &str) -> &'a str {
@@ -243,8 +283,13 @@ fn key_of(p: &Plugin, conf: &Value, lang: &'static str) -> Value {
     Value::Object(key)
 }
 
-// Which plugin a widget comes from, by the ids they give them.
-pub fn owner_of(widget: &str) -> Option<&'static str> {
+// Which plugin a widget comes from, by the ids they give them: one of
+// hers, or a third-party one installed (addons.rs owner_of).
+pub fn owner_of(widget: &str) -> Option<String> {
+    built_in_owner(widget).map(str::to_string).or_else(|| crate::addons::owner_of(widget))
+}
+
+fn built_in_owner(widget: &str) -> Option<&'static str> {
     match widget {
         "weather" | "pomodoro" | "countdown" | "stretch" | "devserver" => plugin(widget).map(|s| s.id),
         w if w.starts_with("stock-") => Some("stock"),
@@ -460,10 +505,13 @@ pub fn sync(sh: &Shared) -> bool {
         }
     }
     // Stopped, or started again with other settings: what it showed goes.
-    if !stale.is_empty() && sh.widgets.lock().unwrap().remove_scripted(|id| owner_of(id).is_some_and(|o| stale.contains(&o))) {
+    if !stale.is_empty() && sh.widgets.lock().unwrap().remove_scripted(|id| built_in_owner(id).is_some_and(|o| stale.contains(&o))) {
         changed = true;
     }
     drop(posting);
+    // The third-party ones as their switches say too: the island's page
+    // told which to run (addons.rs).
+    changed |= crate::addons::sync(sh);
     if clean {
         let gone = clean_up(&sh.dir.join("plugins"));
         if !gone.is_empty() {
@@ -643,6 +691,27 @@ pub(crate) mod tests {
         assert_eq!(missing(plugin("weather").unwrap(), &json!({})), None);
     }
 
+    // One stale entry no longer refuses the whole patch (the plugins review,
+    // finding 3): a good change to a built-in is kept while an id that is no
+    // plugin, a value that will not do, and an unknown key are dropped.
+    #[test]
+    fn a_stale_entry_does_not_lose_the_good_change() {
+        let patch = json!({
+            "weather": { "on": true, "City": "上海" },
+            "gone-addon": { "on": true, "City": "x" },
+            "ci": { "Repo": "a/b", "Prs": "yes", "Bogus": 1 },
+        });
+        let cleaned = clean(&patch);
+        assert_eq!(cleaned["weather"], json!({ "on": true, "City": "上海" }), "the good change is kept");
+        assert_eq!(cleaned["ci"], json!({ "Repo": "a/b" }), "the bad value and unknown key dropped, the good kept");
+        assert!(cleaned.get("gone-addon").is_none(), "an id that is no plugin here dropped");
+        // What survives is itself valid.
+        assert!(is_ok(&cleaned));
+        // A fully good patch is kept whole; a non-object becomes nothing.
+        assert_eq!(clean(&json!({ "weather": { "on": false } })), json!({ "weather": { "on": false } }));
+        assert_eq!(clean(&json!("nonsense")), json!({}));
+    }
+
     // Settings made for the scripts keep working: every parameter keeps the
     // name it had when she ran them (the scripts' own, but for the stock's
     // Colors, whose options were two of its script's switches).
@@ -700,9 +769,9 @@ pub(crate) mod tests {
 
     #[test]
     fn widgets_are_told_apart_by_plugin() {
-        assert_eq!(owner_of("weather"), Some("weather"));
-        assert_eq!(owner_of("stock-600519-ss"), Some("stock"));
-        assert_eq!(owner_of("prs-a-b"), Some("ci"));
+        assert_eq!(owner_of("weather").as_deref(), Some("weather"));
+        assert_eq!(owner_of("stock-600519-ss").as_deref(), Some("stock"));
+        assert_eq!(owner_of("prs-a-b").as_deref(), Some("ci"));
         assert_eq!(owner_of("mail-thunderbird"), None);
         assert_eq!(owner_of("today"), None);
     }

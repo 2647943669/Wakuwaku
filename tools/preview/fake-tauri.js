@@ -34,6 +34,9 @@
   const ROOT = new URL(IN_REPO ? '../../' : '../', HERE).href
   const PAGES = new URL(IN_REPO ? 'src/pet/' : 'pet/', ROOT).href
   const ASSETS = IN_REPO ? new URL('assets/', HERE).href : new URL('assets/', ROOT).href
+  // The example plugins' folders (their views) and her SDK, as published.
+  const PLUGIN_FILES = new URL(IN_REPO ? 'examples/plugins/' : 'plugins/', ROOT).href
+  const SDK_FILE = new URL(IN_REPO ? 'src/addon/sdk.js' : 'addon/sdk.js', ROOT).href
   const Q = new URLSearchParams(location.search)
   const HOST_PAGE = window.WAKU_HOST_PAGE === true
   const host = (() => {
@@ -222,6 +225,27 @@
     // Every widget with something to say (widgets.rs), and the plugins she runs (plugins.rs).
     widgets: [],
     plugins: [],
+    // Other people's plugins installed (addons.rs view: Fixtures.ADDONS),
+    // the folders that did not install, and the .zip Windows' dialog picks
+    // next for 从文件安装… (a name of Fixtures.ADDON_FILES; null: closed;
+    // unset: each in turn).
+    addons: [],
+    addonsBroken: [],
+    addonPick: undefined,
+    // The plugin market (market.rs, the fake's market command): its index
+    // (unset: Fixtures.MARKET), how reading it goes (ok, closed: not open
+    // yet, error: not reached), the share a download holds at (unset: it
+    // goes on to the end), the updates waiting for the person.
+    market: undefined,
+    marketMode: 'ok',
+    marketHold: undefined,
+    marketUpdates: [],
+    // Packs installed (packs.rs view: Fixtures.PACKS, each with its folder),
+    // her pets that are packs (Fixtures.PACK_PETS), and the desktop's
+    // picture as paper.rs reads it (a slideshow's folder: a pack in use).
+    packs: [],
+    packPets: [],
+    paper: { file: 'gpt-cloud-terrace.png', slideshow: false, folder: null, position: 'fill', every: 0, shuffle: false },
     taskbarLayout: null,
     deskLayout: [],
     // The taskbar's programs, tray icons and keyboard (taskbar.rs).
@@ -283,8 +307,12 @@
     taskbarMaterial: world.material,
     ...(world.taskbarLayout ? { taskbarLayout: world.taskbarLayout } : {}),
     deskLayout: world.deskLayout,
-    // The plugins running as the settings say it (plugins.rs: plugins[id].on).
-    plugins: Object.fromEntries(world.plugins.filter(p => p.on).map(p => [p.id, { on: true }])),
+    // The plugins running as the settings say it (plugins.rs: plugins[id].on;
+    // other people's too, with their settings' values).
+    plugins: {
+      ...Object.fromEntries(world.plugins.filter(p => p.on).map(p => [p.id, { on: true }])),
+      ...Object.fromEntries((world.addons || []).map(a => [a.id, { ...Object.fromEntries((a.settings || []).filter(f => f.value != null).map(f => [f.key, f.value])), on: !!a.on }])),
+    },
     // The mail accounts as kept (mail.rs: changed only by its commands).
     mail: mailKept(),
     ...world.config,
@@ -295,21 +323,39 @@
   function pluginOn(id) {
     const c = config().plugins?.[id]
     if (typeof c?.on === 'boolean') return c.on
-    return !!world.plugins.find(p => p.id === id)?.on
+    return !!(world.plugins.find(p => p.id === id) || (world.addons || []).find(a => a.id === id))?.on
   }
   // The widgets as main sends them (widgets_view): each on as widgetsOff
   // says; a plugin's gone once it is off (plugins.rs stops it), and one
   // turned on that had none says what the fixtures have for it
-  // (Fixtures.SLEEPING: the picker's plugins, put somewhere).
+  // (Fixtures.SLEEPING: the picker's plugins, put somewhere); someone
+  // else's, while it runs, what Fixtures.ADDON_WIDGETS has for it.
   function widgetsNow() {
     const off = Array.isArray(config().widgetsOff) ? config().widgetsOff : []
-    const list = world.widgets.filter(w => !w.plugin || pluginOn(w.plugin)).map(w => ({ ...w, on: !off.includes(w.id) }))
+    const running = new Set(addonsNow().filter(a => a.state === 'running').map(a => a.id))
+    const isAddon = id => (world.addons || []).some(a => a.id === id)
+    const list = world.widgets.filter(w => !w.plugin || (isAddon(w.plugin) ? running.has(w.plugin) : pluginOn(w.plugin))).map(w => ({ ...w, on: !off.includes(w.id) }))
     const sleeping = window.Fixtures?.SLEEPING || {}
     for (const p of world.plugins) if (pluginOn(p.id) && !list.some(w => w.plugin === p.id) && sleeping[p.id]) list.push({ ...sleeping[p.id], on: !off.includes(sleeping[p.id].id) })
+    const theirs = window.Fixtures?.ADDON_WIDGETS || {}
+    for (const id of running) if (!list.some(w => w.plugin === id) && theirs[id]) list.push({ ...theirs[id], on: !off.includes(id) })
     return list
   }
   // The plugins as plugins.rs views them: on and running, or off.
   const pluginsNow = () => world.plugins.map(p => (pluginOn(p.id) ? { ...p, on: true, state: p.state === 'off' ? 'running' : p.state } : { ...p, on: false, state: 'off' }))
+  // Other people's as addons.rs views them: on as placed is (the settings'
+  // switch), each setting's value as kept, how it is (off; a required one
+  // empty: needs; stopped as the world has it; running).
+  function addonsNow() {
+    const conf = config().plugins || {}
+    return (world.addons || []).map(a => {
+      const on = pluginOn(a.id)
+      const settings = (a.settings || []).map(f => ({ ...f, value: conf[a.id]?.[f.key] ?? f.value ?? null }))
+      const missing = settings.find(f => f.required && String(f.value ?? f.default ?? '').trim() === '')?.key || null
+      const state = a.state === 'unsupported' ? 'unsupported' : !on ? 'off' : missing ? 'needs' : a.state === 'needsApproval' ? 'needsApproval' : a.state === 'stopped' ? 'stopped' : 'running'
+      return { ...clone(a), on, state, missing, settings }
+    })
+  }
 
   const ISLAND_POS = ['left', 'center', 'right']
   const IDLE = { id: '', project: '', agent: 'claude', jump: false, mood: 'idle', detail: null, since: null, took: null, name: '', step: null, stepSince: null, todo: null, files: 0, reply: '', error: null }
@@ -348,13 +394,18 @@
     }
   }
 
+  // The packs as packs.rs views them: in use, her pet; a wallpaper pack's,
+  // Windows' slideshow on its folder (the world's paper).
+  const packsNow = () =>
+    (world.packs || []).map(p => ({ ...clone(p), inUse: p.kind === 'pet' ? config().pet === p.id : !!world.paper?.slideshow && world.paper.folder === p.folder }))
+
   // settings_get, as settings.rs snapshot makes it.
   function snapshot() {
     const on = world.connected
     return {
       settings: config(),
       lang: world.lang,
-      pets: [{ id: 'claude-chan', name: 'Claude', author: 'Wakuwaku', url: world.sprite, version: 2, codex: false }],
+      pets: [{ id: 'claude-chan', name: 'Claude', author: 'Wakuwaku', url: world.sprite, version: 2, codex: false, pack: null }, ...clone(world.packPets || []).filter(p => (world.packs || []).some(k => k.kind === 'pet' && k.id === p.id))],
       now: payload(),
       sessions: world.sessions,
       asks: world.asks,
@@ -382,7 +433,8 @@
       displayCount: world.displayCount,
       loginAtStart: true,
       winLook: { light: world.mode === 'light', accent: world.accent.base },
-      winPaper: { file: 'gpt-cloud-terrace.png', position: 'fill', every: 0, shuffle: false },
+      winPaper: clone(world.paper),
+      packs: packsNow(),
       version: world.version,
       update: { current: world.version, may: true, latest: { version: world.version, newer: false, canInstall: true }, checkedAt: T0 - 2 * 3600e3, ...(world.update || {}) },
       crash: { can: false },
@@ -395,6 +447,12 @@
       cpuSensors: { state: 'off' },
       lhmSetup: {},
       plugins: pluginsNow(),
+      // Other people's plugins installed (addons.rs view), and the folders
+      // there that did not install, each with why.
+      addons: addonsNow(),
+      addonsBroken: clone(world.addonsBroken || []),
+      // The market's waiting for the person (market.rs updates_view).
+      marketUpdates: clone(world.marketUpdates || []),
       // The mail accounts with how each is going, the agents found, their
       // models, the talks about letters, Windows' proxy, the store's revision.
       mail: mailView(),
@@ -463,6 +521,8 @@
       emit('desk:state', deskState())
       emit('desk:widgets', { widgets: widgetsNow() })
       emit('desk:paper', deskPaper())
+      // The plugins' views here: not while nobody is about (desk.rs views).
+      emit('desk:views', { on: !world.quiet })
       return
     }
     if (role === 'island') {
@@ -834,6 +894,225 @@
     })
   }
 
+  // --- Other people's plugins (addons.rs addon_manage) ---------------------------------
+  // Windows' dialog picks the world's .zip (addonPick), else each of the
+  // fixtures' in turn; a .zip looked at says what the fixtures have for it
+  // (Fixtures.ADDON_FILES: a plugin, or why not), the version it replaces
+  // as installed here; installed, it is in the world (from a file: not
+  // reviewed, not placed); taken away, out of the world, its widgets and
+  // its places; one stopped, running again.
+  let picks = 0
+  const DOWNLOADS = 'C:\\Users\\you\\Downloads\\'
+  const zipOf = path => String(path || '').split('\\').pop()
+  const isPack = x => x?.kind === 'pet' || x?.kind === 'wallpaper'
+  // The one of that id here: a plugin, or a pack of its kind.
+  const hereOf = got => (isPack(got) ? (world.packs || []).find(p => p.kind === got.kind && p.id === got.id) : (world.addons || []).find(a => a.id === got.id))
+  function zipSummary(path) {
+    const file = zipOf(path)
+    const got = window.Fixtures?.ADDON_FILES?.[file]
+    if (!got) return { ok: false, file, refused: { reason: 'zip', file: null, detail: 'not a zip' } }
+    if (got.refused) return { ok: false, file, refused: clone(got.refused) }
+    const before = hereOf(got)
+    return { ok: true, file, id: got.id, name: got.name, version: got.version, author: got.author, kind: got.kind, perms: clone(got.perms), sensitive: !!got.sensitive, replaces: before ? before.version : null, api: got.api ?? 1, supported: true, refused: null }
+  }
+  // A pack put in (packs.rs put_in): in the world as the snapshot lists
+  // it, its update in its place; a pet among her pets.
+  function packIn(got, source) {
+    const before = hereOf(got)
+    const next = { id: got.id, kind: got.kind, name: got.name, description: got.description || null, author: got.author || '', version: got.version, source, reviewed: source === 'market', installedAt: Date.now(), size: got.size || 0, pictures: got.pictures || 0, preview: got.preview || null, inUse: false, folder: `C:\\Users\\you\\wakuwaku-data\\${got.kind === 'pet' ? 'pets' : 'wallpapers'}\\${got.id}` }
+    world.packs = before ? world.packs.map(p => (p === before ? next : p)) : [...(world.packs || []), next]
+    if (got.kind === 'pet' && !(world.packPets || []).some(p => p.id === got.id)) world.packPets = [...(world.packPets || []), { id: got.id, name: got.name, author: got.author || '', url: world.sprite, version: 2, codex: false, pack: { source, reviewed: source === 'market' } }]
+    return before
+  }
+  function addonManage(what, arg) {
+    if (what === 'pick') {
+      const files = Object.keys(window.Fixtures?.ADDON_FILES || {})
+      const name = world.addonPick === undefined ? files[picks++ % Math.max(1, files.length)] : world.addonPick
+      return { path: name ? DOWNLOADS + name : null }
+    }
+    if (what === 'inspect') return zipSummary(arg)
+    if (what === 'install') {
+      const s = zipSummary(arg)
+      if (!s.ok) return s
+      const got = clone(window.Fixtures.ADDON_FILES[s.file])
+      if (isPack(got)) {
+        packIn(got, 'file')
+        tellMail()
+        return s
+      }
+      const before = (world.addons || []).find(a => a.id === got.id)
+      const next = before ? { ...got, on: before.on, settings: before.settings, source: 'file', reviewed: false } : { ...got, source: 'file', reviewed: false, on: false, state: 'off', installedAt: Date.now() }
+      world.addons = before ? world.addons.map(a => (a === before ? next : a)) : [...(world.addons || []), next]
+      tellMail()
+      return s
+    }
+    if (what === 'uninstall') {
+      const id = String(arg || '')
+      if (!(world.addons || []).some(a => a.id === id)) return { ok: false, error: `${id}: not installed` }
+      const mine = m => !!m && m.type === 'plugin' && m.of === id
+      world.addons = world.addons.filter(a => a.id !== id)
+      world.widgets = world.widgets.filter(w => w.plugin !== id)
+      world.deskLayout = world.deskLayout.filter(e => !mine(e)).map(e => (Array.isArray(e.items) ? { ...e, items: e.items.filter(m => !mine(m)) } : e))
+      if (world.taskbarLayout) world.taskbarLayout = Object.fromEntries(Object.entries(world.taskbarLayout).map(([k, run]) => [k, Array.isArray(run) ? run.filter(e => !mine(e)) : run]))
+      if (world.config.plugins) world.config = { ...world.config, plugins: Object.fromEntries(Object.entries(world.config.plugins).filter(([k]) => k !== id)) }
+      tellMail()
+      return { ok: true, snapshot: snapshot() }
+    }
+    if (what === 'revive') {
+      world.addons = (world.addons || []).map(a => (a.id === arg && a.state === 'stopped' ? { ...a, state: 'running', said: null } : a))
+      tellMail()
+      return snapshot()
+    }
+    // The new permissions allowed (finding 1): it runs again, nothing more to ask.
+    if (what === 'approve') {
+      world.addons = (world.addons || []).map(a => (a.id === arg && a.state === 'needsApproval' ? { ...a, state: 'running', newPerms: [] } : a))
+      tellMail()
+      return snapshot()
+    }
+    // A pack taken away (packs.rs uninstall, "<kind>:<id>"): her pet, if it
+    // was this one, the default one; the slideshow on its folder ended on
+    // the picture it showed.
+    if (what === 'uninstallPack') {
+      const [kind, id] = String(arg || '').split(':')
+      const p = (world.packs || []).find(x => x.kind === kind && x.id === id)
+      if (!p) return { ok: false, error: `${id}: no ${kind} pack of that name here` }
+      world.packs = world.packs.filter(x => x !== p)
+      world.packPets = (world.packPets || []).filter(x => !(kind === 'pet' && x.id === id))
+      if (kind === 'pet' && config().pet === id) world.config = { ...world.config, pet: 'claude-chan' }
+      if (kind === 'wallpaper' && world.paper?.slideshow && world.paper.folder === p.folder) world.paper = { ...world.paper, slideshow: false, folder: null, file: `C:\\Users\\you\\wakuwaku-data\\wallpapers\\.kept\\${String(world.paper.file).split('\\').pop()}` }
+      tellMail()
+      return { ok: true, snapshot: snapshot() }
+    }
+    return { ok: false, error: `${what}: inspect, install, uninstall, uninstallPack, pick or revive` }
+  }
+
+  // --- The plugin market (market.rs market) ---------------------------------------------
+  // Its index as the world has it, read in a moment (or not: closed, not
+  // open yet; error, not reached, as her updates say it); one got from it,
+  // its download told as it goes (market:progress), held at the world's
+  // share if it says one, then in the world as the market's (reviewed,
+  // not placed; a pack among the packs, a pet among her pets); every update
+  // waiting, put in.
+  const marketItems = () => clone(world.market ?? window.Fixtures?.MARKET ?? [])
+  const wait = (ms, value) => new Promise(done => setTimeout(() => done(value), ms))
+  function marketIndex() {
+    if (world.marketMode === 'closed') return wait(250, { items: null, at: null, from: null, error: { code: 'closed', detail: 'GitHub' } })
+    if (world.marketMode === 'error') return wait(250, { items: null, at: null, from: null, error: { code: 'failed', detail: 'GitHub: straight, github.com: timeout: connect; Gitee: straight, gitee.com: timeout: connect' } })
+    return wait(250, { items: marketItems(), at: Date.now(), from: 'GitHub', error: null })
+  }
+  const marketWords = v => (v && typeof v === 'object' ? v[world.lang] || v.en : v || '')
+  async function marketInstall(id) {
+    const item = marketItems().find(i => i.id === id)
+    if (!item) return { ok: false, error: { code: 'notFound', detail: id } }
+    const tell = (got, stage) => emit('market:progress', { id, got, total: item.size, stage })
+    for (const pct of [0, 15, 45, 80, 100]) {
+      if (world.marketHold != null && pct > world.marketHold) {
+        tell(Math.round((item.size * world.marketHold) / 100), 'download')
+        return new Promise(() => {})
+      }
+      tell(Math.round((item.size * pct) / 100), 'download')
+      await wait(180)
+    }
+    tell(item.size, 'verify')
+    await wait(150)
+    tell(item.size, 'install')
+    await wait(150)
+    if (isPack(item)) {
+      const before = packIn({ id, kind: item.kind, name: marketWords(item.name), description: marketWords(item.description), author: item.author, version: item.version, size: item.size, pictures: item.kind === 'wallpaper' ? 6 : 0, preview: item.preview }, 'market')
+      world.marketUpdates = (world.marketUpdates || []).filter(u => u.id !== id)
+      tell(item.size, 'done')
+      tellMail()
+      return { ok: true, id, name: marketWords(item.name), version: item.version, kind: item.kind, perms: clone(item.perms), replaces: before ? before.version : null, snapshot: snapshot() }
+    }
+    const before = (world.addons || []).find(a => a.id === id)
+    const next = {
+      id, kind: 'plugin', name: marketWords(item.name), description: marketWords(item.description), author: item.author, version: item.version, homepage: item.homepage, api: item.api, category: item.category, sizes: item.sizes, color: item.color,
+      icon: item.icon ? { url: item.icon } : item.glyph ? { name: item.glyph } : null, view: item.view, perms: clone(item.perms), sensitive: item.sensitive, source: 'market', reviewed: true, installedAt: Date.now(),
+      on: before ? before.on : false, state: before ? before.state : 'off', missing: null, said: null, settings: before ? before.settings : [],
+    }
+    world.addons = before ? world.addons.map(a => (a === before ? next : a)) : [...(world.addons || []), next]
+    world.marketUpdates = (world.marketUpdates || []).filter(u => u.id !== id)
+    tell(item.size, 'done')
+    tellMail()
+    return { ok: true, id, name: next.name, version: item.version, kind: 'plugin', perms: clone(item.perms), replaces: before ? before.version : null, snapshot: snapshot() }
+  }
+  async function marketUpdateAll() {
+    const ups = clone(world.marketUpdates || [])
+    await wait(400)
+    world.addons = (world.addons || []).map(a => {
+      const u = ups.find(x => x.id === a.id)
+      return u ? { ...a, version: u.to } : a
+    })
+    world.marketUpdates = []
+    tellMail()
+    return { ok: true, done: ups.map(u => u.id), failed: [], snapshot: snapshot() }
+  }
+  function marketCommand(what, arg) {
+    if (what === 'index') return marketIndex()
+    if (what === 'install') return marketInstall(String(arg || ''))
+    if (what === 'updateAll') return marketUpdateAll()
+    if (what === 'cancel') return { ok: true }
+    return { ok: false, error: { code: 'what', detail: `${what}: index, install, updateAll or cancel` } }
+  }
+
+  // --- A plugin's own view (addons.rs addon_view, serve) ----------------------------------
+  // Its view.html as her scheme serves it, here from the example's folder
+  // (examples/plugins/<id>/, published as plugins/<id>/): her SDK the first
+  // script in its head, its own scripts and styles written into it (the
+  // frame, sandboxed, has no origin to fetch them from over file://), all
+  // as one data: page. Its transitions held at their end for the gallery's
+  // shots, as boot.js holds the page's. The widget's view the fixtures' (ADDON_VIEWS).
+  const viewPages = new Map()
+  const readText = url => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('GET', url, false)
+    xhr.send()
+    return xhr.responseText
+  }
+  function viewPage(id, file) {
+    const key = `${id}/${file}`
+    if (viewPages.has(key)) return viewPages.get(key)
+    let page = null
+    try {
+      const base = new URL(`${id}/`, PLUGIN_FILES)
+      const src = new URL(file, base)
+      const doc = new DOMParser().parseFromString(readText(src.href), 'text/html')
+      for (const link of doc.querySelectorAll('link[rel="stylesheet"][href]')) {
+        const style = doc.createElement('style')
+        style.textContent = readText(new URL(link.getAttribute('href'), src).href)
+        link.replaceWith(style)
+      }
+      for (const script of doc.querySelectorAll('script[src]')) {
+        const inline = doc.createElement('script')
+        inline.textContent = readText(new URL(script.getAttribute('src'), src).href)
+        script.replaceWith(inline)
+      }
+      const sdk = doc.createElement('script')
+      sdk.textContent = readText(SDK_FILE)
+      doc.head.prepend(sdk)
+      if (Q.get('scene') || Q.get('still') === '1') {
+        const still = doc.createElement('style')
+        still.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }'
+        doc.head.append(still)
+      }
+      page = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>\n${doc.documentElement.outerHTML}`)}`
+    } catch (err) {
+      report(err)
+    }
+    viewPages.set(key, page)
+    return page
+  }
+  function addonView(what, widget) {
+    const w = widgetsNow().find(x => x.id === widget && x.from === 'addon' && Number.isFinite(x.viewRev))
+    const a = w && addonsNow().find(x => x.id === w.plugin && x.view && x.state === 'running')
+    if (!a) return { error: `${widget}: no view running` }
+    if (what === 'send') return { ok: true }
+    // The examples' view is their view.html.
+    const page = viewPage(a.id, 'view.html')
+    if (!page) return { error: `${widget}: its view.html not read` }
+    return { page, data: clone(world.addonViews?.[widget] ?? window.Fixtures?.ADDON_VIEWS?.[widget] ?? null), rev: w.viewRev }
+  }
+
   // --- What the page asks ---------------------------------------------------------------
   const later = fn => setTimeout(fn, 0)
   const ANSWERS = {
@@ -853,12 +1132,28 @@
     },
     settings_open: ({ tab }) => later(() => emit('island:settings', { tab: tab || null })),
     settings_gallery: () => ({ ok: true, items: [], page: 1, totalPages: 1, total: 0 }),
+    // The desktop's picture (paper.rs): a wallpaper pack's folder (pack: its
+    // id) is Windows' slideshow from then on; the rest, as it was.
+    settings_wallpaper: ({ what, value }) => {
+      const p = what === 'pack' && (world.packs || []).find(x => x.kind === 'wallpaper' && x.id === value)
+      if (p) world.paper = { ...world.paper, slideshow: true, folder: p.folder, file: `${p.folder}\\1.jpg`, every: world.paper?.every || 1800000 }
+      return new Promise(done => setTimeout(() => done(snapshot()), 300))
+    },
     // The Network proxy's Test (proxy.rs test): GitHub reached through the proxy the page has, or Windows'.
     settings_net_test: ({ proxy }) => {
       const via = proxy?.mode === 'manual' ? proxy.address : proxy?.mode === 'none' ? null : (mailWorld().systemProxy?.address ?? null)
       return new Promise(done => setTimeout(() => done({ ok: true, via, ms: 412 }), 300))
     },
     session_jump: () => true,
+    // Other people's plugins to run in the island's page (addons.js): none
+    // here (no frame of theirs; what each says is the fixtures', widgetsNow).
+    addons_running: () => [],
+    // The Plugins page's doings with them (addons.rs addon_manage).
+    addon_manage: ({ what, arg }) => addonManage(what, arg),
+    // A card's plugin view: its page and data; what it sends (kept in calls).
+    addon_view: ({ what, widget }) => addonView(what, widget),
+    // The plugin market (market.rs market).
+    market: ({ what, arg }) => marketCommand(what, arg),
     pet_walk: () => false,
     pet_answer: ({ id }) => {
       const ok = answered(id)

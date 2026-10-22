@@ -2682,3 +2682,507 @@
   padding: 2px 8px;
   font-size: 11.5px;
 }
+
+/* --- Other people's plugins on the Plugins page (settings.js addonRow, addonPage) -------- */
+
+/* 未经审核 (one installed from a file): amber, as what wants a look is. */
+#island-settings .chip.warn {
+  margin-left: 6px;
+  background: rgba(255, 179, 64, 0.14);
+  color: #ffb340;
+  vertical-align: 1px;
+}
+
+.tb-light #island-settings .chip.warn {
+  background: rgba(178, 94, 0, 0.1);
+  color: #b25e00;
+}
+
+/* Its name: a press opens its page. */
+#island-settings .nm {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+#island-settings .nm:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Installed while the panel is open: an accent edge at its left. */
+#island-settings .r.fresh {
+  box-shadow: inset 3px 0 0 #5e9bff;
+}
+
+.tb-light #island-settings .r.fresh {
+  box-shadow: inset 3px 0 0 #005fb8;
+}
+
+/* A folder that did not install: a quiet line under the plugins. */
+#island-settings .note.ad-broken {
+  border-top: 1px solid #262628;
+}
+
+.tb-light #island-settings .note.ad-broken {
+  border-top-color: #ececec;
+}
+
+/* A switch's label as long as it needs (a plugin's own words). */
+#island-settings .fr .fl.wide {
+  flex: 1;
+  width: auto;
+}
+
+/* Where a part of the page opened in its place is: back, then the path. */
+#island-settings .crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 4px 10px;
+  color: var(--g4);
+}
+
+#island-settings .crumb b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+#island-settings .crumb-b {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--g2);
+  color: var(--g5);
+  font: normal 12px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  cursor: pointer;
+}
+
+#island-settings .crumb-b:hover {
+  background: var(--g3);
+  color: var(--fg);
+}
+
+/* A plugin's own page: its icon large on a tint of its colour, its name
+   and who made it; what it says it is; what it may do, a line each. */
+#island-settings .ad-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 4px 4px;
+}
+
+#island-settings .ad-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  color: var(--c);
+}
+
+.tb-light #island-settings .ad-tile {
+  color: color-mix(in srgb, var(--c) 62%, #000);
+}
+
+#island-settings .ad-tile .wicon {
+  width: 24px;
+  height: 24px;
+}
+
+#island-settings .ad-tile .wmark {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 7px;
+  font-size: 14px !important;
+}
+
+#island-settings .ad-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+#island-settings .ad-text {
+  padding: 10px 14px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+#island-settings .r.ad-perm {
+  min-height: 40px;
+  padding: 8px 14px;
+}
+
+#island-settings .ad-perm .g {
+  flex: none;
+  width: 18px;
+  color: var(--fg);
+  font: normal 14px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  text-align: center;
+}
+
+#island-settings .ad-perm.no,
+#island-settings .ad-perm.no .g {
+  color: var(--g4);
+}
+
+#island-settings .ad-perm.no .grow {
+  font-size: 12px;
+}
+
+#island-settings .ad-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* The question over the panel (installing a plugin, taking one away), in
+   place of a dialog of Windows': the panel dimmed and blurred under it, a
+   card in the middle as the desktop's board asks (desk.css .bask). */
+#island-settings .s-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(3px);
+  animation: s-fade 0.14s ease-out;
+}
+
+#island-settings .s-sheet[hidden] {
+  display: none;
+}
+
+.tb-light #island-settings .s-sheet {
+  background: rgba(243, 243, 243, 0.55);
+}
+
+@keyframes s-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+#island-settings .sh {
+  display: grid;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(400px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 16px 18px 14px;
+  border-radius: 18px;
+  background: var(--g1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 18px 50px rgba(0, 0, 0, 0.45);
+  animation: s-ask-in 0.2s var(--spring);
+}
+
+.tb-light #island-settings .sh {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 18px 50px rgba(0, 0, 0, 0.18);
+}
+
+@keyframes s-ask-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+#island-settings .sh-q {
+  overflow-wrap: anywhere;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+#island-settings .sh-warn {
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 179, 64, 0.12);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+#island-settings .sh-warn b {
+  margin-right: 2px;
+  color: #ffb340;
+  font-weight: 600;
+}
+
+.tb-light #island-settings .sh-warn {
+  background: rgba(178, 94, 0, 0.08);
+}
+
+.tb-light #island-settings .sh-warn b {
+  color: #b25e00;
+}
+
+#island-settings .sh-will ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+#island-settings .sh-will li + li {
+  margin-top: 2px;
+}
+
+#island-settings .sh .d {
+  overflow-wrap: anywhere;
+}
+
+#island-settings .sh .link {
+  font-size: inherit;
+}
+
+#island-settings .sh-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+#island-settings .sh .pbtn.no {
+  border-color: transparent;
+  background: rgba(255, 107, 122, 0.18);
+}
+
+.tb-light #island-settings .sh .pbtn.no {
+  background: rgba(196, 43, 60, 0.1);
+}
+
+#island-settings .sh .pbtn:focus-visible {
+  outline: 1.5px solid color-mix(in srgb, var(--fg) 45%, transparent);
+  outline-offset: 2px;
+}
+
+/* A word for a few seconds at the panel's foot (装好了「X」…). */
+#island-settings .s-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  z-index: 21;
+  max-width: calc(100% - 48px);
+  overflow: hidden;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--g3);
+  color: var(--fg);
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+  animation: s-fade 0.16s ease-out;
+}
+
+.tb-light #island-settings .s-toast {
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+#island-settings .s-toast[hidden] {
+  display: none;
+}
+
+/* --- The plugin market (settings.js marketPage, marketItemPage) ---------------------------- */
+
+/* 获取更多 ›, at the Plugins page's top: a row of its own, a shop's glyph on the accent's tint. */
+#island-settings .r.mk-entry {
+  padding: 12px 14px;
+}
+
+#island-settings .mk-big {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(94, 155, 255, 0.14);
+  color: #5e9bff;
+  font: normal 16px/1 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+}
+
+.tb-light #island-settings .mk-big {
+  background: rgba(0, 95, 184, 0.1);
+  color: #005fb8;
+}
+
+#island-settings .mk-entry .t {
+  font-weight: 600;
+}
+
+/* Updates waiting for the person, under it: 「N 个插件有更新 · 全部更新」. */
+#island-settings .mk-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 14px;
+  background: rgba(94, 155, 255, 0.14);
+}
+
+.tb-light #island-settings .mk-banner {
+  background: rgba(0, 95, 184, 0.08);
+}
+
+/* The search and the categories over its list. */
+#island-settings .mk-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+/* A download under way where its button was: a pill filling as it comes. */
+#island-settings .mk-prog {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 56px;
+  height: 24px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(94, 155, 255, 0.45) var(--p, 0%), var(--g2) var(--p, 0%));
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-light #island-settings .mk-prog {
+  background: linear-gradient(90deg, rgba(0, 95, 184, 0.25) var(--p, 0%), var(--g2) var(--p, 0%));
+}
+
+/* 已审核: green, as what is fine is. */
+#island-settings .chip.mk-ok {
+  margin-left: 6px;
+  background: rgba(52, 210, 123, 0.14);
+  color: #34d27b;
+  vertical-align: 1px;
+}
+
+.tb-light #island-settings .chip.mk-ok {
+  background: rgba(15, 123, 63, 0.1);
+  color: #0f7b3f;
+}
+
+/* Not open yet: said plainly, not as an error. */
+#island-settings .mk-closed {
+  padding: 18px 16px;
+  text-align: center;
+}
+
+#island-settings .mk-closed-t {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#island-settings .mk-bad {
+  overflow-wrap: anywhere;
+}
+
+#island-settings .note.mk-foot {
+  padding: 10px 8px 2px;
+}
+
+#island-settings .note.mk-cap {
+  padding: 0 8px 4px;
+}
+
+/* Its cards as the desktop draws them (wdesk.js, desk.css in their own shadow), side by side as
+   room allows, a little smaller than on the desktop; and a pack's picture. */
+#island-settings .mk-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 8px 12px;
+  zoom: 0.85;
+}
+
+#island-settings .mk-preview {
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--g1);
+  line-height: 0;
+}
+
+#island-settings .mk-preview img {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+}
+
+/* --- Packs (settings.js packsGroup, packPage, pagePaper; packs.rs) ------------------------- */
+
+/* A pack's tile: its preview filling a rounded square (a pet's frames, a
+   wallpaper's bit of sky), or its name's first letter on grey. */
+#island-settings .pk-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--g2);
+}
+
+#island-settings .pk-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#island-settings .pk-tile.big {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+#island-settings .pk-tile .wmark {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 6px;
+  font-size: 12px !important;
+}
+
+/* 获取更多宠物… and 获取更多壁纸… (the Look page): the market's glyph, smaller. */
+#island-settings .mk-big.sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* Under her pets, as wide as their pictures, so its words line up with their names. */
+#island-settings .petrow ~ .mk-more .mk-big.sm {
+  width: 52px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #island-settings .sh {
+    animation: s-fade 0.14s ease-out;
+  }
+}

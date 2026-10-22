@@ -388,6 +388,54 @@
     ],
   }
   const NO_MONITOR_PART = { left: ['her'], center: ['start', 'apps'], right: ['tray', 'keys', 'quick', 'clock'] }
+
+  // Other people's three (fixtures.js ADDONS) among hers, as the Plugins
+  // page and the picker show them: 下雨提醒 at work on the desktop (medium,
+  // right of the everyday board), 数数 from a file and not placed, 天气雷达
+  // not responding (on: in her capsule); a folder that did not install.
+  const withAddons = F => ({
+    ...busy(F),
+    widgets: F.widgets('monitor', 'today', 'tokens', 'weather', 'stock-aapl', 'stock-nvda', 'pomodoro', 'countdown', 'inbox-a1', 'deploy'),
+    deskLayout: [...F.DESK.everyday, { id: 'wra', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [10, 0] } }],
+    addons: F.ADDONS,
+    addonsBroken: F.ADDONS_BROKEN,
+  })
+  // All three at work (天气雷达 too: its letter for an icon), for where their widgets go.
+  const addonsRunning = F => F.ADDONS.map(a => ({ ...a, on: true, state: 'running', said: null }))
+  const openPluginsPage = async (p, tab = 'widgets') => {
+    p.emit('island:settings', { tab })
+    // A row asked for: past the settings' last scroll to it (1.6 s), as it stays.
+    await p.wait(tab === 'widgets' ? 600 : 1800)
+  }
+  // 从文件安装…, Windows' dialog picking the world's .zip (fake-tauri.js addonManage).
+  const installFromFile = async p => {
+    await openPluginsPage(p)
+    p.click('#island-settings [data-addon-file]')
+    await p.wait(400)
+  }
+  // The market, as a link opens it (widgets:market[:kind]), its index read
+  // (fake-tauri.js market: a quarter of a second); one of its items' page.
+  const openMarket = async (p, link = 'widgets:market') => {
+    p.emit('island:settings', { tab: link })
+    await p.wait(700)
+  }
+  const openMarketItem = async (p, id) => {
+    await openMarket(p)
+    p.click(`#island-settings [data-mk-item="${id}"]`)
+    // Her desktop's card templates loaded the first time (wdesk.js), and desk.css in their shadow.
+    await p.wait(900)
+  }
+  const addonShot = (id, title, steps, more = {}, shot = {}) => ({ id, section: 'settings', title: `设置 · 插件 · ${title}`, page: 'island', home: 'taskbar', view: [0, above(660), 560, 660], world: F => ({ ...withAddons(F), ...more }), steps, ...shot })
+  // The packs installed (fixtures.js PACKS), 像素猫 among her pets, Windows'
+  // slideshow on 极光's folder.
+  const withPacks = F => ({
+    ...withAddons(F),
+    packs: F.PACKS,
+    packPets: F.PACK_PETS,
+    paper: { file: `${F.PACKS[1].folder}\\3.jpg`, slideshow: true, folder: F.PACKS[1].folder, position: 'fill', every: 1800000, shuffle: false },
+  })
+  // Most of them scroll to a part of the page first (1.6 s): a longer budget.
+  const packShot = (id, title, steps, more = {}) => ({ ...addonShot(id, title, steps), title: `设置 · ${title}`, world: F => ({ ...withPacks(F), ...more }), budget: 4000 })
   const WHOLE = [0, 0, SCREEN[0], SCREEN[1]]
   const STRIP_VIEW = [0, above(88), SCREEN[0], 88]
   const CLOSED = [0, above(80), 440, 80]
@@ -720,6 +768,124 @@
         await p.wait(1800)
       },
     },
+    // Other people's plugins on the Plugins page (docs/design/specs/plugins.md
+    // §3): their rows among hers, 从文件安装… under 显示; a plugin's own page
+    // (from the market; from a file, not reviewed); installing from a file
+    // (asked, with what it will do; an update; a program inside; done: the
+    // word, its row edged); 卸载 asked first.
+    addonShot('settings-plugins-addons', '别人写的：运行中、未经审核没放、无响应已停用，没装上的文件夹', p => openPluginsPage(p, 'widgets:rain-alert')),
+    addonShot('settings-plugins-addon-detail', '下雨提醒的详情（市场的）：它能做的、卸载', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-addon="rain-alert"]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-addon-detail-file', '数数的详情（从文件装的，未经审核）', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-addon="tally"]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-addon-approval', '要更多权限，先问（允许…）', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-approve="note-pad"]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-uninstall-confirm', '卸载先问一句', async p => {
+      await openPluginsPage(p)
+      p.click('#island-settings [data-addon="tally"]')
+      await p.wait(300)
+      p.click('#island-settings [data-uninstall]')
+      await p.wait(400)
+    }),
+    addonShot('settings-plugins-install-confirm', '从文件安装：要权限的，先问', installFromFile, { addonPick: 'agent-board.zip' }),
+    addonShot('settings-plugins-install-update', '从文件安装：同一个插件的新版，替换旧版', installFromFile, { addonPick: 'tally-1.1.0.zip' }),
+    addonShot('settings-plugins-install-refused', '从文件安装：包里有程序，装不了', installFromFile, { addonPick: 'cool-tool.zip' }),
+    // A plugin with a view of its own (Agent 排行): its page says 自绘界面;
+    // too busy for the watchdog, stopped, its row says so (spec §3, §8).
+    {
+      ...addonShot('settings-plugins-addon-busy', 'Agent 排行（自绘界面）太忙，已停用', p => openPluginsPage(p, 'widgets:agent-board')),
+      world: F => ({ ...withAddons(F), addons: [...F.ADDONS, { ...F.ADDON_BOARD, state: 'stopped', stopped: { why: 'busy', since: F.T0 - 20 * 60e3, at: F.T0 - 20 * 60e3, times: 0 } }] }),
+    },
+    {
+      ...addonShot('settings-plugins-addon-detail-view', 'Agent 排行的详情：类别后面标「自绘界面」', async p => {
+        await openPluginsPage(p)
+        p.click('#island-settings [data-addon="agent-board"]')
+        await p.wait(400)
+      }),
+      world: F => ({ ...withAddons(F), addons: [...F.ADDONS, F.ADDON_BOARD] }),
+    },
+    addonShot(
+      'settings-plugins-installed',
+      '从文件安装：装好了，提示和标出来的那一行',
+      async p => {
+        await installFromFile(p)
+        p.click('#island-settings [data-sheet="go"]')
+        // Past the scroll to its row (1.6 s).
+        await p.wait(1900)
+      },
+      { addonPick: 'my-plugin.zip' },
+      { budget: 5000 },
+    ),
+    // The plugin market (docs/design/specs/plugins.md §1, §2, §3, §5;
+    // fixtures.js MARKET, fake-tauri.js market): its list, by category; one
+    // one's page drawing its cards from what it says it shows (a tier-2
+    // one's note); installing (one asking for more first asked; one asking
+    // for the web alone at once, its download under way); not reached, not
+    // open yet; updates waiting under 获取更多, and 全部更新 asked first.
+    addonShot('settings-market', '获取更多：市场的列表（已装的写已安装）', p => openMarket(p)),
+    addonShot('settings-market-pets', '获取更多：只看宠物（外观页的直达入口）', p => openMarket(p, 'widgets:market:pet')),
+    addonShot('settings-market-detail', '市场里一个小工具的详情：用她的卡片画出小档和中档', p => openMarketItem(p, 'fx')),
+    addonShot('settings-market-detail-view', '自绘界面的 Agent 排行：小、中、大档，和一句说明', p => openMarketItem(p, 'agent-board'), {}, { budget: 4000 }),
+    addonShot('settings-market-detail-pack', '宠物包的详情：它的预览图，只有图片没有代码', p => openMarketItem(p, 'pet-shiba')),
+    addonShot('settings-market-confirm', '市场里安装要权限的：先问一句', async p => {
+      await openMarket(p)
+      p.click('#island-settings [data-mk-do="install"][data-id="gh-notify"]')
+      await p.wait(300)
+    }),
+    addonShot(
+      'settings-market-installing',
+      '市场里安装只联网的：直接下载，按钮成了进度',
+      async p => {
+        await openMarket(p)
+        p.click('#island-settings [data-mk-do="install"][data-id="fx"]')
+        await p.wait(400)
+      },
+      { marketHold: 45 },
+    ),
+    addonShot('settings-market-error', '市场连不上：哪条路、为什么，去网络代理', p => openMarket(p), { marketMode: 'error' }),
+    addonShot('settings-market-closed', '市场还没开张（仓库没建，404）', p => openMarket(p), { marketMode: 'closed' }),
+    {
+      ...addonShot('settings-plugins-updates', '插件页最上面：获取更多，和「2 个插件有更新 · 全部更新」（关了自动更新）', p => openPluginsPage(p)),
+      world: F => ({ ...withAddons(F), marketUpdates: F.MARKET_UPDATES, config: { pluginAutoUpdate: false } }),
+    },
+    {
+      ...addonShot('settings-plugins-updates-confirm', '全部更新：新版要更多权限的，先列出来问', async p => {
+        await openPluginsPage(p)
+        p.click('#island-settings [data-mk-all]')
+        await p.wait(400)
+      }),
+      world: F => ({ ...withAddons(F), marketUpdates: F.MARKET_UPDATES, config: { pluginAutoUpdate: false } }),
+    },
+    // Packs (docs/design/specs/plugins.md §1, §3; packs.rs; fixtures.js
+    // PACKS): the Plugins page's 资源包 (像素猫 and 极光 from the market, 海边
+    // from a file); her pets with 像素猫 among them and 获取更多宠物…; the
+    // wallpaper's rows (极光 in use: Windows' slideshow on it), 获取更多壁纸…;
+    // a pack's page, 卸载 asked first; a pet pack from a file, asked.
+    packShot('settings-plugins-packs', '资源包：宠物和壁纸，从文件装的标未经审核，右边「在「外观」里选」', p => openPluginsPage(p, 'widgets:packs')),
+    packShot('settings-look-pets-packs', '外观 · 她的宠物：资源包的像素猫写「来自市场」，下面「获取更多宠物…」', p => openPluginsPage(p, 'pets')),
+    packShot('settings-look-wallpaper-packs', '外观 · 壁纸：两个壁纸包，在用的写「在用」，另一个「用这一包」，然后「获取更多壁纸…」', p => openPluginsPage(p, 'paper')),
+    packShot('settings-pack-detail', '像素猫的详情：预览图、介绍、只有图片没有代码、卸载', async p => {
+      await openPluginsPage(p, 'widgets:packs')
+      p.click('#island-settings [data-pack="pet:pet-pixelcat"]')
+      await p.wait(400)
+    }),
+    packShot('settings-pack-uninstall-confirm', '卸载资源包先问一句：正用着的宠物换回默认的', async p => {
+      await openPluginsPage(p, 'widgets:packs')
+      p.click('#island-settings [data-pack="pet:pet-pixelcat"]')
+      await p.wait(300)
+      p.click('#island-settings [data-pack-uninstall]')
+      await p.wait(400)
+    }),
+    packShot('settings-pack-install-confirm', '从文件安装宠物包：未经审核，只有图片没有代码', installFromFile, { addonPick: 'mochi.zip' }),
 
     // General's 提醒: 她有事告诉你时, and just under it 停留多久, its note for
     // the cue chosen (zhoupengjie/Wakuwaku#59, #65): a ring, Custom's 45 s
@@ -897,6 +1063,122 @@
         await p.wait(200)
         p.click('.tw-stack')
         await p.wait(500)
+      },
+    },
+    // Other people's plugins where widgets go, drawn by her cards from what
+    // they say (spec §4): in the picker (数数 just installed: first, 新), on
+    // the taskbar (medium and small, by her icon, their own picture and a
+    // letter), in the open island, on the desktop.
+    {
+      id: 'add-widgets-addon',
+      section: 'widgets',
+      title: '小工具库：别人写的插件在各自的类别里，刚装的「数数」排最前、标「新」',
+      page: 'screen',
+      view: WHOLE,
+      budget: 4000,
+      settle: 700,
+      world: F => ({ ...withAddons(F), sessions: [F.session('working')], taskbarLayout: { left: ['her'], center: ['start', 'apps'], right: [{ id: 'wtw', type: 'plugin', of: 'weather', size: 'M', icon: 'weather' }, 'monitor', 'tray', 'keys', 'quick', 'clock'] } }),
+      steps: async p => {
+        window.AddonUI?.news.add('tally')
+        await p.wait(200)
+        p.emit('taskbar:edit', { picker: true })
+        await p.wait(600)
+      },
+    },
+    {
+      id: 'widgets-addons-taskbar',
+      section: 'widgets',
+      title: '任务栏上别人写的插件：下雨提醒（中，她的图标）、数数（小，它自己的图）、天气雷达（中，首字）',
+      page: 'island',
+      home: 'taskbar',
+      view: [760, above(88), 840, 88],
+      world: F => ({
+        ...home(F),
+        addons: addonsRunning(F),
+        sessions: [F.session('working')],
+        taskbarLayout: {
+          left: ['her'],
+          center: ['start', 'apps'],
+          right: [
+            { id: 'wra', type: 'plugin', of: 'rain-alert', size: 'M', name: '下雨提醒', icon: 'weather' },
+            { id: 'wrh', type: 'plugin', of: 'tally', size: 'S', name: '数数' },
+            { id: 'wrr', type: 'plugin', of: 'weather-radar', size: 'M', name: '天气雷达' },
+            'tray',
+            'keys',
+            'quick',
+            'clock',
+          ],
+        },
+      }),
+    },
+    {
+      id: 'widgets-addons-capsule',
+      section: 'widgets',
+      title: '展开的胶囊里别人写的插件，一行一个',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(420), 520, 420],
+      world: F => ({ ...home(F), widgets: F.widgets('weather'), addons: addonsRunning(F), sessions: [F.session('working')] }),
+      steps: openIsland,
+    },
+    {
+      id: 'widgets-addons-desk',
+      section: 'widgets',
+      title: '桌面上别人写的插件：中和小，她的图标、它自己的图、首字',
+      page: 'desk',
+      view: [0, 0, 1100, 420],
+      budget: 4000,
+      world: F => ({
+        widgets: [],
+        addons: addonsRunning(F),
+        deskLayout: [
+          { id: 'wa1', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 0] } },
+          { id: 'wa2', type: 'plugin', of: 'tally', size: 'm', name: '数数', d: 'd1', at: { d1: [4, 0] } },
+          { id: 'wa3', type: 'plugin', of: 'weather-radar', size: 'm', name: '天气雷达', d: 'd1', at: { d1: [8, 0] } },
+          { id: 'wa4', type: 'plugin', of: 'rain-alert', size: 's', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 2] } },
+          { id: 'wa5', type: 'plugin', of: 'tally', size: 's', name: '数数', d: 'd1', at: { d1: [2, 2] } },
+          { id: 'wa6', type: 'plugin', of: 'weather-radar', size: 's', name: '天气雷达', d: 'd1', at: { d1: [4, 2] } },
+        ],
+      }),
+    },
+    // A plugin's own view (tier 2, spec §4: examples/plugins/agent-board,
+    // its view.html in her card, the card's glass, corners and buttons hers):
+    // medium and large on the desktop; small, and another's medium beside,
+    // drawn from their data.
+    {
+      id: 'widgets-addon-view-desk',
+      section: 'widgets',
+      title: '桌面上插件自绘的界面：Agent 排行的中档和大档；小档和下雨提醒用数据画',
+      page: 'desk',
+      view: [0, 0, 1100, 420],
+      budget: 5000,
+      settle: 900,
+      world: F => ({
+        widgets: [],
+        addons: [F.ADDON_BOARD, ...addonsRunning(F)],
+        deskLayout: [
+          { id: 'wv1', type: 'widget', of: 'agent-board', size: 'm', d: 'd1', at: { d1: [0, 0] } },
+          { id: 'wv2', type: 'plugin', of: 'agent-board', size: 'l', name: 'Agent 排行', icon: 'chart', d: 'd1', at: { d1: [5, 0] } },
+          { id: 'wv3', type: 'widget', of: 'agent-board', size: 's', d: 'd1', at: { d1: [10, 0] } },
+          { id: 'wv4', type: 'plugin', of: 'rain-alert', size: 'm', name: '下雨提醒', icon: 'weather', d: 'd1', at: { d1: [0, 2] } },
+        ],
+      }),
+    },
+    // In the open capsule: its row drawn from its data, its card unfolded the view.
+    {
+      id: 'widgets-addon-view-capsule',
+      section: 'widgets',
+      title: '展开的胶囊里，Agent 排行的卡片打开：插件自绘的界面',
+      page: 'island',
+      home: 'taskbar',
+      view: [0, above(460), 520, 460],
+      budget: 5000,
+      settle: 900,
+      world: F => ({ ...home(F), widgets: F.widgets('weather'), addons: [F.ADDON_BOARD], sessions: [F.session('working')] }),
+      steps: async p => {
+        await openIsland(p)
+        p.click('#island-expanded [data-widget="agent-board"]')
+        await p.wait(900)
       },
     },
 

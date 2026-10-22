@@ -34,12 +34,17 @@
 //   starts.rs      what starts her (the hooks, at login, by hand), whether it may, and who did
 //   widgets.rs     plugins in the island: widgets from scripts, and the built-in ones
 //   plugins.rs     the plugins she runs for you (weather, stocks, timers, CI, dev servers)
+//   addons.rs      third-party plugins: installed from a zip, run in sandboxed frames of
+//                  the island's page (src/pet/addons.js), their views in the cards
+//                  (src/pet/views.js), served by wakuplugin://
+//   zip.rs         zips read and unpacked (LHM's download, a plugin's package)
 //   tokens.rs      today's tokens, from Claude Code's, Codex's and Antigravity's own records
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // The settings' snapshot (settings.rs) is one json! with every agent's part
 // in it: past the default 128 it no longer expands.
 #![recursion_limit = "256"]
 
+mod addons;
 mod appbar;
 mod asks;
 mod audio;
@@ -74,8 +79,10 @@ mod lhm;
 mod lhm_setup;
 mod logon;
 mod mail;
+mod market;
 mod notch;
 mod notify;
+mod packs;
 mod paper;
 mod pet;
 mod pins;
@@ -103,6 +110,7 @@ mod updates;
 mod wallpaper;
 mod widgets;
 mod winkeys;
+mod zip;
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -257,6 +265,8 @@ impl Shared {
             }
             self.log(&format!("quiet: {quiet} (efficiency mode set: {eco}; for {webview_eco} of WebView2's processes; memory {} for {} pages)", if quiet { "low" } else { "normal" }, windows.len()));
             self.to_pages("pet:quiet", json!({ "on": quiet }));
+            // The plugins' views on the desktop away while nobody is about.
+            desk::views(self);
             wake_monitor();
             // The plugins she runs at their quiet pace, or back to their own.
             plugins::wake();
@@ -364,7 +374,7 @@ impl Shared {
         };
         now["config"] = Value::Object(settings);
         now["lang"] = json!(self.lang());
-        now["sprite"] = sprite.map_or(Value::Null, |p| json!(data::asset_url(&p.sheet)));
+        now["sprite"] = sprite.map_or(Value::Null, |p| json!(p.url()));
         now["spriteVersion"] = json!(sprite.map_or(2, |p| p.version));
         // The next session that wants something, for the island's second bubble.
         now["second"] = json!(second);
@@ -545,11 +555,17 @@ impl Shared {
     // Every widget, in the person's order, on or off.
     pub fn widgets_view(&self) -> Value {
         let (off, order) = (self.list_setting("widgetsOff"), self.list_setting("widgetOrder"));
-        self.widgets.lock().unwrap().view(now_ms(), &off, &order, &plugins::owner_of)
+        self.widgets.lock().unwrap().view(now_ms(), &off, &order, &|id: &str| plugins::owner_of(id))
     }
 
-    // A widget from a script: there it is, and it may open the island for itself.
+    // A widget from a script: there it is, and it may open the island for
+    // itself. Never one by the id of a third-party plugin's widget that is
+    // up now (not any id merely beginning like a plugin's: finding 11), so a
+    // plugin cannot claim the person's `cpu_temp` next to a `cpu` plugin.
     pub fn put_widget(&self, v: &Value) -> Result<(), &'static str> {
+        if v.get("id").and_then(Value::as_str).is_some_and(|id| self.widgets.lock().unwrap().is_addon(id)) {
+            return Err("id: taken by a plugin");
+        }
         let put = self.widgets.lock().unwrap().put(v, now_ms())?;
         self.redraw();
         if let Some(words) = put.nudge {
@@ -1141,14 +1157,20 @@ fn quiet_after_ms() -> u64 {
 // (same origin, same show; the second was 90 MB and its own idle); the
 // network service in its browser process, not a process of its own (#14;
 // the storage service's process has no such switch any more: it stays);
-// and rendering on the graphics card that drives her display
-// (gpu.rs, #13). WebView2 takes them once, for all her windows (another
-// set refused): worked out as the first is made, her home's display then
-// the primary one. WAKUWAKU_BROWSER_ARGS, more of them (to try one).
+// WebRTC's non-proxied UDP off, so a plugin cannot reach the network by
+// WebRTC past its frame's Content-Security-Policy and past her proxy
+// (the plugins review, finding 2; she uses WebRTC nowhere herself, and
+// with no proxy set this leaves it no way out by UDP); and rendering on the
+// graphics card that drives her display (gpu.rs, #13). WebView2 takes them
+// once, for all her windows (another set refused): worked out as the first
+// is made, her home's display then the primary one. A self-update changes
+// them across versions safely because the new exe makes its WebView2 only
+// after the old one has ended (updates.rs wait_after_update, hand_over).
+// WAKUWAKU_BROWSER_ARGS, more of them (to try one).
 pub fn browser_args(sh: &Shared) -> &'static str {
     static ARGS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     ARGS.get_or_init(|| {
-        let mut args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --renderer-process-limit=1".to_string();
+        let mut args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-features=NetworkServiceInProcess2 --renderer-process-limit=1 --force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string();
         match island::display(sh).and_then(gpu::switch_for) {
             Some((switch, display)) => {
                 sh.log(&format!("webview: rendering on the card driving {display} ({switch})"));
@@ -1696,7 +1718,20 @@ fn main() {
             taskbar::taskbar_tray_pin,
             taskbar::taskbar_app,
             taskbar::taskbar_thumbs,
+            addons::addons_running,
+            addons::addon_call,
+            addons::addon_manage,
+            addons::addon_view,
+            market::market,
         ])
+        // Third-party plugins' files, for their sandboxed frames in the
+        // island's page and their views in the cards (addons.rs serve):
+        // http://wakuplugin.localhost/<id>/… on Windows. Off the main
+        // thread: a file read from the disk.
+        .register_asynchronous_uri_scheme_protocol(addons::SCHEME, |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(addons::serve(&app, &request)));
+        })
         .on_menu_event(|app, event| tray::on_menu(&shared(app), event.id().as_ref()))
         .setup(move |app| {
             // On macOS she is an accessory, as a menu-bar app is: no Dock icon,
@@ -1717,6 +1752,10 @@ fn main() {
                 }
                 let _ = app.asset_protocol_scope().allow_directory(&folder, true);
             }
+            // The wallpaper packs' previews, for the settings (packs.rs);
+            // what an install of a pack cut short left, cleared away.
+            let _ = app.asset_protocol_scope().allow_directory(packs::root(&dir, addons::Kind::Wallpaper).join(".previews"), true);
+            packs::start(&dir);
             notify::register(&dir);
 
             let today = widgets::Today::load(&dir, &widgets::local_date());
@@ -1765,6 +1804,8 @@ fn main() {
             // Her requests to the web the way the General page says (proxy.rs).
             proxy::set_web(&sh.setting("netProxy"));
             sh.log(&format!("up on port {}, data in {}", sh.port, sh.dir.display()));
+            // The third-party plugins here, before anything checks a setting naming one.
+            addons::start(&sh);
             if let Some(e) = hub_failed {
                 sh.log(&format!("agent-hub: its token not kept in her data folder ({e}): /v1 serves nobody this run"));
             }
@@ -1804,6 +1845,9 @@ fn main() {
             desk::sync(&sh);
             // Her updates looked for (a downloaded exe only).
             updates::start(&sh);
+            // The plugin market's: what was read of it before, and its looks
+            // for updates (none with none of its plugins installed).
+            market::start(&sh);
             // Crashes since: their reports made, sent or asked about.
             crash::start(&sh);
 

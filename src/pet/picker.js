@@ -11,7 +11,10 @@
 //
 // What it has: a search, the kinds (全部 系统 效率 信息 邮件 脚本 组合), a
 // card for each widget (its icon, name and what it is, and "已放 N" where it
-// is put), 获取更多… (to come) and 管理… (Settings, 插件). One instance of each
+// is put), other people's plugins among them in their manifest's kind
+// (@who made it, then what it is; one just installed and put nowhere yet
+// first, marked 新: addonui.js), 获取更多… (Settings, 插件 › 获取更多, its
+// widgets) and 管理… (Settings, 插件). One instance of each
 // for now: a card put again is the same widget moved. 组合: the boards kept
 // as combos (a board's 存为组合…, settings boardSets), each card its name,
 // how many and their icons; dragged onto the desktop its board is put up
@@ -52,6 +55,7 @@
   const G = window.DeskGrid
   const C = window.Capsule
   const P = window.Placing
+  const AddonUI = window.AddonUI
   const el = Isle.el
   const T = (key, vars) => t(Isle.lang, key, vars)
   const esc = WCards.esc
@@ -92,14 +96,12 @@
     <div class="pk-chips"></div>
     <p class="pk-hint"></p>
     <div class="pk-grid"></div>
-    <p class="pk-note" hidden></p>
     <div class="pk-foot"><button type="button" data-pk="more"></button><button type="button" data-pk="manage"></button></div>`
   const $ = sel => pk.querySelector(sel)
   const search = $('input')
   const grid = $('.pk-grid')
   const chips = $('.pk-chips')
   const menu = $('.pk-menu')
-  const note = $('.pk-note')
 
   // The popover over a widget on the strip, the toasts, the ghost under the
   // pointer, the band above the strip, the gap opened on the strip.
@@ -150,6 +152,14 @@
 
   // --- The cards -------------------------------------------------------------------------
   const allNow = () => (snap?.widgets?.length ? snap.widgets : Isle.allWidgets)
+  // Other people's plugins installed (addons.rs view: plugins, not packs).
+  const addonsNow = () => (snap?.addons || []).filter(a => a.kind === 'plugin')
+  const addonOf = id => addonsNow().find(a => a.id === id) || null
+  // One as a widget looks, while it has none up: its icon (its own
+  // picture, one of hers, or its name's letter), its colour, its name.
+  const addonLook = a => ({ id: a.id, plugin: a.id, icon: a.icon?.name || 'dot', iconUrl: a.icon?.url, label: a.name, color: a.color || '' })
+  // Installed while this page has been up, and not put anywhere since: 新.
+  const isFresh = key => key.startsWith('plugin:') && !!AddonUI?.news.has(key.slice(7))
   const clip = (s, n = 40) => [...String(s || '')].slice(0, n).join('')
   function cardsOf() {
     const all = allNow()
@@ -158,6 +168,12 @@
     const builtIn = { monitor: 'card.monitor', today: 'card.today', tokens: 'widget.tokens' }
     for (const w of all.filter(x => x.builtIn)) out.push({ key: `widget:${w.id}`, kind: 'builtIn', cat: BUILT_IN_CAT[w.id] || 'system', w, name: T(builtIn[w.id] || 'taskbar.w.widget'), note: T(`picker.d.${w.id in BUILT_IN_CAT ? w.id : 'builtIn'}`) })
     for (const p of snap?.plugins || []) out.push({ key: `plugin:${p.id}`, kind: 'plugin', cat: PLUGIN_CAT[p.id] || 'script', w: all.find(x => x.plugin === p.id) || null, plugin: p, name: T(`w.ex.${p.id}`), note: T(`w.ex.${p.id}.note`) })
+    // Other people's (addons.rs): in their manifest's kind (addonui.js
+    // catOf), who made each before what it is; placed is on, as for hers.
+    for (const a of addonsNow()) {
+      const about = a.state === 'unsupported' ? T('addons.newerApp') : a.description
+      out.push({ key: `plugin:${a.id}`, kind: 'addon', cat: AddonUI.catOf(a), w: all.find(x => x.plugin === a.id) || null, addon: a, name: a.name, note: [a.author ? `@${a.author}` : '', about].filter(Boolean).join(' · ') })
+    }
     for (const w of all.filter(x => x.from === 'mail')) {
       const label = Widgets.words(Isle.lang, w, detailed).label
       out.push({ key: `widget:${w.id}`, kind: 'mail', cat: 'mail', w, name: label ? `${T('card.mail')} · ${label}` : T('card.mail'), note: T('picker.d.mail') })
@@ -174,11 +190,11 @@
   function markOf(card) {
     if (card.spacer) return `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SPACER_MARK[card.spacer]}</svg>`
     if (card.set) return `<svg class="wicon" viewBox="0 0 24 24" aria-hidden="true">${SET_MARK}</svg>`
-    const w = card.w || { id: card.key.split(':')[1], icon: card.plugin?.icon, label: card.name }
+    const w = card.w || (card.addon ? addonLook(card.addon) : { id: card.key.split(':')[1], icon: card.plugin?.icon, label: card.name })
     return Widgets.iconHTML(w, Isle.lang)
   }
   const colorOf = card => {
-    const c = card.w?.color
+    const c = card.w?.color || card.addon?.color
     if (!c) return light() ? '#5d5d5d' : '#a1a1a6'
     return light() ? Widgets.deepen(c) : c
   }
@@ -210,12 +226,17 @@
   function drawGrid() {
     cards = cardsOf()
     const q = query.trim().toLowerCase()
-    const shown = cards.filter(c => (cat === 'all' || c.cat === cat) && (!q || `${c.name} ${c.note} ${c.key} ${t('en', c.plugin ? `w.ex.${c.plugin.id}` : 'none')}`.toLowerCase().includes(q)))
+    const at = placesOf()
+    // One just installed and put nowhere yet first, marked 新 (spec §2).
+    const fresh = key => isFresh(key) && !countOf({ key }, at)
+    const shown = AddonUI.freshFirst(
+      cards.filter(c => (cat === 'all' || c.cat === cat) && (!q || `${c.name} ${c.note} ${c.key} ${t('en', c.plugin ? `w.ex.${c.plugin.id}` : 'none')}`.toLowerCase().includes(q))),
+      fresh,
+    )
     if (!shown.length) {
       grid.replaceChildren(el('p', 'pk-empty', q ? T('picker.none', { q: query.trim() }) : T(cat === 'sets' ? 'picker.setsNone' : 'picker.noneHere')))
       return
     }
-    const at = placesOf()
     grid.replaceChildren(
       ...shown.map(c => {
         const b = el('button', c.set ? 'pk-card pk-setcard' : 'pk-card')
@@ -230,6 +251,7 @@
       }),
     )
     drawBadges(at)
+    showFocus()
   }
   // A combo's widgets as icons, each in its colour (one gone: its kind's glyph, grey).
   function setIcons(set) {
@@ -239,14 +261,29 @@
     })
     return icons.join('') + (set.items.length > 6 ? `<span class="pk-mi pk-mn">+${set.items.length - 6}</span>` : '')
   }
+  // 已放 N where it is put; one just installed and put nowhere yet, 新
+  // (once put somewhere, new no more: addonui.js news).
   function drawBadges(at = placesOf()) {
     for (const b of grid.querySelectorAll('.pk-card')) {
       const c = cards.find(x => x.key === b.dataset.key)
       const n = c ? countOf(c, at) : 0
+      if (n && c.addon) AddonUI.news.placed(c.addon.id)
+      const badge = AddonUI.badgeOf(n, !!c && isFresh(c.key), T)
       const bd = b.querySelector('.pk-bd')
-      bd.textContent = n ? T('picker.placed', { n }) : ''
-      bd.hidden = !n
+      bd.textContent = badge.text
+      bd.hidden = !badge.text
+      b.classList.toggle('pk-new', badge.fresh)
     }
+  }
+  // The card asked for (the Plugins page's 添加小工具…: fromMenu focus),
+  // brought into sight and lit once it is drawn.
+  let focusKey = ''
+  function showFocus() {
+    const node = focusKey && grid.querySelector(`[data-key="${CSS.escape(focusKey)}"]`)
+    if (!node) return
+    focusKey = ''
+    node.scrollIntoView({ block: 'nearest' })
+    flash(node)
   }
 
   // What a press and a drag do (the combos: the desktop alone).
@@ -293,7 +330,7 @@
     menu.hidden = true
     endRenameSet(true)
     closeSetMenu()
-    note.hidden = true
+    focusKey = ''
     query = ''
     search.value = ''
     search.blur()
@@ -328,19 +365,15 @@
       return Isle.sendSolid()
     }
     if (what === 'reset') return resetParts()
-    if (what === 'more') return say(T('picker.moreNote'))
-    if (what === 'manage') {
+    // 获取更多…: the market, its widgets (settings.js, widgets:market:widget);
+    // 管理…: the Plugins page.
+    if (what === 'more' || what === 'manage') {
       // The settings over her island: editing lets the pointer through it, so done first.
       if (editing()) Isle.endEdit(true)
       hide()
-      return window.pet.openSettings('widgets')
+      return window.pet.openSettings(what === 'more' ? 'widgets:market:widget' : 'widgets')
     }
   })
-  const say = text => {
-    const again = note.textContent === text && !note.hidden
-    note.textContent = text
-    note.hidden = again
-  }
   search.addEventListener('input', () => {
     query = search.value
     drawGrid()
@@ -380,6 +413,8 @@
     const list = keys.filter(k => !k.startsWith('spacer:'))
     if (!list.length) return
     for (const w of [...Isle.allWidgets, ...(snap?.widgets || [])]) if (list.includes(C.keyOfWidget(w)) || list.includes(`widget:${w.id}`)) w.on = on
+    // One just installed, put somewhere: 新 no more.
+    if (on) for (const k of list) if (k.startsWith('plugin:')) AddonUI.news.placed(k.slice(7))
     setConfig(P.switchesPatch(Isle.config, list, on))
   }
   const switchOn = keys => setSwitch(keys, true)
@@ -396,8 +431,11 @@
   function memberOf(key, card = null) {
     const item = P.itemOf(key)
     const w = card?.w || (item.plugin ? allNow().find(x => x.plugin === item.plugin) : allNow().find(x => x.id === item.id))
-    const icon = (w?.icon || card?.plugin?.icon) in Widgets.ICONS && (w?.icon || card?.plugin?.icon) !== 'dot' ? { icon: w?.icon || card.plugin.icon } : {}
-    const name = !item.plugin && w && !w.private ? { name: clip(Widgets.words(Isle.lang, w).label) } : {}
+    // Someone else's plugin: its own name and icon kept with it (hers she knows by their ids).
+    const addon = item.plugin ? addonOf(item.plugin) : null
+    const iconName = w?.icon || card?.plugin?.icon || addon?.icon?.name
+    const icon = iconName in Widgets.ICONS && iconName !== 'dot' ? { icon: iconName } : {}
+    const name = !item.plugin && w && !w.private ? { name: clip(Widgets.words(Isle.lang, w).label) } : addon ? { name: clip(addon.name) } : {}
     return { type: item.plugin ? 'plugin' : 'widget', of: item.plugin || item.id, ...icon, ...name }
   }
   const widgetOfKey = key => {
@@ -416,7 +454,7 @@
   // A widget's or plugin's name, as its card says it (a plugin's its own,
   // whatever its widgets are called now).
   const nameOfKey = key => {
-    if (key.startsWith('plugin:')) return T(`w.ex.${key.slice(7)}`)
+    if (key.startsWith('plugin:')) return addonOf(key.slice(7))?.name || Widgets.pluginName(Isle.lang, key.slice(7), allNow()) || T('taskbar.w.widget')
     const c = cards.find(x => x.key === key) || cardsOf().find(x => x.key === key)
     if (c) return c.name
     const w = widgetOfKey(key)
@@ -531,7 +569,7 @@
   const setsNow = () => G.setsOf(Array.isArray(Isle.config.boardSets) ? Isle.config.boardSets : snap?.settings?.boardSets)
   // A member still there: a plugin she has (not yet asked: as if), a widget
   // with something to say (a mailbox gone, a script's widget gone: not).
-  const known = m => (m.type === 'plugin' ? !snap?.plugins || snap.plugins.some(p => p.id === m.of) : allNow().some(w => w.id === m.of))
+  const known = m => (m.type === 'plugin' ? !snap?.plugins || snap.plugins.some(p => p.id === m.of) || !!addonOf(m.of) : allNow().some(w => w.id === m.of))
   // What goes over to the desktop's page: the combo with those still there.
   function setToSend(set) {
     const items = set.items.filter(known)
@@ -811,15 +849,19 @@
   function askFirst(keys) {
     const ids = keys.filter(k => k.startsWith('plugin:')).map(k => k.slice(7))
     if (!ids.length) return
-    const check = list => {
+    // Hers by her words for them; someone else's by its own (addonui.js labelOf).
+    const check = got => {
+      const addons = (got?.addons || []).filter(a => a.kind === 'plugin')
       for (const id of ids) {
-        const what = P.missingParam((Array.isArray(list) ? list : []).find(p => p.id === id))
+        const addon = addons.find(a => a.id === id)
+        const what = P.missingParam(addon || (Array.isArray(got?.plugins) ? got.plugins : []).find(p => p.id === id))
         if (!what) continue
-        return toast(T('picker.needs', { name: T(`w.ex.${id}`), what: T(`pl.${id}.${what}`) }), () => settingsOf(id), T('picker.fill'))
+        const words = addon ? { name: addon.name, what: AddonUI.labelOf(addon, what) } : { name: T(`w.ex.${id}`), what: T(`pl.${id}.${what}`) }
+        return toast(T('picker.needs', words), () => settingsOf(id), T('picker.fill'))
       }
     }
-    if (snap?.plugins) check(snap.plugins)
-    else window.pet.settings.get().then(got => check(got?.plugins))
+    if (snap?.plugins) check(snap)
+    else window.pet.settings.get().then(check)
   }
   // Its settings: editing done first (the settings come over her island), the picker closed.
   function settingsOf(plugin) {
@@ -1464,11 +1506,20 @@
   // Her menu in the island's home: 添加小工具… (the picker alone), 编辑胶囊;
   // on the taskbar, the picker comes with editing its layout. The Plugins
   // page's 添加小工具… (settings.js, in this page) the same.
+  // focus: the card to bring into sight (the Plugins page's, a key), shown
+  // among all of them.
   function fromMenu(p) {
     const what = p?.open === 'capsule' ? 'capsule' : 'picker'
     if (what === 'capsule') {
       if (home() === 'island') hide()
       return window.CapsulePanel?.open()
+    }
+    if (typeof p?.focus === 'string' && p.focus) {
+      focusKey = p.focus
+      cat = 'all'
+      query = ''
+      search.value = ''
+      if (open) drawPicker()
     }
     if (home() === 'taskbar') return Isle.editTaskbar({ picker: true })
     window.CapsulePanel?.close()

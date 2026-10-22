@@ -419,6 +419,11 @@
   display: none;
 }
 
+/* Just installed, put nowhere yet (新): first, edged in the accent. */
+.pk-card.pk-new {
+  border-color: color-mix(in srgb, var(--pk-accent) 70%, transparent) !important;
+}
+
 /* A combo (组合): its widgets' icons in a row under its name, small, each
    in its colour; its ⋯ at the corner while the pointer is on it. */
 .pk-icons {
@@ -504,20 +509,6 @@
   margin: 24px 0;
   color: var(--pk-2);
   text-align: center;
-}
-
-.pk-note {
-  flex: none;
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--pk-card);
-  color: var(--pk-2);
-  font-size: 12px;
-}
-
-.pk-note[hidden] {
-  display: none;
 }
 
 .pk-foot {

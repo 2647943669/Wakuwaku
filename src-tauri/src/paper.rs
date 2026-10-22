@@ -581,6 +581,17 @@ mod imp {
     // A picture, or a folder, picked in Windows' own file dialog over this
     // window; None when it was closed instead.
     pub fn pick(folder: bool, title: &str, pictures: &str, owner: isize) -> Option<String> {
+        let types = (!folder).then_some((pictures, "*.jpg;*.jpeg;*.jfif;*.png;*.bmp;*.dib;*.gif;*.tif;*.tiff;*.heic;*.webp;*.avif;*.jxr;*.wdp"));
+        pick_with(folder, title, types, owner)
+    }
+
+    // A file of the types given (their name, and a spec: "*.zip"), picked in
+    // the same dialog (a plugin's package: addons.rs).
+    pub fn pick_file(title: &str, name: &str, spec: &str, owner: isize) -> Option<String> {
+        pick_with(false, title, Some((name, spec)), owner)
+    }
+
+    fn pick_with(folder: bool, title: &str, types: Option<(&str, &str)>, owner: isize) -> Option<String> {
         // SAFETY: COM objects of our own, released; the strings alive for the
         // calls; the dialog's own loop runs while it is open.
         with_com(|| unsafe {
@@ -593,8 +604,8 @@ mod imp {
             get(dialog, &mut options);
             let set: extern "system" fn(*mut Obj, u32) -> i32 = method(dialog, DIALOG_SET_OPTIONS);
             set(dialog, options | FOS_FORCEFILESYSTEM | if folder { FOS_PICKFOLDERS } else { FOS_FILEMUSTEXIST });
-            let (name, spec) = (wide(pictures), wide("*.jpg;*.jpeg;*.jfif;*.png;*.bmp;*.dib;*.gif;*.tif;*.tiff;*.heic;*.webp;*.avif;*.jxr;*.wdp"));
-            if !folder {
+            let (name, spec) = types.map_or((Vec::new(), Vec::new()), |(n, s)| (wide(n), wide(s)));
+            if types.is_some() {
                 let types = [FilterSpec { name: name.as_ptr(), spec: spec.as_ptr() }];
                 let f: extern "system" fn(*mut Obj, u32, *const FilterSpec) -> i32 = method(dialog, DIALOG_SET_FILE_TYPES);
                 f(dialog, 1, types.as_ptr());
@@ -653,9 +664,12 @@ mod imp {
     pub fn pick(_folder: bool, _title: &str, _pictures: &str, _owner: isize) -> Option<String> {
         None
     }
+    pub fn pick_file(_title: &str, _name: &str, _spec: &str, _owner: isize) -> Option<String> {
+        None
+    }
 }
 
-pub use imp::{next, notes, now, pick, previous, remember, set_folder, set_picture, set_position, set_turns, undo};
+pub use imp::{next, notes, now, pick, pick_file, previous, remember, set_folder, set_picture, set_position, set_turns, undo};
 
 #[cfg(test)]
 mod tests {

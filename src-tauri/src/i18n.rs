@@ -75,6 +75,9 @@ pub fn t(lang: &str, key: &str) -> String {
         "wallpaper.pickPicture" => if zh { "选择壁纸图片" } else { "Pick a picture for the desktop" },
         "wallpaper.pickFolder" => if zh { "选择一个文件夹，里面的图片轮流做壁纸" } else { "Pick a folder whose pictures take turns on the desktop" },
         "wallpaper.pictures" => if zh { "图片" } else { "Pictures" },
+        // A plugin installed from a file (addons.rs addon_pick_zip).
+        "addons.pickZip" => if zh { "选择插件的 .zip" } else { "Pick a plugin's .zip" },
+        "addons.zips" => if zh { "插件包" } else { "Plugin packages" },
         "menu.quit" => if zh { "退出" } else { "Quit" },
         "deny.message" => if zh { "用户在桌宠上拒绝了。" } else { "The user denied this on the desktop pet." },
         "codex.waiting" => if zh { "等你在 Wakuwaku 上确认…" } else { "Waiting for your answer on Wakuwaku…" },

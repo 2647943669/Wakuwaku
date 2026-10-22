@@ -749,6 +749,27 @@
     update()
   }
 
+  // A plugin's own view in its unfolded card (views.js; the spec's §4):
+  // its view.html over the card, a medium one there (as wide as the card,
+  // 128 px high), where its widget gives one; the card drawn from its data
+  // until the view is ready, and whenever views may not show (nobody about,
+  // animations off, the watchdog's while; and where this page cannot keep a
+  // frame loaded as it draws its lines anew each second: moveBefore).
+  const islandStyle = name => getComputedStyle(island).getPropertyValue(name).trim()
+  const islandViews =
+    window.Views && ROLE === 'island'
+      ? (window.Views.island = window.Views.boot({
+          ask: widget => window.pet.addons.view('data', widget),
+          send: (widget, message) => window.pet.addons.view('send', widget, message),
+          styleOf: w => ({ fg: islandStyle('--wg-fg'), muted: islandStyle('--wg-2'), color: WCards.colorOf(w, isleCtx()), font: getComputedStyle(expanded).fontFamily, fontDisplay: islandStyle('--wg-num') }),
+          look: () => ({ theme: inkLight ? 'light' : 'dark', lang }),
+          // Drawn again once what told it is done (pet:update, pet:quiet).
+          changed: () => queueMicrotask(() => isOn() && update()),
+          log: line => console.log(line),
+          redrawn: true,
+        }))
+      : null
+
   function widgetRow(widget, isShown) {
     const ctx = isleCtx()
     const card = WCards.hasCard(widget)
@@ -763,6 +784,7 @@
     unfolded.dataset.card = widget.id
     unfolded.style.setProperty('--c', WCards.colorOf(widget, ctx))
     unfolded.innerHTML = WCards.cardHTML(widget, ctx, allWidgets)
+    unfolded.classList.toggle('has-view', !!islandViews?.place(unfolded, `isle:${widget.id}`, widget, 'm'))
     fillHer(unfolded, 22)
     const into = Date.now() - cardSince
     if (into < CARD_MS) unfolded.style.animationDelay = `-${into}ms`
@@ -876,7 +898,10 @@
     const old = expanded.querySelector(':scope > .lines')
     if (old && view === 'expanded') linesTop = old.scrollTop
     lines.style.maxHeight = Number.isFinite(most) ? `${Math.max(60, Math.floor(most - EXPANDED_PAD_Y))}px` : ''
+    // A card's plugin view kept loaded as its card is drawn anew (views.js park, mount).
+    islandViews?.park()
     expanded.replaceChildren(...(isHome() ? [] : [stillHer(48)]), lines)
+    islandViews?.mount()
     // A card unfolded: the island at its widest, the card as wide as its
     // lines; a widget's menu open in it: as tall as the menu needs.
     expanded.classList.toggle('has-card', !!expanded.querySelector('.icard'))
@@ -2012,16 +2037,24 @@
 
   // A member's name, as put there (a plugin's, a widget's label as it was).
   const memberName = m => Widgets.nameOf(lang, { ...m, id: 'w0' }, allWidgets, isDetailed())
+  // The name kept with someone else's plugin as it is put somewhere (her
+  // own she knows by their ids): its own, as its widgets say it, for while
+  // it has nothing to say.
+  function ownName(id) {
+    const name = t(lang, `w.ex.${id}`) === `w.ex.${id}` ? Widgets.pluginName(lang, id, allWidgets) : ''
+    return name ? { name: [...name].slice(0, 40).join('') } : {}
+  }
 
-  // The plugins she runs as settings_get says, for which want their
-  // settings filled in first (missing: a parameter they need): asked for
-  // while a plugin on the strip has nothing to say, twice a minute at most,
-  // and once the layout is kept.
+  // The plugins she runs as settings_get says, and other people's
+  // (addons.rs), for which want their settings filled in first (missing: a
+  // parameter they need) or were stopped: asked for while a plugin on the
+  // strip has nothing to say, twice a minute at most, and once the layout
+  // is kept.
   const pluginsSaid = { at: 0, list: [] }
   function askPlugins(now = false) {
     if (!now && Date.now() - pluginsSaid.at < 30000) return
     pluginsSaid.at = Date.now()
-    window.pet.settings.get().then(got => tellPlugins(got?.plugins))
+    window.pet.settings.get().then(got => tellPlugins(got && [...(got.plugins || []), ...(got.addons || [])]))
   }
   function tellPlugins(list) {
     if (!Array.isArray(list)) return
@@ -2983,7 +3016,7 @@
   function putOnBar(w) {
     const source = w.plugin ? { type: 'plugin', of: w.plugin } : { type: 'widget', of: w.id }
     if (Widgets.shownOn(tbLayout(), allWidgets).has(w.id)) return
-    const named = w.private || w.plugin ? {} : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') }
+    const named = w.private ? {} : w.plugin ? ownName(w.plugin) : { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') }
     const entry = { id: newId(), ...source, size: Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...(w.icon in Widgets.ICONS ? { icon: w.icon } : {}), ...named }
     const layout = tbLayout()
     layout.right.unshift(entry)
@@ -3046,7 +3079,7 @@
       }
       const w = item.plugin ? null : allWidgets.find(x => x.id === item.id)
       const source = item.plugin ? { type: 'plugin', of: item.plugin } : { type: 'widget', of: item.id }
-      const named = w && !w.private ? { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') } : {}
+      const named = w && !w.private ? { name: [...String(Widgets.words(lang, w).label)].slice(0, 40).join('') } : item.plugin ? ownName(item.plugin) : {}
       const icon = (w?.icon || item.icon) in Widgets.ICONS ? { icon: w?.icon || item.icon } : {}
       layout.right.unshift({ id: newId(), ...source, size: !w || Widgets.sizesOf(w).includes('m') ? 'M' : 'S', ...icon, ...named })
       placedAt.set(key, Date.now())
@@ -3956,8 +3989,11 @@
   // mode.
   function setInk() {
     const own = view === 'settings' ? null : groundLight
+    const was = inkLight
     inkLight = own === null ? isLight() : own
     body.classList.toggle('isl-light', inkLight)
+    // A card's plugin view told her theme, and its card's colours.
+    if (was !== inkLight) islandViews?.relook(allWidgets)
   }
 
   window.pet.onWallpaper(p => {
@@ -5673,6 +5709,7 @@
     // Where island.rs put her window at the top of the screen (anchor.js).
     islandAt = Anchor.posOf(data.islandAt)
     quiet = data.quiet === true
+    islandViews?.set({ on: !quiet })
     fullScreen = data.fullScreen === true
     takeWidgets(data.widgets)
     place()
@@ -5723,6 +5760,7 @@
   window.pet.onWidgets(({ widgets: all }) => {
     const others = JSON.stringify(widgets)
     takeWidgets(all)
+    islandViews?.widgets(allWidgets)
     if (!isOn()) return
     if (home() === 'taskbar' && view === 'compact' && JSON.stringify(widgets) === others) {
       facesBox.replaceChildren(...widgetFaces())
@@ -5734,6 +5772,8 @@
   // stands still, or plays on.
   window.pet.onQuiet(({ on }) => {
     quiet = on === true
+    // A plugin's view in a card: away while nobody is about.
+    islandViews?.set({ on: !quiet })
     herClip = null
     animateHer()
     playPortraits()
