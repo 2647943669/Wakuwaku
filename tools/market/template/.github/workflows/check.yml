@@ -37,7 +37,11 @@ jobs:
           set -euo pipefail
           ref="$(git show "$BASE:.github/wakuwaku-ref" | grep -v '^[[:space:]]*#' | tr -d ' \t\r\n')"
           if ! printf '%s' "$ref" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::.github/wakuwaku-ref must be a release tag like v0.4.0, not '$ref' / 必须是 v0.4.0 这样的发布标签"
+            echo "::error::.github/wakuwaku-ref must be a release tag like v0.3.5, not '$ref' / 必须是 v0.3.5 这样的发布标签"
+            exit 1
+          fi
+          if ! git ls-remote --exit-code --tags https://github.com/zhoupengjie/Wakuwaku "refs/tags/$ref" > /dev/null; then
+            echo "::error::Wakuwaku $ref is not released yet, so its rules cannot check anything: wait for it. / Wakuwaku $ref 还没发布，没有规则可查：等它发布。"
             exit 1
           fi
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
