@@ -110,7 +110,7 @@ pub struct Island {
     seat_at: Option<f64>,
     // The strip, its edge and the window as the page was last told of them
     // (tell_strip).
-    strip_told: Option<((i32, i32, i32, i32), Edge, (i32, i32), (i32, i32))>,
+    strip_told: Option<((i32, i32, i32, i32), Edge, (i32, i32), (i32, i32), f64)>,
     // At the top of the screen, up out of the way of a window under it.
     stow: Stow,
     // The taskbar's layout being edited (island.js editTaskbar): her menu
@@ -374,7 +374,7 @@ pub fn tell_strip(sh: &Shared, again: bool) {
     };
     let Some(b) = bar else { return };
     let thick = thickness(edge, b);
-    let now = Some((b, edge, pos, size));
+    let now = Some((b, edge, pos, size, sf));
     if now == told && !again {
         return;
     }
@@ -387,7 +387,7 @@ pub fn tell_strip(sh: &Shared, again: bool) {
     ));
     // With the window's size: the page may be a little bigger (island.js
     // fitPage, zhoupengjie/Wakuwaku#19).
-    let _ = sh.app.emit_to("island", "taskbar:strip", json!({ "thick": thick, "win": [size.0, size.1] }));
+    let _ = sh.app.emit_to("island", "taskbar:strip", json!({ "thick": thick, "win": [size.0, size.1], "sf": sf }));
 }
 
 // One at a time: two at once took the taskbar twice (two tray threads, one

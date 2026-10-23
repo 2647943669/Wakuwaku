@@ -160,7 +160,7 @@
   // The settings above the taskbar: clear of it, and room for their shadow.
   const TASKBAR_GAP = 8
   const TASKBAR_SHADE = 12
-  const TASK_HEAD = 30
+  const TASK_HEAD = 34
   // On the taskbar's Mica her end is an island of its own in the strip: a
   // black capsule this far in from the strip's left end and its foot.
   const CAPSULE_X = 6
@@ -3800,10 +3800,14 @@
   // inner edge is the work area's, where maximized windows stop (a hairline
   // gap at 175%: zhoupengjie/Wakuwaku#2). 48 until told.
   let stripThick = 0
+  let stripScale = 1
   function setStrip() {
     if (!stripThick) return
     document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
     fitPage()
+    // A monitor's scale or Windows text scaling may have changed while the
+    // settings are open; recompute their body height with the new CSS room.
+    if (window.Settings?.isOpen?.()) window.Settings.redraw()
     // Once laid out for it (its edge may have just changed too).
     setTimeout(() => {
       const r = island.parentElement.getBoundingClientRect()
@@ -3850,9 +3854,10 @@
     root.style.setProperty('--page-cut-x', `${winPx ? over(r.width, winPx[0]) : 0}px`)
     root.style.setProperty('--page-cut-y', `${winPx ? over(r.height, winPx[1]) : 0}px`)
   }
-  window.pet.onStrip(({ thick, win } = {}) => {
+  window.pet.onStrip(({ thick, win, sf } = {}) => {
     if (!(thick > 0)) return
     stripThick = thick
+    if (Number.isFinite(sf) && sf > 0) stripScale = sf
     if (Array.isArray(win) && win[0] > 0 && win[1] > 0) winPx = win
     setStrip()
   })
@@ -3860,6 +3865,7 @@
     if (!stripThick) return
     document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
     fitPage()
+    if (window.Settings?.isOpen?.()) window.Settings.redraw()
   })
 
   const micaBox = el('div')
@@ -5963,7 +5969,11 @@
   // panel.js tells the island when its prompt changes.
   // The most the settings may be high: above the taskbar, its room (the
   // window never moves for them); elsewhere, none said (the screen's).
-  const settingsMax = () => (home() === 'taskbar' ? (isSide() ? innerHeight - 2 * TASKBAR_GAP - TASKBAR_SHADE : TASKBAR_ROOM - TASKBAR_GAP - TASKBAR_SHADE) : null)
+  // TASKBAR_ROOM is in the native monitor's logical px. WebView CSS px use
+  // devicePixelRatio, which can differ from that monitor scale (Windows text
+  // scaling): convert the room before sizing the settings page or its head
+  // and tabs can land above the native window and be clipped.
+  const settingsMax = () => (home() === 'taskbar' ? (isSide() ? innerHeight - 2 * TASKBAR_GAP - TASKBAR_SHADE : (TASKBAR_ROOM - TASKBAR_GAP - TASKBAR_SHADE) * stripScale / (devicePixelRatio || 1)) : null)
 
   // The taskbar's layout, for the settings: its presets, which one it is, editing it on the strip.
   // From her menu: editing it (添加小工具…: with the picker open, { picker }),
