@@ -160,7 +160,7 @@
   // The settings above the taskbar: clear of it, and room for their shadow.
   const TASKBAR_GAP = 8
   const TASKBAR_SHADE = 12
-  const TASK_HEAD = 34
+  const TASK_HEAD = 30
   // On the taskbar's Mica her end is an island of its own in the strip: a
   // black capsule this far in from the strip's left end and its foot.
   const CAPSULE_X = 6
@@ -3866,6 +3866,7 @@
     document.documentElement.style.setProperty('--strip-h', `${stripThick / (devicePixelRatio || 1)}px`)
     fitPage()
     if (window.Settings?.isOpen?.()) window.Settings.redraw()
+    sendSolid()
   })
 
   const micaBox = el('div')
@@ -4686,7 +4687,7 @@
       .map(n => n.getBoundingClientRect())
       .filter(r => r.width && r.height)
       .map(r => [Math.floor(r.left) - 2, Math.floor(r.top) - 2, Math.ceil(r.width) + 4, Math.ceil(r.height) + 4])
-    const sent = JSON.stringify([on, rects])
+    const sent = JSON.stringify([on, rects, devicePixelRatio || 1])
     if (sent === solidSent) return
     solidSent = sent
     window.pet.editing(on, rects)
