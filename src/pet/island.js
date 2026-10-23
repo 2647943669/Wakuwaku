@@ -4670,7 +4670,12 @@
     if (!isOn()) return
     const extra = window.Picker?.solids() || []
     const on = !!editLayout
-    const rects = [...(editLayout ? [editBar] : []), ...extra]
+    // Settings are a large interactive surface, often much bigger than the
+    // capsule. Keep the native window catching the mouse over them even if
+    // WebView2 misses an enter/leave while its click-through mode changes.
+    // Put this first because Rust caps the list at eight rectangles.
+    const settings = window.Settings?.isOpen?.() ? window.Settings.layer : null
+    const rects = [...(settings ? [settings] : []), ...(editLayout ? [editBar] : []), ...extra]
       .filter(n => n.isConnected)
       .map(n => n.getBoundingClientRect())
       .filter(r => r.width && r.height)
